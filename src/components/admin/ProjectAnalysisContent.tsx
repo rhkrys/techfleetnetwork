@@ -584,12 +584,15 @@ export default function ProjectAnalysisContent({ projectId }: ProjectAnalysisCon
                           <p className="text-xs text-muted-foreground italic">No other projects found</p>
                         ) : (
                           <div className="flex flex-wrap gap-1.5">
-                            {otherProjects.map((op) => (
-                              <Badge key={op.projectId} variant="secondary" className="text-xs gap-1">
-                                <ExternalLink className="h-3 w-3" />
-                                {op.clientName}
-                              </Badge>
-                            ))}
+                            {otherProjects.map((op) => {
+                              const isResolved = op.clientName !== "Unknown project";
+                              return (
+                                <Badge key={op.projectId} variant="secondary" className="text-xs gap-1">
+                                  {isResolved && <ExternalLink className="h-3 w-3" />}
+                                  {op.clientName}
+                                </Badge>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
