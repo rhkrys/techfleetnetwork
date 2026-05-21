@@ -37,5 +37,5 @@ const main = { backgroundColor: '#ffffff', fontFamily: "'Inter', Arial, sans-ser
 const container = { padding: '32px 28px' }
 const h1 = { fontSize: '22px', fontWeight: 'bold' as const, color: '#141726', margin: '0 0 20px' }
 const text = { fontSize: '14px', color: '#64748b', lineHeight: '1.6', margin: '0 0 25px' }
-const codeStyle = { fontFamily: 'Courier, monospace', fontSize: '22px', fontWeight: 'bold' as const, color: '#3b82f6', margin: '0 0 30px' }
+const codeStyle = { fontFamily: 'Courier, monospace', fontSize: '22px', fontWeight: 'bold' as const, color: '#0056A7', margin: '0 0 30px' }
 const footer = { fontSize: '12px', color: '#64748b', margin: '30px 0 0' }
