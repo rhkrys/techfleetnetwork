@@ -117,7 +117,7 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
   // 1. Check rate-limit cooldown and read queue config
   const { data: state } = await supabase
     .from('email_send_state')
-    .select('retry_after_until, batch_size, send_delay_ms, auth_email_ttl_minutes, transactional_email_ttl_minutes')
+    .select('retry_after_until, batch_size, send_delay_ms, auth_email_ttl_minutes, transactional_email_ttl_minutes, bulk_hourly_cap, bulk_paused')
     .single()
 
   if (state?.retry_after_until && new Date(state.retry_after_until) > new Date()) {
@@ -129,9 +129,28 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
 
   const batchSize = state?.batch_size ?? DEFAULT_BATCH_SIZE
   const sendDelayMs = state?.send_delay_ms ?? DEFAULT_SEND_DELAY_MS
+  const bulkHourlyCap = state?.bulk_hourly_cap ?? 50
+  const bulkPaused = state?.bulk_paused === true
   const ttlMinutes: Record<string, number> = {
     auth_emails: state?.auth_email_ttl_minutes ?? DEFAULT_AUTH_TTL_MINUTES,
     transactional_emails: state?.transactional_email_ttl_minutes ?? DEFAULT_TRANSACTIONAL_TTL_MINUTES,
+  }
+
+  // Bulk-template guard: cap aggregate sends/hour during warm-up and pause if
+  // engagement-based circuit breaker tripped. Per-recipient 24h frequency cap
+  // is enforced lazily inside the per-message loop.
+  const BULK_TEMPLATES = new Set(['project-blast', 'fleety-coach-digest', 'announcement'])
+  const oneHourAgoIso = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+  const oneDayAgoIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  let bulkSentLastHour = 0
+  if (!bulkPaused) {
+    const { count } = await supabase
+      .from('email_send_log')
+      .select('id', { count: 'exact', head: true })
+      .in('template_name', Array.from(BULK_TEMPLATES))
+      .eq('status', 'sent')
+      .gte('created_at', oneHourAgoIso)
+    bulkSentLastHour = count ?? 0
   }
 
   let totalProcessed = 0
