@@ -41,6 +41,21 @@ export default function ClassFormPage() {
   const { user } = useAuth();
   const { data: existing, isLoading } = useClassById(id);
   const [submitting, setSubmitting] = useState(false);
+  const watched = form.watch();
+  const canAutosave = isEdit && !!id && existing
+    && existing.status !== "pending_review"
+    && existing.status !== "approved"
+    && existing.status !== "archived";
+  const autosave = useAutosave({
+    value: watched,
+    enabled: !!canAutosave,
+    label: "class-form",
+    onSave: async (values) => {
+      if (!id) return;
+      await ClassService.update(id, { ...values, prerequisites: (values.prerequisites ?? []) } as ClassFormValues);
+    },
+  });
+
 
   const defaults = useMemo<ClassFormValues>(
     () => ({
