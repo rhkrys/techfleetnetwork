@@ -267,8 +267,8 @@ export default function ProjectAnalysisContent({ projectId }: ProjectAnalysisCon
     for (const app of allApps) {
       if (app.project_id !== projectId && userIds.includes(app.user_id)) {
         const existing = userCrossProjectDetail.get(app.user_id) ?? [];
-        const proj = applyNowProjects?.find((p) => p.id === app.project_id);
-        existing.push({ projectId: app.project_id, clientName: proj?.clients?.name ?? "Other Project" });
+        const proj = crossProjectLookup?.find((p) => p.id === app.project_id);
+        existing.push({ projectId: app.project_id, clientName: proj?.clients?.name ?? "Unknown project" });
         userCrossProjectDetail.set(app.user_id, existing);
       }
     }
@@ -278,7 +278,7 @@ export default function ProjectAnalysisContent({ projectId }: ProjectAnalysisCon
       uniqueUserIds, prevPhaseApplicants, prevPhaseRatio, readinessScore, scoreDetails,
       userCrossProjectDetail,
     };
-  }, [completedApps, allApps, project, projectId, userIds, applyNowProjects]);
+  }, [completedApps, allApps, project, projectId, userIds, crossProjectLookup]);
 
   /* ── AG Grid ────────────────────────────────────── */
   const profileMap = useMemo(() => {
