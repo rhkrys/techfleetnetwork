@@ -34,6 +34,7 @@ interface CkyGetResult {
 declare global {
   interface Window {
     getCkyConsent?: () => CkyGetResult | undefined;
+    revisitCkyConsent?: () => void;
   }
 }
 
