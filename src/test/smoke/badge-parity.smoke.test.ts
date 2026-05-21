@@ -1,4 +1,4 @@
-// Verifies the v4 contract that course completions and course_completed:* badges
+// Verifies the v5 contract that course completions and course_completed:* badges
 // are produced by the same trigger pipeline. This is a static-assertion smoke
 // test — runtime parity is enforced server-side by admin_reconcile_parity().
 import { describe, it, expect } from "vitest";
@@ -13,7 +13,7 @@ const sql = fs.existsSync(MIGRATIONS_DIR)
       .join("\n")
   : "";
 
-describe("Network Stats v4 — badge parity (smoke)", () => {
+describe("Network Stats v5 — badge parity (smoke)", () => {
   it("STATS-001/010: course_completions has UNIQUE(user_id, course_key)", () => {
     expect(sql).toMatch(/course_completions[\s\S]*UNIQUE\s*\(\s*user_id\s*,\s*course_key\s*\)/i);
   });
@@ -45,5 +45,13 @@ describe("Network Stats v4 — badge parity (smoke)", () => {
 
   it("STATS-RECON-004: get_network_stats exposes course_completions_total", () => {
     expect(sql).toMatch(/'course_completions_total'/);
+  });
+
+  it("STATS-RECON-004: badges reconcile to courses + applications + Discord links", () => {
+    expect(sql).toMatch(/discord_links_total/);
+    expect(sql).toMatch(/v_badges_total\s*:=\s*v_all_courses_total\s*\+\s*v_apps_total\s*\+\s*v_discord_total/i);
+    expect(sql).toMatch(/v_pw_badges\s*:=\s*v_pw_all_courses\s*\+\s*v_pw_apps\s*\+\s*v_pw_discord/i);
+    expect(sql).toMatch(/'discord_links_count'/);
+    expect(sql).toMatch(/'prev_week_discord_links_count'/);
   });
 });

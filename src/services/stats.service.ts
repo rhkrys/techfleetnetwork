@@ -22,6 +22,8 @@ export interface NetworkStats {
   core_courses_active: number;
   /** Tier='onboarding' only (connect-discord, onboarding). */
   onboarding_courses_active?: number;
+  /** Discord links with immutable linked timestamps — third badge reconciliation source. */
+  discord_links_count?: number;
   distinct_course_completers?: number;
   beginner_courses_active: number;
   advanced_courses_active: number;
@@ -34,6 +36,7 @@ export interface NetworkStats {
   prev_week_course_completions_total?: number;
   prev_week_core_active: number;
   prev_week_onboarding_active?: number;
+  prev_week_discord_links_count?: number;
   prev_week_beginner_active: number;
   prev_week_advanced_active: number;
   prev_week_applications: number;

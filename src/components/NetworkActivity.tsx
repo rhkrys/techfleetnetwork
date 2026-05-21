@@ -1,11 +1,13 @@
 import { memo, Suspense } from "react";
 import { lazyWithRetry as lazy } from "@/lib/lazy-with-retry";
-import { Users, BookOpen, Award, FileCheck, CalendarDays, UserPlus, Briefcase, Rocket, PlayCircle, CheckCircle2, MessageCircle } from "lucide-react";
+import { BookOpen, Award, FileCheck, UserPlus, Briefcase, Rocket, PlayCircle, CheckCircle2, MessageCircle, Info } from "lucide-react";
 import { useQuery } from "@/lib/react-query";
 import { StatsService, type NetworkStats } from "@/services/stats.service";
 import { PageTitle, SectionTitle } from "@/components/ui/typography";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Icon } from "@/components/ui/icon";
 
 const MemberWorldMap = lazy(() =>
   import("@/components/MemberWorldMap").then((m) => ({ default: m.MemberWorldMap }))
@@ -16,6 +18,7 @@ const defaultStats: NetworkStats = {
   course_completions_total: 0,
   core_courses_active: 0,
   onboarding_courses_active: 0,
+  discord_links_count: 0,
   beginner_courses_active: 0,
   advanced_courses_active: 0,
   applications_completed: 0,
@@ -26,6 +29,7 @@ const defaultStats: NetworkStats = {
   prev_week_course_completions_total: 0,
   prev_week_core_active: 0,
   prev_week_onboarding_active: 0,
+  prev_week_discord_links_count: 0,
   prev_week_beginner_active: 0,
   prev_week_advanced_active: 0,
   prev_week_applications: 0,
@@ -41,10 +45,11 @@ interface StatCardProps {
   value: number;
   label: string;
   sublabel?: string;
+  tooltip?: string;
   colorClass?: string;
 }
 
-const StatCard = memo(function StatCard({ value, label, sublabel }: StatCardProps) {
+const StatCard = memo(function StatCard({ value, label, sublabel, tooltip }: StatCardProps) {
   return (
     <div
       className="flex aspect-square w-full max-w-[190px] flex-col items-center justify-center text-center overflow-hidden p-4"
@@ -66,12 +71,30 @@ const StatCard = memo(function StatCard({ value, label, sublabel }: StatCardProp
       >
         {value}
       </p>
-      <p
-        className="mt-2 text-sm sm:text-base font-medium leading-tight max-w-[90%]"
-        style={{ color: "var(--tf-stat-label, var(--tf-stat-text))" }}
-      >
-        {label}
-      </p>
+      <div className="mt-2 flex max-w-[90%] items-center justify-center gap-1.5">
+        <p
+          className="text-sm sm:text-base font-medium leading-tight"
+          style={{ color: "var(--tf-stat-label, var(--tf-stat-text))" }}
+        >
+          {label}
+        </p>
+        {tooltip ? (
+          <TooltipProvider delayDuration={150}>
+            <Tooltip>
+              <TooltipTrigger
+                type="button"
+                className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                aria-label={`${label} details`}
+              >
+                <Icon icon={Info} size="micro" />
+              </TooltipTrigger>
+              <TooltipContent className="max-w-56 text-center">
+                {tooltip}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : null}
+      </div>
       {sublabel ? (
         <p
           className="mt-1 text-[0.7rem] leading-tight max-w-[90%] opacity-80"
@@ -229,7 +252,7 @@ export const NetworkActivity = memo(function NetworkActivity({ showMap = true, s
                 icon={<BookOpen className="h-5 w-5 text-warning" aria-hidden="true" />}
                 value={safeStats.course_completions_total ?? safeStats.core_courses_active}
                 label="Course Completions"
-                sublabel={`${safeStats.core_courses_active} core + ${safeStats.onboarding_courses_active ?? 0} onboarding`}
+                sublabel={`${safeStats.core_courses_active} core · ${safeStats.onboarding_courses_active ?? 0} onboarding`}
                 colorClass="bg-warning/10"
               />
               <StatCard icon={<BookOpen className="h-5 w-5 text-info" aria-hidden="true" />} value={(safeStats.historical?.historical_beginner_courses ?? 0) + (safeStats.beginner_courses_active ?? 0)} label="Beginner course registrations" colorClass="bg-info/10" />
@@ -240,6 +263,7 @@ export const NetworkActivity = memo(function NetworkActivity({ showMap = true, s
                 value={safeStats.badges_earned}
                 label="Badges Earned"
                 sublabel="Course completions + applications + Discord links"
+                tooltip="One badge per course completion, application submission, and Discord link."
                 colorClass="bg-primary/10"
               />
             </div>
@@ -267,7 +291,7 @@ export const NetworkActivity = memo(function NetworkActivity({ showMap = true, s
                   icon={<BookOpen className="h-5 w-5 text-warning" aria-hidden="true" />}
                   value={safeStats.prev_week_course_completions_total ?? safeStats.prev_week_core_active}
                   label="Course Completions"
-                  sublabel={`${safeStats.prev_week_core_active} core + ${safeStats.prev_week_onboarding_active ?? 0} onboarding`}
+                  sublabel={`${safeStats.prev_week_core_active} core · ${safeStats.prev_week_onboarding_active ?? 0} onboarding`}
                   colorClass="bg-warning/10"
                 />
                 <StatCard icon={<BookOpen className="h-5 w-5 text-info" aria-hidden="true" />} value={safeStats.prev_week_beginner_active} label="Beginner Course Completions" colorClass="bg-info/10" />
@@ -278,6 +302,7 @@ export const NetworkActivity = memo(function NetworkActivity({ showMap = true, s
                   value={safeStats.prev_week_badges}
                   label="Badges Earned"
                   sublabel="Course completions + applications + Discord links"
+                  tooltip="One badge per course completion, application submission, and Discord link."
                   colorClass="bg-primary/10"
                 />
               </div>
