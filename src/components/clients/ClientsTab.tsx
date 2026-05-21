@@ -4,6 +4,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { showFormErrors, scrollToFirstError } from "@/lib/form-validation";
+import { useAutosave } from "@/hooks/use-autosave";
+import { AutosaveStatus } from "@/components/ui/AutosaveStatus";
+
 
 const CLIENT_FIELD_LABELS: Record<string, string> = {
   name: "Client name",
