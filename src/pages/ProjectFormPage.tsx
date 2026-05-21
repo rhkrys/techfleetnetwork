@@ -387,6 +387,21 @@ export default function ProjectFormPage() {
 
   const isSaving = createMutation.isPending || updateMutation.isPending;
 
+  // ── Autosave: edit-mode only, 30s ──────────────────────────────────────
+  const autosave = useAutosave({
+    value: form,
+    enabled: isEditing && initialized,
+    label: "project-form",
+    onSave: async (values) => {
+      const { error } = await supabase
+        .from("projects")
+        .update(sanitizeRecordFields(values as unknown as Record<string, unknown>) as any)
+        .eq("id", id!);
+      if (error) throw error;
+    },
+  });
+
+
   if (isEditing && !initialized) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
