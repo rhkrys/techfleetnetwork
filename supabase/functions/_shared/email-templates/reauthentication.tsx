@@ -19,13 +19,13 @@ interface ReauthenticationEmailProps {
 export const ReauthenticationEmail = ({ token }: ReauthenticationEmailProps) => (
   <Html lang="en" dir="ltr">
     <Head />
-    <Preview>Your verification code</Preview>
+    <Preview>Your Tech Fleet verification code. Expires shortly.</Preview>
     <Body style={main}>
       <Container style={container}>
-        <Heading style={h1}>Confirm reauthentication</Heading>
-        <Text style={text}>Use the code below to confirm your identity:</Text>
+        <Heading style={h1}>Verify it's you</Heading>
+        <Text style={text}>Enter the code below in Tech Fleet to confirm a sensitive action on your account.</Text>
         <Text style={codeStyle}>{token}</Text>
-        <Text style={footer}>This code will expire shortly. If you didn't request this, you can safely ignore this email.</Text>
+        <Text style={footer}>You're getting this because someone tried to take a sensitive action on your Tech Fleet account. If that wasn't you, ignore this email and consider resetting your password. Reply directly to reach a person.</Text>
       </Container>
     </Body>
   </Html>
@@ -37,5 +37,5 @@ const main = { backgroundColor: '#ffffff', fontFamily: "'Inter', Arial, sans-ser
 const container = { padding: '32px 28px' }
 const h1 = { fontSize: '22px', fontWeight: 'bold' as const, color: '#141726', margin: '0 0 20px' }
 const text = { fontSize: '14px', color: '#64748b', lineHeight: '1.6', margin: '0 0 25px' }
-const codeStyle = { fontFamily: 'Courier, monospace', fontSize: '22px', fontWeight: 'bold' as const, color: '#3b82f6', margin: '0 0 30px' }
+const codeStyle = { fontFamily: 'Courier, monospace', fontSize: '22px', fontWeight: 'bold' as const, color: '#0056A7', margin: '0 0 30px' }
 const footer = { fontSize: '12px', color: '#64748b', margin: '30px 0 0' }

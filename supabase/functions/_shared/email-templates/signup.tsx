@@ -29,25 +29,20 @@ export const SignupEmail = ({
 }: SignupEmailProps) => (
   <Html lang="en" dir="ltr">
     <Head />
-    <Preview>Welcome to Tech Fleet Network — confirm your email</Preview>
+    <Preview>Confirm {recipient} to finish creating your Tech Fleet account.</Preview>
     <Body style={main}>
       <Container style={container}>
-        <Heading style={h1}>Welcome to Tech Fleet Network!</Heading>
+        <Heading style={h1}>Confirm your email</Heading>
         <Text style={text}>
-          Thanks for signing up! We're excited to have you join our community of tech professionals.
-        </Text>
-        <Text style={text}>
-          Please confirm your email address (
-          <Link href={`mailto:${recipient}`} style={link}>
-            {recipient}
-          </Link>
-          ) by clicking the button below:
+          You just created a Tech Fleet account with{' '}
+          <Link href={`mailto:${recipient}`} style={link}>{recipient}</Link>.
+          Confirm this address to finish setting up your account.
         </Text>
         <Button style={button} href={confirmationUrl}>
-          Verify Email
+          Confirm email
         </Button>
         <Text style={footer}>
-          If you didn't create an account, you can safely ignore this email.
+          You're getting this because someone used your email to sign up at Tech Fleet. If that wasn't you, ignore this email and nothing will change. Reply to this email to reach a person.
         </Text>
       </Container>
     </Body>
@@ -60,6 +55,6 @@ const main = { backgroundColor: '#ffffff', fontFamily: "'Inter', Arial, sans-ser
 const container = { padding: '32px 28px' }
 const h1 = { fontSize: '22px', fontWeight: 'bold' as const, color: '#141726', margin: '0 0 20px' }
 const text = { fontSize: '14px', color: '#64748b', lineHeight: '1.6', margin: '0 0 25px' }
-const link = { color: '#3b82f6', textDecoration: 'underline' }
-const button = { backgroundColor: '#3b82f6', color: '#ffffff', fontSize: '14px', borderRadius: '6px', padding: '12px 24px', textDecoration: 'none', fontWeight: '600' as const }
+const link = { color: '#0056A7', textDecoration: 'underline' }
+const button = { backgroundColor: '#0056A7', color: '#ffffff', fontSize: '14px', borderRadius: '6px', padding: '12px 24px', textDecoration: 'none', fontWeight: '600' as const }
 const footer = { fontSize: '12px', color: '#64748b', margin: '30px 0 0' }

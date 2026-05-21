@@ -21,13 +21,13 @@ interface MagicLinkEmailProps {
 export const MagicLinkEmail = ({ siteName, confirmationUrl }: MagicLinkEmailProps) => (
   <Html lang="en" dir="ltr">
     <Head />
-    <Preview>Your login link for Tech Fleet Network</Preview>
+    <Preview>You asked for a sign-in link to Tech Fleet. Confirm to log in.</Preview>
     <Body style={main}>
       <Container style={container}>
-        <Heading style={h1}>Your login link</Heading>
-        <Text style={text}>Click the button below to log in to Tech Fleet Network. This link will expire shortly.</Text>
-        <Button style={button} href={confirmationUrl}>Log In</Button>
-        <Text style={footer}>If you didn't request this link, you can safely ignore this email.</Text>
+        <Heading style={h1}>Sign in to Tech Fleet</Heading>
+        <Text style={text}>You asked for a sign-in link. Click below to log in. The link expires in 1 hour.</Text>
+        <Button style={button} href={confirmationUrl}>Sign in</Button>
+        <Text style={footer}>You're getting this because someone asked for a sign-in link to your Tech Fleet account. If that wasn't you, ignore this email. Reply directly to reach a person.</Text>
       </Container>
     </Body>
   </Html>
@@ -39,5 +39,5 @@ const main = { backgroundColor: '#ffffff', fontFamily: "'Inter', Arial, sans-ser
 const container = { padding: '32px 28px' }
 const h1 = { fontSize: '22px', fontWeight: 'bold' as const, color: '#141726', margin: '0 0 20px' }
 const text = { fontSize: '14px', color: '#64748b', lineHeight: '1.6', margin: '0 0 25px' }
-const button = { backgroundColor: '#3b82f6', color: '#ffffff', fontSize: '14px', borderRadius: '6px', padding: '12px 24px', textDecoration: 'none', fontWeight: '600' as const }
+const button = { backgroundColor: '#0056A7', color: '#ffffff', fontSize: '14px', borderRadius: '6px', padding: '12px 24px', textDecoration: 'none', fontWeight: '600' as const }
 const footer = { fontSize: '12px', color: '#64748b', margin: '30px 0 0' }
