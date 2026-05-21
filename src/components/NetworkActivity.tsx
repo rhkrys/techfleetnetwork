@@ -288,7 +288,6 @@ export const NetworkActivity = memo(function NetworkActivity({ showMap = true, s
                   icon={<BookOpen className="h-5 w-5 text-warning" aria-hidden="true" />}
                   value={safeStats.prev_week_course_completions_total ?? safeStats.prev_week_core_active}
                   label="Course Completions"
-                  sublabel={`${safeStats.prev_week_core_active} core · ${safeStats.prev_week_onboarding_active ?? 0} onboarding`}
                   colorClass="bg-warning/10"
                 />
                 <StatCard icon={<BookOpen className="h-5 w-5 text-info" aria-hidden="true" />} value={safeStats.prev_week_beginner_active} label="Beginner Course Completions" colorClass="bg-info/10" />
@@ -298,8 +297,6 @@ export const NetworkActivity = memo(function NetworkActivity({ showMap = true, s
                   icon={<Award className="h-5 w-5 text-primary" aria-hidden="true" />}
                   value={safeStats.prev_week_badges}
                   label="Badges Earned"
-                  sublabel="Course completions + applications + Discord links"
-                  tooltip="One badge per course completion, application submission, and Discord link."
                   colorClass="bg-primary/10"
                 />
               </div>
