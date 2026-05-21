@@ -5701,6 +5701,21 @@ export type Database = {
         }
         Relationships: []
       }
+      email_health_snapshot: {
+        Row: {
+          bounced: number | null
+          complained: number | null
+          dlq: number | null
+          frequency_capped: number | null
+          rate_limited: number | null
+          sent: number | null
+          snapshot_at: string | null
+          suppressed: number | null
+          template_name: string | null
+          total: number | null
+        }
+        Relationships: []
+      }
       failed_login_attempts_decrypted: {
         Row: {
           attempted_at: string | null
@@ -5940,6 +5955,16 @@ export type Database = {
       clear_rate_limits_for_email: {
         Args: { p_email: string }
         Returns: number
+      }
+      compute_email_domain_health: {
+        Args: { p_since: string }
+        Returns: {
+          bounce_rate: number
+          bounced: number
+          complained: number
+          complaint_rate: number
+          sent: number
+        }[]
       }
       compute_error_fingerprint: {
         Args: { p_event: string; p_msg: string; p_table: string }
@@ -6576,6 +6601,7 @@ export type Database = {
         Returns: string
       }
       redact_sensitive_text: { Args: { input: string }; Returns: string }
+      refresh_email_health_snapshot: { Args: never; Returns: undefined }
       refresh_framework_overview: { Args: never; Returns: undefined }
       register_for_cohort_click: {
         Args: { p_cohort_id: string; p_referrer?: string }
