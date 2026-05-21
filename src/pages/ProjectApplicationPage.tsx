@@ -469,6 +469,38 @@ export default function ProjectApplicationPage() {
     saveMutation.mutate({ fields: collectFields(), newStep: step });
   }, [collectFields, step, saveMutation]);
 
+  // ── Autosave: 30s, drafts only ─────────────────────────────────────────
+  const autosaveValue = useMemo(
+    () => ({ ...collectFields(), current_step: step }),
+    [collectFields, step],
+  );
+  const autosave = useAutosave({
+    value: autosaveValue,
+    enabled: !!user && !!projectId && initialized && !isCompleted && step > 1,
+    label: "project-application",
+    onSave: async (fields) => {
+      const payload: Record<string, unknown> = sanitizeRecordFields(fields);
+      if (existingApp) {
+        const result = await supabase
+          .from("project_applications")
+          .update(payload as any)
+          .eq("id", existingApp.id)
+          .select("id");
+        if (result.error) throw result.error;
+        assertWritten(result, "project-application.autosave", { id: existingApp.id });
+      } else {
+        const result = await supabase
+          .from("project_applications")
+          .insert({ user_id: user!.id, project_id: projectId!, ...payload } as any)
+          .select("id");
+        if (result.error) throw result.error;
+        assertWritten(result, "project-application.autosave.insert", { projectId });
+        queryClient.invalidateQueries({ queryKey: ["project-application", user?.id, projectId] });
+      }
+    },
+  });
+
+
   const handleSaveCompleted = useCallback(() => {
     const errs2 = validateStep2();
     const errs3 = validateStep3();
