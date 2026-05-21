@@ -196,15 +196,17 @@ export default function ProjectAnalysisContent({ projectId }: ProjectAnalysisCon
     enabled: !!user && isAdmin,
   });
 
-  const { data: applyNowProjects } = useQuery({
-    queryKey: ["analysis-apply-now-projects-all"],
+  // Cross-project name lookup: must include ALL projects (any status),
+  // since an applicant's "Also applied to" chip can reference projects
+  // that are no longer in apply_now (recruiting, team_onboarding, etc.).
+  const { data: crossProjectLookup } = useQuery({
+    queryKey: ["analysis-cross-project-lookup"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("projects")
-        .select("id, project_type, phase, client_id, clients(name)")
-        .eq("project_status", "apply_now");
+        .select("id, project_type, phase, project_status, client_id, clients(name)");
       if (error) throw error;
-      return (data ?? []) as unknown as { id: string; project_type: string; phase: string; client_id: string; clients: { name: string } | null }[];
+      return (data ?? []) as unknown as { id: string; project_type: string; phase: string; project_status: string; client_id: string; clients: { name: string } | null }[];
     },
     enabled: !!user && isAdmin,
   });
@@ -265,8 +267,8 @@ export default function ProjectAnalysisContent({ projectId }: ProjectAnalysisCon
     for (const app of allApps) {
       if (app.project_id !== projectId && userIds.includes(app.user_id)) {
         const existing = userCrossProjectDetail.get(app.user_id) ?? [];
-        const proj = applyNowProjects?.find((p) => p.id === app.project_id);
-        existing.push({ projectId: app.project_id, clientName: proj?.clients?.name ?? "Other Project" });
+        const proj = crossProjectLookup?.find((p) => p.id === app.project_id);
+        existing.push({ projectId: app.project_id, clientName: proj?.clients?.name ?? "Unknown project" });
         userCrossProjectDetail.set(app.user_id, existing);
       }
     }
@@ -276,7 +278,7 @@ export default function ProjectAnalysisContent({ projectId }: ProjectAnalysisCon
       uniqueUserIds, prevPhaseApplicants, prevPhaseRatio, readinessScore, scoreDetails,
       userCrossProjectDetail,
     };
-  }, [completedApps, allApps, project, projectId, userIds, applyNowProjects]);
+  }, [completedApps, allApps, project, projectId, userIds, crossProjectLookup]);
 
   /* ── AG Grid ────────────────────────────────────── */
   const profileMap = useMemo(() => {
@@ -582,12 +584,15 @@ export default function ProjectAnalysisContent({ projectId }: ProjectAnalysisCon
                           <p className="text-xs text-muted-foreground italic">No other projects found</p>
                         ) : (
                           <div className="flex flex-wrap gap-1.5">
-                            {otherProjects.map((op) => (
-                              <Badge key={op.projectId} variant="secondary" className="text-xs gap-1">
-                                <ExternalLink className="h-3 w-3" />
-                                {op.clientName}
-                              </Badge>
-                            ))}
+                            {otherProjects.map((op) => {
+                              const isResolved = op.clientName !== "Unknown project";
+                              return (
+                                <Badge key={op.projectId} variant="secondary" className="text-xs gap-1">
+                                  {isResolved && <ExternalLink className="h-3 w-3" />}
+                                  {op.clientName}
+                                </Badge>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
