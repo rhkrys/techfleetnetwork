@@ -19,6 +19,7 @@ const FILES = await glob([
   'public/locales/en/**/*.json',
   'src/i18n/locales/en/**/*.json',
   'supabase/functions/_shared/transactional-email-templates/*.tsx',
+  'supabase/functions/_shared/email-templates/*.tsx',
 ]);
 
 const SYLL_RE = /[aeiouy]+/g;
