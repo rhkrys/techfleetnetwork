@@ -1,4 +1,7 @@
 import { useState, useMemo, useCallback } from "react";
+import { useAutosave } from "@/hooks/use-autosave";
+import { AutosaveStatus } from "@/components/ui/AutosaveStatus";
+
 import { useNavigate, useParams } from "react-router-dom";
 import { DiscordRolePicker } from "@/components/DiscordRolePicker";
 import { useQuery, useMutation, useQueryClient } from "@/lib/react-query";
