@@ -349,6 +349,7 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
         if (delError) {
           console.error('Failed to delete sent message from queue', { queue, msg_id: msg.msg_id, error: delError })
         }
+        if (BULK_TEMPLATES.has(labelStr)) bulkSentLastHour++
         totalProcessed++
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error)
