@@ -263,11 +263,23 @@ export const NetworkActivity = memo(function NetworkActivity({ showMap = true, s
               </div>
               <div className="grid grid-cols-1 min-[560px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 justify-items-start">
                 <StatCard icon={<UserPlus className="h-5 w-5 text-primary" aria-hidden="true" />} value={safeStats.prev_week_signups} label="Platform Signups" colorClass="bg-primary/10" />
-                <StatCard icon={<BookOpen className="h-5 w-5 text-warning" aria-hidden="true" />} value={safeStats.prev_week_core_active} label="Core Course Completions" colorClass="bg-warning/10" />
+                <StatCard
+                  icon={<BookOpen className="h-5 w-5 text-warning" aria-hidden="true" />}
+                  value={safeStats.prev_week_course_completions_total ?? safeStats.prev_week_core_active}
+                  label="Course Completions"
+                  sublabel={`${safeStats.prev_week_core_active} core + ${safeStats.prev_week_onboarding_active ?? 0} onboarding`}
+                  colorClass="bg-warning/10"
+                />
                 <StatCard icon={<BookOpen className="h-5 w-5 text-info" aria-hidden="true" />} value={safeStats.prev_week_beginner_active} label="Beginner Course Completions" colorClass="bg-info/10" />
                 <StatCard icon={<BookOpen className="h-5 w-5 text-accent-foreground" aria-hidden="true" />} value={safeStats.prev_week_advanced_active} label="Advanced Course Completions" colorClass="bg-accent/50" />
                 <StatCard icon={<FileCheck className="h-5 w-5 text-success" aria-hidden="true" />} value={safeStats.prev_week_applications} label="General Applications Completed" colorClass="bg-success/10" />
-                <StatCard icon={<Award className="h-5 w-5 text-primary" aria-hidden="true" />} value={safeStats.prev_week_badges} label="Badges Earned" colorClass="bg-primary/10" />
+                <StatCard
+                  icon={<Award className="h-5 w-5 text-primary" aria-hidden="true" />}
+                  value={safeStats.prev_week_badges}
+                  label="Badges Earned"
+                  sublabel="Course completions + applications + Discord links"
+                  colorClass="bg-primary/10"
+                />
               </div>
             </div>
 
