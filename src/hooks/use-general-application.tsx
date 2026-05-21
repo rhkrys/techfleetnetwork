@@ -2,7 +2,7 @@
  * Custom hook encapsulating all General Application state management,
  * persistence, and validation logic.
  */
-import { useState, useCallback, useRef, useEffect, useLayoutEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from "react";
 import { DiscordNotifyService } from "@/services/discord-notify.service";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -25,6 +25,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAutosave } from "@/hooks/use-autosave";
+
 
 export function useGeneralApplication() {
   const { user, profile, refreshProfile } = useAuth();
