@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- BIMI SVG Tiny Portable/Secure (SVG-PS) placeholder for techfleet.org.
+     Spec: https://bimigroup.org/svg-resources-for-bimi/
+     Constraints: SVG 1.2 Tiny PS, no scripts, no external refs, square aspect, baseProfile="tiny-ps".
+     Activates in Gmail once DMARC p=quarantine is held for 30d and a VMC is acquired.
+     Update the <title> + paths with the approved trademarked logo before VMC submission. -->
+<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny-ps" viewBox="0 0 64 64">
+  <title>Tech Fleet</title>
+  <rect width="64" height="64" rx="12" fill="#0056A7"/>
+  <text x="32" y="40" font-family="Futura, 'Futura PT', 'Trebuchet MS', sans-serif" font-size="22" font-weight="700" fill="#FFFFFF" text-anchor="middle">TF</text>
+</svg>
