@@ -66,17 +66,70 @@ Deno.serve(async (req) => {
     bounce_rate: row.bounce_rate ?? 0,
   })
 
-  // 3. Auto-pause if rates breach thresholds.
+  // 3. Auto-pause if rates breach thresholds + alert Discord/admins on transition.
   const complaintRate = Number(row.complaint_rate ?? 0)
   const bounceRate = Number(row.bounce_rate ?? 0)
+  const warnThreshold = complaintRate > 0.0005 || bounceRate > 0.01
   const shouldPause = complaintRate > 0.001 || bounceRate > 0.02
 
-  if (shouldPause) {
+  const { data: currentState } = await supabase
+    .from('email_send_state')
+    .select('bulk_paused')
+    .eq('id', 1)
+    .maybeSingle()
+  const wasPaused = currentState?.bulk_paused === true
+
+  const webhookUrl = Deno.env.get('DISCORD_PROJECT_UPDATES_WEBHOOK')
+
+  if (shouldPause && !wasPaused) {
     await supabase
       .from('email_send_state')
       .update({ bulk_paused: true, updated_at: new Date().toISOString() })
       .eq('id', 1)
     console.warn('Bulk email auto-paused', { complaintRate, bounceRate })
+
+    try {
+      await supabase.rpc('notify_admins', {
+        p_title: 'Bulk email auto-paused',
+        p_body: `Complaint rate ${(complaintRate * 100).toFixed(3)}% / bounce rate ${(bounceRate * 100).toFixed(2)}% breached safe thresholds. Review System Health → Deliverability.`,
+        p_link: '/admin/system-health?tab=deliverability',
+        p_severity: 'critical',
+      })
+    } catch (e) {
+      console.error('notify_admins RPC missing or failed', e)
+    }
+
+    if (webhookUrl) {
+      try {
+        await fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            embeds: [{
+              title: '🚨 Bulk email auto-paused',
+              description: `Complaint rate **${(complaintRate * 100).toFixed(3)}%** · Bounce rate **${(bounceRate * 100).toFixed(2)}%**\n7-day window · ${row.sent} sent`,
+              color: 0xEB4F26,
+              timestamp: new Date().toISOString(),
+            }],
+          }),
+        })
+      } catch (e) { console.error('Discord alert failed', e) }
+    }
+  } else if (warnThreshold && !shouldPause && webhookUrl) {
+    try {
+      await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          embeds: [{
+            title: '⚠️ Email deliverability warning',
+            description: `Complaint rate **${(complaintRate * 100).toFixed(3)}%** · Bounce rate **${(bounceRate * 100).toFixed(2)}%**\nApproaching auto-pause thresholds.`,
+            color: 0xF59E0B,
+            timestamp: new Date().toISOString(),
+          }],
+        }),
+      })
+    } catch (e) { console.error('Discord warning failed', e) }
   }
 
   return new Response(JSON.stringify({
@@ -84,6 +137,7 @@ Deno.serve(async (req) => {
     sent: row.sent,
     complaintRate,
     bounceRate,
+    warned: warnThreshold,
     paused: shouldPause,
   }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 })
