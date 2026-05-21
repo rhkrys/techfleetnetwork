@@ -203,6 +203,7 @@ export default function SystemHealthPage() {
         <TabsList aria-label="System health sections">
           <TabsTrigger value="queues">Queues</TabsTrigger>
           <TabsTrigger value="delivery">Delivery</TabsTrigger>
+          <TabsTrigger value="deliverability">Deliverability</TabsTrigger>
           <TabsTrigger value="blasts">Project Blasts</TabsTrigger>
           <TabsTrigger value="errors">Errors</TabsTrigger>
           <TabsTrigger value="triage">Triage</TabsTrigger>
