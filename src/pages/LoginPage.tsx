@@ -184,7 +184,18 @@ export default function LoginPage() {
     }
     setTouched({ email: true, password: true });
 
-    const result = loginSchema.safeParse({ email, password });
+    // Autofill guard: read live DOM values. If the browser autofilled but
+    // never fired onChange, React state is stale (empty) and validation
+    // would falsely reject as "required". Prefer the DOM value when it's
+    // longer than state.
+    const domEmail = emailRef.current?.value ?? "";
+    const domPassword = passwordRef.current?.value ?? "";
+    const effectiveEmail = domEmail.length > email.length ? domEmail : email;
+    const effectivePassword = domPassword.length > password.length ? domPassword : password;
+    if (effectiveEmail !== email) setEmail(effectiveEmail);
+    if (effectivePassword !== password) setPassword(effectivePassword);
+
+    const result = loginSchema.safeParse({ email: effectiveEmail, password: effectivePassword });
     if (!result.success) {
       reportValidationRejection("loginSchema", result.error.issues, "LoginPage.handleSubmit");
       const fieldErrors: Record<string, string> = {};
@@ -197,14 +208,6 @@ export default function LoginPage() {
       setAuthError("");
       setCaptchaNotice("");
       scrollToFirstError();
-      return;
-    }
-    if (!captchaToken.trim()) {
-      logCaptchaTelemetry("auth_captcha_failed", { surface: "login", failedAttempts: captchaState.failedAttempts + 1 });
-      // Do NOT remount the widget here — that's what produced the false "captcha
-      // passed → too many attempts" flicker. Just nudge the user inline.
-      setCaptchaNotice("Complete the human verification below before signing in.");
-      setAuthError("");
       return;
     }
     setErrors({});
