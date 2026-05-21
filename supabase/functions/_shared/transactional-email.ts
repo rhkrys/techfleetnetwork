@@ -318,7 +318,24 @@ export async function queueTransactionalEmail({
   }
 
   const normalizedEmail = effectiveRecipient.toLowerCase()
-  const requestIdempotencyKey = idempotencyKey || messageId
+
+  // Refuse role-based mailboxes — they hurt reputation and are usually parsed
+  // by ticketing systems, not humans (Phase 3.4 of deliverability plan).
+  const ROLE_LOCAL_PARTS = new Set([
+    'postmaster', 'abuse', 'noreply', 'no-reply', 'donotreply', 'do-not-reply',
+    'mailer-daemon', 'bounce', 'bounces', 'root',
+  ])
+  const localPart = normalizedEmail.split('@')[0]
+  if (ROLE_LOCAL_PARTS.has(localPart)) {
+    await insertEmailLog(supabase, {
+      message_id: messageId,
+      template_name: templateName,
+      recipient_email: effectiveRecipient,
+      status: 'suppressed',
+      error_message: 'Role-based mailbox blocked',
+    })
+    return { ok: true, queued: true, messageId, suppressed: true, reason: 'email_suppressed' }
+  }
 
   const { data: suppressed, error: suppressionError } = await supabase
     .from('suppressed_emails')
