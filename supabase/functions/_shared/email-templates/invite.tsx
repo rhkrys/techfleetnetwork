@@ -23,16 +23,16 @@ interface InviteEmailProps {
 export const InviteEmail = ({ siteName, siteUrl, confirmationUrl }: InviteEmailProps) => (
   <Html lang="en" dir="ltr">
     <Head />
-    <Preview>You've been invited to join Tech Fleet Network</Preview>
+    <Preview>You've been invited to join Tech Fleet. Accept to create your account.</Preview>
     <Body style={main}>
       <Container style={container}>
-        <Heading style={h1}>You've been invited</Heading>
+        <Heading style={h1}>You've been invited to Tech Fleet</Heading>
         <Text style={text}>
-          You've been invited to join{' '}
-          <Link href={siteUrl} style={link}><strong>Tech Fleet Network</strong></Link>. Click the button below to accept the invitation and create your account.
+          A teammate invited you to join Tech Fleet at{' '}
+          <Link href={siteUrl} style={link}>techfleet.network</Link>. Accept below to set up your account.
         </Text>
-        <Button style={button} href={confirmationUrl}>Accept Invitation</Button>
-        <Text style={footer}>If you weren't expecting this invitation, you can safely ignore this email.</Text>
+        <Button style={button} href={confirmationUrl}>Accept invitation</Button>
+        <Text style={footer}>You're getting this because someone invited your email to Tech Fleet. If you weren't expecting it, ignore this email. Reply directly to reach a person.</Text>
       </Container>
     </Body>
   </Html>
