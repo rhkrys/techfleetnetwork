@@ -313,34 +313,8 @@ export default function RosterApplicantDetailPage() {
 
 
 
-      {/* Next/Previous Navigation */}
-      {totalCount > 1 && (
-        <div className="flex items-center justify-between rounded-lg border bg-card px-4 py-3">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="gap-1.5"
-            disabled={!prevId}
-            onClick={() => prevId && navigate(`/admin/roster/project/${projectId}/applicant/${prevId}`)}
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Previous
-          </Button>
-          <span className="text-sm text-muted-foreground">
-            {currentIndex + 1} of {totalCount} applicants
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="gap-1.5"
-            disabled={!nextId}
-            onClick={() => nextId && navigate(`/admin/roster/project/${projectId}/applicant/${nextId}`)}
-          >
-            Next
-            <ArrowRight className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
+
+
 
       {/* Submission meta */}
       <div className="flex flex-col gap-2">
