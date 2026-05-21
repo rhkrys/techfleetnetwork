@@ -31,6 +31,9 @@ import {
   PROJECT_TYPES, PROJECT_PHASES, TEAM_HATS,
 } from "@/data/project-constants";
 import { format } from "date-fns";
+import { useAutosave } from "@/hooks/use-autosave";
+import { AutosaveStatus } from "@/components/ui/AutosaveStatus";
+
 
 /* ── types ─────────────────────────────────────────────────── */
 interface ProjectApp {
