@@ -3302,6 +3302,7 @@ export type Database = {
           created_at: string
           discord_invite_created_at: string | null
           discord_invite_url: string
+          discord_linked_at: string | null
           discord_user_id: string
           discord_username: string | null
           display_name: string
@@ -3348,6 +3349,7 @@ export type Database = {
           created_at?: string
           discord_invite_created_at?: string | null
           discord_invite_url?: string
+          discord_linked_at?: string | null
           discord_user_id?: string
           discord_username?: string | null
           display_name?: string
@@ -3394,6 +3396,7 @@ export type Database = {
           created_at?: string
           discord_invite_created_at?: string | null
           discord_invite_url?: string
+          discord_linked_at?: string | null
           discord_user_id?: string
           discord_username?: string | null
           display_name?: string
