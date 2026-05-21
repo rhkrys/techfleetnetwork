@@ -337,6 +337,10 @@ export async function queueTransactionalEmail({
     return { ok: true, queued: true, messageId, suppressed: true, reason: 'email_suppressed' }
   }
 
+  const requestIdempotencyKey = idempotencyKey || messageId
+
+
+
   const { data: suppressed, error: suppressionError } = await supabase
     .from('suppressed_emails')
     .select('id')
