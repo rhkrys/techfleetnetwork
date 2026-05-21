@@ -17,13 +17,14 @@ const corsHeaders = {
     'authorization, x-client-info, apikey, content-type, x-lovable-signature, x-lovable-timestamp, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 }
 
+// Short, sentence-case, spam-classifier-safe subjects. Keep under 50 chars.
 const EMAIL_SUBJECTS: Record<string, string> = {
   signup: 'Confirm your email',
-  invite: "You've been invited",
-  magiclink: 'Your login link',
-  recovery: 'Reset your password',
+  invite: 'You were invited to Tech Fleet',
+  magiclink: 'Sign in to Tech Fleet',
+  recovery: 'Reset your Tech Fleet password',
   email_change: 'Confirm your new email',
-  reauthentication: 'Your verification code',
+  reauthentication: "Verify it's you",
 }
 
 // Template mapping
@@ -36,11 +37,20 @@ const EMAIL_TEMPLATES: Record<string, React.ComponentType<any>> = {
   reauthentication: ReauthenticationEmail,
 }
 
-// Configuration
-const SITE_NAME = "techfleetnetwork"
+// Configuration — From: uses root domain mailbox (onboarding@) for inbox trust;
+// DKIM signs SENDER_DOMAIN (relaxed DMARC alignment on techfleet.org).
+const SITE_NAME = "Tech Fleet"
 const SENDER_DOMAIN = "notify.techfleet.org"
 const ROOT_DOMAIN = "techfleet.org"
-const FROM_DOMAIN = "techfleet.org" // Domain shown in From address (may be root or sender subdomain)
+const FROM_DOMAIN = "techfleet.org"
+const FROM_MAILBOX = "onboarding"
+const REPLY_TO = "onboarding@techfleet.org"
+
+// Cooldowns: suppress duplicate auth sends to protect sender reputation.
+// A double-click on "Reset password" or rapid magic-link requests would
+// otherwise burn quota and look like spammy behavior to Gmail.
+const DEDUP_WINDOW_SECONDS = 60
+const MAGIC_LINK_COOLDOWN_SECONDS = 300
 
 // Sample data for preview mode ONLY (not used in actual email sending).
 // URLs are baked in at scaffold time from the project's real data.
