@@ -13,7 +13,9 @@ const MemberWorldMap = lazy(() =>
 
 const defaultStats: NetworkStats = {
   total_signups: 0,
+  course_completions_total: 0,
   core_courses_active: 0,
+  onboarding_courses_active: 0,
   beginner_courses_active: 0,
   advanced_courses_active: 0,
   applications_completed: 0,
@@ -21,7 +23,9 @@ const defaultStats: NetworkStats = {
   prev_week_start: "",
   prev_week_end: "",
   prev_week_signups: 0,
+  prev_week_course_completions_total: 0,
   prev_week_core_active: 0,
+  prev_week_onboarding_active: 0,
   prev_week_beginner_active: 0,
   prev_week_advanced_active: 0,
   prev_week_applications: 0,
