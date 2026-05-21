@@ -123,7 +123,7 @@ interface NetworkActivityProps {
 
 export const NetworkActivity = memo(function NetworkActivity({ showMap = true, showActivity = true }: NetworkActivityProps) {
   const { data: stats, isError, isLoading: loading } = useQuery({
-    queryKey: ["network-stats", "v4"],
+    queryKey: ["network-stats", "v5"],
     queryFn: () => StatsService.getNetworkStats(),
     staleTime: 60 * 1000, // 1 min — keep numbers fresh on the landing page
     refetchInterval: 2 * 60 * 1000, // refresh every 2 min while mounted
