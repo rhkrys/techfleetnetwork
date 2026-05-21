@@ -268,6 +268,48 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
         }
       }
 
+      // Bulk template gating: skip (leave in queue) if paused or cap reached.
+      // Per-recipient frequency cap: 1 bulk email per recipient per 24h.
+      const labelStr = typeof payload.label === 'string' ? payload.label : ''
+      if (BULK_TEMPLATES.has(labelStr)) {
+        if (bulkPaused) {
+          console.log('Bulk send paused — leaving message in queue', { msg_id: msg.msg_id })
+          continue
+        }
+        if (bulkSentLastHour >= bulkHourlyCap) {
+          console.log('Bulk hourly cap reached — leaving message in queue', {
+            cap: bulkHourlyCap,
+            sent: bulkSentLastHour,
+          })
+          continue
+        }
+        const { count: recentToRecipient } = await supabase
+          .from('email_send_log')
+          .select('id', { count: 'exact', head: true })
+          .eq('recipient_email', payload.to)
+          .in('template_name', Array.from(BULK_TEMPLATES))
+          .eq('status', 'sent')
+          .gte('created_at', oneDayAgoIso)
+        if ((recentToRecipient ?? 0) >= 1) {
+          await supabase.from('email_send_log').insert({
+            message_id: payload.message_id,
+            template_name: labelStr || queue,
+            recipient_email: payload.to,
+            status: 'frequency_capped',
+            error_message: 'Recipient already received a bulk email in the last 24h',
+          })
+          const { error: capDelErr } = await supabase.rpc('delete_email', {
+            queue_name: queue,
+            message_id: msg.msg_id,
+          })
+          if (capDelErr) {
+            console.error('Failed to delete frequency-capped message', { error: capDelErr })
+          }
+          continue
+        }
+      }
+
+
       try {
         await sendLovableEmail(
           {
