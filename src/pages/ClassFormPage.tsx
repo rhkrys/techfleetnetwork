@@ -242,7 +242,14 @@ export default function ClassFormPage() {
           <Textarea id="prereq" rows={3} value={prereqText} onChange={(e) => setPrereqText(e.target.value)} />
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center flex-wrap">
+          {canAutosave && (
+            <AutosaveStatus
+              status={autosave.status}
+              lastSavedAt={autosave.lastSavedAt}
+              onRetry={autosave.retry}
+            />
+          )}
           <Button type="submit" disabled={submitting}>
             {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             {isEdit ? "Save changes" : "Create draft"}
@@ -251,6 +258,7 @@ export default function ClassFormPage() {
             Cancel
           </Button>
         </div>
+
       </form>
     </div>
   );
