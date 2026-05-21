@@ -29,6 +29,8 @@ import {
   SectionLeadership,
   SectionReview,
 } from "@/components/general-application";
+import { AutosaveStatus } from "@/components/ui/AutosaveStatus";
+
 
 export function GeneralApplicationTab() {
   const { user } = useAuth();
