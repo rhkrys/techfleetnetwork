@@ -90,6 +90,12 @@ export function applyConsent(state: ConsentState) {
       ad_personalization: state.marketing ? "granted" : "denied",
     });
     window.clarity?.("consent", true);
+    // Microsoft Clarity Consent Mode v2 — required for reliable session
+    // recording on returning visitors. We send both signals for compatibility.
+    window.clarity?.("consentv2", {
+      ad_Storage: state.marketing ? "granted" : "denied",
+      analytics_Storage: "granted",
+    });
   } else {
     window.gtag?.("consent", "update", {
       analytics_storage: "denied",
@@ -98,6 +104,10 @@ export function applyConsent(state: ConsentState) {
       ad_personalization: "denied",
     });
     window.clarity?.("consent", false);
+    window.clarity?.("consentv2", {
+      ad_Storage: "denied",
+      analytics_Storage: "denied",
+    });
   }
 }
 
