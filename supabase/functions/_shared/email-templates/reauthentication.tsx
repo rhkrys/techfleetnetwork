@@ -19,13 +19,13 @@ interface ReauthenticationEmailProps {
 export const ReauthenticationEmail = ({ token }: ReauthenticationEmailProps) => (
   <Html lang="en" dir="ltr">
     <Head />
-    <Preview>Your verification code</Preview>
+    <Preview>Your Tech Fleet verification code. Expires shortly.</Preview>
     <Body style={main}>
       <Container style={container}>
-        <Heading style={h1}>Confirm reauthentication</Heading>
-        <Text style={text}>Use the code below to confirm your identity:</Text>
+        <Heading style={h1}>Verify it's you</Heading>
+        <Text style={text}>Enter the code below in Tech Fleet to confirm a sensitive action on your account.</Text>
         <Text style={codeStyle}>{token}</Text>
-        <Text style={footer}>This code will expire shortly. If you didn't request this, you can safely ignore this email.</Text>
+        <Text style={footer}>You're getting this because someone tried to take a sensitive action on your Tech Fleet account. If that wasn't you, ignore this email and consider resetting your password. Reply directly to reach a person.</Text>
       </Container>
     </Body>
   </Html>
