@@ -225,11 +225,23 @@ export const NetworkActivity = memo(function NetworkActivity({ showMap = true, s
             <div className="grid grid-cols-1 min-[560px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 justify-items-start mb-10">
               <StatCard icon={<UserPlus className="h-5 w-5 text-primary" aria-hidden="true" />} value={safeStats.total_signups} label="Platform Signups" colorClass="bg-primary/10" />
               <StatCard icon={<MessageCircle className="h-5 w-5 text-info" aria-hidden="true" />} value={discordStats?.member_count ?? 0} label="Discord Members" colorClass="bg-info/10" />
-              <StatCard icon={<BookOpen className="h-5 w-5 text-warning" aria-hidden="true" />} value={safeStats.core_courses_active} label="Core Course Completions" sublabel={safeStats.distinct_course_completers ? `across ${safeStats.distinct_course_completers} members` : undefined} colorClass="bg-warning/10" />
+              <StatCard
+                icon={<BookOpen className="h-5 w-5 text-warning" aria-hidden="true" />}
+                value={safeStats.course_completions_total ?? safeStats.core_courses_active}
+                label="Course Completions"
+                sublabel={`${safeStats.core_courses_active} core + ${safeStats.onboarding_courses_active ?? 0} onboarding`}
+                colorClass="bg-warning/10"
+              />
               <StatCard icon={<BookOpen className="h-5 w-5 text-info" aria-hidden="true" />} value={(safeStats.historical?.historical_beginner_courses ?? 0) + (safeStats.beginner_courses_active ?? 0)} label="Beginner course registrations" colorClass="bg-info/10" />
               <StatCard icon={<BookOpen className="h-5 w-5 text-accent-foreground" aria-hidden="true" />} value={(safeStats.historical?.historical_advanced_courses ?? 0) + (safeStats.advanced_courses_active ?? 0)} label="Advanced course registrations" colorClass="bg-accent/50" />
               <StatCard icon={<FileCheck className="h-5 w-5 text-success" aria-hidden="true" />} value={(safeStats.historical?.general_applications_pre_platform ?? 0) + (safeStats.applications_completed ?? 0)} label="General applications submitted" colorClass="bg-success/10" />
-              <StatCard icon={<Award className="h-5 w-5 text-primary" aria-hidden="true" />} value={safeStats.badges_earned} label="Badges Earned" colorClass="bg-primary/10" />
+              <StatCard
+                icon={<Award className="h-5 w-5 text-primary" aria-hidden="true" />}
+                value={safeStats.badges_earned}
+                label="Badges Earned"
+                sublabel="Course completions + applications + Discord links"
+                colorClass="bg-primary/10"
+              />
             </div>
 
             <SectionTitle className="mb-9 mt-8 text-center sm:text-left">Project Training</SectionTitle>
