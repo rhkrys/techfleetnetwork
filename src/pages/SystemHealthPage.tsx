@@ -23,6 +23,7 @@ import { PerformanceByBrowserTab } from "@/components/system-health/PerformanceB
 import { PrivacyRequestsTab } from "@/components/system-health/PrivacyRequestsTab";
 import { IncidentsTab } from "@/components/system-health/IncidentsTab";
 import { ProjectBlastsHealthCard } from "@/components/system-health/ProjectBlastsHealthCard";
+import { EmailDeliverabilityCard } from "@/components/system-health/EmailDeliverabilityCard";
 import { DiscordRepairTab } from "@/components/system-health/DiscordRepairTab";
 import { PageTitle } from "@/components/ui/typography";
 
@@ -202,6 +203,7 @@ export default function SystemHealthPage() {
         <TabsList aria-label="System health sections">
           <TabsTrigger value="queues">Queues</TabsTrigger>
           <TabsTrigger value="delivery">Delivery</TabsTrigger>
+          <TabsTrigger value="deliverability">Deliverability</TabsTrigger>
           <TabsTrigger value="blasts">Project Blasts</TabsTrigger>
           <TabsTrigger value="errors">Errors</TabsTrigger>
           <TabsTrigger value="triage">Triage</TabsTrigger>
@@ -238,6 +240,7 @@ export default function SystemHealthPage() {
         </TabsContent>
 
         <TabsContent value="delivery"><LogTable logs={data.recent_logs} generatedAt={generatedAt} /></TabsContent>
+        <TabsContent value="deliverability"><EmailDeliverabilityCard /></TabsContent>
         <TabsContent value="blasts"><ProjectBlastsHealthCard /></TabsContent>
         <TabsContent value="errors"><ErrorList errors={data.recent_errors} generatedAt={generatedAt} /></TabsContent>
         <TabsContent value="triage"><TriageTab /></TabsContent>

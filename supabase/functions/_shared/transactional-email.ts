@@ -438,6 +438,20 @@ export async function queueTransactionalEmail({
     status: 'pending',
   })
 
+  // Bulk-sender headers required by Gmail/Yahoo (RFC 8058) + inbox-trust signals.
+  const unsubscribeUrl = `https://techfleet.network/unsubscribe?token=${unsubscribeToken}`
+  const isBulk = BULK_TEMPLATES.has(templateName)
+  const customHeaders: Record<string, string> = {
+    'List-Unsubscribe': `<mailto:unsubscribe@techfleet.org?subject=unsubscribe>, <${unsubscribeUrl}>`,
+    'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    'X-Entity-Ref-ID': messageId,
+  }
+  if (isBulk) {
+    customHeaders['Precedence'] = 'bulk'
+  } else {
+    customHeaders['Auto-Submitted'] = 'auto-generated'
+  }
+
   const { error: enqueueError } = await supabase.rpc('enqueue_email', {
     queue_name: 'transactional_emails',
     payload: {
@@ -449,6 +463,7 @@ export async function queueTransactionalEmail({
       subject: resolvedSubject,
       html,
       text: plainText,
+      headers: customHeaders,
       purpose: 'transactional',
       label: templateName,
       idempotency_key: requestIdempotencyKey,
