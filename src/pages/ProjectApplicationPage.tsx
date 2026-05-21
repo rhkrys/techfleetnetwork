@@ -934,6 +934,12 @@ export default function ProjectApplicationPage() {
 
           {/* Right side */}
           <div className="flex items-center gap-2">
+            <AutosaveStatus
+              status={autosave.status}
+              lastSavedAt={autosave.lastSavedAt}
+              onRetry={autosave.retry}
+            />
+
             {/* Save Draft — always available on steps 2 & 3 when not completed */}
             {!isCompleted && step > 1 && (
               <Button variant="secondary" onClick={handleSaveDraft} disabled={isSaving}>
