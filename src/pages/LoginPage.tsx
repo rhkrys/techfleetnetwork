@@ -80,7 +80,10 @@ export default function LoginPage() {
 
   const searchParams = new URLSearchParams(location.search);
   const redirectParam = searchParams.get("redirect");
-  const fromState = (location.state as { from?: { pathname: string } })?.from?.pathname;
+  const fromLoc = (location.state as { from?: { pathname?: string; search?: string; hash?: string } })?.from;
+  const fromState = fromLoc?.pathname
+    ? `${fromLoc.pathname}${fromLoc.search ?? ""}${fromLoc.hash ?? ""}`
+    : undefined;
   const from = normalizeSafeRedirectTarget(fromState || redirectParam || "/dashboard");
 
   const markTouched = (field: string) =>
