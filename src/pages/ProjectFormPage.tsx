@@ -757,7 +757,15 @@ export default function ProjectFormPage() {
       </div>
 
       {/* Actions */}
-      <div className="flex justify-end gap-3 pb-8">
+      <div className="flex items-center justify-end gap-3 pb-8 flex-wrap">
+        {isEditing && (
+          <AutosaveStatus
+            status={autosave.status}
+            lastSavedAt={autosave.lastSavedAt}
+            onRetry={autosave.retry}
+            className="mr-auto sm:mr-0"
+          />
+        )}
         <Button variant="outline" onClick={() => navigate("/admin/clients?tab=projects")} disabled={isSaving}>
           Cancel
         </Button>
@@ -766,6 +774,7 @@ export default function ProjectFormPage() {
           {isEditing ? "Save Changes" : "Create Project"}
         </Button>
       </div>
+
     </div>
   );
 }
