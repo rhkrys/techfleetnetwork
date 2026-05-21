@@ -46,6 +46,7 @@ export function GeneralApplicationTab() {
     showCelebration,
     isCompleted,
     formContainerRef,
+    autosave,
     setSection,
     setErrors,
     setShowCelebration,
@@ -56,6 +57,7 @@ export function GeneralApplicationTab() {
     canSubmit,
     navigate,
   } = useGeneralApplication();
+
 
   const handleDeleteApplication = async () => {
     if (!user || !activeApp?.id) return;
