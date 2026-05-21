@@ -56,7 +56,7 @@ describe("NetworkActivity", () => {
     expect(screen.getByText("120")).toBeInTheDocument();
 
     fireEvent.focus(screen.getAllByRole("button", { name: "Badges Earned details" })[0]);
-    expect(await screen.findByText("One badge per course completion, application submission, and Discord link.")).toBeInTheDocument();
+    expect(await screen.findAllByText("One badge per course completion, application submission, and Discord link.")).not.toHaveLength(0);
   });
 
   it("shows an unavailable state instead of rendering every stat as zero when stats fail", async () => {
