@@ -1424,6 +1424,45 @@ export type Database = {
           },
         ]
       }
+      email_domain_health: {
+        Row: {
+          bounce_rate: number
+          bounced_count: number
+          complained_count: number
+          complaint_rate: number
+          created_at: string
+          id: string
+          recipient_domain: string
+          sent_count: number
+          window_end: string
+          window_start: string
+        }
+        Insert: {
+          bounce_rate?: number
+          bounced_count?: number
+          complained_count?: number
+          complaint_rate?: number
+          created_at?: string
+          id?: string
+          recipient_domain: string
+          sent_count?: number
+          window_end: string
+          window_start: string
+        }
+        Update: {
+          bounce_rate?: number
+          bounced_count?: number
+          complained_count?: number
+          complaint_rate?: number
+          created_at?: string
+          id?: string
+          recipient_domain?: string
+          sent_count?: number
+          window_end?: string
+          window_start?: string
+        }
+        Relationships: []
+      }
       email_send_log: {
         Row: {
           created_at: string
@@ -1461,6 +1500,9 @@ export type Database = {
         Row: {
           auth_email_ttl_minutes: number
           batch_size: number
+          bulk_hourly_cap: number
+          bulk_paused: boolean
+          bulk_warmup_started_at: string
           id: number
           retry_after_until: string | null
           send_delay_ms: number
@@ -1470,6 +1512,9 @@ export type Database = {
         Insert: {
           auth_email_ttl_minutes?: number
           batch_size?: number
+          bulk_hourly_cap?: number
+          bulk_paused?: boolean
+          bulk_warmup_started_at?: string
           id?: number
           retry_after_until?: string | null
           send_delay_ms?: number
@@ -1479,6 +1524,9 @@ export type Database = {
         Update: {
           auth_email_ttl_minutes?: number
           batch_size?: number
+          bulk_hourly_cap?: number
+          bulk_paused?: boolean
+          bulk_warmup_started_at?: string
           id?: number
           retry_after_until?: string | null
           send_delay_ms?: number
