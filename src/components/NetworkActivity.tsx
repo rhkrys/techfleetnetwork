@@ -255,25 +255,6 @@ export const NetworkActivity = memo(function NetworkActivity({ showMap = true, s
               </div>
             </div>
 
-            {safeStats.historical && (
-              <div className="pt-8">
-                <div className="mb-3">
-                  <SectionTitle className="text-center sm:text-left">Historical (pre-platform)</SectionTitle>
-                  <p className="text-sm text-muted-foreground mt-1 text-center sm:text-left">
-                    Totals from Tech Fleet's Airtable archive, before this platform launched. Kept separate from live numbers above.
-                    {safeStats.historical.last_synced_at ? (
-                      <> Last synced {formatter.format(new Date(safeStats.historical.last_synced_at))}.</>
-                    ) : null}
-                  </p>
-                </div>
-                <div className="grid grid-cols-1 min-[560px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 justify-items-start">
-                  <StatCard value={safeStats.historical.general_applications_pre_platform} label="General Applications (pre-platform)" />
-                  <StatCard value={safeStats.historical.service_leadership_unique} label="Service Leadership members" />
-                  <StatCard value={safeStats.historical.masterclass_total} label="Masterclass attendees (total)" />
-                  <StatCard value={safeStats.historical.masterclass_minus_servlead} label="Masterclass-only attendees" />
-                </div>
-              </div>
-            )}
           </>
         )}
 
