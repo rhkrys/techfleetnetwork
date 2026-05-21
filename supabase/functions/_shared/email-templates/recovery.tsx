@@ -21,15 +21,15 @@ interface RecoveryEmailProps {
 export const RecoveryEmail = ({ siteName, confirmationUrl }: RecoveryEmailProps) => (
   <Html lang="en" dir="ltr">
     <Head />
-    <Preview>Reset your password for Tech Fleet Network</Preview>
+    <Preview>You asked to reset your Tech Fleet password. Confirm to choose a new one.</Preview>
     <Body style={main}>
       <Container style={container}>
         <Heading style={h1}>Reset your password</Heading>
         <Text style={text}>
-          We received a request to reset your password for Tech Fleet Network. Click the button below to choose a new password.
+          You asked to reset your Tech Fleet password. Click below to choose a new one. The link expires in 1 hour.
         </Text>
-        <Button style={button} href={confirmationUrl}>Reset Password</Button>
-        <Text style={footer}>If you didn't request a password reset, you can safely ignore this email.</Text>
+        <Button style={button} href={confirmationUrl}>Reset password</Button>
+        <Text style={footer}>You're getting this because someone requested a password reset for your Tech Fleet account. If that wasn't you, ignore this email — your password stays the same. Reply directly to reach a person.</Text>
       </Container>
     </Body>
   </Html>
