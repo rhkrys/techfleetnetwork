@@ -267,6 +267,24 @@ export function useGeneralApplication() {
     setSection((s) => Math.max(s - 1, 1));
   }, []);
 
+  // ── Autosave: 30s tick, draft only, no toast ───────────────────────────
+  const autosaveValue = useMemo(
+    () => ({ ...gatherSaveFields() }),
+    [gatherSaveFields],
+  );
+  const autosave = useAutosave({
+    value: autosaveValue,
+    enabled: !!activeApp && !isCompleted,
+    label: "general-application",
+    onSave: async (fields) => {
+      if (!activeApp) return;
+      const payload: Partial<GeneralApplication> = { ...fields, status: "draft" };
+      await GeneralApplicationService.save(activeApp.id, payload);
+      // Profile-side fields are non-critical for autosave; sync best-effort.
+      try { await syncProfileFields(); } catch { /* non-blocking */ }
+    },
+  });
+
   return {
     // State
     loading,
@@ -280,6 +298,7 @@ export function useGeneralApplication() {
     showCelebration,
     isCompleted,
     formContainerRef,
+    autosave,
 
     // Setters
     setSection,
@@ -297,3 +316,4 @@ export function useGeneralApplication() {
     navigate,
   };
 }
+
