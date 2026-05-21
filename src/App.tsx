@@ -105,6 +105,7 @@ const UnsubscribePage = lazy(() => import("./pages/UnsubscribePage"));
 const NotificationsPage = lazy(() => import("./pages/NotificationsPage"));
 const AccessDeniedPage = lazy(() => import("./pages/AccessDeniedPage"));
 const SystemHealthPage = lazy(() => import("./pages/SystemHealthPage"));
+const AdminEmailDeliverabilityTestPage = lazy(() => import("./pages/AdminEmailDeliverabilityTestPage"));
 const BrandTokensPage = lazy(() => import("./pages/BrandTokensPage"));
 const MyClassesPage = lazy(() => import("./pages/MyClassesPage"));
 const ClassFormPage = lazy(() => import("./pages/ClassFormPage"));
@@ -264,6 +265,7 @@ const App = () => (
                     <Route path="/admin/roster" element={<AdminRoute><AdminRosterPage /></AdminRoute>} />
                     <Route path="/admin/banners" element={<AdminRoute><BannerManagementPage /></AdminRoute>} />
                     <Route path="/admin/system-health" element={<AdminRoute><SystemHealthPage /></AdminRoute>} />
+                    <Route path="/admin/email-deliverability-test" element={<AdminRoute><AdminEmailDeliverabilityTestPage /></AdminRoute>} />
                     <Route path="/admin/brand-tokens" element={<AdminRoute><BrandTokensPage /></AdminRoute>} />
                     <Route path="/admin/roster/project/:projectId" element={<AdminRoute><RosterProjectDetailPage /></AdminRoute>} />
                     <Route path="/admin/roster/project/:projectId/applicant/:applicationId" element={<AdminRoute><RosterApplicantDetailPage /></AdminRoute>} />
