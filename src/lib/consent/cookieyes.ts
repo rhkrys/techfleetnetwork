@@ -31,6 +31,12 @@ interface CkyGetResult {
   consentID?: string;
 }
 
+declare global {
+  interface Window {
+    getCkyConsent?: () => CkyGetResult | undefined;
+  }
+}
+
 /** Parse the raw `cookieyes-consent` cookie when the JS API isn't loaded yet. */
 function parseCookieFallback(): CkyGetResult | null {
   if (typeof document === "undefined") return null;
