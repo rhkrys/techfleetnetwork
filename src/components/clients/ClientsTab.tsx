@@ -499,13 +499,22 @@ export function ClientsTab() {
               {errors.project_summary && <p className="text-xs text-destructive">{errors.project_summary}</p>}
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-row items-center sm:justify-end gap-2 flex-wrap">
+            {editingClient && (
+              <AutosaveStatus
+                status={autosave.status}
+                lastSavedAt={autosave.lastSavedAt}
+                onRetry={autosave.retry}
+                className="mr-auto"
+              />
+            )}
             <Button variant="outline" onClick={closeDialog} disabled={isSaving}>Cancel</Button>
             <Button onClick={handleSubmit} disabled={isSaving}>
               {isSaving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
               {editingClient ? "Save Changes" : "Create Client"}
             </Button>
           </DialogFooter>
+
         </DialogContent>
       </Dialog>
 
