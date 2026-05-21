@@ -25,6 +25,9 @@ import { classFormSchema, type ClassFormValues } from "@/lib/validators/class";
 import { useQueryClient } from "@/lib/react-query";
 import { SKILLS_OPTIONS as SKILLS_FALLBACK } from "@/lib/skills-framework";
 import { useReferenceList } from "@/hooks/use-reference";
+import { useAutosave } from "@/hooks/use-autosave";
+import { AutosaveStatus } from "@/components/ui/AutosaveStatus";
+
 
 function csvToList(s: string): string[] {
   return s.split(/[\n,]/).map((t) => t.trim()).filter(Boolean);
