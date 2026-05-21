@@ -36,6 +36,12 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  // Refs let us read the live DOM value at submit-time. Browser autofill
+  // (Chrome, Safari, 1Password) often writes input.value without dispatching
+  // a React-compatible input event, leaving controlled state empty and
+  // tripping "Email address is required" on submit.
+  const emailRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
   // Split error channels (NN/g #9 — Help users recognize, diagnose, recover):
   //  - authError: red banner, only for true server auth rejections
   //  - captchaNotice: inline note next to the widget for missing/expired tokens
