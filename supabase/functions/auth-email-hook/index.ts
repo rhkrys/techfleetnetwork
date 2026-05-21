@@ -17,13 +17,14 @@ const corsHeaders = {
     'authorization, x-client-info, apikey, content-type, x-lovable-signature, x-lovable-timestamp, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 }
 
+// Short, sentence-case, spam-classifier-safe subjects. Keep under 50 chars.
 const EMAIL_SUBJECTS: Record<string, string> = {
   signup: 'Confirm your email',
-  invite: "You've been invited",
-  magiclink: 'Your login link',
-  recovery: 'Reset your password',
+  invite: 'You were invited to Tech Fleet',
+  magiclink: 'Sign in to Tech Fleet',
+  recovery: 'Reset your Tech Fleet password',
   email_change: 'Confirm your new email',
-  reauthentication: 'Your verification code',
+  reauthentication: "Verify it's you",
 }
 
 // Template mapping
@@ -36,11 +37,20 @@ const EMAIL_TEMPLATES: Record<string, React.ComponentType<any>> = {
   reauthentication: ReauthenticationEmail,
 }
 
-// Configuration
-const SITE_NAME = "techfleetnetwork"
+// Configuration — From: uses root domain mailbox (onboarding@) for inbox trust;
+// DKIM signs SENDER_DOMAIN (relaxed DMARC alignment on techfleet.org).
+const SITE_NAME = "Tech Fleet"
 const SENDER_DOMAIN = "notify.techfleet.org"
 const ROOT_DOMAIN = "techfleet.org"
-const FROM_DOMAIN = "techfleet.org" // Domain shown in From address (may be root or sender subdomain)
+const FROM_DOMAIN = "techfleet.org"
+const FROM_MAILBOX = "onboarding"
+const REPLY_TO = "onboarding@techfleet.org"
+
+// Cooldowns: suppress duplicate auth sends to protect sender reputation.
+// A double-click on "Reset password" or rapid magic-link requests would
+// otherwise burn quota and look like spammy behavior to Gmail.
+const DEDUP_WINDOW_SECONDS = 60
+const MAGIC_LINK_COOLDOWN_SECONDS = 300
 
 // Sample data for preview mode ONLY (not used in actual email sending).
 // URLs are baked in at scaffold time from the project's real data.
@@ -248,6 +258,52 @@ async function handleWebhook(req: Request): Promise<Response> {
   // a fresh one) BEFORE enqueueing — without this the dispatcher would 400
   // with `missing_unsubscribe` and the message would dead-letter.
   const normalizedEmail = (payload.data.email || '').trim().toLowerCase()
+
+  // Dedup: drop repeat sends of the same (email, type) within DEDUP_WINDOW_SECONDS.
+  // For magic-link, enforce a longer cooldown to prevent abuse / reputation drag.
+  const cooldownSecs = emailType === 'magiclink'
+    ? MAGIC_LINK_COOLDOWN_SECONDS
+    : DEDUP_WINDOW_SECONDS
+  const cooldownSinceIso = new Date(Date.now() - cooldownSecs * 1000).toISOString()
+  const { data: recent } = await supabase
+    .from('email_send_log')
+    .select('id, created_at')
+    .eq('recipient_email', payload.data.email)
+    .eq('template_name', emailType)
+    .in('status', ['pending', 'sent'])
+    .gte('created_at', cooldownSinceIso)
+    .limit(1)
+
+  if (recent && recent.length > 0) {
+    console.log('Auth email dedup hit — dropping duplicate send', {
+      emailType,
+      email: payload.data.email,
+      cooldownSecs,
+    })
+    return new Response(
+      JSON.stringify({ success: true, deduped: true }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+
+  // Skip if recipient is on the suppression list.
+  const { data: suppressedRow } = await supabase
+    .from('suppressed_emails')
+    .select('id')
+    .eq('email', normalizedEmail)
+    .maybeSingle()
+  if (suppressedRow) {
+    await supabase.from('email_send_log').insert({
+      message_id: messageId,
+      template_name: emailType,
+      recipient_email: payload.data.email,
+      status: 'suppressed',
+    })
+    return new Response(
+      JSON.stringify({ success: true, suppressed: true }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
   let unsubscribeToken: string | null = null
   try {
     const { data: existing } = await supabase
@@ -307,7 +363,8 @@ async function handleWebhook(req: Request): Promise<Response> {
       run_id,
       message_id: messageId,
       to: payload.data.email,
-      from: `${SITE_NAME} <noreply@${FROM_DOMAIN}>`,
+      from: `${SITE_NAME} <${FROM_MAILBOX}@${FROM_DOMAIN}>`,
+      reply_to: REPLY_TO,
       sender_domain: SENDER_DOMAIN,
       subject: EMAIL_SUBJECTS[emailType] || 'Notification',
       html,

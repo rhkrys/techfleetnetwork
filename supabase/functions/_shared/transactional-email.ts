@@ -6,9 +6,45 @@ import {
 } from 'npm:@supabase/supabase-js@2'
 import { TEMPLATES } from './transactional-email-templates/registry.ts'
 
-const SITE_NAME = 'techfleetnetwork'
+// Brand-aligned identity for inbox trust. From: header uses the root domain
+// (techfleet.org) so recipients see a real human-recognisable mailbox; DKIM
+// signing still happens on SENDER_DOMAIN (notify.techfleet.org) with relaxed
+// DMARC alignment (adkim=r; aspf=r) configured at the DNS layer.
+const SITE_NAME = 'Tech Fleet'
 const SENDER_DOMAIN = 'notify.techfleet.org'
 const FROM_DOMAIN = 'techfleet.org'
+const FROM_MAILBOX = 'onboarding'
+const REPLY_TO = 'onboarding@techfleet.org'
+
+// Templates that target many recipients per send batch. Project-blast subjects
+// are coordinator-authored and need sanitization (strip emoji/!/all-caps) to
+// keep them out of Gmail's Promotions tab.
+const BULK_TEMPLATES = new Set<string>([
+  'project-blast',
+  'fleety-coach-digest',
+  'announcement',
+])
+
+// Strip spam-trigger characters from coordinator-supplied subjects.
+function sanitizeBulkSubject(raw: string): string {
+  if (!raw) return raw
+  let s = raw
+  // strip emoji / pictographs
+  s = s.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F000}-\u{1F2FF}]/gu, '')
+  // collapse exclamation marks
+  s = s.replace(/!+/g, '')
+  // de-shout: if 70%+ caps and >6 letters, lowercase then sentence-case
+  const letters = s.replace(/[^a-zA-Z]/g, '')
+  if (letters.length > 6) {
+    const caps = letters.replace(/[^A-Z]/g, '').length
+    if (caps / letters.length > 0.7) {
+      s = s.toLowerCase().replace(/(^\s*\w|[.!?]\s+\w)/g, (m) => m.toUpperCase())
+    }
+  }
+  // collapse whitespace, cap length
+  s = s.replace(/\s+/g, ' ').trim().slice(0, 78)
+  return s
+}
 
 type JsonRecord = Record<string, unknown>
 
@@ -365,10 +401,14 @@ export async function queueTransactionalEmail({
     { plainText: true }
   )
 
-  const resolvedSubject =
+  let resolvedSubject =
     typeof template.subject === 'function'
       ? template.subject(templateData)
       : template.subject
+
+  if (BULK_TEMPLATES.has(templateName)) {
+    resolvedSubject = sanitizeBulkSubject(resolvedSubject)
+  }
 
   await insertEmailLog(supabase, {
     message_id: messageId,
@@ -382,7 +422,8 @@ export async function queueTransactionalEmail({
     payload: {
       message_id: messageId,
       to: effectiveRecipient,
-      from: `${SITE_NAME} <noreply@${FROM_DOMAIN}>`,
+      from: `${SITE_NAME} <${FROM_MAILBOX}@${FROM_DOMAIN}>`,
+      reply_to: REPLY_TO,
       sender_domain: SENDER_DOMAIN,
       subject: resolvedSubject,
       html,

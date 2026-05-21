@@ -117,7 +117,7 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
   // 1. Check rate-limit cooldown and read queue config
   const { data: state } = await supabase
     .from('email_send_state')
-    .select('retry_after_until, batch_size, send_delay_ms, auth_email_ttl_minutes, transactional_email_ttl_minutes')
+    .select('retry_after_until, batch_size, send_delay_ms, auth_email_ttl_minutes, transactional_email_ttl_minutes, bulk_hourly_cap, bulk_paused')
     .single()
 
   if (state?.retry_after_until && new Date(state.retry_after_until) > new Date()) {
@@ -129,9 +129,28 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
 
   const batchSize = state?.batch_size ?? DEFAULT_BATCH_SIZE
   const sendDelayMs = state?.send_delay_ms ?? DEFAULT_SEND_DELAY_MS
+  const bulkHourlyCap = state?.bulk_hourly_cap ?? 50
+  const bulkPaused = state?.bulk_paused === true
   const ttlMinutes: Record<string, number> = {
     auth_emails: state?.auth_email_ttl_minutes ?? DEFAULT_AUTH_TTL_MINUTES,
     transactional_emails: state?.transactional_email_ttl_minutes ?? DEFAULT_TRANSACTIONAL_TTL_MINUTES,
+  }
+
+  // Bulk-template guard: cap aggregate sends/hour during warm-up and pause if
+  // engagement-based circuit breaker tripped. Per-recipient 24h frequency cap
+  // is enforced lazily inside the per-message loop.
+  const BULK_TEMPLATES = new Set(['project-blast', 'fleety-coach-digest', 'announcement'])
+  const oneHourAgoIso = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+  const oneDayAgoIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  let bulkSentLastHour = 0
+  if (!bulkPaused) {
+    const { count } = await supabase
+      .from('email_send_log')
+      .select('id', { count: 'exact', head: true })
+      .in('template_name', Array.from(BULK_TEMPLATES))
+      .eq('status', 'sent')
+      .gte('created_at', oneHourAgoIso)
+    bulkSentLastHour = count ?? 0
   }
 
   let totalProcessed = 0
@@ -249,12 +268,55 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
         }
       }
 
+      // Bulk template gating: skip (leave in queue) if paused or cap reached.
+      // Per-recipient frequency cap: 1 bulk email per recipient per 24h.
+      const labelStr = typeof payload.label === 'string' ? payload.label : ''
+      if (BULK_TEMPLATES.has(labelStr)) {
+        if (bulkPaused) {
+          console.log('Bulk send paused — leaving message in queue', { msg_id: msg.msg_id })
+          continue
+        }
+        if (bulkSentLastHour >= bulkHourlyCap) {
+          console.log('Bulk hourly cap reached — leaving message in queue', {
+            cap: bulkHourlyCap,
+            sent: bulkSentLastHour,
+          })
+          continue
+        }
+        const { count: recentToRecipient } = await supabase
+          .from('email_send_log')
+          .select('id', { count: 'exact', head: true })
+          .eq('recipient_email', payload.to)
+          .in('template_name', Array.from(BULK_TEMPLATES))
+          .eq('status', 'sent')
+          .gte('created_at', oneDayAgoIso)
+        if ((recentToRecipient ?? 0) >= 1) {
+          await supabase.from('email_send_log').insert({
+            message_id: payload.message_id,
+            template_name: labelStr || queue,
+            recipient_email: payload.to,
+            status: 'frequency_capped',
+            error_message: 'Recipient already received a bulk email in the last 24h',
+          })
+          const { error: capDelErr } = await supabase.rpc('delete_email', {
+            queue_name: queue,
+            message_id: msg.msg_id,
+          })
+          if (capDelErr) {
+            console.error('Failed to delete frequency-capped message', { error: capDelErr })
+          }
+          continue
+        }
+      }
+
+
       try {
         await sendLovableEmail(
           {
             run_id: payload.run_id,
             to: payload.to,
             from: payload.from,
+            reply_to: payload.reply_to,
             sender_domain: payload.sender_domain,
             subject: payload.subject,
             html: payload.html,
@@ -287,6 +349,7 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
         if (delError) {
           console.error('Failed to delete sent message from queue', { queue, msg_id: msg.msg_id, error: delError })
         }
+        if (BULK_TEMPLATES.has(labelStr)) bulkSentLastHour++
         totalProcessed++
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error)
