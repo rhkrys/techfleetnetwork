@@ -258,6 +258,52 @@ async function handleWebhook(req: Request): Promise<Response> {
   // a fresh one) BEFORE enqueueing — without this the dispatcher would 400
   // with `missing_unsubscribe` and the message would dead-letter.
   const normalizedEmail = (payload.data.email || '').trim().toLowerCase()
+
+  // Dedup: drop repeat sends of the same (email, type) within DEDUP_WINDOW_SECONDS.
+  // For magic-link, enforce a longer cooldown to prevent abuse / reputation drag.
+  const cooldownSecs = emailType === 'magiclink'
+    ? MAGIC_LINK_COOLDOWN_SECONDS
+    : DEDUP_WINDOW_SECONDS
+  const cooldownSinceIso = new Date(Date.now() - cooldownSecs * 1000).toISOString()
+  const { data: recent } = await supabase
+    .from('email_send_log')
+    .select('id, created_at')
+    .eq('recipient_email', payload.data.email)
+    .eq('template_name', emailType)
+    .in('status', ['pending', 'sent'])
+    .gte('created_at', cooldownSinceIso)
+    .limit(1)
+
+  if (recent && recent.length > 0) {
+    console.log('Auth email dedup hit — dropping duplicate send', {
+      emailType,
+      email: payload.data.email,
+      cooldownSecs,
+    })
+    return new Response(
+      JSON.stringify({ success: true, deduped: true }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+
+  // Skip if recipient is on the suppression list.
+  const { data: suppressedRow } = await supabase
+    .from('suppressed_emails')
+    .select('id')
+    .eq('email', normalizedEmail)
+    .maybeSingle()
+  if (suppressedRow) {
+    await supabase.from('email_send_log').insert({
+      message_id: messageId,
+      template_name: emailType,
+      recipient_email: payload.data.email,
+      status: 'suppressed',
+    })
+    return new Response(
+      JSON.stringify({ success: true, suppressed: true }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
   let unsubscribeToken: string | null = null
   try {
     const { data: existing } = await supabase
@@ -317,7 +363,8 @@ async function handleWebhook(req: Request): Promise<Response> {
       run_id,
       message_id: messageId,
       to: payload.data.email,
-      from: `${SITE_NAME} <noreply@${FROM_DOMAIN}>`,
+      from: `${SITE_NAME} <${FROM_MAILBOX}@${FROM_DOMAIN}>`,
+      reply_to: REPLY_TO,
       sender_domain: SENDER_DOMAIN,
       subject: EMAIL_SUBJECTS[emailType] || 'Notification',
       html,
