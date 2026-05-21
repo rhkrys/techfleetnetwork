@@ -252,6 +252,20 @@ export function ClientsTab() {
 
   const isSaving = createMutation.isPending || updateMutation.isPending;
 
+  // ── Autosave: only when editing an existing client, 30s ───────────────
+  const autosave = useAutosave({
+    value: form,
+    enabled: !!editingClient && dialogOpen,
+    label: "client-form",
+    onSave: async (values) => {
+      if (!editingClient) return;
+      const { error } = await supabase.from("clients").update(values as any).eq("id", editingClient.id);
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
+    },
+  });
+
+
   const statusBadge = (status: string) =>
     status === "active" ? <Badge className="bg-success/10 text-success border-success/20">Active</Badge> : <Badge variant="secondary">Inactive</Badge>;
 
