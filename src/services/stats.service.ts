@@ -16,7 +16,12 @@ export interface HistoricalStats {
 
 export interface NetworkStats {
   total_signups: number;
+  /** All-tier course completions (core + onboarding) — headline + badge reconciliation source. */
+  course_completions_total?: number;
+  /** Tier='core' only — kept for back-compat with v4 consumers. */
   core_courses_active: number;
+  /** Tier='onboarding' only (connect-discord, onboarding). */
+  onboarding_courses_active?: number;
   distinct_course_completers?: number;
   beginner_courses_active: number;
   advanced_courses_active: number;
@@ -25,7 +30,10 @@ export interface NetworkStats {
   prev_week_start: string;
   prev_week_end: string;
   prev_week_signups: number;
+  /** All-tier past-7d course completions. */
+  prev_week_course_completions_total?: number;
   prev_week_core_active: number;
+  prev_week_onboarding_active?: number;
   prev_week_beginner_active: number;
   prev_week_advanced_active: number;
   prev_week_applications: number;
@@ -37,15 +45,15 @@ export interface NetworkStats {
   historical?: HistoricalStats;
 }
 
-// v4 — cache key bumped 2026-05-20: HistoricalStats now includes
-// historical_beginner_courses + historical_advanced_courses so the home/dashboard
-// Beginner & Advanced cards render the Airtable carry-over numbers. Evict prior
-// payloads so no client renders a stale shape missing these fields.
-const CACHE_KEY = "tfn:network-stats:last-known:v4";
+// v5 — cache key bumped 2026-05-21: NetworkStats now includes
+// course_completions_total + onboarding_courses_active so the headline card
+// reconciles arithmetically with Badges Earned. Evict prior payloads.
+const CACHE_KEY = "tfn:network-stats:last-known:v5";
 const LEGACY_CACHE_KEYS = [
   "tfn:network-stats:last-known:v1",
   "tfn:network-stats:last-known:v2",
   "tfn:network-stats:last-known:v3",
+  "tfn:network-stats:last-known:v4",
 ];
 const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 1 day — fallback only, not a freshness window
 
