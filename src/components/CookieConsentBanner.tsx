@@ -52,6 +52,7 @@ interface CkyConsentDetail {
 declare global {
   interface Window {
     revisitCkyConsent?: () => void;
+    getCkyConsent?: () => unknown;
   }
 }
 
