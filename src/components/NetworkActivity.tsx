@@ -1,6 +1,6 @@
 import { memo, Suspense } from "react";
 import { lazyWithRetry as lazy } from "@/lib/lazy-with-retry";
-import { Users, BookOpen, Award, FileCheck, CalendarDays, UserPlus, Briefcase, Rocket, PlayCircle, CheckCircle2, MessageCircle, Info } from "lucide-react";
+import { BookOpen, Award, FileCheck, UserPlus, Briefcase, Rocket, PlayCircle, CheckCircle2, MessageCircle, Info } from "lucide-react";
 import { useQuery } from "@/lib/react-query";
 import { StatsService, type NetworkStats } from "@/services/stats.service";
 import { PageTitle, SectionTitle } from "@/components/ui/typography";
@@ -252,7 +252,7 @@ export const NetworkActivity = memo(function NetworkActivity({ showMap = true, s
                 icon={<BookOpen className="h-5 w-5 text-warning" aria-hidden="true" />}
                 value={safeStats.course_completions_total ?? safeStats.core_courses_active}
                 label="Course Completions"
-                sublabel={`${safeStats.core_courses_active} core + ${safeStats.onboarding_courses_active ?? 0} onboarding`}
+                sublabel={`${safeStats.core_courses_active} core · ${safeStats.onboarding_courses_active ?? 0} onboarding`}
                 colorClass="bg-warning/10"
               />
               <StatCard icon={<BookOpen className="h-5 w-5 text-info" aria-hidden="true" />} value={(safeStats.historical?.historical_beginner_courses ?? 0) + (safeStats.beginner_courses_active ?? 0)} label="Beginner course registrations" colorClass="bg-info/10" />
@@ -263,6 +263,7 @@ export const NetworkActivity = memo(function NetworkActivity({ showMap = true, s
                 value={safeStats.badges_earned}
                 label="Badges Earned"
                 sublabel="Course completions + applications + Discord links"
+                tooltip="One badge per course completion, application submission, and Discord link."
                 colorClass="bg-primary/10"
               />
             </div>
@@ -290,7 +291,7 @@ export const NetworkActivity = memo(function NetworkActivity({ showMap = true, s
                   icon={<BookOpen className="h-5 w-5 text-warning" aria-hidden="true" />}
                   value={safeStats.prev_week_course_completions_total ?? safeStats.prev_week_core_active}
                   label="Course Completions"
-                  sublabel={`${safeStats.prev_week_core_active} core + ${safeStats.prev_week_onboarding_active ?? 0} onboarding`}
+                  sublabel={`${safeStats.prev_week_core_active} core · ${safeStats.prev_week_onboarding_active ?? 0} onboarding`}
                   colorClass="bg-warning/10"
                 />
                 <StatCard icon={<BookOpen className="h-5 w-5 text-info" aria-hidden="true" />} value={safeStats.prev_week_beginner_active} label="Beginner Course Completions" colorClass="bg-info/10" />
@@ -301,6 +302,7 @@ export const NetworkActivity = memo(function NetworkActivity({ showMap = true, s
                   value={safeStats.prev_week_badges}
                   label="Badges Earned"
                   sublabel="Course completions + applications + Discord links"
+                  tooltip="One badge per course completion, application submission, and Discord link."
                   colorClass="bg-primary/10"
                 />
               </div>
