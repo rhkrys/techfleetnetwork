@@ -24,18 +24,17 @@ interface EmailChangeEmailProps {
 export const EmailChangeEmail = ({ siteName, email, newEmail, confirmationUrl }: EmailChangeEmailProps) => (
   <Html lang="en" dir="ltr">
     <Head />
-    <Preview>Confirm your email change for Tech Fleet Network</Preview>
+    <Preview>Confirm your new Tech Fleet email so future messages go to the right place.</Preview>
     <Body style={main}>
       <Container style={container}>
-        <Heading style={h1}>Confirm your email change</Heading>
+        <Heading style={h1}>Confirm your new email</Heading>
         <Text style={text}>
-          You requested to change your email address for Tech Fleet Network from{' '}
+          You asked to change your Tech Fleet email from{' '}
           <Link href={`mailto:${email}`} style={link}>{email}</Link> to{' '}
-          <Link href={`mailto:${newEmail}`} style={link}>{newEmail}</Link>.
+          <Link href={`mailto:${newEmail}`} style={link}>{newEmail}</Link>. Confirm below to finish the change.
         </Text>
-        <Text style={text}>Click the button below to confirm this change:</Text>
-        <Button style={button} href={confirmationUrl}>Confirm Email Change</Button>
-        <Text style={footer}>If you didn't request this change, please secure your account immediately.</Text>
+        <Button style={button} href={confirmationUrl}>Confirm new email</Button>
+        <Text style={footer}>You're getting this because someone requested an email change on your Tech Fleet account. If that wasn't you, reply to this email right away so we can secure your account.</Text>
       </Container>
     </Body>
   </Html>
