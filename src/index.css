@@ -738,3 +738,11 @@ body {
   outline-offset: 2px;
   border-radius: 4px;
 }
+
+/* Chrome/Safari autofill detector — fires an animation event React can hook
+   into so controlled <input>s sync state when the browser autofills without
+   dispatching a real input event. See LoginPage onAnimationStart handler. */
+@keyframes onAutoFillStart { from { /* noop */ } to { /* noop */ } }
+@keyframes onAutoFillCancel { from { /* noop */ } to { /* noop */ } }
+input:-webkit-autofill { animation-name: onAutoFillStart; animation-duration: 1ms; }
+input:not(:-webkit-autofill) { animation-name: onAutoFillCancel; animation-duration: 1ms; }

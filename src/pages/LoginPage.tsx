@@ -36,6 +36,12 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  // Refs let us read the live DOM value at submit-time. Browser autofill
+  // (Chrome, Safari, 1Password) often writes input.value without dispatching
+  // a React-compatible input event, leaving controlled state empty and
+  // tripping "Email address is required" on submit.
+  const emailRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
   // Split error channels (NN/g #9 — Help users recognize, diagnose, recover):
   //  - authError: red banner, only for true server auth rejections
   //  - captchaNotice: inline note next to the widget for missing/expired tokens
@@ -178,7 +184,18 @@ export default function LoginPage() {
     }
     setTouched({ email: true, password: true });
 
-    const result = loginSchema.safeParse({ email, password });
+    // Autofill guard: read live DOM values. If the browser autofilled but
+    // never fired onChange, React state is stale (empty) and validation
+    // would falsely reject as "required". Prefer the DOM value when it's
+    // longer than state.
+    const domEmail = emailRef.current?.value ?? "";
+    const domPassword = passwordRef.current?.value ?? "";
+    const effectiveEmail = domEmail.length > email.length ? domEmail : email;
+    const effectivePassword = domPassword.length > password.length ? domPassword : password;
+    if (effectiveEmail !== email) setEmail(effectiveEmail);
+    if (effectivePassword !== password) setPassword(effectivePassword);
+
+    const result = loginSchema.safeParse({ email: effectiveEmail, password: effectivePassword });
     if (!result.success) {
       reportValidationRejection("loginSchema", result.error.issues, "LoginPage.handleSubmit");
       const fieldErrors: Record<string, string> = {};
@@ -375,7 +392,7 @@ export default function LoginPage() {
             <ValidatedField id="email" label="Email address" required error={errors.email} value={email} touched={touched.email}>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                <Input id="email" type="email" inputMode="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} onFocus={() => setTurnstileReady(true)} onBlur={() => markTouched("email")} className={`pl-10 ${bc("email", email)}`} autoComplete="email" required aria-required="true" aria-invalid={!!errors.email} />
+                <Input ref={emailRef} id="email" type="email" inputMode="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} onAnimationStart={(e) => { if ((e as unknown as { animationName: string }).animationName === "onAutoFillStart" && emailRef.current && emailRef.current.value !== email) setEmail(emailRef.current.value); }} onFocus={() => setTurnstileReady(true)} onBlur={() => markTouched("email")} className={`pl-10 ${bc("email", email)}`} autoComplete="email" required aria-required="true" aria-invalid={!!errors.email} />
               </div>
             </ValidatedField>
 
@@ -386,7 +403,7 @@ export default function LoginPage() {
               </div>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                <Input id="password" type={showPassword ? "text" : "password"} placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} onBlur={() => markTouched("password")} className={`pl-10 pr-10 ${bc("password", password)}`} autoComplete="current-password" required aria-required="true" aria-invalid={!!errors.password} />
+                <Input ref={passwordRef} id="password" type={showPassword ? "text" : "password"} placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} onAnimationStart={(e) => { if ((e as unknown as { animationName: string }).animationName === "onAutoFillStart" && passwordRef.current && passwordRef.current.value !== password) setPassword(passwordRef.current.value); }} onBlur={() => markTouched("password")} className={`pl-10 pr-10 ${bc("password", password)}`} autoComplete="current-password" required aria-required="true" aria-invalid={!!errors.password} />
                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex h-8 w-8 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={showPassword ? "Hide password" : "Show password"}>
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
