@@ -210,6 +210,14 @@ export default function LoginPage() {
       scrollToFirstError();
       return;
     }
+    if (!captchaToken.trim()) {
+      logCaptchaTelemetry("auth_captcha_failed", { surface: "login", failedAttempts: captchaState.failedAttempts + 1 });
+      // Do NOT remount the widget here — that's what produced the false "captcha
+      // passed → too many attempts" flicker. Just nudge the user inline.
+      setCaptchaNotice("Complete the human verification below before signing in.");
+      setAuthError("");
+      return;
+    }
     setErrors({});
     setAuthError("");
     setCaptchaNotice("");
