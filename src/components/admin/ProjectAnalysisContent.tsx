@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { useQuery } from "@/lib/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAdmin } from "@/hooks/use-admin";
