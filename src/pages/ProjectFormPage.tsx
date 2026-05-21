@@ -1,4 +1,7 @@
 import { useState, useMemo, useCallback } from "react";
+import { useAutosave } from "@/hooks/use-autosave";
+import { AutosaveStatus } from "@/components/ui/AutosaveStatus";
+
 import { useNavigate, useParams } from "react-router-dom";
 import { DiscordRolePicker } from "@/components/DiscordRolePicker";
 import { useQuery, useMutation, useQueryClient } from "@/lib/react-query";
@@ -384,6 +387,21 @@ export default function ProjectFormPage() {
 
   const isSaving = createMutation.isPending || updateMutation.isPending;
 
+  // ── Autosave: edit-mode only, 30s ──────────────────────────────────────
+  const autosave = useAutosave({
+    value: form,
+    enabled: isEditing && initialized,
+    label: "project-form",
+    onSave: async (values) => {
+      const { error } = await supabase
+        .from("projects")
+        .update(sanitizeRecordFields(values as unknown as Record<string, unknown>) as any)
+        .eq("id", id!);
+      if (error) throw error;
+    },
+  });
+
+
   if (isEditing && !initialized) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
@@ -739,7 +757,15 @@ export default function ProjectFormPage() {
       </div>
 
       {/* Actions */}
-      <div className="flex justify-end gap-3 pb-8">
+      <div className="flex items-center justify-end gap-3 pb-8 flex-wrap">
+        {isEditing && (
+          <AutosaveStatus
+            status={autosave.status}
+            lastSavedAt={autosave.lastSavedAt}
+            onRetry={autosave.retry}
+            className="mr-auto sm:mr-0"
+          />
+        )}
         <Button variant="outline" onClick={() => navigate("/admin/clients?tab=projects")} disabled={isSaving}>
           Cancel
         </Button>
@@ -748,6 +774,7 @@ export default function ProjectFormPage() {
           {isEditing ? "Save Changes" : "Create Project"}
         </Button>
       </div>
+
     </div>
   );
 }

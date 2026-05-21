@@ -2,7 +2,7 @@
  * Custom hook encapsulating all General Application state management,
  * persistence, and validation logic.
  */
-import { useState, useCallback, useRef, useEffect, useLayoutEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from "react";
 import { DiscordNotifyService } from "@/services/discord-notify.service";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -25,6 +25,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAutosave } from "@/hooks/use-autosave";
+
 
 export function useGeneralApplication() {
   const { user, profile, refreshProfile } = useAuth();
@@ -265,6 +267,24 @@ export function useGeneralApplication() {
     setSection((s) => Math.max(s - 1, 1));
   }, []);
 
+  // ── Autosave: 30s tick, draft only, no toast ───────────────────────────
+  const autosaveValue = useMemo(
+    () => ({ ...gatherSaveFields() }),
+    [gatherSaveFields],
+  );
+  const autosave = useAutosave({
+    value: autosaveValue,
+    enabled: !!activeApp && !isCompleted,
+    label: "general-application",
+    onSave: async (fields) => {
+      if (!activeApp) return;
+      const payload: Partial<GeneralApplication> = { ...fields, status: "draft" };
+      await GeneralApplicationService.save(activeApp.id, payload);
+      // Profile-side fields are non-critical for autosave; sync best-effort.
+      try { await syncProfileFields(); } catch { /* non-blocking */ }
+    },
+  });
+
   return {
     // State
     loading,
@@ -278,6 +298,7 @@ export function useGeneralApplication() {
     showCelebration,
     isCompleted,
     formContainerRef,
+    autosave,
 
     // Setters
     setSection,
@@ -295,3 +316,4 @@ export function useGeneralApplication() {
     navigate,
   };
 }
+

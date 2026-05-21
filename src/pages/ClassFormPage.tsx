@@ -25,6 +25,9 @@ import { classFormSchema, type ClassFormValues } from "@/lib/validators/class";
 import { useQueryClient } from "@/lib/react-query";
 import { SKILLS_OPTIONS as SKILLS_FALLBACK } from "@/lib/skills-framework";
 import { useReferenceList } from "@/hooks/use-reference";
+import { useAutosave } from "@/hooks/use-autosave";
+import { AutosaveStatus } from "@/components/ui/AutosaveStatus";
+
 
 function csvToList(s: string): string[] {
   return s.split(/[\n,]/).map((t) => t.trim()).filter(Boolean);
@@ -61,6 +64,22 @@ export default function ClassFormPage() {
   });
 
   const [prereqText, setPrereqText] = useState("");
+
+  const watched = form.watch();
+  const canAutosave = isEdit && !!id && !!existing
+    && (existing as { status?: string }).status !== "pending_review"
+    && (existing as { status?: string }).status !== "approved"
+    && (existing as { status?: string }).status !== "archived";
+  const autosave = useAutosave({
+    value: watched,
+    enabled: !!canAutosave,
+    label: "class-form",
+    onSave: async (values) => {
+      if (!id) return;
+      await ClassService.update(id, { ...values, prerequisites: values.prerequisites ?? [] } as ClassFormValues);
+    },
+  });
+
 
   useEffect(() => {
     if (existing) {
@@ -223,7 +242,14 @@ export default function ClassFormPage() {
           <Textarea id="prereq" rows={3} value={prereqText} onChange={(e) => setPrereqText(e.target.value)} />
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center flex-wrap">
+          {canAutosave && (
+            <AutosaveStatus
+              status={autosave.status}
+              lastSavedAt={autosave.lastSavedAt}
+              onRetry={autosave.retry}
+            />
+          )}
           <Button type="submit" disabled={submitting}>
             {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             {isEdit ? "Save changes" : "Create draft"}
@@ -232,6 +258,7 @@ export default function ClassFormPage() {
             Cancel
           </Button>
         </div>
+
       </form>
     </div>
   );
