@@ -196,15 +196,17 @@ export default function ProjectAnalysisContent({ projectId }: ProjectAnalysisCon
     enabled: !!user && isAdmin,
   });
 
-  const { data: applyNowProjects } = useQuery({
-    queryKey: ["analysis-apply-now-projects-all"],
+  // Cross-project name lookup: must include ALL projects (any status),
+  // since an applicant's "Also applied to" chip can reference projects
+  // that are no longer in apply_now (recruiting, team_onboarding, etc.).
+  const { data: crossProjectLookup } = useQuery({
+    queryKey: ["analysis-cross-project-lookup"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("projects")
-        .select("id, project_type, phase, client_id, clients(name)")
-        .eq("project_status", "apply_now");
+        .select("id, project_type, phase, project_status, client_id, clients(name)");
       if (error) throw error;
-      return (data ?? []) as unknown as { id: string; project_type: string; phase: string; client_id: string; clients: { name: string } | null }[];
+      return (data ?? []) as unknown as { id: string; project_type: string; phase: string; project_status: string; client_id: string; clients: { name: string } | null }[];
     },
     enabled: !!user && isAdmin,
   });
