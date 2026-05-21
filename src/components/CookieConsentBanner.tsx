@@ -49,12 +49,6 @@ interface CkyConsentDetail {
   isUserActionCompleted?: boolean;
 }
 
-declare global {
-  interface Window {
-    revisitCkyConsent?: () => void;
-    getCkyConsent?: () => unknown;
-  }
-}
 
 const COOKIEYES_SRC = "https://cdn-cookieyes.com/client_data/d4f48648fa538464e81930cedd3aff82/script.js";
 const DEDUP_KEY = "tfn.consent.fp.v1";
