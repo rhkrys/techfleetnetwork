@@ -56,6 +56,13 @@ export function AppFooter() {
           >
             techfleet.org
           </a>
+          {" · "}
+          <a
+            href="mailto:onboarding@techfleet.org"
+            className="hover:text-foreground underline"
+          >
+            onboarding@techfleet.org
+          </a>
         </p>
       </div>
     </footer>
