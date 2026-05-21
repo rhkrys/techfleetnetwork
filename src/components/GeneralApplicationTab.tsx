@@ -209,10 +209,16 @@ export function GeneralApplicationTab() {
               </AlertDialog>
             )}
           </div>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap items-center">
+            <AutosaveStatus
+              status={autosave.status}
+              lastSavedAt={autosave.lastSavedAt}
+              onRetry={autosave.retry}
+            />
             <Button variant="outline" onClick={() => handleSave(false)} disabled={saving}>
               {saving ? "Saving…" : isCompleted ? "Save Changes" : "Save Draft"}
             </Button>
+
             {section < TOTAL_SECTIONS ? (
               <Button onClick={handleNext} disabled={saving}>
                 Next <ArrowRight className="h-4 w-4 ml-2" />
