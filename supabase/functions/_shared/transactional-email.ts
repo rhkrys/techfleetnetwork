@@ -55,6 +55,7 @@ export interface QueueTransactionalEmailInput {
   messageId?: string
   templateData?: JsonRecord
   supabase?: SupabaseClient
+  bypassFrequencyCap?: boolean
 }
 
 export type QueueTransactionalEmailResult =
