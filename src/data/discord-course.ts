@@ -532,7 +532,7 @@ Tech Fleet has four different ways for you to be involved on projects:
 3. You can be a Co-lead
 4. You can be a Group Mentor
 
-Observers watch project teams work. Apprentices work alongside co-leads and own work as servant leaders. Co-leads guide apprentices and contribute to work as servant leaders. Group mentors offer mentorship to teams in subjects they know.
+Observers watch project teams work. Apprentices work alongside co-leads and own work as service leaders. Co-leads guide apprentices and contribute to work as service leaders. Group mentors offer mentorship to teams in subjects they know.
 
 An observer is anyone in the world who wants to watch how project teams work. Because there's no better way to learn how Agile operations work than to watch Agile teams in action!
 
