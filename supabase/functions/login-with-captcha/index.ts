@@ -63,6 +63,7 @@ Deno.serve(withAuditWrapper("login-with-captcha", async (req) => {
     | "ok"
     | "error" = "error";
   let exitStatus = 500;
+  let parsed: ReturnType<typeof BodySchema.safeParse> | null = null;
 
   const exit = (status: number, b: typeof branch, body: unknown, extra: Record<string, string> = {}) => {
     branch = b;
@@ -79,7 +80,7 @@ Deno.serve(withAuditWrapper("login-with-captcha", async (req) => {
       return exit(503, "config_missing", { error: "Verification is temporarily unavailable. Please try again." });
     }
 
-    const parsed = BodySchema.safeParse(await req.json());
+    parsed = BodySchema.safeParse(await req.json());
     if (!parsed.success) {
       log.warn("validate", `Invalid login payload [${requestId}]`, { requestId });
       return exit(400, "validate_fail", { error: "Complete the human verification before trying again." });
