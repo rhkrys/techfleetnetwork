@@ -94,16 +94,41 @@ const youtubeApiReady = (() => {
   };
 })();
 
-function CourseVideoEmbed({ youtubeId, title }: { youtubeId: string; title: string }) {
+function CourseVideoEmbed({
+  youtubeId,
+  title,
+  lessonId,
+}: {
+  youtubeId: string;
+  title: string;
+  lessonId: string;
+}) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
   const playerRef = useRef<YouTubePlayer | null>(null);
   const lastTimeRef = useRef(0);
   const wasPlayingRef = useRef(false);
+  const lastSeekLogRef = useRef(0);
   const storageKey = `course-video-position:${youtubeId}`;
 
   useEffect(() => {
     let cancelled = false;
     let restoreTimer: number | undefined;
+
+    // Fire-and-forget "opened" telemetry so admins know which video was loaded
+    // even if the cross-origin iframe never paints in a session replay.
+    void recordLessonVideoEvent({
+      lessonId,
+      youtubeId,
+      lessonTitle: title,
+      event: "opened",
+    });
+
+    const setPlaybackAttr = (state: "playing" | "paused" | "ended" | "buffering" | "idle") => {
+      wrapperRef.current?.setAttribute("data-playback-state", state);
+    };
+    setPlaybackAttr("idle");
+
     const rememberPosition = () => {
       const player = playerRef.current;
       if (!player) return;
@@ -145,7 +170,48 @@ function CourseVideoEmbed({ youtubeId, title }: { youtubeId: string; title: stri
         events: {
           onReady: restorePosition,
           onStateChange: ({ data }) => {
-            if (data === 1 || data === 2) rememberPosition();
+            const player = playerRef.current;
+            const pos = (() => {
+              try { return player?.getCurrentTime() ?? undefined; } catch { return undefined; }
+            })();
+
+            if (data === 1) {
+              setPlaybackAttr("playing");
+              rememberPosition();
+              // Detect seeks: if the new position jumps >2s from our last
+              // remembered time, treat as a seek (debounced to 1/sec).
+              const now = Date.now();
+              if (
+                pos !== undefined &&
+                Math.abs(pos - lastTimeRef.current) > 2 &&
+                now - lastSeekLogRef.current > 1000
+              ) {
+                lastSeekLogRef.current = now;
+                void recordLessonVideoEvent({
+                  lessonId, youtubeId, lessonTitle: title,
+                  event: "seek", positionSeconds: pos,
+                });
+              }
+              void recordLessonVideoEvent({
+                lessonId, youtubeId, lessonTitle: title,
+                event: "play", positionSeconds: pos,
+              });
+            } else if (data === 2) {
+              setPlaybackAttr("paused");
+              rememberPosition();
+              void recordLessonVideoEvent({
+                lessonId, youtubeId, lessonTitle: title,
+                event: "pause", positionSeconds: pos,
+              });
+            } else if (data === 0) {
+              setPlaybackAttr("ended");
+              void recordLessonVideoEvent({
+                lessonId, youtubeId, lessonTitle: title,
+                event: "ended", positionSeconds: pos,
+              });
+            } else if (data === 3) {
+              setPlaybackAttr("buffering");
+            }
           },
         },
       });
@@ -158,6 +224,11 @@ function CourseVideoEmbed({ youtubeId, title }: { youtubeId: string; title: stri
     return () => {
       cancelled = true;
       rememberPosition();
+      const pos = lastTimeRef.current || undefined;
+      void recordLessonVideoEvent({
+        lessonId, youtubeId, lessonTitle: title,
+        event: "closed", positionSeconds: pos,
+      });
       window.clearInterval(interval);
       window.clearTimeout(restoreTimer);
       window.removeEventListener("resize", handleResize);
@@ -165,21 +236,51 @@ function CourseVideoEmbed({ youtubeId, title }: { youtubeId: string; title: stri
       playerRef.current?.destroy();
       playerRef.current = null;
     };
-  }, [storageKey]);
+  }, [storageKey, lessonId, youtubeId, title]);
 
   return (
     <AspectRatio ratio={16 / 9}>
-      <iframe
-        ref={iframeRef}
-        src={`https://www.youtube.com/embed/${youtubeId}?enablejsapi=1&playsinline=1&rel=0&modestbranding=1&origin=${encodeURIComponent(window.location.origin)}`}
-        title={title}
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-        allowFullScreen
-        className="w-full h-full border-0"
-      />
+      <div
+        ref={wrapperRef}
+        className="relative w-full h-full bg-black"
+        data-lesson-id={lessonId}
+        data-youtube-id={youtubeId}
+        data-lesson-title={title}
+        data-playback-state="idle"
+      >
+        {/*
+          Backplate visible to DOM-based session-replay recorders that can't
+          capture the cross-origin YouTube iframe. Decorative only — the
+          iframe sits on top and remains fully interactive. Hidden from AT
+          since the iframe carries the same title.
+        */}
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 pointer-events-none flex items-end justify-start"
+          style={{
+            backgroundImage: `url("https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg")`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+          }}
+        >
+          <div className="w-full bg-gradient-to-t from-black/80 to-transparent px-4 py-3 text-white">
+            <p className="text-xs uppercase tracking-wide opacity-80">Course video</p>
+            <p className="text-sm font-medium line-clamp-2">{title}</p>
+          </div>
+        </div>
+        <iframe
+          ref={iframeRef}
+          src={`https://www.youtube.com/embed/${youtubeId}?enablejsapi=1&playsinline=1&rel=0&modestbranding=1&origin=${encodeURIComponent(window.location.origin)}`}
+          title={title}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+          allowFullScreen
+          className="absolute inset-0 w-full h-full border-0"
+        />
+      </div>
     </AspectRatio>
   );
 }
+
 
 interface GenericCoursePageProps {
   title: string;
