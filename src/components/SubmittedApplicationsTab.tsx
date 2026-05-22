@@ -56,10 +56,10 @@ interface GeneralApp {
   collaboration_challenges: string;
   teammate_learnings: string;
   psychological_safety: string;
-  servant_leadership_definition: string;
-  servant_leadership_situation: string;
-  servant_leadership_actions: string;
-  servant_leadership_challenges: string;
+  service_leadership_definition: string;
+  service_leadership_situation: string;
+  service_leadership_actions: string;
+  service_leadership_challenges: string;
 }
 
 interface ProjectRow {
@@ -298,10 +298,10 @@ export default function SubmittedApplicationsTab() {
       { headerName: "Psychological Safety", colId: "ga_psychological_safety", flex: 2, valueGetter: (p) => truncate(p.data?.generalApp?.psychological_safety ?? "") },
       { headerName: "Agile Philosophies", colId: "ga_agile_philosophies", flex: 2, valueGetter: (p) => truncate(p.data?.generalApp?.agile_philosophies ?? "") },
       { headerName: "Collaboration Challenges", colId: "ga_collaboration_challenges", flex: 2, valueGetter: (p) => truncate(p.data?.generalApp?.collaboration_challenges ?? "") },
-      { headerName: "Service Leadership Def.", colId: "ga_servant_leadership_definition", flex: 2, valueGetter: (p) => truncate(p.data?.generalApp?.servant_leadership_definition ?? "") },
-      { headerName: "Service Leadership Actions", colId: "ga_servant_leadership_actions", flex: 2, valueGetter: (p) => truncate(p.data?.generalApp?.servant_leadership_actions ?? "") },
-      { headerName: "Service Leadership Challenges", colId: "ga_servant_leadership_challenges", flex: 2, valueGetter: (p) => truncate(p.data?.generalApp?.servant_leadership_challenges ?? "") },
-      { headerName: "Service Leadership Sit.", colId: "ga_servant_leadership_situation", flex: 2, valueGetter: (p) => truncate(p.data?.generalApp?.servant_leadership_situation ?? "") },
+      { headerName: "Service Leadership Def.", colId: "ga_service_leadership_definition", flex: 2, valueGetter: (p) => truncate(p.data?.generalApp?.service_leadership_definition ?? "") },
+      { headerName: "Service Leadership Actions", colId: "ga_service_leadership_actions", flex: 2, valueGetter: (p) => truncate(p.data?.generalApp?.service_leadership_actions ?? "") },
+      { headerName: "Service Leadership Challenges", colId: "ga_service_leadership_challenges", flex: 2, valueGetter: (p) => truncate(p.data?.generalApp?.service_leadership_challenges ?? "") },
+      { headerName: "Service Leadership Sit.", colId: "ga_service_leadership_situation", flex: 2, valueGetter: (p) => truncate(p.data?.generalApp?.service_leadership_situation ?? "") },
       { headerName: "General App Status", colId: "ga_status", flex: 1, valueGetter: (p) => p.data?.generalApp?.status ?? "—" },
       { headerName: "General App Completed", colId: "ga_completed_at", flex: 1, valueGetter: (p) => p.data?.generalApp?.completed_at, valueFormatter: (p) => p.value ? format(new Date(p.value), "MMM d, yyyy") : "—" },
 
