@@ -716,7 +716,7 @@ We're on the second tier of the Agile self-actualization pyramid!
 
 **Service Leadership**
 
-**In Agile, Servant Leadership is the style of leadership all Agile teams build.**
+**In Agile, Service Leadership is the style of leadership all Agile teams build.**
 
 **In Tech Fleet, we call this "Service Leadership" as all teammates are leaders in service to others' growth.**
 
