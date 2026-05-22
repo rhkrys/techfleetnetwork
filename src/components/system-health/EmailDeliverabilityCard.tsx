@@ -68,7 +68,7 @@ export function EmailDeliverabilityCard() {
         .gte("created_at", since);
       if (error) throw error;
       const counts: Record<string, number> = {};
-      for (const r of (data as { template_name: string }[]) ?? []) {
+      for (const r of (data as unknown as { template_name: string }[]) ?? []) {
         counts[r.template_name] = (counts[r.template_name] ?? 0) + 1;
       }
       return counts;
