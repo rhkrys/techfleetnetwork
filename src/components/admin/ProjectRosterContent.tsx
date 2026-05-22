@@ -189,6 +189,38 @@ export default function ProjectRosterContent({ projectId }: ProjectRosterContent
     return Renderer;
   }, []);
 
+  const CoursesPreparedCellRenderer = useMemo(() => {
+    const Renderer = (params: ICellRendererParams<EnrichedApp>) => {
+      const row = params.data!;
+      if (prepCatalog.total === 0) {
+        return <span className="text-xs text-muted-foreground">—</span>;
+      }
+      return (
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className="inline-flex items-center rounded-md px-2 py-0.5 text-sm font-medium tabular-nums hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label={`View completed courses for ${row.applicantName}`}
+            >
+              <span>{row.completedCourseCount}</span>
+              <span className="ml-1 text-muted-foreground">/ {prepCatalog.total}</span>
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-80">
+            <CompletedCoursesPanel
+              completedKeys={row.completedCourseKeys}
+              catalog={prepCatalog}
+              variant="full"
+            />
+          </PopoverContent>
+        </Popover>
+      );
+    };
+    Renderer.displayName = "CoursesPreparedCellRenderer";
+    return Renderer;
+  }, [prepCatalog]);
+
   const columnDefs = useMemo<ColDef<EnrichedApp>[]>(() => [
     { headerName: "Applicant", field: "applicantName", flex: 2, minWidth: 150, filter: true },
     { headerName: "Email", field: "applicantEmail", flex: 2, minWidth: 180, filter: true },
@@ -196,6 +228,12 @@ export default function ProjectRosterContent({ projectId }: ProjectRosterContent
     {
       headerName: "Status", field: "applicant_status", flex: 1.5, minWidth: 140, filter: true,
       valueFormatter: (p) => applicantStatusLabel(p.value ?? "pending_review"),
+    },
+    {
+      headerName: "Courses prepared", field: "completedCourseCount", flex: 1.2, minWidth: 150,
+      filter: "agNumberColumnFilter",
+      cellRenderer: CoursesPreparedCellRenderer,
+      sort: "desc",
     },
     {
       headerName: "Agreement", field: "agreementStatus", flex: 1.6, minWidth: 220, filter: true,
@@ -209,7 +247,7 @@ export default function ProjectRosterContent({ projectId }: ProjectRosterContent
       headerName: "", field: "id", width: 80, pinned: "right", sortable: false, filter: false,
       cellRenderer: ViewCellRenderer,
     },
-  ], [ViewCellRenderer, AgreementCellRenderer]);
+  ], [ViewCellRenderer, AgreementCellRenderer, CoursesPreparedCellRenderer]);
 
   if (appsLoading) {
     return (
