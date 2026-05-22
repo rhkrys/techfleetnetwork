@@ -74,7 +74,7 @@ Deno.serve(withAuditWrapper("verify-turnstile", async (req) => {
 
     // On non-production origins, the widget uses Cloudflare's test sitekey which
     // only validates against the matching test secret. Fall back transparently.
-    if ((!result.ok || result.body.success !== true) && !isProductionOrigin && secret !== TEST_SECRET) {
+    if ((!result.ok || result.body.success !== true) && !isProd && secret !== TEST_SECRET) {
       const fallback = await verifyWith(TEST_SECRET);
       if (fallback.ok && fallback.body.success === true) result = fallback;
     }
