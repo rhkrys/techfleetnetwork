@@ -55,6 +55,7 @@ export interface QueueTransactionalEmailInput {
   messageId?: string
   templateData?: JsonRecord
   supabase?: SupabaseClient
+  bypassFrequencyCap?: boolean
 }
 
 export type QueueTransactionalEmailResult =
@@ -279,6 +280,7 @@ export async function queueTransactionalEmail({
   messageId = crypto.randomUUID(),
   templateData = {},
   supabase: existingClient,
+  bypassFrequencyCap = false,
 }: QueueTransactionalEmailInput): Promise<QueueTransactionalEmailResult> {
   let supabase: SupabaseClient
 
@@ -469,6 +471,7 @@ export async function queueTransactionalEmail({
       idempotency_key: requestIdempotencyKey,
       unsubscribe_token: unsubscribeToken,
       queued_at: new Date().toISOString(),
+      bypass_frequency_cap: bypassFrequencyCap,
     },
   })
 
