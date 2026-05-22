@@ -471,6 +471,7 @@ export async function queueTransactionalEmail({
       idempotency_key: requestIdempotencyKey,
       unsubscribe_token: unsubscribeToken,
       queued_at: new Date().toISOString(),
+      bypass_frequency_cap: bypassFrequencyCap,
     },
   })
 
