@@ -136,6 +136,7 @@ export function TurnstileChallenge({ action, onTokenChange, failureCount = 0, em
         setRetrySeconds(0);
         setLoadFailed(false);
         markLoginCaptchaVerified();
+        if (action === "login") recordLoginEvent(newAttemptId(), "captcha_loaded");
         onTokenChange(token);
       },
       "expired-callback": () => {
@@ -147,6 +148,9 @@ export function TurnstileChallenge({ action, onTokenChange, failureCount = 0, em
         consecutiveFailuresRef.current += 1;
         const kind = classifyTurnstileError(code);
         setTransientError(kind);
+        if (action === "login") {
+          recordLoginEvent(newAttemptId(), "captcha_failed", { branch: kind, requestId: code ?? null });
+        }
         beginRetryCountdown();
       },
     });
