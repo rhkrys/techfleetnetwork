@@ -26,6 +26,9 @@ export default tseslint.config(
       "brand-terms": brandTerms,
       // CSS portability — guards against iOS/Android-breaking `h-screen`/`100vh`.
       "css-portability": cssPortability,
+      // Single source of truth for Discord username capture — forbids raw
+      // `<Input id="discord_username">` outside the shared connector.
+      "discord-connect": noRawDiscordInput,
       // Browser-compat — fails on JS APIs unsupported in our `browserslist`
       // (package.json: iOS >=14.5, Safari >=14.1, Firefox ESR, last 2 versions).
       compat,
