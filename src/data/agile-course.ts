@@ -760,7 +760,7 @@ In the story, a man acts as a servant to a group, doing work for them. One day t
 
 Yet, he was a team's source of inspiration and in service to them. Usually, teams are in service to their managers and leaders.
 
-And so, the concept of service leadership was born (originally called "Servant Leadership" in Greenleaf's writing), and the concept of authoritarian leadership was met with a new way of leading. Leading with the heart.
+And so, the concept of service leadership was born (originally named by Greenleaf using the word "servant"), and the concept of authoritarian leadership was met with a new way of leading. Leading with the heart.
 
 That was over 50 years ago. Today the world has changed along with modern Agile team environments, and service leadership evolves with it.
 
