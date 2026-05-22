@@ -134,6 +134,27 @@ export default function RosterApplicantDetailPage() {
     enabled: !!projApp?.user_id,
   });
 
+  // Course catalog (core + onboarding) and applicant's completions for the
+  // "Completed courses" recruiting-prep panel.
+  const { catalog: prepCatalog } = useCourseCatalogPrep(!!user && isAdmin);
+  const { data: applicantCompletions } = useQuery({
+    queryKey: ["roster-app-completions", projApp?.user_id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("course_completions")
+        .select("course_key")
+        .eq("user_id", projApp!.user_id as string);
+      if (error) throw error;
+      return (data ?? []) as { course_key: string }[];
+    },
+    enabled: !!projApp?.user_id && isAdmin,
+    staleTime: 60 * 1000,
+  });
+  const completedKeys = useMemo(
+    () => new Set((applicantCompletions ?? []).map((r) => r.course_key)),
+    [applicantCompletions],
+  );
+
   const clientName = (project?.clients as { name: string } | null)?.name ?? "Project";
 
   const applicantName = useMemo(() => {
