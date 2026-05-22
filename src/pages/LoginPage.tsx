@@ -32,6 +32,7 @@ import { isAuthThrottleCaptchaError } from "@/lib/auth-throttle-captcha";
 import { reportValidationRejection } from "@/services/error-reporter.service";
 import { normalizeSafeRedirectTarget } from "@/lib/security";
 import { classifyAuthError } from "@/lib/auth-error-classifier";
+import { recordLoginEvent, newAttemptId, flushPendingStaleChunkEvent } from "@/lib/login-telemetry";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
