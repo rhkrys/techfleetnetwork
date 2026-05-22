@@ -1,54 +1,44 @@
-## Problem
+# Fix `/login?_r=…` reload loop
 
-A non-admin user with an enrolled TOTP factor enters a valid 6-digit code, the dialog briefly closes, then immediately reopens — over and over.
+## Root cause (confirmed from `index.html` lines 132-157)
 
-## Root cause
+The `?_r=<epoch-ms>` query string is appended by the inline **pre-mount chunk-404 reloader** in `index.html`. It runs when the initial HTML — typically a cached `index.html` served from edge — references a JS/CSS chunk hash that no longer exists on the CDN after a redeploy. The login page is the most common entry URL for un-authed users, which is why this concentrates on `/login`.
 
-`MfaService.verifyChallenge()` calls `supabase.auth.mfa.verify(...)`, which is supposed to upgrade the session to AAL2, but it does NOT eagerly refresh the cached JWT/`session.access_token` in every path. Meanwhile `MfaEnforcementGuard` has two re-evaluators that fire almost immediately after the dialog closes:
+The loop happens because the guard against re-reloading is `sessionStorage`-only, with an explicit "fall through and reload anyway" on catch:
 
-1. `window` `focus` handler — wipes `lastCheckedToken.current` and re-runs the gate.
-2. `onAuthStateChange("TOKEN_REFRESHED")` — re-runs the gate.
+```js
+try {
+  if (sessionStorage.getItem(RELOAD_KEY)) return;
+  sessionStorage.setItem(RELOAD_KEY, '1');
+} catch (e) { /* fall through */ }     // <-- reloads regardless
+```
 
-If either fires before the new AAL2 token is persisted to the SDK cache, `MfaService.getMfaGateDecision()` decodes the still-AAL1 token, sees `currentAal !== "aal2"`, and opens the dialog again. The user re-verifies, same race, same loop.
-
-This affects any TOTP-enrolled user (memory: "enforced for enrolled users"), but is most visible to non-admins who don't expect the prompt at all and report it as broken.
+Users with `sessionStorage` blocked or partitioned (Brave Shields, Safari ITP in iframes/preview, strict corporate proxies, iOS Private mode) hit the catch on every load → reload → same chunk 404 → reload → infinite loop, with `_r` rewriting each cycle.
 
 ## Fix
 
-### 1. `src/services/mfa.service.ts` — force a session refresh after every successful verify
-In `verifyChallenge()` (and therefore `challengeAndVerify()`), after `supabase.auth.mfa.verify(...)` returns OK and BEFORE `markCurrentSessionVerified()`:
+Single small edit to the inline script in `index.html`:
 
-```ts
-await supabase.auth.refreshSession();
-```
+1. **Primary guard = URL presence.** If `location.search` already contains `_r=`, never reload again. This is storage-independent and bounds the recovery to exactly one attempt per navigation, even when storage is blocked.
+2. Keep the `sessionStorage` flag as belt-and-suspenders for the (rare) case where the cache-bust survives but a different chunk fails on the next load.
+3. Add `_r` to the "ignore our own cache-busted retries" regex on line 137 so a stale URL carrying `_r` cannot re-trip the handler from the asset side.
+4. After the app mounts (signalled by `window.__tfnAppMounted`), strip `_r` from the address bar via `history.replaceState` so users don't bookmark/share URLs with the param and don't leave it in referer headers (the existing `setTimeout` on `load` is the natural place).
 
-This guarantees the SDK cache + storage hold the AAL2 token before any downstream code (gate, RPC, navigation) reads it. Wrap in try/catch and log warn — never block the success path.
+No other files change. No behaviour change for users with working storage. Users with blocked storage stop looping immediately — they get exactly one recovery reload and then fall through to the normal error path (blank screen → ErrorBoundary → "Try again" surface from `lazy-with-retry.ts`).
 
-### 2. `src/components/MfaEnforcementGuard.tsx` — quiet window after success
-Add a `recentlyVerifiedAtRef = useRef<number>(0)` set in `onSuccess`. In `runCheck`, early-return when `Date.now() - recentlyVerifiedAtRef.current < 10_000`. This absorbs the 1–3 race window during which TOKEN_REFRESHED and focus events fire while the new JWT propagates.
+## BDD scenarios to add (`bdd_scenarios`, feature_area = login)
 
-Also: replace the `focus` handler's `lastCheckedToken.current = null; runCheck(session.access_token)` with `runCheck(currentFreshToken)` where the token is re-read from `supabase.auth.getSession()` rather than the stale closure `session.access_token`. Prevents racing the React state update.
-
-### 3. `src/components/MfaChallengeDialog.tsx` — no behavior change, but verify path
-Confirm `onSuccess` is called only after `verifyChallenge` resolves (already true). No edit unless inspection finds a regression.
-
-### Optional safety (in scope)
-- After `markCurrentSessionVerified`, do one more `supabase.auth.refreshSession()` is **not** needed — the first refresh already pulled the AAL2 token; the RPC merely records the hash.
-
-## Out of scope
-
-- The policy of enforcing TOTP on non-admins who enrolled themselves. Memory rule "enforced for enrolled users" stands; the user asked to fix the loop, not change who is gated.
-- LoginPage MFA flow — uses the same `MfaService`, so it inherits the fix automatically.
-- Admin grace dialog (`AdminTwoFactorGraceDialog`) — unaffected.
-- `markCurrentSessionVerified` RPC — already wrapped in try/catch and non-blocking.
-
-## BDD scenarios (to insert into `bdd_scenarios`)
-
-- **AUTH-2FA-LOOP-001** — Given a TOTP-enrolled non-admin signed in at AAL1, When they enter a valid 6-digit code in MfaChallengeDialog, Then `MfaService.verifyChallenge` calls `supabase.auth.mfa.verify` followed by `supabase.auth.refreshSession()` [Code] AND the session's `access_token` `aal` claim decodes to `aal2` within 500 ms [Code/DB] AND `MfaChallengeDialog` does not reopen within the next 10 seconds [UI].
-- **AUTH-2FA-LOOP-002** — Given the user just passed MFA, When `window` fires a `focus` event within 10 seconds, Then `MfaEnforcementGuard.runCheck` short-circuits via `recentlyVerifiedAtRef` and does not invoke `getMfaGateDecision` [Code] AND no dialog opens [UI].
-- **AUTH-2FA-LOOP-003** — Given the focus handler fires after the 10-second quiet window, When it calls `runCheck`, Then it re-reads the access token from `supabase.auth.getSession()` (not the stale closure) [Code] AND if `aal === "aal2"`, no dialog opens [UI].
+- **LCL-LOOP-001** — Pre-mount chunk 404 with working `sessionStorage` → exactly one reload, URL gains `?_r=<ts>` once [UI] AND second pre-mount 404 on the reloaded page does NOT reload [Code].
+- **LCL-LOOP-002** — Pre-mount chunk 404 with `sessionStorage.setItem` throwing → exactly one reload still happens, then URL-based guard blocks any further reload [Code] AND user does NOT enter an infinite loop [UI].
+- **LCL-LOOP-003** — After successful React mount on `/login?_r=…`, the address bar shows `/login` with the `_r` param stripped [UI] AND `history.length` is unchanged [Code].
+- **LCL-LOOP-004** — An asset request whose URL already contains `_r=…` is ignored by the pre-mount handler [Code] AND no reload fires [UI].
 
 ## Verification
 
-- `bunx vitest run src/test/ui/MfaEnforcementGuard.test.tsx src/test/services/mfa.service.test.ts`
-- Manual: log in as a non-admin TOTP-enrolled user, enter valid code, confirm dialog stays closed across page focus and route changes.
+- Manual: open `/login` in Brave with Shields blocking storage → confirm at most one reload, no loop.
+- Manual: open `/login?_r=123` directly → confirm handler does not reload; if mount succeeds the param is stripped from the URL on load.
+- Existing chunk-recovery tests under `src/test/lib/` continue to pass (lazyWithRetry is untouched).
+
+## Out of scope
+
+- The deeper question of *why* stale chunks reach users (CDN/edge-cache of `index.html`). That's the deploy-watcher's job and is already mitigated by `src/lib/deploy-watcher.ts`. This plan only stops the loop when a stale chunk does slip through.
