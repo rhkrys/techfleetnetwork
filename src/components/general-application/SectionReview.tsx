@@ -3,6 +3,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Pencil, CheckCircle2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 import type { AppFormData } from "@/lib/validators/general-application";
 import { SECTION_TITLES, getFieldErrors } from "@/lib/validators/general-application";
 
