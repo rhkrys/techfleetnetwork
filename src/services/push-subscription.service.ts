@@ -186,13 +186,23 @@ async function upsertSubscription(userId: string, subscription: PushSubscription
 }
 
 export class PushSubscriptionService {
-  /** Check if the browser supports push notifications */
+  /** Check if the browser supports the push notification APIs */
   static isSupported(): boolean {
     return (
       "serviceWorker" in navigator &&
       "PushManager" in window &&
       "Notification" in window
     );
+  }
+
+  /**
+   * Check if push is actually usable right now — requires an active service
+   * worker controlling/registered for this page. Tech Fleet ships without a
+   * PWA service worker, so this returns false on most deployments.
+   */
+  static async isReady(): Promise<boolean> {
+    if (!this.isSupported()) return false;
+    return hasActiveServiceWorker();
   }
 
   /** Get the current notification permission state */
