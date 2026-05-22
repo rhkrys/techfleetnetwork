@@ -57,11 +57,32 @@ export function EmailDeliverabilityCard() {
     staleTime: 60_000,
   });
 
+  const { data: cappedBreakdown } = useQuery({
+    queryKey: ["email-frequency-capped-24h"],
+    queryFn: async () => {
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data, error } = await supabase
+        .from("email_send_log" as any)
+        .select("template_name")
+        .eq("status", "frequency_capped")
+        .gte("created_at", since);
+      if (error) throw error;
+      const counts: Record<string, number> = {};
+      for (const r of (data as { template_name: string }[]) ?? []) {
+        counts[r.template_name] = (counts[r.template_name] ?? 0) + 1;
+      }
+      return counts;
+    },
+    staleTime: 60_000,
+  });
+
   const cap = state?.bulk_hourly_cap ?? 50;
   const paused = !!state?.bulk_paused;
   const warmDays = state?.bulk_warmup_started_at
     ? Math.floor((Date.now() - new Date(state.bulk_warmup_started_at).getTime()) / 86_400_000)
     : 0;
+  const cappedTotal = Object.values(cappedBreakdown ?? {}).reduce((a, b) => a + b, 0);
+  const cappedEntries = Object.entries(cappedBreakdown ?? {}).sort((a, b) => b[1] - a[1]);
 
   return (
     <div className="space-y-4">
@@ -81,6 +102,30 @@ export function EmailDeliverabilityCard() {
         </CardHeader>
         {sLoading && <CardContent><Skeleton className="h-4 w-48" /></CardContent>}
       </Card>
+
+      <Card className={cappedTotal > 0 ? "border-warning/40" : undefined}>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <AlertTriangle className={cappedTotal > 0 ? "h-5 w-5 text-warning" : "h-5 w-5 text-muted-foreground"} />
+            Frequency-capped sends (last 24h)
+            <Badge variant={cappedTotal > 0 ? "destructive" : "secondary"}>{cappedTotal}</Badge>
+          </CardTitle>
+          <CardDescription>
+            Recipients dropped by the per-recipient cap on project-blast and fleety-coach-digest. Announcements are exempt.
+          </CardDescription>
+        </CardHeader>
+        {cappedEntries.length > 0 && (
+          <CardContent className="space-y-1 text-sm">
+            {cappedEntries.map(([tpl, n]) => (
+              <div key={tpl} className="flex justify-between border-b last:border-b-0 py-1">
+                <span className="font-medium">{tpl}</span>
+                <span>{n}</span>
+              </div>
+            ))}
+          </CardContent>
+        )}
+      </Card>
+
 
       <Card>
         <CardHeader>
