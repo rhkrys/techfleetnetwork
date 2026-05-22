@@ -49,7 +49,11 @@ export const emailInputSchema = z
   .transform(normalizeEmailInput)
   .refine((val) => val.length >= 3, "Email address is required")
   .refine((val) => val.length <= 254, "Email address must be under 254 characters")
-  .refine((val) => !EMAIL_DANGEROUS_CHARS.test(val), "Enter a valid email address")
+  // Split whitespace check from the other dangerous-char check so we can
+  // surface a specific, friendly message — 1Password / Apple smart-quote
+  // autofill often leaves a stray space at the end of the address.
+  .refine((val) => !/\s/.test(val), "Email cannot contain spaces")
+  .refine((val) => !/[<>"'`\\]/.test(val), "Enter a valid email address")
   .refine((val) => EMAIL_PATTERN.test(val), "Enter a valid email address")
   .refine((val) => !isDisposableEmailDomain(val), "Use a permanent email address, not a temporary inbox.");
 
