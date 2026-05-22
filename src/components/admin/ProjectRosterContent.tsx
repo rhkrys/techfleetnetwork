@@ -12,6 +12,9 @@ import type { ColDef, ICellRendererParams } from "ag-grid-community";
 import { applicantStatusLabel } from "@/components/admin/ApplicantStatusDropdown";
 import { AgreementResendButton } from "@/components/agreements/AgreementResendButton";
 import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CompletedCoursesPanel } from "@/components/admin/CompletedCoursesPanel";
+import { useCourseCatalogPrep } from "@/hooks/use-course-catalog-prep";
 
 interface ProfileRow {
   user_id: string;
