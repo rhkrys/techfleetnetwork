@@ -24,6 +24,7 @@ import { PrivacyRequestsTab } from "@/components/system-health/PrivacyRequestsTa
 import { IncidentsTab } from "@/components/system-health/IncidentsTab";
 import { ProjectBlastsHealthCard } from "@/components/system-health/ProjectBlastsHealthCard";
 import { EmailDeliverabilityCard } from "@/components/system-health/EmailDeliverabilityCard";
+import { EmailDlqPanel } from "@/components/system-health/EmailDlqPanel";
 import { DiscordRepairTab } from "@/components/system-health/DiscordRepairTab";
 import { LoginHealthTab } from "@/components/system-health/LoginHealthTab";
 import { PageTitle } from "@/components/ui/typography";
@@ -242,7 +243,10 @@ export default function SystemHealthPage() {
         </TabsContent>
 
         <TabsContent value="delivery"><LogTable logs={data.recent_logs} generatedAt={generatedAt} /></TabsContent>
-        <TabsContent value="deliverability"><EmailDeliverabilityCard /></TabsContent>
+        <TabsContent value="deliverability" className="space-y-4">
+          <EmailDeliverabilityCard />
+          <EmailDlqPanel />
+        </TabsContent>
         <TabsContent value="blasts"><ProjectBlastsHealthCard /></TabsContent>
         <TabsContent value="errors"><ErrorList errors={data.recent_errors} generatedAt={generatedAt} /></TabsContent>
         <TabsContent value="triage"><TriageTab /></TabsContent>
