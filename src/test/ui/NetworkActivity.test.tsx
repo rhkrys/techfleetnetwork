@@ -48,8 +48,7 @@ describe("NetworkActivity", () => {
     renderWithRouter(<NetworkActivity showMap={false} />);
 
     expect(await screen.findByText("190")).toBeInTheDocument();
-    expect(screen.getAllByText("Course Completions")).toHaveLength(2);
-    expect(screen.queryByText("Core Course Completions")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Core Course Completions")).toHaveLength(2);
     expect(screen.getAllByText("49 core · 62 onboarding")).toHaveLength(2);
     expect(screen.getAllByText("111")).toHaveLength(2);
     expect(screen.getAllByText("122")).toHaveLength(2);
