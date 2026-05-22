@@ -279,10 +279,15 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
         }
       }
 
-      // Bulk template gating: skip (leave in queue) if paused or cap reached.
-      // Per-recipient frequency cap: 1 bulk email per recipient per 24h.
+      // Bulk template gating: skip (leave in queue) if paused or hourly cap reached.
+      // Per-recipient frequency cap applies ONLY to deliverability-sensitive
+      // bulk templates (project-blast, fleety-coach-digest). Announcements
+      // are opt-in broadcasts and bypass the per-recipient cap.
       const labelStr = typeof payload.label === 'string' ? payload.label : ''
-      if (BULK_TEMPLATES.has(labelStr)) {
+      const isAnyBulk = ALL_BULK_TEMPLATES.has(labelStr)
+      const isDeliverabilityBulk = BULK_DELIVERABILITY_TEMPLATES.has(labelStr)
+      const bypassCap = payload?.bypass_frequency_cap === true
+      if (isAnyBulk) {
         if (bulkPaused) {
           console.log('Bulk send paused — leaving message in queue', { msg_id: msg.msg_id })
           continue
@@ -294,29 +299,39 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
           })
           continue
         }
-        const { count: recentToRecipient } = await supabase
-          .from('email_send_log')
-          .select('id', { count: 'exact', head: true })
-          .eq('recipient_email', payload.to)
-          .in('template_name', Array.from(BULK_TEMPLATES))
-          .eq('status', 'sent')
-          .gte('created_at', oneDayAgoIso)
-        if ((recentToRecipient ?? 0) >= 1) {
-          await supabase.from('email_send_log').insert({
-            message_id: payload.message_id,
-            template_name: labelStr || queue,
-            recipient_email: payload.to,
-            status: 'frequency_capped',
-            error_message: 'Recipient already received a bulk email in the last 24h',
-          })
-          const { error: capDelErr } = await supabase.rpc('delete_email', {
-            queue_name: queue,
-            message_id: msg.msg_id,
-          })
-          if (capDelErr) {
-            console.error('Failed to delete frequency-capped message', { error: capDelErr })
+        if (isDeliverabilityBulk && !bypassCap && perRecipientMax > 0) {
+          const { count: recentToRecipient } = await supabase
+            .from('email_send_log')
+            .select('id', { count: 'exact', head: true })
+            .eq('recipient_email', payload.to)
+            .in('template_name', Array.from(BULK_DELIVERABILITY_TEMPLATES))
+            .eq('status', 'sent')
+            .gte('created_at', windowAgoIso)
+          if ((recentToRecipient ?? 0) >= perRecipientMax) {
+            await supabase.from('email_send_log').insert({
+              message_id: payload.message_id,
+              template_name: labelStr || queue,
+              recipient_email: payload.to,
+              status: 'frequency_capped',
+              error_message: `Recipient already received ${perRecipientMax} ${labelStr} email(s) in the last ${perRecipientWindowHours}h`,
+            })
+            // Surface to triage queue (deduped) so admins can see drops.
+            await supabase.rpc('upsert_agent_fix_queue', {
+              p_fingerprint: `email.frequency_capped.${labelStr}`,
+              p_severity: 'warning',
+              p_title: `Bulk email capped for ${labelStr}`,
+              p_summary: `One or more recipients hit the ${perRecipientWindowHours}h per-recipient cap for ${labelStr}.`,
+              p_metadata: { template: labelStr, window_hours: perRecipientWindowHours },
+            }).then(() => {}, () => {})
+            const { error: capDelErr } = await supabase.rpc('delete_email', {
+              queue_name: queue,
+              message_id: msg.msg_id,
+            })
+            if (capDelErr) {
+              console.error('Failed to delete frequency-capped message', { error: capDelErr })
+            }
+            continue
           }
-          continue
         }
       }
 
