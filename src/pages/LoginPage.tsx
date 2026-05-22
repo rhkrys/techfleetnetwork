@@ -230,6 +230,11 @@ export default function LoginPage() {
     setOauthHint(null);
     setLoading(true);
 
+    const attemptId = newAttemptId();
+    const attemptStarted = Date.now();
+    recordLoginEvent(attemptId, "started", { email: result.data.email });
+
+
     try {
       // PEEK only — never increment on the way in. The bucket now counts only
       // confirmed credential rejections (recordFailure below). This prevents
