@@ -3,6 +3,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Pencil, CheckCircle2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 import type { AppFormData } from "@/lib/validators/general-application";
 import { SECTION_TITLES, getFieldErrors } from "@/lib/validators/general-application";
 
@@ -71,6 +72,7 @@ function ReviewSection({
 
 /** Section 6: Review — read-only summary of all sections */
 export function SectionReview({ form, onEditSection }: Props) {
+  const { profile } = useAuth();
   const s1Errors = Object.keys(getFieldErrors(form, 1)).length > 0;
   const s2Errors = Object.keys(getFieldErrors(form, 2)).length > 0;
   const s3Errors = Object.keys(getFieldErrors(form, 3)).length > 0;
@@ -78,6 +80,15 @@ export function SectionReview({ form, onEditSection }: Props) {
   const s5Errors = Object.keys(getFieldErrors(form, 5)).length > 0;
 
   const totalIncomplete = [s1Errors, s2Errors, s3Errors, s4Errors, s5Errors].filter(Boolean).length;
+
+  // Discord link status reads from the verified profile (source of truth),
+  // never from the form's free-text field — which no longer exists.
+  const discordLinked = Boolean(profile?.discord_user_id);
+  const discordLabel = discordLinked
+    ? profile?.discord_username
+      ? `Linked as @${profile.discord_username}`
+      : "Linked to Discord"
+    : "Not linked";
 
   return (
     <div className="space-y-6" role="region" aria-label="Application review">
@@ -108,7 +119,8 @@ export function SectionReview({ form, onEditSection }: Props) {
         <ReviewField label="Timezone" value={form.timezone} empty={!form.timezone} />
         <ReviewField
           label="Discord Account"
-          value={form.has_discord_account ? (form.discord_username || "Yes (no username provided)") : "No"}
+          value={discordLabel}
+          empty={!discordLinked}
         />
         <ReviewField
           label="Experience Areas"

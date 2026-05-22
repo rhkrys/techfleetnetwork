@@ -166,15 +166,17 @@ export function useGeneralApplication() {
     current_section: section,
   }), [title, form, section]);
 
-  /** Sync profile fields from Section 2 */
+  /** Sync profile fields from Section 2 — note: discord_username/has_discord_account
+   *  are intentionally excluded. The shared ProfileDiscordConnector is the only
+   *  writer for verified Discord identity (profile.discord_user_id +
+   *  profile.discord_username). Overwriting them here would clobber the verified
+   *  link with stale form state. */
   const syncProfileFields = useCallback(async () => {
     if (!user) return;
     try {
       await ProfileService.updateFields(user.id, {
         country: form.country,
         timezone: form.timezone,
-        discord_username: form.discord_username,
-        has_discord_account: form.has_discord_account,
         experience_areas: form.experience_areas,
         professional_goals: form.professional_goals,
         notify_training_opportunities: form.notify_training_opportunities,

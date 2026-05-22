@@ -7,7 +7,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { MultiSelect, type MultiSelectOption } from "@/components/ui/multi-select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Globe, Clock, MessageCircle, Check, ChevronsUpDown, AlertCircle, Link as LinkIcon, Bell, Search } from "lucide-react";
+import { Globe, Clock, Check, ChevronsUpDown, AlertCircle, Link as LinkIcon, Bell, Search } from "lucide-react";
+import { ProfileDiscordConnector } from "@/components/profile/ProfileDiscordConnector";
 import { cn } from "@/lib/utils";
 import { COUNTRIES } from "@/lib/countries";
 import { TIMEZONES } from "@/lib/timezones";
@@ -113,52 +114,8 @@ export function SectionProfile({ form, errors, updateField }: Props) {
         {errors.timezone && <p className="text-sm text-destructive flex items-center gap-1" role="alert"><AlertCircle className="h-3 w-3" /> {errors.timezone}</p>}
       </div>
 
-      {/* Discord Connection */}
-      <div className="space-y-1.5">
-        <Label>Do you have a Discord account?</Label>
-        <div className="flex items-center gap-4">
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input
-              type="radio"
-              name="has_discord"
-              checked={form.has_discord_account}
-              onChange={() => updateField("has_discord_account", true)}
-              className="accent-primary"
-            />
-            Yes
-          </label>
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input
-              type="radio"
-              name="has_discord"
-              checked={!form.has_discord_account}
-              onChange={() => {
-                updateField("has_discord_account", false);
-                updateField("discord_username", "");
-              }}
-              className="accent-primary"
-            />
-            No
-          </label>
-        </div>
-      </div>
-
-      {form.has_discord_account && (
-        <div className="space-y-1.5">
-          <Label htmlFor="app-discord">Discord Username</Label>
-          <div className="relative">
-            <MessageCircle className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
-            <Input
-              id="app-discord"
-              value={form.discord_username}
-              onChange={(e) => updateField("discord_username", e.target.value)}
-              placeholder="username"
-              className="pl-10"
-              maxLength={100}
-            />
-          </div>
-        </div>
-      )}
+      {/* Discord Connection — shared verified flow (identical UX everywhere) */}
+      <ProfileDiscordConnector />
 
       <Separator />
 
