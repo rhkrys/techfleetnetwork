@@ -46,6 +46,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@/lib/react-query";
 import { DiscordNotifyService } from "@/services/discord-notify.service";
 import type { CourseLesson, CourseSection } from "@/data/project-training-course";
+import { recordLessonVideoEvent } from "@/lib/telemetry/lesson-video";
 
 type YouTubePlayerState = -1 | 0 | 1 | 2 | 3 | 5;
 
