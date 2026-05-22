@@ -716,7 +716,7 @@ We're on the second tier of the Agile self-actualization pyramid!
 
 **Service Leadership**
 
-**In Agile, Servant Leadership is the style of leadership all Agile teams build.**
+**In Agile, Service Leadership is the style of leadership all Agile teams build.**
 
 **In Tech Fleet, we call this "Service Leadership" as all teammates are leaders in service to others' growth.**
 
@@ -734,7 +734,7 @@ Everyone is a service leader to everyone else on an Agile team. It's a web of su
 
 **Acting as a Service Leader**
 
-All team mates should act as servant leaders to each other, those around them, those "above" them, or those "below" them in any organization's hierarchy.
+All team mates should act as service leaders to each other, those around them, those "above" them, or those "below" them in any organization's hierarchy.
 
 There is no leadership hierarchy in this style of leadership because power is transferred to everyone on the team. Peers lead themselves and others together.
 
@@ -760,7 +760,7 @@ In the story, a man acts as a servant to a group, doing work for them. One day t
 
 Yet, he was a team's source of inspiration and in service to them. Usually, teams are in service to their managers and leaders.
 
-And so, the concept of Servant Leadership was born, and the concept of authoritarian leadership was met with a new way of leading. Leading with the heart.
+And so, the concept of service leadership was born (originally named by Greenleaf using the word "servant"), and the concept of authoritarian leadership was met with a new way of leading. Leading with the heart.
 
 That was over 50 years ago. Today the world has changed along with modern Agile team environments, and service leadership evolves with it.
 

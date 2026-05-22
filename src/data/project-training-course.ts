@@ -155,7 +155,7 @@ The General Application has questions about:
 2. Your education outside of Tech Fleet
 3. Your prior engagement and training within Tech Fleet
 4. Your desired skill sets to focus on
-5. Your Servant Leadership mindset
+5. Your Service Leadership mindset
 6. Your Agile mindset
 
 **The Project Phase Application**
@@ -236,7 +236,7 @@ Tech Fleet is committed to keeping our community members and their data secure a
 **Completed Actions in Tech Fleet**
 
 1. Previously observed project teams
-2. Previously taken the Servant Leadership Masterclass
+2. Previously taken the Service Leadership Masterclass
 3. Read the Apprentice Handbook, Co-Lead Handbook, Agile Handbook, Guidelines, and info about Life in Tech Fleet
 4. Understand what questions we ask when applying
 5. Complete both the General and Project Phase Applications
@@ -249,7 +249,7 @@ Tech Fleet is committed to keeping our community members and their data secure a
 4. Prior education-building foundation (bootcamp, cert, school, self-training)
 5. Knowledge about your role
 6. Knowledge about Agile philosophies
-7. Knowledge about Servant Leadership`,
+7. Knowledge about Service Leadership`,
       },
       {
         id: "pt-apply-4",
@@ -371,12 +371,12 @@ These are the questions that we ask you on the General Application.
 5. What team practices do you already feel confident in?
 6. What team practices do you want to learn the most?
 
-**Servant Leadership Skills (AKA Service Leadership)**
+**Service Leadership Skills (AKA Service Leadership)**
 
 1. What is Service Leadership to you?
-2. In what ways would you / do you act as a Servant Leader to yourself and others on teams as an apprentice or a co-lead?
-3. What challenges do you currently face in Servant Leadership that you are working on?
-4. What would you do in a situation where a person on a team is not acting as a servant leader to you or to others?
+2. In what ways would you / do you act as a Service Leader to yourself and others on teams as an apprentice or a co-lead?
+3. What challenges do you currently face in Service Leadership that you are working on?
+4. What would you do in a situation where a person on a team is not acting as a service leader to you or to others?
 
 **Agile Skills**
 
@@ -392,11 +392,11 @@ These are the questions that we ask you on the General Application.
         sourceUrl: "https://guide.techfleet.org/team-portal/new-teammate-handbook/project-training-teams/applying-to-tech-fleet-project-training/updating-the-general-application",
         content: `**The General Application**
 
-The General Application is the application you can fill out and reuse across project applications. We ask you questions about yourself and your training for Agile cross-functional teams. We primarily look for people who have observed Tech Fleet teams, trained in Servant leadership, and prepared in Agile philosophies on teams. You may not have done this when you initially filled out the General App, but have no fear. You can update it over time!
+The General Application is the application you can fill out and reuse across project applications. We ask you questions about yourself and your training for Agile cross-functional teams. We primarily look for people who have observed Tech Fleet teams, trained in Service leadership, and prepared in Agile philosophies on teams. You may not have done this when you initially filled out the General App, but have no fear. You can update it over time!
 
 **Update Your Answers Over Time**
 
-As you observe and take masterclasses in Tech Fleet, your knowledge about servant leadership and Agile philosophies will grow over time. Update your answers on the General Application whenever you learn something new. This way, when teams review your applications for project training, it's based on the latest knowledge you have about these important subjects.
+As you observe and take masterclasses in Tech Fleet, your knowledge about service leadership and Agile philosophies will grow over time. Update your answers on the General Application whenever you learn something new. This way, when teams review your applications for project training, it's based on the latest knowledge you have about these important subjects.
 
 **How To Update the Tech Fleet General Application**
 
@@ -544,7 +544,7 @@ Do not record video or audio, or AI transcription of team interviews. Rely on no
 
 2. **Follow & Contribute** — At Tech Fleet we believe that contribution = growth. Those who contribute should be awarded more opportunities to contribute further. Being a project observer is a great way of understanding the working dynamics of a Tech Fleet team and making a contribution to the community.
 
-3. **Prepare for Agile and Service Leadership** — All Agile team mates are expert collaborators before anything else. People on Tech Fleet projects often must build a mindset of Agile and of Servant Leadership before they can fully succeed in teams and contribute their best work. Take the Servant Leadership Masterclass and read the Agile handbook before applying to maximize your success.
+3. **Prepare for Agile and Service Leadership** — All Agile team mates are expert collaborators before anything else. People on Tech Fleet projects often must build a mindset of Agile and of Service Leadership before they can fully succeed in teams and contribute their best work. Take the Service Leadership Masterclass and read the Agile handbook before applying to maximize your success.
 
 4. **Shadow shadow shadow!** — Observers gain advantage in Tech Fleet programs because they've seen the work happen on teams. We recommend you shadow for one full week, watching as many team meetings on one project that you can, so you get a full sense of the work ahead. Show in your application responses that you've shadowed, and your leads will be able to tell you've prepared for the apprenticeship program.
 

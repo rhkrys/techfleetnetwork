@@ -927,10 +927,10 @@ export default function ProjectApplicationStatusPage() {
 
             <Separator className="my-2" />
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Service Leadership</p>
-            <ReadOnlyField label="Servant Leadership Definition" value={(genApp.servant_leadership_definition as string) ?? ""} />
-            <ReadOnlyField label="Servant Leadership Actions" value={(genApp.servant_leadership_actions as string) ?? ""} />
-            <ReadOnlyField label="Servant Leadership Challenges" value={(genApp.servant_leadership_challenges as string) ?? ""} />
-            <ReadOnlyField label="Servant Leadership Situation" value={(genApp.servant_leadership_situation as string) ?? ""} />
+            <ReadOnlyField label="Service Leadership Definition" value={(genApp.servant_leadership_definition as string) ?? ""} />
+            <ReadOnlyField label="Service Leadership Actions" value={(genApp.servant_leadership_actions as string) ?? ""} />
+            <ReadOnlyField label="Service Leadership Challenges" value={(genApp.servant_leadership_challenges as string) ?? ""} />
+            <ReadOnlyField label="Service Leadership Situation" value={(genApp.servant_leadership_situation as string) ?? ""} />
           </CardContent>
         </Card>
       )}
