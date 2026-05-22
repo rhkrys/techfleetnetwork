@@ -25,6 +25,7 @@ import { IncidentsTab } from "@/components/system-health/IncidentsTab";
 import { ProjectBlastsHealthCard } from "@/components/system-health/ProjectBlastsHealthCard";
 import { EmailDeliverabilityCard } from "@/components/system-health/EmailDeliverabilityCard";
 import { DiscordRepairTab } from "@/components/system-health/DiscordRepairTab";
+import { LoginHealthTab } from "@/components/system-health/LoginHealthTab";
 import { PageTitle } from "@/components/ui/typography";
 
 const FIVE_MIN = 5 * 60 * 1000;
@@ -209,6 +210,7 @@ export default function SystemHealthPage() {
           <TabsTrigger value="triage">Triage</TabsTrigger>
           <TabsTrigger value="silent">Silent failures</TabsTrigger>
           <TabsTrigger value="performance">Performance</TabsTrigger>
+          <TabsTrigger value="login">Login</TabsTrigger>
           <TabsTrigger value="fleety">Fleety</TabsTrigger>
           <TabsTrigger value="content">Content</TabsTrigger>
           <TabsTrigger value="privacy">Privacy</TabsTrigger>
@@ -249,6 +251,7 @@ export default function SystemHealthPage() {
           <PerformanceTab />
           <PerformanceByBrowserTab />
         </TabsContent>
+        <TabsContent value="login"><LoginHealthTab /></TabsContent>
         <TabsContent value="fleety"><FleetyHealthTab /></TabsContent>
         <TabsContent value="content"><ContentGapsTab /></TabsContent>
         <TabsContent value="privacy"><PrivacyRequestsTab /></TabsContent>

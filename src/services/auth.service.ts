@@ -171,7 +171,7 @@ async function singleFlightSetSession(tokens: { access_token: string; refresh_to
 }
 
 export const AuthService = {
-  async signInWithPassword(email: string, password: string, captchaToken?: string) {
+  async signInWithPassword(email: string, password: string, captchaToken?: string, attemptId?: string) {
     const parsedEmail = emailInputSchema.safeParse(email);
     if (!parsedEmail.success || !passwordSchema.safeParse(password).success) {
       throw blockedAuthInputError;
@@ -188,7 +188,7 @@ export const AuthService = {
     void logAccountActivity("login_attempt_started", { email: safeEmail });
     return log.track("signInWithPassword", `Authenticating user ${safeEmail}`, { email: safeEmail }, async () => {
       const { data, error } = await supabase.functions.invoke<{ session: AuthSession; user: AuthSession["user"] }>("login-with-captcha", {
-        body: { email: safeEmail, password, captchaToken: captchaToken.trim() },
+        body: { email: safeEmail, password, captchaToken: captchaToken.trim(), ...(attemptId ? { attemptId } : {}) },
       }).then(async (res) => {
         if (res.error) return { data: null, error: res.error };
         if (res.data?.session?.access_token && res.data.session.refresh_token) {

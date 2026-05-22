@@ -2894,6 +2894,57 @@ export type Database = {
           },
         ]
       }
+      login_attempts: {
+        Row: {
+          attempt_id: string
+          branch: string | null
+          created_at: string
+          duration_ms: number | null
+          email_domain: string | null
+          email_hash: string | null
+          http_status: number | null
+          id: string
+          ip_hash: string | null
+          origin_host: string | null
+          outcome: string
+          request_id: string | null
+          user_agent_short: string | null
+          user_id: string | null
+        }
+        Insert: {
+          attempt_id: string
+          branch?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          email_domain?: string | null
+          email_hash?: string | null
+          http_status?: number | null
+          id?: string
+          ip_hash?: string | null
+          origin_host?: string | null
+          outcome: string
+          request_id?: string | null
+          user_agent_short?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          attempt_id?: string
+          branch?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          email_domain?: string | null
+          email_hash?: string | null
+          http_status?: number | null
+          id?: string
+          ip_hash?: string | null
+          origin_host?: string | null
+          outcome?: string
+          request_id?: string | null
+          user_agent_short?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       milestone_reference: {
         Row: {
           activities: string[]
@@ -5902,6 +5953,8 @@ export type Database = {
         Returns: boolean
       }
       _current_aal: { Args: never; Returns: string }
+      _login_hash: { Args: { value: string }; Returns: string }
+      _login_outcome_allowed: { Args: { o: string }; Returns: boolean }
       admin_2fa_grace_active: { Args: { _user_id: string }; Returns: boolean }
       admin_2fa_grace_deadline: { Args: { _user_id: string }; Returns: string }
       admin_recompute_stats: { Args: never; Returns: Json }
@@ -6374,6 +6427,7 @@ export type Database = {
         Args: { p_hours?: number; p_limit?: number }
         Returns: Json
       }
+      get_login_health: { Args: { p_window_minutes?: number }; Returns: Json }
       get_member_country_distribution: { Args: never; Returns: Json }
       get_milestone_blueprint: { Args: { p_id: string }; Returns: Json }
       get_network_stats: { Args: never; Returns: Json }
@@ -6541,6 +6595,7 @@ export type Database = {
         }[]
       }
       prune_email_send_log: { Args: never; Returns: number }
+      prune_login_attempts: { Args: never; Returns: number }
       prune_stale_rate_limits: { Args: never; Returns: number }
       purge_old_audit_logs: {
         Args: { retention_days?: number }
@@ -6570,6 +6625,22 @@ export type Database = {
       record_failed_login: {
         Args: { _email: string; _ip?: string; _user_agent?: string }
         Returns: Json
+      }
+      record_login_event: {
+        Args: {
+          p_attempt_id: string
+          p_branch?: string
+          p_duration_ms?: number
+          p_email?: string
+          p_http_status?: number
+          p_ip?: string
+          p_origin_host?: string
+          p_outcome: string
+          p_request_id?: string
+          p_user_agent?: string
+          p_user_id?: string
+        }
+        Returns: undefined
       }
       record_policy_ack: {
         Args: {
