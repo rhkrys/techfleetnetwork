@@ -31,8 +31,11 @@ export default function ApplicationsPage() {
   useEffect(() => {
     if (!user) return;
     GeneralApplicationService.list(user.id).then((apps) => {
-      if (apps.length > 0 && apps[0].status === "completed") {
-        setAppStatus({ completed: true, completedAt: ((apps[0] as unknown as Record<string, unknown>).completed_at as string | null) ?? apps[0].updated_at });
+      const app = apps[0];
+      if (app && (app.status === "completed" || app.completed_at)) {
+        setAppStatus({ completed: true, completedAt: app.completed_at ?? app.updated_at });
+      } else {
+        setAppStatus({ completed: false, completedAt: null });
       }
     }).catch((e) => reportError(e, "ApplicationsPage.loadGeneralApp", { severity: "warn" }));
   }, [user]);
