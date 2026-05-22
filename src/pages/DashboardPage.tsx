@@ -348,18 +348,6 @@ export default function DashboardPage() {
 
       {widgetOrder.map((widgetId) => {
         switch (widgetId) {
-          case "feedback":
-            return isVisible("feedback") ? (
-              <section key="feedback" aria-labelledby="feedback-heading">
-                <Link to="/feedback" className="tf-card p-4 hover:border-primary/40 transition-all flex items-center gap-3">
-                  <div className="min-w-0 flex-1">
-                    <CardTitle as="h2" id="feedback-heading">Share Feedback</CardTitle>
-                    <Caption className="mt-0.5">Send ideas, report issues, or suggest improvements.</Caption>
-                  </div>
-                </Link>
-              </section>
-            ) : null;
-
           case "badges":
             return isVisible("badges") ? (
               <section key="badges">

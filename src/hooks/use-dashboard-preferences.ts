@@ -4,7 +4,6 @@ import { useAuth } from "@/contexts/AuthContext";
 
 export type DashboardWidgetId =
   | "core_courses"
-  | "feedback"
   | "world_map"
   | "network_activity"
   | "latest_updates"
@@ -14,7 +13,6 @@ export type DashboardWidgetId =
 
 export const ALL_WIDGETS: { id: DashboardWidgetId; label: string; adminOnly?: boolean }[] = [
   { id: "core_courses", label: "Core Courses" },
-  { id: "feedback", label: "Share Feedback" },
   { id: "world_map", label: "Tech Fleet Network Map" },
   { id: "network_activity", label: "Tech Fleet Network Activity" },
   { id: "latest_updates", label: "Community Updates" },
