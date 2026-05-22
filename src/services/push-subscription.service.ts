@@ -210,9 +210,14 @@ export class PushSubscriptionService {
 
       const registration = await getReadyRegistration();
       if (!registration) {
-        const message = "Push notifications are not ready because the app service worker is unavailable.";
-        reportError(new Error(message), "PushSubscriptionService.subscribe.registration", userId);
-        return { status: "no_sw", message };
+        // No active service worker on this deployment (PWA/SW intentionally disabled).
+        // Treat as unsupported environment rather than an error — push simply isn't
+        // available here. Do NOT reportError: this is expected and would spam triage.
+        log.info("Push subscribe skipped: no active service worker on this deployment");
+        return {
+          status: "unsupported",
+          message: "Push notifications aren't available in this browser or on this device.",
+        };
       }
 
       await refreshServiceWorker(registration);
