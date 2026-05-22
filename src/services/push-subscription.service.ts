@@ -213,7 +213,7 @@ export class PushSubscriptionService {
         // No active service worker on this deployment (PWA/SW intentionally disabled).
         // Treat as unsupported environment rather than an error — push simply isn't
         // available here. Do NOT reportError: this is expected and would spam triage.
-        log.info("Push subscribe skipped: no active service worker on this deployment");
+        log.info("subscribe", "Push subscribe skipped: no active service worker on this deployment");
         return {
           status: "unsupported",
           message: "Push notifications aren't available in this browser or on this device.",
