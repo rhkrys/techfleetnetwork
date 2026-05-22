@@ -145,6 +145,7 @@ export default function LoginPage() {
   useEffect(() => {
     maybeAutoHealAuthLockout();
     setLockoutState(getAuthLockoutState());
+    flushPendingStaleChunkEvent();
   }, []);
 
   // Track which email the device counter is currently associated with.
