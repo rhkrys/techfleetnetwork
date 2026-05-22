@@ -89,6 +89,7 @@ export interface GeneralApplication {
   current_section: number;
   created_at: string;
   updated_at: string;
+  completed_at: string | null;
 }
 
 /** Fetch the user's email from their profile */
