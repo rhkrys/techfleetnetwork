@@ -130,7 +130,7 @@ Deno.serve(async (req) => {
     }
     const airtable_general_apps = genAppKeys.size;
 
-    // 2 + 3. Masterclass Registrations — total + unique Service/Servant Leadership registrants
+    // 2 + 3. Masterclass Registrations — total + unique Service Leadership registrants (legacy alias: "Servant Leadership")
     const mc = await fetchAll(MASTERCLASS_TABLE);
     const airtable_masterclass_total = mc.length;
     const slKeys = new Set<string>();
