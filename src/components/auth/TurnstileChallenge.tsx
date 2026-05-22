@@ -200,14 +200,17 @@ export function TurnstileChallenge({ action, onTokenChange, failureCount = 0, em
   const handleSendMagicLink = useCallback(async () => {
     if (!email || magicLinkState === "sending" || magicLinkState === "sent") return;
     setMagicLinkState("sending");
+    const magicAttemptId = newAttemptId();
     try {
       const { error } = await supabase.functions.invoke("send-magic-link", {
-        body: { email, redirectTo: `${window.location.origin}/dashboard` },
+        body: { email, redirectTo: `${window.location.origin}/dashboard`, attemptId: magicAttemptId },
       });
       if (error) throw error;
       setMagicLinkState("sent");
+      recordLoginEvent(magicAttemptId, "magic_link_sent", { email });
     } catch {
       setMagicLinkState("error");
+      recordLoginEvent(magicAttemptId, "magic_link_failed", { email });
     }
   }, [email, magicLinkState]);
 
