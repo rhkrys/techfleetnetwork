@@ -43,6 +43,8 @@ interface EnrichedApp extends AppRow {
   applicantEmail: string;
   hats: string;
   agreementStatus: "not_required" | "pending" | "signed";
+  completedCourseKeys: Set<string>;
+  completedCourseCount: number;
 }
 
 interface ProjectRosterContentProps {
