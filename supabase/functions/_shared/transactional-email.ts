@@ -280,6 +280,7 @@ export async function queueTransactionalEmail({
   messageId = crypto.randomUUID(),
   templateData = {},
   supabase: existingClient,
+  bypassFrequencyCap = false,
 }: QueueTransactionalEmailInput): Promise<QueueTransactionalEmailResult> {
   let supabase: SupabaseClient
 
