@@ -734,7 +734,7 @@ Everyone is a service leader to everyone else on an Agile team. It's a web of su
 
 **Acting as a Service Leader**
 
-All team mates should act as servant leaders to each other, those around them, those "above" them, or those "below" them in any organization's hierarchy.
+All team mates should act as service leaders to each other, those around them, those "above" them, or those "below" them in any organization's hierarchy.
 
 There is no leadership hierarchy in this style of leadership because power is transferred to everyone on the team. Peers lead themselves and others together.
 
