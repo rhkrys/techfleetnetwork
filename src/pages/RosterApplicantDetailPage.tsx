@@ -334,9 +334,16 @@ export default function RosterApplicantDetailPage() {
         </Card>
       ) : null}
 
-
-
-
+      {/* Completed courses — recruiting prep snapshot */}
+      <Card>
+        <CardContent className="pt-6">
+          <CompletedCoursesPanel
+            completedKeys={completedKeys}
+            catalog={prepCatalog}
+            variant="full"
+          />
+        </CardContent>
+      </Card>
 
 
       {/* Submission meta */}
