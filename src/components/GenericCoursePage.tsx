@@ -895,6 +895,7 @@ export default function GenericCoursePage({
                       <CourseVideoEmbed
                         youtubeId={selectedLesson.youtubeId}
                         title={selectedLesson.title}
+                        lessonId={selectedLesson.id}
                       />
                     </div>
                   </div>
