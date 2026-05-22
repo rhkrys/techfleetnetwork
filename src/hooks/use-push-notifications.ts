@@ -17,10 +17,17 @@ export function usePushNotifications() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    setIsSupported(PushSubscriptionService.isSupported());
     setPermission(PushSubscriptionService.getPermission());
-
-    PushSubscriptionService.isSubscribed().then(setIsSubscribed);
+    // Gate "supported" on actually having an active service worker — on
+    // deployments without a SW (Tech Fleet today) push cannot work, so we
+    // surface the friendly "not available" UI instead of letting users
+    // trigger a subscribe() that will fail and log an error.
+    PushSubscriptionService.isReady().then((ready) => {
+      setIsSupported(ready);
+      if (ready) {
+        PushSubscriptionService.isSubscribed().then(setIsSubscribed);
+      }
+    });
   }, []);
 
   const subscribe = useCallback(async (): Promise<SubscribeResult> => {
