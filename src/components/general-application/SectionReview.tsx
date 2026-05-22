@@ -119,7 +119,8 @@ export function SectionReview({ form, onEditSection }: Props) {
         <ReviewField label="Timezone" value={form.timezone} empty={!form.timezone} />
         <ReviewField
           label="Discord Account"
-          value={form.has_discord_account ? (form.discord_username || "Yes (no username provided)") : "No"}
+          value={discordLabel}
+          empty={!discordLinked}
         />
         <ReviewField
           label="Experience Areas"
