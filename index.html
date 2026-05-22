@@ -166,6 +166,8 @@
             sessionStorage.setItem(RELOAD_KEY, '1');
           } catch (e) { /* storage blocked — URL guard above is sufficient */ }
           reloadFired = true;
+          // Mark for telemetry flush on next mount (LoginHealth tab).
+          try { sessionStorage.setItem('tfn_login_stale_chunk_pending', String(Date.now())); } catch (e) {}
           var url = new URL(window.location.href);
           url.searchParams.set(RELOAD_PARAM, String(Date.now()));
           window.location.replace(url.toString());

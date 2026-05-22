@@ -253,7 +253,7 @@ export default function LoginPage() {
       // OAuth-identity hint check on failure (Turnstile tokens are single-use,
       // so the hint check uses a fresh token via the next render — see below).
       try {
-        const authResult = await AuthService.signInWithPassword(result.data.email, result.data.password, captchaToken);
+        const authResult = await AuthService.signInWithPassword(result.data.email, result.data.password, captchaToken, attemptId);
         recordLoginEvent(attemptId, "session_set", {
           email: result.data.email,
           durationMs: Date.now() - attemptStarted,
