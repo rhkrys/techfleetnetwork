@@ -21,7 +21,7 @@ export function SectionLeadership({ form, errors, updateField }: Props) {
       />
       <LongFormQuestion
         id="sl-actions"
-        label="What actions would you take to demonstrate servant leadership within your project team?"
+        label="What actions would you take to demonstrate service leadership within your project team?"
         value={form.servant_leadership_actions}
         onChange={(v) => updateField("servant_leadership_actions", v)}
         error={errors.servant_leadership_actions}
@@ -29,7 +29,7 @@ export function SectionLeadership({ form, errors, updateField }: Props) {
       />
       <LongFormQuestion
         id="sl-challenges"
-        label="What are some challenges you might face in practicing servant leadership, and how would you address them?"
+        label="What are some challenges you might face in practicing service leadership, and how would you address them?"
         value={form.servant_leadership_challenges}
         onChange={(v) => updateField("servant_leadership_challenges", v)}
         error={errors.servant_leadership_challenges}
@@ -37,7 +37,7 @@ export function SectionLeadership({ form, errors, updateField }: Props) {
       />
       <LongFormQuestion
         id="sl-situation"
-        label="What would you do in a situation where a person on a team is not acting as a servant leader to you or to others?"
+        label="What would you do in a situation where a person on a team is not acting as a service leader to you or to others?"
         value={form.servant_leadership_situation}
         onChange={(v) => updateField("servant_leadership_situation", v)}
         error={errors.servant_leadership_situation}
