@@ -754,13 +754,13 @@ Here's how this plays out daily on teams:
 
 **Service Leadership on Modern Agile Teams**
 
-A person named Robert Greenleaf made this term in the 1970's with his essay, The Servant As Leader.
+A person named Robert Greenleaf made this term in the 1970's with his essay, "The Servant As Leader" (the historical title).
 
-In the story, a man acts as a servant to a group, doing work for them. One day the person disappears, and the team falls apart. It was then found that the servant was actually the head of an organization, a powerful leader.
+In the story, a person acts in service to a group, doing work for them. One day the person disappears, and the team falls apart. It was then found that the person in service was actually the head of an organization, a powerful leader.
 
 Yet, he was a team's source of inspiration and in service to them. Usually, teams are in service to their managers and leaders.
 
-And so, the concept of service leadership was born (originally named by Greenleaf using the word "servant"), and the concept of authoritarian leadership was met with a new way of leading. Leading with the heart.
+And so, the concept of service leadership was born (originally named by Greenleaf), and the concept of authoritarian leadership was met with a new way of leading. Leading with the heart.
 
 That was over 50 years ago. Today the world has changed along with modern Agile team environments, and service leadership evolves with it.
 

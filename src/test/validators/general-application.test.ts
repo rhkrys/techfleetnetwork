@@ -20,10 +20,10 @@ const filledForm: AppFormData = {
   psychological_safety: "Safe space",
   agile_philosophies: "Scrum",
   collaboration_challenges: "Communication",
-  servant_leadership_definition: "Serving others",
-  servant_leadership_actions: "Listening",
-  servant_leadership_challenges: "Ego",
-  servant_leadership_situation: "Talk to them",
+  service_leadership_definition: "Serving others",
+  service_leadership_actions: "Listening",
+  service_leadership_challenges: "Ego",
+  service_leadership_situation: "Talk to them",
 };
 
 describe("General Application Validation", () => {

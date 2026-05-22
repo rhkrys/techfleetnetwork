@@ -699,10 +699,10 @@ export default function ProjectApplicationPage() {
 
                   <div className="rounded-lg border bg-card p-6 space-y-4">
                     <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Service Leadership</h3>
-                    <ReadOnlyField label="Service Leadership Definition" value={(genApp.servant_leadership_definition as string) ?? ""} />
-                    <ReadOnlyField label="Service Leadership Actions" value={(genApp.servant_leadership_actions as string) ?? ""} />
-                    <ReadOnlyField label="Service Leadership Challenges" value={(genApp.servant_leadership_challenges as string) ?? ""} />
-                    <ReadOnlyField label="Service Leadership Situation" value={(genApp.servant_leadership_situation as string) ?? ""} />
+                    <ReadOnlyField label="Service Leadership Definition" value={(genApp.service_leadership_definition as string) ?? ""} />
+                    <ReadOnlyField label="Service Leadership Actions" value={(genApp.service_leadership_actions as string) ?? ""} />
+                    <ReadOnlyField label="Service Leadership Challenges" value={(genApp.service_leadership_challenges as string) ?? ""} />
+                    <ReadOnlyField label="Service Leadership Situation" value={(genApp.service_leadership_situation as string) ?? ""} />
                   </div>
                 </>
               ) : (

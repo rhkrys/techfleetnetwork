@@ -38,10 +38,10 @@ export interface AppFormData {
   agile_philosophies: string;
   collaboration_challenges: string;
   // Section 5
-  servant_leadership_definition: string;
-  servant_leadership_actions: string;
-  servant_leadership_challenges: string;
-  servant_leadership_situation: string;
+  service_leadership_definition: string;
+  service_leadership_actions: string;
+  service_leadership_challenges: string;
+  service_leadership_situation: string;
 }
 
 export const EMPTY_FORM: AppFormData = {
@@ -66,10 +66,10 @@ export const EMPTY_FORM: AppFormData = {
   psychological_safety: "",
   agile_philosophies: "",
   collaboration_challenges: "",
-  servant_leadership_definition: "",
-  servant_leadership_actions: "",
-  servant_leadership_challenges: "",
-  servant_leadership_situation: "",
+  service_leadership_definition: "",
+  service_leadership_actions: "",
+  service_leadership_challenges: "",
+  service_leadership_situation: "",
 };
 
 export const TOTAL_SECTIONS = 6;
@@ -95,10 +95,10 @@ export const FIELD_MAX_LENGTHS: Partial<Record<keyof AppFormData, number>> = {
   psychological_safety: MAX_LONG,
   agile_philosophies: MAX_LONG,
   collaboration_challenges: MAX_LONG,
-  servant_leadership_definition: MAX_LONG,
-  servant_leadership_actions: MAX_LONG,
-  servant_leadership_challenges: MAX_LONG,
-  servant_leadership_situation: MAX_LONG,
+  service_leadership_definition: MAX_LONG,
+  service_leadership_actions: MAX_LONG,
+  service_leadership_challenges: MAX_LONG,
+  service_leadership_situation: MAX_LONG,
 };
 
 /** Validate a specific section's required fields — returns a map of field → error message */
@@ -136,10 +136,10 @@ export function getFieldErrors(form: AppFormData, section: number): Record<strin
     if (!form.collaboration_challenges.trim()) fieldErrors.collaboration_challenges = "This field is required";
   }
   if (section === 5) {
-    if (!form.servant_leadership_definition.trim()) fieldErrors.servant_leadership_definition = "This field is required";
-    if (!form.servant_leadership_actions.trim()) fieldErrors.servant_leadership_actions = "This field is required";
-    if (!form.servant_leadership_challenges.trim()) fieldErrors.servant_leadership_challenges = "This field is required";
-    if (!form.servant_leadership_situation.trim()) fieldErrors.servant_leadership_situation = "This field is required";
+    if (!form.service_leadership_definition.trim()) fieldErrors.service_leadership_definition = "This field is required";
+    if (!form.service_leadership_actions.trim()) fieldErrors.service_leadership_actions = "This field is required";
+    if (!form.service_leadership_challenges.trim()) fieldErrors.service_leadership_challenges = "This field is required";
+    if (!form.service_leadership_situation.trim()) fieldErrors.service_leadership_situation = "This field is required";
   }
 
   return fieldErrors;
@@ -151,7 +151,7 @@ export function getSectionHasInput(form: AppFormData, section: number): boolean 
   if (section === 2) return !!(form.country || form.timezone || form.experience_areas.length > 0 || form.professional_goals || form.education_background.length > 0);
   if (section === 3) return !!form.previous_engagement;
   if (section === 4) return !!(form.agile_vs_waterfall || form.psychological_safety || form.agile_philosophies || form.collaboration_challenges);
-  if (section === 5) return !!(form.servant_leadership_definition || form.servant_leadership_actions || form.servant_leadership_challenges || form.servant_leadership_situation);
+  if (section === 5) return !!(form.service_leadership_definition || form.service_leadership_actions || form.service_leadership_challenges || form.service_leadership_situation);
   if (section === 6) return true; // Review section always counts as "has input"
   return false;
 }
@@ -178,9 +178,9 @@ export function canSubmit(form: AppFormData): boolean {
     form.psychological_safety.trim() &&
     form.agile_philosophies.trim() &&
     form.collaboration_challenges.trim() &&
-    form.servant_leadership_definition.trim() &&
-    form.servant_leadership_actions.trim() &&
-    form.servant_leadership_challenges.trim() &&
-    form.servant_leadership_situation.trim()
+    form.service_leadership_definition.trim() &&
+    form.service_leadership_actions.trim() &&
+    form.service_leadership_challenges.trim() &&
+    form.service_leadership_situation.trim()
   );
 }

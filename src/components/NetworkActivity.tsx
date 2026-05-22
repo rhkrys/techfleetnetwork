@@ -251,7 +251,7 @@ export const NetworkActivity = memo(function NetworkActivity({ showMap = true, s
               <StatCard
                 icon={<BookOpen className="h-5 w-5 text-warning" aria-hidden="true" />}
                 value={safeStats.course_completions_total ?? safeStats.core_courses_active}
-                label="Course Completions"
+                label="Core Course Completions"
                 colorClass="bg-warning/10"
               />
               <StatCard icon={<BookOpen className="h-5 w-5 text-info" aria-hidden="true" />} value={(safeStats.historical?.historical_beginner_courses ?? 0) + (safeStats.beginner_courses_active ?? 0)} label="Beginner course registrations" colorClass="bg-info/10" />
@@ -287,7 +287,7 @@ export const NetworkActivity = memo(function NetworkActivity({ showMap = true, s
                 <StatCard
                   icon={<BookOpen className="h-5 w-5 text-warning" aria-hidden="true" />}
                   value={safeStats.prev_week_course_completions_total ?? safeStats.prev_week_core_active}
-                  label="Course Completions"
+                  label="Core Course Completions"
                   colorClass="bg-warning/10"
                 />
                 <StatCard icon={<BookOpen className="h-5 w-5 text-info" aria-hidden="true" />} value={safeStats.prev_week_beginner_active} label="Beginner Course Completions" colorClass="bg-info/10" />

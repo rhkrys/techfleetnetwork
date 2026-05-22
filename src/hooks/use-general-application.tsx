@@ -85,10 +85,10 @@ export function useGeneralApplication() {
       psychological_safety: app.psychological_safety || "",
       agile_philosophies: app.agile_philosophies || "",
       collaboration_challenges: app.collaboration_challenges || "",
-      servant_leadership_definition: app.servant_leadership_definition || "",
-      servant_leadership_actions: app.servant_leadership_actions || "",
-      servant_leadership_challenges: app.servant_leadership_challenges || "",
-      servant_leadership_situation: app.servant_leadership_situation || "",
+      service_leadership_definition: app.service_leadership_definition || "",
+      service_leadership_actions: app.service_leadership_actions || "",
+      service_leadership_challenges: app.service_leadership_challenges || "",
+      service_leadership_situation: app.service_leadership_situation || "",
     });
     setTitle(app.title);
     setSection(app.status === "completed" ? 1 : (app.current_section > 0 ? Math.min(app.current_section, TOTAL_SECTIONS) : 1));
@@ -159,10 +159,10 @@ export function useGeneralApplication() {
     psychological_safety: form.psychological_safety,
     agile_philosophies: form.agile_philosophies,
     collaboration_challenges: form.collaboration_challenges,
-    servant_leadership_definition: form.servant_leadership_definition,
-    servant_leadership_actions: form.servant_leadership_actions,
-    servant_leadership_challenges: form.servant_leadership_challenges,
-    servant_leadership_situation: form.servant_leadership_situation,
+    service_leadership_definition: form.service_leadership_definition,
+    service_leadership_actions: form.service_leadership_actions,
+    service_leadership_challenges: form.service_leadership_challenges,
+    service_leadership_situation: form.service_leadership_situation,
     current_section: section,
   }), [title, form, section]);
 

@@ -48,15 +48,13 @@ describe("NetworkActivity", () => {
     renderWithRouter(<NetworkActivity showMap={false} />);
 
     expect(await screen.findByText("190")).toBeInTheDocument();
-    expect(screen.getAllByText("Course Completions")).toHaveLength(2);
-    expect(screen.queryByText("Core Course Completions")).not.toBeInTheDocument();
-    expect(screen.getAllByText("49 core · 62 onboarding")).toHaveLength(2);
+    expect(screen.getAllByText("Core Course Completions")).toHaveLength(2);
+    expect(screen.getAllByText("Platform Signups")).toHaveLength(2);
     expect(screen.getAllByText("111")).toHaveLength(2);
     expect(screen.getAllByText("122")).toHaveLength(2);
     expect(screen.getByText("120")).toBeInTheDocument();
 
-    fireEvent.focus(screen.getAllByRole("button", { name: "Badges Earned details" })[0]);
-    expect(await screen.findAllByText("One badge per course completion, application submission, and Discord link.")).not.toHaveLength(0);
+    // Tooltip test removed — Badges Earned no longer carries a tooltip button.
   });
 
   it("shows an unavailable state instead of rendering every stat as zero when stats fail", async () => {

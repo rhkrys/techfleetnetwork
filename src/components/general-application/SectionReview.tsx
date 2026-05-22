@@ -183,10 +183,10 @@ export function SectionReview({ form, onEditSection }: Props) {
 
       {/* Section 5: Service Leadership */}
       <ReviewSection sectionNumber={5} title={SECTION_TITLES[4]} hasErrors={s5Errors} onEdit={() => onEditSection(5)}>
-        <ReviewField label="Service Leadership Definition" value={form.servant_leadership_definition} empty={!form.servant_leadership_definition} />
-        <ReviewField label="Service Leadership Actions" value={form.servant_leadership_actions} empty={!form.servant_leadership_actions} />
-        <ReviewField label="Service Leadership Challenges" value={form.servant_leadership_challenges} empty={!form.servant_leadership_challenges} />
-        <ReviewField label="Service Leadership Situation" value={form.servant_leadership_situation} empty={!form.servant_leadership_situation} />
+        <ReviewField label="Service Leadership Definition" value={form.service_leadership_definition} empty={!form.service_leadership_definition} />
+        <ReviewField label="Service Leadership Actions" value={form.service_leadership_actions} empty={!form.service_leadership_actions} />
+        <ReviewField label="Service Leadership Challenges" value={form.service_leadership_challenges} empty={!form.service_leadership_challenges} />
+        <ReviewField label="Service Leadership Situation" value={form.service_leadership_situation} empty={!form.service_leadership_situation} />
       </ReviewSection>
     </div>
   );
