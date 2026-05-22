@@ -63,7 +63,7 @@ const slides: SlideData[] = [
     title: "How It Works",
     content: (
       <p className="text-sm text-muted-foreground leading-relaxed">
-        We pair <span className="font-medium text-foreground">nonprofits</span> that need work done with <span className="font-medium text-foreground">people like you</span> who want real team experience. Along the way you'll practice servant leadership, agile teamwork, and shared decision-making.
+        We pair <span className="font-medium text-foreground">nonprofits</span> that need work done with <span className="font-medium text-foreground">people like you</span> who want real team experience. Along the way you'll practice service leadership, agile teamwork, and shared decision-making.
       </p>
     ),
   },
