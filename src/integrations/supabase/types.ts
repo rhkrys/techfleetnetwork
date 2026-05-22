@@ -2900,6 +2900,45 @@ export type Database = {
           },
         ]
       }
+      lesson_video_events: {
+        Row: {
+          client_ts: string | null
+          course_slug: string | null
+          created_at: string
+          event: string
+          id: string
+          lesson_id: string
+          lesson_title: string | null
+          position_seconds: number | null
+          user_id: string
+          youtube_id: string
+        }
+        Insert: {
+          client_ts?: string | null
+          course_slug?: string | null
+          created_at?: string
+          event: string
+          id?: string
+          lesson_id: string
+          lesson_title?: string | null
+          position_seconds?: number | null
+          user_id: string
+          youtube_id: string
+        }
+        Update: {
+          client_ts?: string | null
+          course_slug?: string | null
+          created_at?: string
+          event?: string
+          id?: string
+          lesson_id?: string
+          lesson_title?: string | null
+          position_seconds?: number | null
+          user_id?: string
+          youtube_id?: string
+        }
+        Relationships: []
+      }
       login_attempts: {
         Row: {
           attempt_id: string
