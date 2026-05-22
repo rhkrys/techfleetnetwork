@@ -1504,6 +1504,8 @@ export type Database = {
           bulk_paused: boolean
           bulk_warmup_started_at: string
           id: number
+          per_recipient_bulk_max: number
+          per_recipient_bulk_window_hours: number
           retry_after_until: string | null
           send_delay_ms: number
           transactional_email_ttl_minutes: number
@@ -1516,6 +1518,8 @@ export type Database = {
           bulk_paused?: boolean
           bulk_warmup_started_at?: string
           id?: number
+          per_recipient_bulk_max?: number
+          per_recipient_bulk_window_hours?: number
           retry_after_until?: string | null
           send_delay_ms?: number
           transactional_email_ttl_minutes?: number
@@ -1528,6 +1532,8 @@ export type Database = {
           bulk_paused?: boolean
           bulk_warmup_started_at?: string
           id?: number
+          per_recipient_bulk_max?: number
+          per_recipient_bulk_window_hours?: number
           retry_after_until?: string | null
           send_delay_ms?: number
           transactional_email_ttl_minutes?: number
@@ -6681,6 +6687,12 @@ export type Database = {
       register_for_cohort_click: {
         Args: { p_cohort_id: string; p_referrer?: string }
         Returns: string
+      }
+      replay_frequency_capped: {
+        Args: { p_since?: string; p_template_name: string }
+        Returns: {
+          replayed_count: number
+        }[]
       }
       request_class_changes: {
         Args: { p_class_id: string; p_reason: string }
