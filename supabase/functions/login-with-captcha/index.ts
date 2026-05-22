@@ -1,12 +1,12 @@
 import { corsHeaders } from "npm:@supabase/supabase-js@2.99.1/cors";
 import { z } from "npm:zod@4.3.6";
 import { createEdgeLogger } from "../_shared/logger.ts";
-
 import { withAuditWrapper } from "../_shared/audit.ts";
+import { checkEmailDomain, emailDomain } from "../_shared/email-domain-allowlist.ts";
+import { isProductionOrigin, originHostFromRequest } from "../_shared/auth-hosts.ts";
+
 const log = createEdgeLogger("login-with-captcha");
 const VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
-const DOMAIN_RE = /^(?=.{1,253}$)(?!-)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i;
-const DnsAnswerSchema = z.object({ Answer: z.array(z.unknown()).optional(), Status: z.number().optional() }).passthrough();
 
 const BodySchema = z.object({
   email: z.string().trim().email().max(320),
@@ -29,22 +29,13 @@ function publicAuthError(status = 401) {
   return jsonResponse({ error: "Invalid email or password. Please try again." }, status);
 }
 
-function emailDomain(email: string): string {
-  return email.toLowerCase().split("@").pop()?.replace(/\.+$/, "") ?? "";
-}
-
-async function hasDnsRecord(domain: string, type: "MX" | "A" | "AAAA"): Promise<boolean> {
-  const response = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=${type}`, {
-    headers: { accept: "application/dns-json" },
-  });
-  if (!response.ok) return false;
-  const parsed = DnsAnswerSchema.safeParse(await response.json());
-  return parsed.success && parsed.data.Status === 0 && Array.isArray(parsed.data.Answer) && parsed.data.Answer.length > 0;
-}
-
-async function validateDomain(domain: string): Promise<boolean> {
-  if (!DOMAIN_RE.test(domain)) return false;
-  return (await hasDnsRecord(domain, "MX")) || (await hasDnsRecord(domain, "A")) || (await hasDnsRecord(domain, "AAAA"));
+function maskDomain(d: string): string {
+  if (!d) return "(none)";
+  // Don't leak full domain in logs; first letter + tld is enough to triage.
+  const parts = d.split(".");
+  const tld = parts.length > 1 ? parts[parts.length - 1] : "";
+  const head = d[0] ?? "?";
+  return `${head}***.${tld}`;
 }
 
 Deno.serve(withAuditWrapper("login-with-captcha", async (req) => {
@@ -52,6 +43,31 @@ Deno.serve(withAuditWrapper("login-with-captcha", async (req) => {
   if (req.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
 
   const requestId = crypto.randomUUID().slice(0, 8);
+  const startedAt = Date.now();
+  const originHost = originHostFromRequest(req);
+
+  // LCL-FIX-001: Unconditional entry log (bypasses audit-policy fingerprint
+  // elision so we always see invocations in function_edge_logs).
+  // eslint-disable-next-line no-console
+  console.log(`[login-with-captcha] ENTER req=${requestId} host=${originHost || "(none)"}`);
+
+  let branch:
+    | "config_missing"
+    | "validate_fail"
+    | "domain_reject"
+    | "captcha_fail"
+    | "token_4xx"
+    | "token_5xx"
+    | "throttle"
+    | "ok"
+    | "error" = "error";
+  let exitStatus = 500;
+
+  const exit = (status: number, b: typeof branch, body: unknown, extra: Record<string, string> = {}) => {
+    branch = b;
+    exitStatus = status;
+    return jsonResponse(body, status, extra);
+  };
 
   try {
     const secret = Deno.env.get("TURNSTILE_SECRET_KEY");
@@ -59,18 +75,22 @@ Deno.serve(withAuditWrapper("login-with-captcha", async (req) => {
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
     if (!secret || !supabaseUrl || !anonKey) {
       log.error("config", `Login CAPTCHA configuration missing [${requestId}]`, { requestId });
-      return jsonResponse({ error: "Verification is temporarily unavailable. Please try again." }, 503);
+      return exit(503, "config_missing", { error: "Verification is temporarily unavailable. Please try again." });
     }
 
     const parsed = BodySchema.safeParse(await req.json());
     if (!parsed.success) {
       log.warn("validate", `Invalid login payload [${requestId}]`, { requestId });
-      return jsonResponse({ error: "Complete the human verification before trying again." }, 400);
+      return exit(400, "validate_fail", { error: "Complete the human verification before trying again." });
     }
 
-    if (!(await validateDomain(emailDomain(parsed.data.email)))) {
-      log.warn("validate", `Rejected login with non-existent email domain [${requestId}]`, { requestId });
-      return jsonResponse({ error: "Use an email address with a real domain." }, 400);
+    const domain = emailDomain(parsed.data.email);
+    const domainCheck = await checkEmailDomain(domain);
+    // eslint-disable-next-line no-console
+    console.log(`[login-with-captcha] domain req=${requestId} dom=${maskDomain(domain)} branch=${domainCheck.branch} valid=${domainCheck.valid}`);
+    if (!domainCheck.valid) {
+      log.warn("validate", `Rejected login with non-existent email domain [${requestId}]`, { requestId, branch: domainCheck.branch });
+      return exit(400, "domain_reject", { error: "Use an email address with a real domain." });
     }
 
     // Production secret. For non-production origins (Lovable preview/sandbox/localhost)
@@ -78,17 +98,7 @@ Deno.serve(withAuditWrapper("login-with-captcha", async (req) => {
     // against the matching test secret. We try the real secret first, then fall back
     // to the test secret only when the request originated from a non-production host.
     const TEST_SECRET = "1x0000000000000000000000000000000AA";
-    const PRODUCTION_HOSTS = new Set([
-      "techfleetnetwork.lovable.app",
-      "www.techfleet.network",
-      "techfleet.network",
-    ]);
-    let originHost = "";
-    try {
-      const originHeader = req.headers.get("origin") ?? req.headers.get("referer") ?? "";
-      if (originHeader) originHost = new URL(originHeader).hostname.toLowerCase();
-    } catch { /* ignore */ }
-    const isProductionOrigin = PRODUCTION_HOSTS.has(originHost);
+    const isProd = isProductionOrigin(originHost);
     const ip = clientIp(req);
 
     async function verifyCaptcha(secretKey: string) {
@@ -102,7 +112,7 @@ Deno.serve(withAuditWrapper("login-with-captcha", async (req) => {
     }
 
     let captchaCheck = await verifyCaptcha(secret);
-    if ((!captchaCheck.ok || captchaCheck.body.success !== true) && !isProductionOrigin) {
+    if ((!captchaCheck.ok || captchaCheck.body.success !== true) && !isProd) {
       const fallback = await verifyCaptcha(TEST_SECRET);
       if (fallback.ok && fallback.body.success === true) captchaCheck = fallback;
     }
@@ -114,7 +124,7 @@ Deno.serve(withAuditWrapper("login-with-captcha", async (req) => {
         errorCodes: captchaCheck.body["error-codes"] ?? [],
         originHost,
       });
-      return jsonResponse({ error: "Complete the human verification before trying again.", code: "CAPTCHA_REQUIRED" }, 403);
+      return exit(403, "captcha_fail", { error: "Complete the human verification before trying again.", code: "CAPTCHA_REQUIRED" });
     }
 
     const authResponse = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
@@ -131,19 +141,31 @@ Deno.serve(withAuditWrapper("login-with-captcha", async (req) => {
     if (!authResponse.ok) {
       log.warn("auth", `Password login rejected after CAPTCHA [${requestId}]`, { requestId, status: authResponse.status });
       if (authResponse.status === 429) {
-        return jsonResponse(
-          { error: "Too many rapid auth attempts. Complete the human verification before trying again.", code: "AUTH_THROTTLE_CAPTCHA_REQUIRED" },
+        return exit(
           429,
+          "throttle",
+          { error: "Too many rapid auth attempts. Complete the human verification before trying again.", code: "AUTH_THROTTLE_CAPTCHA_REQUIRED" },
           { "Retry-After": authResponse.headers.get("Retry-After") ?? "60" },
         );
       }
-      return publicAuthError(authResponse.status === 400 ? 401 : authResponse.status);
+      const isServer = authResponse.status >= 500;
+      return exit(
+        isServer ? authResponse.status : (authResponse.status === 400 ? 401 : authResponse.status),
+        isServer ? "token_5xx" : "token_4xx",
+        { error: "Invalid email or password. Please try again." },
+      );
     }
 
     log.info("auth", `Password login passed server CAPTCHA gate [${requestId}]`, { requestId });
+    branch = "ok";
+    exitStatus = 200;
     return jsonResponse({ session: authBody, user: authBody.user ?? null });
   } catch (err) {
     log.error("handler", `Unhandled login CAPTCHA error [${requestId}]`, { requestId }, err);
-    return jsonResponse({ error: "Verification failed. Please try again." }, 500);
+    return exit(500, "error", { error: "Verification failed. Please try again." });
+  } finally {
+    // LCL-FIX-001: Unconditional exit log.
+    // eslint-disable-next-line no-console
+    console.log(`[login-with-captcha] EXIT req=${requestId} status=${exitStatus} branch=${branch} duration_ms=${Date.now() - startedAt}`);
   }
 }));
