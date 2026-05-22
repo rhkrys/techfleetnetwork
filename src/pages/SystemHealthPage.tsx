@@ -324,7 +324,7 @@ function ErrorList({ errors, generatedAt }: { errors: Array<{ error_message: str
   );
 }
 
-const VALID_HEALTH_TABS = ["queues","delivery","blasts","errors","triage","silent","performance","fleety","content","privacy","incidents","audit","settings"] as const;
+const VALID_HEALTH_TABS = ["queues","delivery","deliverability","blasts","errors","triage","silent","performance","login","fleety","content","privacy","incidents","audit","discord","settings"] as const;
 
 function SystemHealthTabs({ children }: { children: React.ReactNode }) {
   const [params, setParams] = useSearchParams();
