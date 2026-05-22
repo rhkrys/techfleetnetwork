@@ -16,12 +16,19 @@ const log = createLogger("MfaEnforcementGuard");
  * does NOT rely on the (sometimes stale) `nextLevel` JWT claim. Re-evaluates on
  * `SIGNED_IN`, `TOKEN_REFRESHED`, `USER_UPDATED`, and on window focus so that
  * post-OAuth and post-refresh sessions are also caught.
+ *
+ * Loop-prevention: after a successful verify we silence re-checks for 10s so
+ * the focus/TOKEN_REFRESHED storm that immediately follows can't race the JWT
+ * cache update and re-prompt the user (AUTH-2FA-LOOP-001..003).
  */
+const POST_VERIFY_QUIET_MS = 10_000;
+
 export function MfaEnforcementGuard() {
   const { user, session, loading } = useAuth();
   const [challengeOpen, setChallengeOpen] = useState(false);
   const lastCheckedToken = useRef<string | null>(null);
   const inFlight = useRef(false);
+  const recentlyVerifiedAt = useRef<number>(0);
 
   useEffect(() => {
     if (loading || !user || !session) {
@@ -32,6 +39,9 @@ export function MfaEnforcementGuard() {
 
     const runCheck = async (token: string) => {
       if (inFlight.current) return;
+      // Quiet window right after a successful verify — JWT cache is still
+      // catching up; re-checking now would falsely re-prompt.
+      if (Date.now() - recentlyVerifiedAt.current < POST_VERIFY_QUIET_MS) return;
       // Skip if we already evaluated this exact access token
       if (lastCheckedToken.current === token) return;
       lastCheckedToken.current = token;
@@ -62,11 +72,19 @@ export function MfaEnforcementGuard() {
     });
 
     // Re-evaluate on focus regain in case the gate was bypassed in another tab.
-    const onFocus = () => {
-      if (!session.access_token) return;
-      // Force a fresh check by clearing the dedupe ref
-      lastCheckedToken.current = null;
-      void runCheck(session.access_token);
+    // Re-read the token from the SDK (not the stale closure) so a freshly
+    // elevated AAL2 token is honoured immediately.
+    const onFocus = async () => {
+      if (Date.now() - recentlyVerifiedAt.current < POST_VERIFY_QUIET_MS) return;
+      try {
+        const { data } = await supabase.auth.getSession();
+        const token = data.session?.access_token;
+        if (!token) return;
+        lastCheckedToken.current = null;
+        void runCheck(token);
+      } catch {
+        /* non-blocking */
+      }
     };
     window.addEventListener("focus", onFocus);
 
@@ -80,6 +98,7 @@ export function MfaEnforcementGuard() {
     <MfaChallengeDialog
       open={challengeOpen}
       onSuccess={() => {
+        recentlyVerifiedAt.current = Date.now();
         setChallengeOpen(false);
         // Force re-evaluation on next render so we recognise the new AAL2 token
         lastCheckedToken.current = null;

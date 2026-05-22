@@ -1,38 +1,54 @@
 ## Problem
 
-The "Share Feedback" card on the dashboard is a hardcoded widget (`use-dashboard-preferences.ts:17`, `DashboardPage.tsx:351–361`) that:
+A non-admin user with an enrolled TOTP factor enters a valid 6-digit code, the dialog briefly closes, then immediately reopens — over and over.
 
-- Ships **enabled by default** for every user (`DEFAULT_VISIBLE` includes it).
-- Sits at **position 2** in `DEFAULT_ORDER`, directly under the welcome header.
-- Is just a one-line link with no progress/data — so it visually outweighs Core Courses and the completion card next to it.
-- Duplicates feedback entry points that already exist in the global nav, footer, and Fleety chat widget.
+## Root cause
+
+`MfaService.verifyChallenge()` calls `supabase.auth.mfa.verify(...)`, which is supposed to upgrade the session to AAL2, but it does NOT eagerly refresh the cached JWT/`session.access_token` in every path. Meanwhile `MfaEnforcementGuard` has two re-evaluators that fire almost immediately after the dialog closes:
+
+1. `window` `focus` handler — wipes `lastCheckedToken.current` and re-runs the gate.
+2. `onAuthStateChange("TOKEN_REFRESHED")` — re-runs the gate.
+
+If either fires before the new AAL2 token is persisted to the SDK cache, `MfaService.getMfaGateDecision()` decodes the still-AAL1 token, sees `currentAal !== "aal2"`, and opens the dialog again. The user re-verifies, same race, same loop.
+
+This affects any TOTP-enrolled user (memory: "enforced for enrolled users"), but is most visible to non-admins who don't expect the prompt at all and report it as broken.
 
 ## Fix
 
-Remove Share Feedback as a dashboard widget entirely. Keep `/feedback` and all other feedback entry points untouched.
+### 1. `src/services/mfa.service.ts` — force a session refresh after every successful verify
+In `verifyChallenge()` (and therefore `challengeAndVerify()`), after `supabase.auth.mfa.verify(...)` returns OK and BEFORE `markCurrentSessionVerified()`:
 
-### Changes
+```ts
+await supabase.auth.refreshSession();
+```
 
-1. **`src/hooks/use-dashboard-preferences.ts`**
-   - Remove `"feedback"` from the `DashboardWidgetId` union.
-   - Remove the `{ id: "feedback", label: "Share Feedback" }` entry from `ALL_WIDGETS`.
-   - (DEFAULT_ORDER / DEFAULT_VISIBLE derive from `ALL_WIDGETS`, so they update automatically.)
-   - The existing `extractWidgetList` validator filters unknown IDs via `VALID_WIDGET_IDS`, so any user whose persisted `visible_widgets` / `widget_order` still contains `"feedback"` will have it transparently dropped on load — no migration required, no errors.
+This guarantees the SDK cache + storage hold the AAL2 token before any downstream code (gate, RPC, navigation) reads it. Wrap in try/catch and log warn — never block the success path.
 
-2. **`src/pages/DashboardPage.tsx`**
-   - Delete the `case "feedback":` block in the widget switch (lines 351–361).
-   - Remove the now-unused `Link` import only if no other usage remains (verify before deleting).
+### 2. `src/components/MfaEnforcementGuard.tsx` — quiet window after success
+Add a `recentlyVerifiedAtRef = useRef<number>(0)` set in `onSuccess`. In `runCheck`, early-return when `Date.now() - recentlyVerifiedAtRef.current < 10_000`. This absorbs the 1–3 race window during which TOKEN_REFRESHED and focus events fire while the new JWT propagates.
 
-3. **No DB migration.** `dashboard_preferences.visible_widgets` / `widget_order` are JSON arrays; orphan `"feedback"` strings are silently ignored by the loader and will be overwritten the next time the user toggles or reorders any widget.
+Also: replace the `focus` handler's `lastCheckedToken.current = null; runCheck(session.access_token)` with `runCheck(currentFreshToken)` where the token is re-read from `supabase.auth.getSession()` rather than the stale closure `session.access_token`. Prevents racing the React state update.
 
-### Out of scope
+### 3. `src/components/MfaChallengeDialog.tsx` — no behavior change, but verify path
+Confirm `onSuccess` is called only after `verifyChallenge` resolves (already true). No edit unless inspection finds a regression.
 
-- `/feedback` page, `FeedbackService`, feedback nav links, footer links, Fleety widget — all untouched.
-- Other widgets (Core Courses, Badges, Network Activity, etc.) — no changes.
-- DashboardCustomizer — automatically reflects the updated `ALL_WIDGETS` list.
+### Optional safety (in scope)
+- After `markCurrentSessionVerified`, do one more `supabase.auth.refreshSession()` is **not** needed — the first refresh already pulled the AAL2 token; the RPC merely records the hash.
 
-### BDD (added to `bdd_scenarios`)
+## Out of scope
 
-- `DASH-FEEDBACK-001` — Given any signed-in member, When the dashboard renders, Then no "Share Feedback" card appears [UI] AND `dashboard_preferences.visible_widgets` returned from the loader does not include `"feedback"` [DB] AND `ALL_WIDGETS` exported from `use-dashboard-preferences` contains no entry with `id === "feedback"` [Code].
-- `DASH-FEEDBACK-002` — Given a user whose stored `visible_widgets` JSON still contains the legacy `"feedback"` string, When the dashboard loads, Then the page renders without error and the legacy value is filtered out by `extractWidgetList` [Code/UI].
-- `DASH-FEEDBACK-003` — Given the DashboardCustomizer sheet is opened, Then "Share Feedback" is not offered as a toggleable widget [UI].
+- The policy of enforcing TOTP on non-admins who enrolled themselves. Memory rule "enforced for enrolled users" stands; the user asked to fix the loop, not change who is gated.
+- LoginPage MFA flow — uses the same `MfaService`, so it inherits the fix automatically.
+- Admin grace dialog (`AdminTwoFactorGraceDialog`) — unaffected.
+- `markCurrentSessionVerified` RPC — already wrapped in try/catch and non-blocking.
+
+## BDD scenarios (to insert into `bdd_scenarios`)
+
+- **AUTH-2FA-LOOP-001** — Given a TOTP-enrolled non-admin signed in at AAL1, When they enter a valid 6-digit code in MfaChallengeDialog, Then `MfaService.verifyChallenge` calls `supabase.auth.mfa.verify` followed by `supabase.auth.refreshSession()` [Code] AND the session's `access_token` `aal` claim decodes to `aal2` within 500 ms [Code/DB] AND `MfaChallengeDialog` does not reopen within the next 10 seconds [UI].
+- **AUTH-2FA-LOOP-002** — Given the user just passed MFA, When `window` fires a `focus` event within 10 seconds, Then `MfaEnforcementGuard.runCheck` short-circuits via `recentlyVerifiedAtRef` and does not invoke `getMfaGateDecision` [Code] AND no dialog opens [UI].
+- **AUTH-2FA-LOOP-003** — Given the focus handler fires after the 10-second quiet window, When it calls `runCheck`, Then it re-reads the access token from `supabase.auth.getSession()` (not the stale closure) [Code] AND if `aal === "aal2"`, no dialog opens [UI].
+
+## Verification
+
+- `bunx vitest run src/test/ui/MfaEnforcementGuard.test.tsx src/test/services/mfa.service.test.ts`
+- Manual: log in as a non-admin TOTP-enrolled user, enter valid code, confirm dialog stays closed across page focus and route changes.
