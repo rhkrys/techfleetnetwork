@@ -13,7 +13,7 @@ export function SectionLeadership({ form, errors, updateField }: Props) {
     <div className="space-y-6">
       <LongFormQuestion
         id="sl-definition"
-        label="What does servant leadership mean to you?"
+        label="What does service leadership mean to you?"
         value={form.servant_leadership_definition}
         onChange={(v) => updateField("servant_leadership_definition", v)}
         error={errors.servant_leadership_definition}
