@@ -36,17 +36,36 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 
 /** Get the active SW registration with a timeout to avoid hanging forever */
 async function getReadyRegistration(timeoutMs = 5000): Promise<ServiceWorkerRegistration | null> {
-  if (!navigator.serviceWorker?.controller && !navigator.serviceWorker?.getRegistration) {
-    return null;
-  }
+  if (!("serviceWorker" in navigator)) return null;
   try {
+    // Fast path: if no controller and no existing registration, bail immediately —
+    // navigator.serviceWorker.ready would hang forever waiting for one.
+    const existing = await navigator.serviceWorker.getRegistration();
+    if (!existing && !navigator.serviceWorker.controller) {
+      return null;
+    }
     const result = await Promise.race([
       navigator.serviceWorker.ready,
       new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
     ]);
+    if (!result || result.active?.state !== "activated") {
+      return null;
+    }
     return result;
   } catch {
     return null;
+  }
+}
+
+/** Check if an active service worker is currently controlling this page. */
+async function hasActiveServiceWorker(): Promise<boolean> {
+  if (!("serviceWorker" in navigator)) return false;
+  try {
+    if (navigator.serviceWorker.controller) return true;
+    const reg = await navigator.serviceWorker.getRegistration();
+    return !!reg?.active && reg.active.state === "activated";
+  } catch {
+    return false;
   }
 }
 
@@ -167,13 +186,23 @@ async function upsertSubscription(userId: string, subscription: PushSubscription
 }
 
 export class PushSubscriptionService {
-  /** Check if the browser supports push notifications */
+  /** Check if the browser supports the push notification APIs */
   static isSupported(): boolean {
     return (
       "serviceWorker" in navigator &&
       "PushManager" in window &&
       "Notification" in window
     );
+  }
+
+  /**
+   * Check if push is actually usable right now — requires an active service
+   * worker controlling/registered for this page. Tech Fleet ships without a
+   * PWA service worker, so this returns false on most deployments.
+   */
+  static async isReady(): Promise<boolean> {
+    if (!this.isSupported()) return false;
+    return hasActiveServiceWorker();
   }
 
   /** Get the current notification permission state */
