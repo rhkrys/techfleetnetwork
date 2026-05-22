@@ -12,6 +12,9 @@ import type { ColDef, ICellRendererParams } from "ag-grid-community";
 import { applicantStatusLabel } from "@/components/admin/ApplicantStatusDropdown";
 import { AgreementResendButton } from "@/components/agreements/AgreementResendButton";
 import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CompletedCoursesPanel } from "@/components/admin/CompletedCoursesPanel";
+import { useCourseCatalogPrep } from "@/hooks/use-course-catalog-prep";
 
 interface ProfileRow {
   user_id: string;
@@ -40,6 +43,8 @@ interface EnrichedApp extends AppRow {
   applicantEmail: string;
   hats: string;
   agreementStatus: "not_required" | "pending" | "signed";
+  completedCourseKeys: Set<string>;
+  completedCourseCount: number;
 }
 
 interface ProjectRosterContentProps {
@@ -90,6 +95,39 @@ export default function ProjectRosterContent({ projectId }: ProjectRosterContent
     return m;
   }, [profiles]);
 
+  const { catalog: prepCatalog } = useCourseCatalogPrep(!!user && isAdmin);
+
+  // Batched per-applicant Core + Basic completion fetch. Filters to the active
+  // catalog keys so we don't pull retired/project-tier rows over the wire.
+  const { data: completionsRaw } = useQuery({
+    queryKey: ["roster-project-completions", projectId, userIds, [...prepCatalog.allKeys].sort().join(",")],
+    queryFn: async () => {
+      if (userIds.length === 0 || prepCatalog.allKeys.size === 0) return [];
+      const { data, error } = await supabase
+        .from("course_completions")
+        .select("user_id, course_key")
+        .in("user_id", userIds)
+        .in("course_key", [...prepCatalog.allKeys]);
+      if (error) throw error;
+      return (data ?? []) as { user_id: string; course_key: string }[];
+    },
+    enabled: userIds.length > 0 && prepCatalog.allKeys.size > 0,
+    staleTime: 60 * 1000,
+  });
+
+  const completionsByUser = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    for (const row of completionsRaw ?? []) {
+      let set = m.get(row.user_id);
+      if (!set) {
+        set = new Set();
+        m.set(row.user_id, set);
+      }
+      set.add(row.course_key);
+    }
+    return m;
+  }, [completionsRaw]);
+
   const enrichedApps = useMemo<EnrichedApp[]>(() => {
     return (apps ?? []).map((app) => {
       const profile = profileMap.get(app.user_id);
@@ -98,6 +136,7 @@ export default function ProjectRosterContent({ projectId }: ProjectRosterContent
         : app.community_agreement_signed_at
           ? "signed"
           : "pending";
+      const completedCourseKeys = completionsByUser.get(app.user_id) ?? new Set<string>();
       return {
         ...app,
         applicantName: profile?.display_name || `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim() || "Unknown",
@@ -105,9 +144,11 @@ export default function ProjectRosterContent({ projectId }: ProjectRosterContent
         applicantEmail: profile?.email ?? "",
         hats: app.team_hats_interest.join(", "),
         agreementStatus,
+        completedCourseKeys,
+        completedCourseCount: completedCourseKeys.size,
       };
     });
-  }, [apps, profileMap]);
+  }, [apps, profileMap, completionsByUser]);
 
   const ViewCellRenderer = useMemo(() => {
     const Renderer = (params: ICellRendererParams<EnrichedApp>) => (
@@ -148,6 +189,38 @@ export default function ProjectRosterContent({ projectId }: ProjectRosterContent
     return Renderer;
   }, []);
 
+  const CoursesPreparedCellRenderer = useMemo(() => {
+    const Renderer = (params: ICellRendererParams<EnrichedApp>) => {
+      const row = params.data!;
+      if (prepCatalog.total === 0) {
+        return <span className="text-xs text-muted-foreground">—</span>;
+      }
+      return (
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className="inline-flex items-center rounded-md px-2 py-0.5 text-sm font-medium tabular-nums hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label={`View completed courses for ${row.applicantName}`}
+            >
+              <span>{row.completedCourseCount}</span>
+              <span className="ml-1 text-muted-foreground">/ {prepCatalog.total}</span>
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-80">
+            <CompletedCoursesPanel
+              completedKeys={row.completedCourseKeys}
+              catalog={prepCatalog}
+              variant="full"
+            />
+          </PopoverContent>
+        </Popover>
+      );
+    };
+    Renderer.displayName = "CoursesPreparedCellRenderer";
+    return Renderer;
+  }, [prepCatalog]);
+
   const columnDefs = useMemo<ColDef<EnrichedApp>[]>(() => [
     { headerName: "Applicant", field: "applicantName", flex: 2, minWidth: 150, filter: true },
     { headerName: "Email", field: "applicantEmail", flex: 2, minWidth: 180, filter: true },
@@ -155,6 +228,12 @@ export default function ProjectRosterContent({ projectId }: ProjectRosterContent
     {
       headerName: "Status", field: "applicant_status", flex: 1.5, minWidth: 140, filter: true,
       valueFormatter: (p) => applicantStatusLabel(p.value ?? "pending_review"),
+    },
+    {
+      headerName: "Courses prepared", field: "completedCourseCount", flex: 1.2, minWidth: 150,
+      filter: "agNumberColumnFilter",
+      cellRenderer: CoursesPreparedCellRenderer,
+      sort: "desc",
     },
     {
       headerName: "Agreement", field: "agreementStatus", flex: 1.6, minWidth: 220, filter: true,
@@ -168,7 +247,7 @@ export default function ProjectRosterContent({ projectId }: ProjectRosterContent
       headerName: "", field: "id", width: 80, pinned: "right", sortable: false, filter: false,
       cellRenderer: ViewCellRenderer,
     },
-  ], [ViewCellRenderer, AgreementCellRenderer]);
+  ], [ViewCellRenderer, AgreementCellRenderer, CoursesPreparedCellRenderer]);
 
   if (appsLoading) {
     return (

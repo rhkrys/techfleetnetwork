@@ -1,48 +1,58 @@
-# Fix "Other Project" placeholder in Recruiting Center
+## Goal
 
-## What's actually wrong
+Help admins gauge applicant preparation by surfacing which Core and Basic (onboarding) courses each applicant has completed — and which are still missing — both on the Recruiting Center project roster table and on the single-applicant review page.
 
-The "Also applied to" chip on the Recruiting Center applicant card resolves project names through a query that **only fetches projects with `project_status = 'apply_now'`**. Today that filter matches just 1 of your 4 active projects, so any cross-project reference to the other 3 (recruiting / team_onboarding phases) silently degrades to the literal string `"Other Project"`.
+## What admins will see
 
-Verified against the database:
+**Header:** "Completed courses" with a count chip like `5 / 8`.
 
-| Project | Status | Completed apps |
-|---|---|---|
-| Tech Fleet Professional Association | team_onboarding | 32 |
-| Free Dog Trainers | recruiting | 15 |
-| Global Eco Village | apply_now | 13 |
-| aTypical Community | recruiting | 12 |
+**Pills:**
+- Completed courses → solid Growth Green pill with checkmark + course name
+- Not-yet-completed courses → outlined muted pill with course name (visibly de-emphasized, no icon)
 
-Only Global Eco Village survives the `apply_now` filter, so the other three render as "Other Project". This is **not** leftover purged test data — every project_id has a real, current row in `projects` with a valid `clients.name`.
+Courses are grouped under two sub-labels: **Core courses** (6 total) and **Basic courses** (2 total: First Steps Onboarding, Connect Discord). Pills sort by `display_order` within each group so the layout is stable.
 
-## Fix
+## Where it appears
 
-In `src/components/admin/ProjectAnalysisContent.tsx`:
+1. **Project roster table** (`/admin/roster/project/:projectId`)
+   - New column "Courses prepared" showing compact count `5 / 8` as a clickable badge.
+   - Hover/click opens a popover with the full pill layout (header + Core/Basic groups).
+   - Sortable by completion count so admins can rank candidates by preparation.
 
-1. **Widen the lookup query** (`applyNowProjects`, lines 199–210):
-   - Drop the `.eq("project_status", "apply_now")` filter.
-   - Rename the variable + queryKey to `crossProjectLookup` / `analysis-cross-project-lookup` to remove the misleading "apply_now" framing.
-   - Keep the same selected columns (`id, project_type, phase, client_id, clients(name)`); add `project_status` so future UI can disambiguate.
-   - Update the dependency array on the `useMemo` at line 279 accordingly.
+2. **Applicant review page** (`/admin/roster/project/:projectId/applicant/:applicationId`)
+   - New "Completed courses" Card placed directly under the existing applicant identity section, above the project-specific application answers.
+   - Full pill layout, no popover — everything visible at a glance.
 
-2. **Tighten the fallback** on line 269: change `"Other Project"` to `"Unknown project"` so any genuinely orphaned application (e.g., a hard-deleted project) shows an honest label instead of a name that looks like a real project. This makes future regressions immediately recognizable.
+## Data
 
-3. **Make the chip behavior consistent** — the chip becomes a `<Link>` to `/admin/roster/project/{projectId}` only when the project was resolved; orphaned rows render as plain text (no link). The current code already passes `projectId`, so the only change is conditionally suppressing the link when `clientName === "Unknown project"`.
+- Source: `course_completions` (already RLS-allows admins) joined to `course_catalog` (filtered to `active = true` AND `tier IN ('core','onboarding')`).
+- Course list reference is loaded once per page via a single `course_catalog` query.
+- Per-applicant completions:
+  - **Roster table:** one batched query `course_completions.select(user_id, course_key).in('user_id', userIds)` — built into a `Map<user_id, Set<course_key>>` so each row renders without an extra round-trip.
+  - **Applicant review page:** single `course_completions.select(course_key, completed_at).eq('user_id', app.user_id)` query.
 
-## Verification
+No schema changes, no new RPC, no edge function.
 
-- After the change, reload Recruiting Center → David Dovhan's card. The chip should read **"Tech Fleet Professional Association"** (or whichever other real project he also applied to), not "Other Project".
-- Spot-check 2–3 other multi-project applicants in the same view.
-- DB-level sanity: `SELECT COUNT(*) FROM project_applications pa LEFT JOIN projects p ON p.id = pa.project_id WHERE p.id IS NULL;` should be `0`, confirming there are no truly orphaned applications and therefore no card should ever fall back to "Unknown project" today.
+## Technical notes
 
-## BDD scenarios to add to `bdd_scenarios`
+- New presentational component `src/components/admin/CompletedCoursesPanel.tsx` reused on both surfaces. Props: `completedKeys: Set<string>`, `catalog: { core: CatalogRow[]; onboarding: CatalogRow[] }`, `variant: "full" | "compact"`.
+- New hook `src/hooks/use-course-catalog-prep.ts` returns the cached core+onboarding catalog (5-min staleTime) so both surfaces share it.
+- Roster table column uses an AG Grid `cellRenderer` that renders the count badge inside a shadcn `Popover` (keyboard-accessible, focus-trap handled by Radix). Sort comparator uses completion count; AG Grid `valueGetter` returns the integer count.
+- Pills built with the existing shadcn `Badge` component using semantic HSL tokens — no raw hex. Completed = `bg-[hsl(var(--success))]`-style token already mapped to Growth Green; missing = `variant="outline"` with `text-muted-foreground`.
+- ARIA: popover trigger has `aria-label="View completed courses for {name}"`; pill groups use `role="list"` with `aria-labelledby` pointing at the group heading; missing pills get `aria-label="{course name} — not completed"` so screen readers don't just read the name.
+- Card surface uses `<Card>` so the global `tf-card` retrofit applies automatically; brand voice copy ("Completed courses", "Core courses", "Basic courses") is sentence case.
 
-- **REC-CROSSPROJ-001** — Cross-project chip shows the real client name regardless of project_status [UI/DB/Code]
-- **REC-CROSSPROJ-002** — Cross-project chip falls back to "Unknown project" (not "Other Project") only when the referenced `projects.id` no longer exists [UI/DB/Code]
-- **REC-CROSSPROJ-003** — Cross-project chip is a clickable link to `/admin/roster/project/{id}` when resolved, plain text when unresolved [UI/Code]
+## BDD scenarios (stored in `bdd_scenarios`)
+
+- `REC-PREP-001` — Roster column shows `X / 8` reflecting Core + Basic completions [UI/DB/Code]
+- `REC-PREP-002` — Popover lists completed pills (green, checkmark) and missing pills (outlined) grouped under Core / Basic headings, sorted by `display_order` [UI/Code]
+- `REC-PREP-003` — Applicant review page renders the same panel inline (no popover) above project answers [UI/Code]
+- `REC-PREP-004` — Sorting the roster column orders applicants by completion count desc/asc [UI/Code]
+- `REC-PREP-005` — Non-admin viewing the page cannot fetch `course_completions` for other users (RLS holds) [DB]
+- `REC-PREP-006` — When `course_catalog` has zero active core+onboarding rows, panel renders an empty state ("No required courses configured") instead of `0 / 0` [UI/Code]
 
 ## Out of scope
 
-- No schema changes, no migration.
-- No change to how applications themselves are queried.
-- No change to the Recruiting Center grid or applicant detail page beyond this chip.
+- No badge/certificate display (badges remain on their own surfaces).
+- No filtering or saved-views on the roster grid beyond the new sortable column.
+- Project / advanced tier courses are intentionally excluded per your scope ("Core and Basic only").

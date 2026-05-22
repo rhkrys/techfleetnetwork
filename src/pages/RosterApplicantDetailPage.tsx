@@ -25,6 +25,8 @@ import { toast } from "sonner";
 import { ApplicantStatusDropdown, applicantStatusLabel } from "@/components/admin/ApplicantStatusDropdown";
 import { DiscordRoleAssignment } from "@/components/admin/DiscordRoleAssignment";
 import { AgreementResendButton } from "@/components/agreements/AgreementResendButton";
+import { CompletedCoursesPanel } from "@/components/admin/CompletedCoursesPanel";
+import { useCourseCatalogPrep } from "@/hooks/use-course-catalog-prep";
 
 const typeLabel = (v: string) => PROJECT_TYPES.find((t) => t.value === v)?.label ?? v;
 const phaseLabel = (v: string) => PROJECT_PHASES.find((p) => p.value === v)?.label ?? v;
@@ -131,6 +133,27 @@ export default function RosterApplicantDetailPage() {
     },
     enabled: !!projApp?.user_id,
   });
+
+  // Course catalog (core + onboarding) and applicant's completions for the
+  // "Completed courses" recruiting-prep panel.
+  const { catalog: prepCatalog } = useCourseCatalogPrep(!!user && isAdmin);
+  const { data: applicantCompletions } = useQuery({
+    queryKey: ["roster-app-completions", projApp?.user_id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("course_completions")
+        .select("course_key")
+        .eq("user_id", projApp!.user_id as string);
+      if (error) throw error;
+      return (data ?? []) as { course_key: string }[];
+    },
+    enabled: !!projApp?.user_id && isAdmin,
+    staleTime: 60 * 1000,
+  });
+  const completedKeys = useMemo(
+    () => new Set((applicantCompletions ?? []).map((r) => r.course_key)),
+    [applicantCompletions],
+  );
 
   const clientName = (project?.clients as { name: string } | null)?.name ?? "Project";
 
@@ -311,9 +334,16 @@ export default function RosterApplicantDetailPage() {
         </Card>
       ) : null}
 
-
-
-
+      {/* Completed courses — recruiting prep snapshot */}
+      <Card>
+        <CardContent className="pt-6">
+          <CompletedCoursesPanel
+            completedKeys={completedKeys}
+            catalog={prepCatalog}
+            variant="full"
+          />
+        </CardContent>
+      </Card>
 
 
       {/* Submission meta */}
