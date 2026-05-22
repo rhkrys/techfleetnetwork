@@ -49,7 +49,7 @@ describe("NetworkActivity", () => {
 
     expect(await screen.findByText("190")).toBeInTheDocument();
     expect(screen.getAllByText("Core Course Completions")).toHaveLength(2);
-    expect(screen.getAllByText("49 core · 62 onboarding")).toHaveLength(2);
+    expect(screen.getAllByText("Platform Signups")).toHaveLength(2);
     expect(screen.getAllByText("111")).toHaveLength(2);
     expect(screen.getAllByText("122")).toHaveLength(2);
     expect(screen.getByText("120")).toBeInTheDocument();
