@@ -95,6 +95,39 @@ export default function ProjectRosterContent({ projectId }: ProjectRosterContent
     return m;
   }, [profiles]);
 
+  const { catalog: prepCatalog } = useCourseCatalogPrep(!!user && isAdmin);
+
+  // Batched per-applicant Core + Basic completion fetch. Filters to the active
+  // catalog keys so we don't pull retired/project-tier rows over the wire.
+  const { data: completionsRaw } = useQuery({
+    queryKey: ["roster-project-completions", projectId, userIds, [...prepCatalog.allKeys].sort().join(",")],
+    queryFn: async () => {
+      if (userIds.length === 0 || prepCatalog.allKeys.size === 0) return [];
+      const { data, error } = await supabase
+        .from("course_completions")
+        .select("user_id, course_key")
+        .in("user_id", userIds)
+        .in("course_key", [...prepCatalog.allKeys]);
+      if (error) throw error;
+      return (data ?? []) as { user_id: string; course_key: string }[];
+    },
+    enabled: userIds.length > 0 && prepCatalog.allKeys.size > 0,
+    staleTime: 60 * 1000,
+  });
+
+  const completionsByUser = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    for (const row of completionsRaw ?? []) {
+      let set = m.get(row.user_id);
+      if (!set) {
+        set = new Set();
+        m.set(row.user_id, set);
+      }
+      set.add(row.course_key);
+    }
+    return m;
+  }, [completionsRaw]);
+
   const enrichedApps = useMemo<EnrichedApp[]>(() => {
     return (apps ?? []).map((app) => {
       const profile = profileMap.get(app.user_id);
@@ -103,6 +136,7 @@ export default function ProjectRosterContent({ projectId }: ProjectRosterContent
         : app.community_agreement_signed_at
           ? "signed"
           : "pending";
+      const completedCourseKeys = completionsByUser.get(app.user_id) ?? new Set<string>();
       return {
         ...app,
         applicantName: profile?.display_name || `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim() || "Unknown",
@@ -110,9 +144,11 @@ export default function ProjectRosterContent({ projectId }: ProjectRosterContent
         applicantEmail: profile?.email ?? "",
         hats: app.team_hats_interest.join(", "),
         agreementStatus,
+        completedCourseKeys,
+        completedCourseCount: completedCourseKeys.size,
       };
     });
-  }, [apps, profileMap]);
+  }, [apps, profileMap, completionsByUser]);
 
   const ViewCellRenderer = useMemo(() => {
     const Renderer = (params: ICellRendererParams<EnrichedApp>) => (
