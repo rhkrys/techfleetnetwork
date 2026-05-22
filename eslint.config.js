@@ -68,6 +68,8 @@ export default tseslint.config(
       // CSS portability — these always block (memory: CSS-COMPAT-006).
       "css-portability/no-h-screen": "error",
       "css-portability/no-vh-units": "error",
+      // Block raw Discord username inputs anywhere except the shared connector.
+      "discord-connect/no-raw-discord-input": "error",
       // Static browser-compat: block JS APIs that don't exist in the oldest
       // supported browser per `browserslist`. Tighten to "error" — the
       // matrix is conservative so violations are rare and always fixable.
