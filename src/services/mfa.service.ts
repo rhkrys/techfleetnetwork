@@ -203,6 +203,15 @@ export const MfaService = {
       throw new Error("Invalid verification code. Please try again.");
     }
     log.info("verifyChallenge", "2FA challenge passed — session elevated to AAL2");
+    // Force the SDK to pull the freshly-minted AAL2 token into its cache + storage
+    // BEFORE any downstream gate/RPC reads `session.access_token`. Without this
+    // the focus/TOKEN_REFRESHED handlers race the JWT propagation and re-prompt
+    // (the "2FA loop" — AUTH-2FA-LOOP-001).
+    try {
+      await supabase.auth.refreshSession();
+    } catch (e) {
+      log.warn("verifyChallenge", `refreshSession after verify failed (non-blocking): ${e instanceof Error ? e.message : String(e)}`);
+    }
     await this.markCurrentSessionVerified();
   },
 
