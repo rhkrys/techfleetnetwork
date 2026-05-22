@@ -106,7 +106,7 @@ Deno.serve(withAuditWrapper("promote-to-teacher", async (req) => {
     const emailPayload: Record<string, unknown> = {
       to: normalizedEmail,
       subject: 'Tech Fleet: Confirm Your Teacher Role',
-      from: 'Tech Fleet <notifications@notify.techfleet.org>',
+      from: 'Tech Fleet <onboarding@techfleet.org>',
       sender_domain: 'notify.techfleet.org',
       label: 'teacher_promotion',
       message_id: messageId,

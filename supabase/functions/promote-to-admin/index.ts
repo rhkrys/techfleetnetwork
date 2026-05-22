@@ -155,7 +155,7 @@ Deno.serve(withAuditWrapper("promote-to-admin", async (req) => {
     const emailPayload: Record<string, unknown> = {
       to: normalizedEmail,
       subject: 'Tech Fleet: Confirm Your Admin Role',
-      from: 'Tech Fleet <notifications@notify.techfleet.org>',
+      from: 'Tech Fleet <onboarding@techfleet.org>',
       sender_domain: 'notify.techfleet.org',
       label: 'admin_promotion',
       message_id: messageId,

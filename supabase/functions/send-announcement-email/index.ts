@@ -240,7 +240,7 @@ Deno.serve(withAuditWrapper("send-announcement-email", async (req) => {
             subject: `[Tech Fleet] ${announcement.title}`,
             html: emailHtml,
             text: emailText,
-            from: `Tech Fleet <notifications@notify.techfleet.org>`,
+            from: `Tech Fleet <onboarding@techfleet.org>`,
             sender_domain: "notify.techfleet.org",
             label: "announcement",
             message_id: messageId,
