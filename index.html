@@ -130,11 +130,12 @@
         // fires when the very first entry bundle 404s before React has
         // mounted. After mount, lazyWithRetry + ErrorBoundary own recovery.
         var RELOAD_KEY = '__tfn_blank_recovery_reload__';
+        var RELOAD_PARAM = '_r';
         function isChunk404(target) {
           if (!target) return false;
           var src = target.src || target.href || '';
-          // Ignore lazyWithRetry's own cache-busted retries (?_n=… or ?__r=…).
-          if (/[?&](_n|__r)=/.test(src)) return false;
+          // Ignore lazyWithRetry's own cache-busted retries (?_n=…, ?__r=…, ?_r=…).
+          if (/[?&](_n|__r|_r)=/.test(src)) return false;
           return /\/assets\/.+\.(js|css)(\?|$)/.test(src);
         }
         function appMounted() {
@@ -143,16 +144,30 @@
               document.documentElement.getAttribute('data-tfn-mounted') === '1';
           } catch (e) { return false; }
         }
+        // In-memory guard — works even when sessionStorage is blocked
+        // (Brave Shields, iOS Private mode, partitioned storage in iframes).
+        var reloadFired = false;
         window.addEventListener('error', function (ev) {
           // Post-mount: leave it to lazyWithRetry / ErrorBoundary.
           if (appMounted()) return;
           if (!isChunk404(ev.target)) return;
+          if (reloadFired) return;
+          // PRIMARY storage-independent guard: if the URL already carries
+          // our cache-bust param, this is the post-recovery load — never
+          // reload again, no matter what storage says. This is what stops
+          // the /login?_r=… infinite loop for users with blocked storage.
+          try {
+            if (new URLSearchParams(window.location.search).has(RELOAD_PARAM)) return;
+          } catch (e) { /* if URLSearchParams blows up, fall through to storage guard */ }
+          // Belt-and-suspenders sessionStorage guard for the rare case where
+          // the cache-bust param gets stripped by a proxy/redirect.
           try {
             if (sessionStorage.getItem(RELOAD_KEY)) return;
             sessionStorage.setItem(RELOAD_KEY, '1');
-          } catch (e) { /* fall through */ }
+          } catch (e) { /* storage blocked — URL guard above is sufficient */ }
+          reloadFired = true;
           var url = new URL(window.location.href);
-          url.searchParams.set('_r', String(Date.now()));
+          url.searchParams.set(RELOAD_PARAM, String(Date.now()));
           window.location.replace(url.toString());
         }, true);
         // Clear the recovery flag a few seconds after the app has booted
@@ -160,13 +175,24 @@
         // user-initiated lazy imports can fail). Clearing on `load` was
         // the second half of the Firefox loop: each click re-armed the
         // guard, then another stale chunk error re-tripped it.
+        // Also strip `_r` from the address bar so users don't bookmark/
+        // share URLs with the cache-bust param.
         window.addEventListener('load', function () {
           setTimeout(function () {
             if (appMounted()) {
               try { sessionStorage.removeItem(RELOAD_KEY); } catch (e) {}
+              try {
+                var u = new URL(window.location.href);
+                if (u.searchParams.has(RELOAD_PARAM)) {
+                  u.searchParams.delete(RELOAD_PARAM);
+                  var clean = u.pathname + (u.searchParams.toString() ? '?' + u.searchParams.toString() : '') + u.hash;
+                  window.history.replaceState(window.history.state, '', clean);
+                }
+              } catch (e) { /* non-fatal */ }
             }
           }, 10000);
         });
+
 
         // NOTE: The aggressive blank-screen watchdog was removed — it was
         // hard-reloading the page (with a `_w=` cache-bust) whenever React
