@@ -6,6 +6,7 @@ import {
   jsonResponse,
   parseJsonBody,
 } from "../_shared/http.ts";
+import { isProductionOrigin, originHostFromRequest } from "../_shared/auth-hosts.ts";
 
 const BodySchema = z.object({
   token: z.string().trim().min(20).max(4096),
@@ -33,20 +34,10 @@ Deno.serve(withAuditWrapper("verify-turnstile", async (req) => {
   // without weakening production verification.
   const PROD_SECRET = Deno.env.get("TURNSTILE_SECRET_KEY");
   const TEST_SECRET = "1x0000000000000000000000000000000AA";
-  const PRODUCTION_HOSTS = new Set([
-    "techfleetnetwork.lovable.app",
-    "www.techfleet.network",
-    "techfleet.network",
-  ]);
 
-  let originHost = "";
-  try {
-    const originHeader = req.headers.get("origin") ?? req.headers.get("referer") ?? "";
-    if (originHeader) originHost = new URL(originHeader).hostname.toLowerCase();
-  } catch { /* ignore malformed */ }
-
-  const isProductionOrigin = PRODUCTION_HOSTS.has(originHost);
-  const secret = isProductionOrigin ? PROD_SECRET : (PROD_SECRET ?? TEST_SECRET);
+  const originHost = originHostFromRequest(req);
+  const isProd = isProductionOrigin(originHost);
+  const secret = isProd ? PROD_SECRET : (PROD_SECRET ?? TEST_SECRET);
 
   if (!secret) {
     return jsonResponse({
@@ -83,7 +74,7 @@ Deno.serve(withAuditWrapper("verify-turnstile", async (req) => {
 
     // On non-production origins, the widget uses Cloudflare's test sitekey which
     // only validates against the matching test secret. Fall back transparently.
-    if ((!result.ok || result.body.success !== true) && !isProductionOrigin && secret !== TEST_SECRET) {
+    if ((!result.ok || result.body.success !== true) && !isProd && secret !== TEST_SECRET) {
       const fallback = await verifyWith(TEST_SECRET);
       if (fallback.ok && fallback.body.success === true) result = fallback;
     }

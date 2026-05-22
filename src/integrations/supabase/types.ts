@@ -6541,6 +6541,7 @@ export type Database = {
         }[]
       }
       prune_email_send_log: { Args: never; Returns: number }
+      prune_stale_rate_limits: { Args: never; Returns: number }
       purge_old_audit_logs: {
         Args: { retention_days?: number }
         Returns: number

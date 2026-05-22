@@ -153,6 +153,23 @@ async function logAdminLoginIfElevated(userId?: string | null) {
   }
 }
 
+// LCL-FIX-008: Module-level single-flight lock around setSession so two
+// parallel signInWithPassword calls (rapid double-click, retry race) cannot
+// interleave writes to `sb-*-auth-token` and produce a malformed JWT.
+let setSessionInflight: Promise<unknown> | null = null;
+async function singleFlightSetSession(tokens: { access_token: string; refresh_token: string }) {
+  if (setSessionInflight) {
+    await setSessionInflight.catch(() => undefined);
+  }
+  const p = supabase.auth.setSession(tokens);
+  setSessionInflight = p;
+  try {
+    return await p;
+  } finally {
+    if (setSessionInflight === p) setSessionInflight = null;
+  }
+}
+
 export const AuthService = {
   async signInWithPassword(email: string, password: string, captchaToken?: string) {
     const parsedEmail = emailInputSchema.safeParse(email);
@@ -163,8 +180,11 @@ export const AuthService = {
       throw new Error("Complete the human verification before trying again.");
     }
     const safeEmail = parsedEmail.data;
-    const domainCheck = await validateEmailDomainExists(safeEmail);
-    if (!domainCheck.valid) throw new Error(domainCheck.message ?? "Use an email address with a real domain.");
+    // LCL-FIX-002: client-side DNS check intentionally removed on the login
+    // path. The server already runs a fail-open domain check inside
+    // `login-with-captcha`, and DoH hiccups on the client were a top cause
+    // of "Use an email address with a real domain." false rejects. Domain
+    // typo prevention still runs on registration where it adds value.
     void logAccountActivity("login_attempt_started", { email: safeEmail });
     return log.track("signInWithPassword", `Authenticating user ${safeEmail}`, { email: safeEmail }, async () => {
       const { data, error } = await supabase.functions.invoke<{ session: AuthSession; user: AuthSession["user"] }>("login-with-captcha", {
@@ -172,11 +192,11 @@ export const AuthService = {
       }).then(async (res) => {
         if (res.error) return { data: null, error: res.error };
         if (res.data?.session?.access_token && res.data.session.refresh_token) {
-          const setSessionResult = await supabase.auth.setSession({
+          const setSessionResult = await singleFlightSetSession({
             access_token: res.data.session.access_token,
             refresh_token: res.data.session.refresh_token,
           });
-          return setSessionResult;
+          return setSessionResult as { data: { session: AuthSession | null; user: AuthSession["user"] | null }; error: null } | { data: null; error: Error };
         }
         return { data: null, error: new Error("Invalid login response") };
       });
@@ -186,6 +206,21 @@ export const AuthService = {
         if (error.status === 429 || error.message.toLowerCase().includes("too many rapid auth attempts")) throw createAuthThrottleCaptchaError();
         throw new Error("Invalid email or password. Please try again.");
       }
+      // LCL-FIX-004: Post-setSession round-trip validation. If localStorage
+      // was corrupted by a concurrent write, getUser() will fail with a
+      // malformed-JWT error. Clear local state and ask the user to retry —
+      // safer than letting a half-baked session through.
+      try {
+        const { data: userCheck, error: userErr } = await supabase.auth.getUser();
+        if (userErr || !userCheck?.user) {
+          throw userErr ?? new Error("Sign-in didn't complete — please try again.");
+        }
+      } catch (validationErr) {
+        log.warn("signInWithPassword", "Post-setSession validation failed; clearing local auth", { email: safeEmail }, validationErr);
+        clearLocalAuthArtifacts();
+        await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
+        throw new Error("Sign-in didn't complete — please try again.");
+      }
       if (data.session) writeSessionMarker(data.session);
       log.info("signInWithPassword", `User ${safeEmail} authenticated successfully`, { userId: data.user?.id });
       void logAccountActivity("login_succeeded", { email: safeEmail, userId: data.user?.id });
@@ -193,6 +228,7 @@ export const AuthService = {
       return data;
     });
   },
+
 
   async signUp(email: string, password: string, firstName: string, lastName: string, redirectTo: string, captchaToken: string, birthYear?: number) {
     const parsedEmail = emailInputSchema.safeParse(email);

@@ -1,0 +1,170 @@
+/**
+ * Classify auth errors into actionable categories so LoginPage can render
+ * honest, recovery-focused messaging and only penalize the user (device
+ * lockout + server rate-limit increment) on confirmed credential rejects.
+ *
+ * See LCL-FIX-003 / LCL-FIX-005.
+ */
+import { isAuthThrottleCaptchaError } from "@/lib/auth-throttle-captcha";
+
+export type AuthErrorKind =
+  | "INVALID_CREDENTIALS"
+  | "CAPTCHA_REQUIRED"
+  | "CAPTCHA_FAILED"
+  | "RATE_LIMITED"
+  | "DOMAIN_INVALID"
+  | "SESSION_INCOMPLETE"
+  | "NETWORK"
+  | "SERVER"
+  | "UNKNOWN";
+
+export interface ClassifiedAuthError {
+  kind: AuthErrorKind;
+  message: string;
+  /** True only for INVALID_CREDENTIALS — controls lockout/rate-limit increments. */
+  countsAgainstUser: boolean;
+}
+
+const CRED_PATTERNS = [
+  "invalid login",
+  "invalid credentials",
+  "invalid email or password",
+  "email and password didn't match",
+];
+
+const DOMAIN_PATTERNS = [
+  "use an email address with a real domain",
+  "real domain",
+];
+
+const CAPTCHA_FAILED_PATTERNS = [
+  "verification didn't complete",
+  "captcha verification failed",
+  "turnstile",
+];
+
+const CAPTCHA_REQUIRED_PATTERNS = [
+  "complete the human verification",
+  "captcha_required",
+];
+
+const RATE_PATTERNS = [
+  "too many",
+  "rate limit",
+  "temporarily locked",
+];
+
+const NETWORK_PATTERNS = [
+  "failed to fetch",
+  "network error",
+  "load failed",
+  "fetch failed",
+  "networkerror",
+  "sign-in didn't complete",
+];
+
+function messageOf(err: unknown): string {
+  if (!err) return "";
+  if (err instanceof Error) return err.message ?? "";
+  if (typeof err === "string") return err;
+  const m = (err as { message?: unknown }).message;
+  return typeof m === "string" ? m : "";
+}
+
+function statusOf(err: unknown): number | undefined {
+  const s = (err as { status?: unknown }).status;
+  return typeof s === "number" ? s : undefined;
+}
+
+export function classifyAuthError(err: unknown): ClassifiedAuthError {
+  const raw = messageOf(err);
+  const msg = raw.toLowerCase();
+  const status = statusOf(err);
+
+  if (isAuthThrottleCaptchaError(err)) {
+    return {
+      kind: "RATE_LIMITED",
+      message:
+        "Too many sign-in attempts in a short window. Complete the verification below and try again.",
+      countsAgainstUser: false,
+    };
+  }
+
+  if (DOMAIN_PATTERNS.some((p) => msg.includes(p))) {
+    return {
+      kind: "DOMAIN_INVALID",
+      message:
+        "We couldn't recognize that email's domain. Double-check the address and try again.",
+      countsAgainstUser: false,
+    };
+  }
+
+  if (CRED_PATTERNS.some((p) => msg.includes(p))) {
+    return {
+      kind: "INVALID_CREDENTIALS",
+      message:
+        "That email and password didn't match. Double-check, or use one of the recovery options below.",
+      countsAgainstUser: true,
+    };
+  }
+
+  if (CAPTCHA_FAILED_PATTERNS.some((p) => msg.includes(p))) {
+    return {
+      kind: "CAPTCHA_FAILED",
+      message:
+        "Verification didn't complete. Refresh the check below and try again.",
+      countsAgainstUser: false,
+    };
+  }
+
+  if (CAPTCHA_REQUIRED_PATTERNS.some((p) => msg.includes(p))) {
+    return {
+      kind: "CAPTCHA_REQUIRED",
+      message: "Complete the human verification below before signing in.",
+      countsAgainstUser: false,
+    };
+  }
+
+  if (status === 429 || RATE_PATTERNS.some((p) => msg.includes(p))) {
+    return {
+      kind: "RATE_LIMITED",
+      message:
+        raw ||
+        "This account is temporarily locked after multiple failed sign-ins. Try again in a few minutes, or reset your password.",
+      countsAgainstUser: false,
+    };
+  }
+
+  if (NETWORK_PATTERNS.some((p) => msg.includes(p)) || status === 0) {
+    return {
+      kind: "NETWORK",
+      message:
+        "We couldn't reach the sign-in service. Check your connection and try again.",
+      countsAgainstUser: false,
+    };
+  }
+
+  if (typeof status === "number" && status >= 500) {
+    return {
+      kind: "SERVER",
+      message:
+        "The sign-in service hit a snag. Please try again in a moment.",
+      countsAgainstUser: false,
+    };
+  }
+
+  if (msg.includes("sign-in didn't complete")) {
+    return {
+      kind: "SESSION_INCOMPLETE",
+      message:
+        "Sign-in didn't complete cleanly. Please try again — your account is safe.",
+      countsAgainstUser: false,
+    };
+  }
+
+  return {
+    kind: "UNKNOWN",
+    message: raw || "Something went wrong. Please try again.",
+    countsAgainstUser: false,
+  };
+}

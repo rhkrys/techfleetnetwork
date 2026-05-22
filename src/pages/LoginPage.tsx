@@ -31,6 +31,7 @@ import { logCaptchaTelemetry } from "@/lib/auth-captcha-telemetry";
 import { isAuthThrottleCaptchaError } from "@/lib/auth-throttle-captcha";
 import { reportValidationRejection } from "@/services/error-reporter.service";
 import { normalizeSafeRedirectTarget } from "@/lib/security";
+import { classifyAuthError } from "@/lib/auth-error-classifier";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -280,35 +281,30 @@ export default function LoginPage() {
         setLoading(false);
         return;
       }
-      const msg = String(err?.message ?? "").toLowerCase();
-      const isCredentialReject = msg.includes("invalid login") || msg.includes("invalid credentials") || msg.includes("invalid email or password");
-      if (isCredentialReject) {
+      // LCL-FIX-003/005: honest classification. Only INVALID_CREDENTIALS
+      // counts against the user (device lockout + server rate-limit row).
+      const classified = classifyAuthError(err);
+      if (classified.kind === "INVALID_CREDENTIALS") {
         const nextLockout = recordInvalidAuthAttempt();
         setLockoutState(nextLockout);
         lastFailedEmailRef.current = result.data.email.trim().toLowerCase();
-        // Increment the SERVER-side bucket only on confirmed rejection.
         void RateLimitService.recordFailure(result.data.email, "login_attempt").catch(() => {});
         if (nextLockout.locked) {
           setAuthError(formatAuthLockoutMessage(nextLockout.remainingSeconds));
         } else {
-          setAuthError("That email and password didn't match. Double-check, or use one of the recovery options below.");
+          setAuthError(classified.message);
         }
-        // Fire-and-forget OAuth-identity probe: lets us surface a "use Google"
-        // hint when the account exists but has no password identity. We need a
-        // fresh CAPTCHA token; defer until the widget produces one (next tick).
         const probeEmail = result.data.email;
         setTimeout(() => {
-          // Read the latest token via a state setter trick — captchaToken in
-          // closure is stale. We grab it from the DOM via the widget callback
-          // by waiting for its next onTokenChange fire (handled by useEffect below).
           window.dispatchEvent(new CustomEvent("tfn:probe-oauth-identity", { detail: { email: probeEmail } }));
         }, 0);
       } else {
-        setAuthError(err.message ?? "Something went wrong. Please try again.");
+        setAuthError(classified.message);
       }
       setLoading(false);
     }
   };
+
 
   // Listen for the deferred OAuth-identity probe and run it once a fresh
   // CAPTCHA token is available. Avoids extra renders and stale closures.
@@ -418,7 +414,7 @@ export default function LoginPage() {
             <div style={{ minHeight: 78 }} onFocusCapture={() => setTurnstileReady(true)}>
               {turnstileReady ? (
                 <Suspense fallback={<div style={{ height: 78 }} aria-hidden="true" />}>
-                  <TurnstileChallenge action="login" onTokenChange={setCaptchaToken} failureCount={captchaFailureCount} />
+                  <TurnstileChallenge action="login" onTokenChange={setCaptchaToken} failureCount={captchaFailureCount} email={email} />
                 </Suspense>
               ) : (
                 <div style={{ height: 78 }} aria-hidden="true" />

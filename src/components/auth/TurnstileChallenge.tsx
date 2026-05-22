@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { markLoginCaptchaVerified } from "@/lib/auth-captcha";
+import { isProductionHostname, warnOnUnknownAuthHost } from "@/lib/auth/production-hosts";
+import { supabase } from "@/integrations/supabase/client";
 
 const TURNSTILE_SCRIPT_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
 const PRODUCTION_SITE_KEY = "0x4AAAAAADEF72dWIkFxiGOU";
@@ -9,16 +11,17 @@ const PRODUCTION_SITE_KEY = "0x4AAAAAADEF72dWIkFxiGOU";
 // Reference: https://developers.cloudflare.com/turnstile/troubleshooting/testing/
 const TEST_SITE_KEY = "1x00000000000000000000AA";
 
-const PRODUCTION_HOSTNAMES = new Set<string>([
-  "techfleetnetwork.lovable.app",
-  "www.techfleet.network",
-  "techfleet.network",
-]);
+// LCL-FIX-003: how long we wait for the Turnstile script to fully load and
+// produce a widget before showing the recovery UI. 6s is long enough to
+// avoid false-positives on slow connections but short enough that a
+// blocked extension / proxy doesn't leave the user staring at a spinner.
+const LOAD_WATCHDOG_MS = 6_000;
 
 function resolveSiteKey(): string {
   if (typeof window === "undefined") return PRODUCTION_SITE_KEY;
   const host = window.location.hostname.toLowerCase();
-  return PRODUCTION_HOSTNAMES.has(host) ? PRODUCTION_SITE_KEY : TEST_SITE_KEY;
+  warnOnUnknownAuthHost(host);
+  return isProductionHostname(host) ? PRODUCTION_SITE_KEY : TEST_SITE_KEY;
 }
 
 const TURNSTILE_SITE_KEY = resolveSiteKey();
@@ -39,25 +42,49 @@ type TurnstileChallengeProps = {
   action: "login" | "register" | "forgot_password" | "signup_confirmation_resend";
   onTokenChange: (token: string) => void;
   failureCount?: number;
+  /** Email to use for the magic-link fallback. Login surfaces this. */
+  email?: string;
 };
 
 // Cloudflare error code prefixes — see https://developers.cloudflare.com/turnstile/troubleshooting/client-side-errors/
 function classifyTurnstileError(code?: string): TurnstileErrorKind {
   if (!code) return "unknown";
   if (code.startsWith("11") || code === "300010" || code === "300020") return "expired";
-  if (code.startsWith("2") || code.startsWith("6")) return "network"; // network/timeout
+  if (code.startsWith("2") || code.startsWith("6")) return "network";
   if (code.startsWith("3") || code.startsWith("4") || code.startsWith("5")) return "challenge";
   return "unknown";
 }
 
-export function TurnstileChallenge({ action, onTokenChange, failureCount = 0 }: TurnstileChallengeProps) {
+function injectScript(onReady: () => void): HTMLScriptElement {
+  const existing = document.querySelector<HTMLScriptElement>(`script[src="${TURNSTILE_SCRIPT_SRC}"]`);
+  if (existing) {
+    if (window.turnstile) {
+      onReady();
+      return existing;
+    }
+    existing.addEventListener("load", onReady, { once: true });
+    return existing;
+  }
+  const script = document.createElement("script");
+  script.src = TURNSTILE_SCRIPT_SRC;
+  script.async = true;
+  script.defer = true;
+  script.addEventListener("load", onReady, { once: true });
+  document.head.appendChild(script);
+  return script;
+}
+
+export function TurnstileChallenge({ action, onTokenChange, failureCount = 0, email }: TurnstileChallengeProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<string | null>(null);
   const [scriptReady, setScriptReady] = useState(Boolean(window.turnstile));
   const [retrySeconds, setRetrySeconds] = useState(0);
   const [transientError, setTransientError] = useState<TurnstileErrorKind | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [magicLinkState, setMagicLinkState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const consecutiveFailuresRef = useRef(0);
   const lastFailureCountRef = useRef(failureCount);
+  const retryCountRef = useRef(0);
 
   const resetWidget = () => {
     if (widgetIdRef.current && window.turnstile) {
@@ -67,25 +94,26 @@ export function TurnstileChallenge({ action, onTokenChange, failureCount = 0 }: 
 
   const beginRetryCountdown = () => {
     onTokenChange("");
-    // Only lock out after 2+ consecutive failures. First failure → silent auto-reset.
     if (consecutiveFailuresRef.current >= 2) setRetrySeconds(30);
     else resetWidget();
   };
 
+  // Script injection (kicks off on mount; widget render still defers until
+  // scriptReady fires and the container is mounted).
   useEffect(() => {
-    if (window.turnstile) {
-      setScriptReady(true);
-      return;
-    }
-
-    const existing = document.querySelector<HTMLScriptElement>(`script[src="${TURNSTILE_SCRIPT_SRC}"]`);
-    const script = existing ?? document.createElement("script");
-    script.src = TURNSTILE_SCRIPT_SRC;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => setScriptReady(true);
-    if (!existing) document.head.appendChild(script);
+    if (window.turnstile) { setScriptReady(true); return; }
+    injectScript(() => setScriptReady(true));
   }, []);
+
+  // LCL-FIX-003: load-failure watchdog. If after 6s the widget hasn't
+  // produced a token AND we don't have a widget id, surface the recovery UI.
+  useEffect(() => {
+    if (loadFailed) return;
+    const t = window.setTimeout(() => {
+      if (!widgetIdRef.current) setLoadFailed(true);
+    }, LOAD_WATCHDOG_MS);
+    return () => window.clearTimeout(t);
+  }, [loadFailed]);
 
   useEffect(() => {
     if (!scriptReady || !containerRef.current || !window.turnstile || widgetIdRef.current) return;
@@ -100,14 +128,11 @@ export function TurnstileChallenge({ action, onTokenChange, failureCount = 0 }: 
         consecutiveFailuresRef.current = 0;
         setTransientError(null);
         setRetrySeconds(0);
-        // Cloudflare returned a real token → unblock our local fetch interceptor.
-        // Supabase still verifies the token server-side via the captchaToken option,
-        // so this marker only governs the client-side defense-in-depth gate.
+        setLoadFailed(false);
         markLoginCaptchaVerified();
         onTokenChange(token);
       },
       "expired-callback": () => {
-        // Token expired before submit — silently get a fresh one, don't penalize the user.
         setTransientError("expired");
         onTokenChange("");
         resetWidget();
@@ -128,7 +153,6 @@ export function TurnstileChallenge({ action, onTokenChange, failureCount = 0 }: 
   }, [action, onTokenChange, scriptReady]);
 
   useEffect(() => {
-    // Only treat external failures (e.g. server-side CAPTCHA rejection) as a real failure.
     if (failureCount > lastFailureCountRef.current) {
       consecutiveFailuresRef.current += 1;
       setTransientError("challenge");
@@ -141,15 +165,41 @@ export function TurnstileChallenge({ action, onTokenChange, failureCount = 0 }: 
     if (retrySeconds <= 0) return;
     const timer = window.setInterval(() => {
       setRetrySeconds((current) => {
-        if (current <= 1) {
-          resetWidget();
-          return 0;
-        }
+        if (current <= 1) { resetWidget(); return 0; }
         return current - 1;
       });
     }, 1_000);
     return () => window.clearInterval(timer);
   }, [retrySeconds]);
+
+  const handleRetryLoad = useCallback(() => {
+    retryCountRef.current += 1;
+    setLoadFailed(false);
+    setMagicLinkState("idle");
+    // Remove any stale script tag + global so the next inject is a clean slate.
+    document.querySelectorAll(`script[src="${TURNSTILE_SCRIPT_SRC}"]`).forEach((s) => s.remove());
+    try { delete (window as { turnstile?: unknown }).turnstile; } catch { /* ignore */ }
+    if (widgetIdRef.current && window.turnstile) {
+      try { window.turnstile.remove(widgetIdRef.current); } catch { /* ignore */ }
+    }
+    widgetIdRef.current = null;
+    setScriptReady(false);
+    injectScript(() => setScriptReady(true));
+  }, []);
+
+  const handleSendMagicLink = useCallback(async () => {
+    if (!email || magicLinkState === "sending" || magicLinkState === "sent") return;
+    setMagicLinkState("sending");
+    try {
+      const { error } = await supabase.functions.invoke("send-magic-link", {
+        body: { email, redirectTo: `${window.location.origin}/dashboard` },
+      });
+      if (error) throw error;
+      setMagicLinkState("sent");
+    } catch {
+      setMagicLinkState("error");
+    }
+  }, [email, magicLinkState]);
 
   const errorMessage = (() => {
     if (retrySeconds > 0) {
@@ -162,6 +212,48 @@ export function TurnstileChallenge({ action, onTokenChange, failureCount = 0 }: 
     if (transientError === "network") return "Verification is having trouble reaching Cloudflare. Retrying…";
     return null;
   })();
+
+  if (loadFailed) {
+    return (
+      <div data-no-card className="rounded-md border border-destructive/40 bg-destructive/5 p-3" role="group" aria-label="Human verification">
+        <p className="text-sm text-foreground font-medium">Verification didn't load.</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          This usually means a browser extension, ad-blocker, or your network is blocking <span className="font-mono">challenges.cloudflare.com</span>.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={handleRetryLoad}
+            className="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Retry verification
+          </button>
+          {email && (
+            <button
+              type="button"
+              onClick={handleSendMagicLink}
+              disabled={magicLinkState === "sending" || magicLinkState === "sent"}
+              className="inline-flex items-center justify-center rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {magicLinkState === "sending" ? "Sending…"
+                : magicLinkState === "sent" ? "Link sent — check your inbox"
+                : "Email me a sign-in link"}
+            </button>
+          )}
+        </div>
+        {magicLinkState === "sent" && (
+          <p className="mt-2 text-xs text-muted-foreground" role="status" aria-live="polite">
+            If an account exists for that email, we've sent a sign-in link. Please check your inbox.
+          </p>
+        )}
+        {magicLinkState === "error" && (
+          <p className="mt-2 text-xs text-destructive" role="alert">
+            We couldn't send a sign-in link. Please try again in a minute.
+          </p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div data-no-card className="rounded-md border border-border bg-muted/40 p-3" role="group" aria-label="Human verification">
