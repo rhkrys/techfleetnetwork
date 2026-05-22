@@ -1,7 +1,7 @@
 // Sync Airtable-derived inputs for Network Stats into network_stats_baselines.
 // Counts (all-time):
 //   1. unique general application submitters from "General Applications"
-//   2. unique Service/Servant Leadership Masterclass registrants from "Masterclass Registrations"
+//   2. unique Service Leadership Masterclass (legacy alias: "Servant Leadership") registrants from "Masterclass Registrations"
 //   3. total rows in "Masterclass Registrations"
 // Writes results to network_stats_baselines (id=1). On failure, last-known values are preserved.
 
@@ -135,7 +135,7 @@ Deno.serve(async (req) => {
     const airtable_masterclass_total = mc.length;
     const slKeys = new Set<string>();
     for (const r of mc) {
-      // Check any text field for service/servant leadership match
+      // Check any text field for service leadership match (regex still matches legacy "servant" rows)
       let matched = false;
       for (const v of Object.values(r.fields)) {
         if (typeof v === "string" && SERVICE_LEADERSHIP_REGEX.test(v)) { matched = true; break; }
