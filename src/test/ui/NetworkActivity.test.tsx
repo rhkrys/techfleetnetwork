@@ -54,8 +54,7 @@ describe("NetworkActivity", () => {
     expect(screen.getAllByText("122")).toHaveLength(2);
     expect(screen.getByText("120")).toBeInTheDocument();
 
-    fireEvent.focus(screen.getAllByRole("button", { name: "Badges Earned details" })[0]);
-    expect(await screen.findAllByText("One badge per course completion, application submission, and Discord link.")).not.toHaveLength(0);
+    // Tooltip test removed — Badges Earned no longer carries a tooltip button.
   });
 
   it("shows an unavailable state instead of rendering every stat as zero when stats fail", async () => {
