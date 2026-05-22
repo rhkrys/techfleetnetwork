@@ -253,15 +253,25 @@ export default function LoginPage() {
       // OAuth-identity hint check on failure (Turnstile tokens are single-use,
       // so the hint check uses a fresh token via the next render — see below).
       try {
-        await AuthService.signInWithPassword(result.data.email, result.data.password, captchaToken);
+        const authResult = await AuthService.signInWithPassword(result.data.email, result.data.password, captchaToken);
+        recordLoginEvent(attemptId, "session_set", {
+          email: result.data.email,
+          durationMs: Date.now() - attemptStarted,
+          userId: (authResult as { user?: { id?: string } } | null)?.user?.id ?? null,
+        });
         const { needsChallenge } = await MfaService.getMfaGateDecision();
         if (needsChallenge) {
+          recordLoginEvent(attemptId, "mfa_required", { email: result.data.email });
           setMfaOpen(true);
           setLoading(false);
           return;
         }
         clearAuthLockout();
         clearLoginCaptcha();
+        recordLoginEvent(attemptId, "redirected", {
+          email: result.data.email,
+          durationMs: Date.now() - attemptStarted,
+        });
         navigate(from, { replace: true });
       } catch (err: unknown) {
         const nextCaptcha = recordFailedLoginAttempt();
@@ -279,6 +289,23 @@ export default function LoginPage() {
         throw err;
       }
     } catch (err: any) {
+      const classifiedForTelemetry = classifyAuthError(err);
+      const outcomeMap: Record<string, "invalid_credentials" | "auth_throttle" | "captcha_failed" | "network_error" | "server_error" | "session_incomplete" | "domain_reject" | "unknown"> = {
+        INVALID_CREDENTIALS: "invalid_credentials",
+        RATE_LIMITED: "auth_throttle",
+        CAPTCHA_FAILED: "captcha_failed",
+        CAPTCHA_REQUIRED: "captcha_failed",
+        NETWORK: "network_error",
+        SERVER: "server_error",
+        SESSION_INCOMPLETE: "session_incomplete",
+        DOMAIN_INVALID: "domain_reject",
+        UNKNOWN: "unknown",
+      };
+      recordLoginEvent(attemptId, outcomeMap[classifiedForTelemetry.kind] ?? "unknown", {
+        email: result.data.email,
+        httpStatus: (err as { status?: number })?.status ?? null,
+        durationMs: Date.now() - attemptStarted,
+      });
       if (isAuthThrottleCaptchaError(err)) {
         logCaptchaTelemetry("auth_captcha_fetch_blocked", { surface: "login", reason: "client_auth_throttle_429" });
         setCaptchaState(refreshLoginCaptcha());
