@@ -25,6 +25,8 @@ import { toast } from "sonner";
 import { ApplicantStatusDropdown, applicantStatusLabel } from "@/components/admin/ApplicantStatusDropdown";
 import { DiscordRoleAssignment } from "@/components/admin/DiscordRoleAssignment";
 import { AgreementResendButton } from "@/components/agreements/AgreementResendButton";
+import { CompletedCoursesPanel } from "@/components/admin/CompletedCoursesPanel";
+import { useCourseCatalogPrep } from "@/hooks/use-course-catalog-prep";
 
 const typeLabel = (v: string) => PROJECT_TYPES.find((t) => t.value === v)?.label ?? v;
 const phaseLabel = (v: string) => PROJECT_PHASES.find((p) => p.value === v)?.label ?? v;
