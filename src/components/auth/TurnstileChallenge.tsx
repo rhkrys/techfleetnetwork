@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { markLoginCaptchaVerified } from "@/lib/auth-captcha";
 import { isProductionHostname, warnOnUnknownAuthHost } from "@/lib/auth/production-hosts";
 import { supabase } from "@/integrations/supabase/client";
+import { recordLoginEvent, newAttemptId } from "@/lib/login-telemetry";
 
 const TURNSTILE_SCRIPT_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
 const PRODUCTION_SITE_KEY = "0x4AAAAAADEF72dWIkFxiGOU";
@@ -110,10 +111,15 @@ export function TurnstileChallenge({ action, onTokenChange, failureCount = 0, em
   useEffect(() => {
     if (loadFailed) return;
     const t = window.setTimeout(() => {
-      if (!widgetIdRef.current) setLoadFailed(true);
+      if (!widgetIdRef.current) {
+        setLoadFailed(true);
+        if (action === "login") {
+          recordLoginEvent(newAttemptId(), "captcha_blocked", { branch: "widget_load_watchdog" });
+        }
+      }
     }, LOAD_WATCHDOG_MS);
     return () => window.clearTimeout(t);
-  }, [loadFailed]);
+  }, [loadFailed, action]);
 
   useEffect(() => {
     if (!scriptReady || !containerRef.current || !window.turnstile || widgetIdRef.current) return;
