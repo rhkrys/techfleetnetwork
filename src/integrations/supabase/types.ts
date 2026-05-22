@@ -2417,10 +2417,10 @@ export type Database = {
           previous_engagement: string
           previous_engagement_ways: string[]
           psychological_safety: string
-          servant_leadership_actions: string
-          servant_leadership_challenges: string
-          servant_leadership_definition: string
-          servant_leadership_situation: string
+          service_leadership_actions: string
+          service_leadership_challenges: string
+          service_leadership_definition: string
+          service_leadership_situation: string
           status: string
           teammate_learnings: string
           title: string
@@ -2443,10 +2443,10 @@ export type Database = {
           previous_engagement?: string
           previous_engagement_ways?: string[]
           psychological_safety?: string
-          servant_leadership_actions?: string
-          servant_leadership_challenges?: string
-          servant_leadership_definition?: string
-          servant_leadership_situation?: string
+          service_leadership_actions?: string
+          service_leadership_challenges?: string
+          service_leadership_definition?: string
+          service_leadership_situation?: string
           status?: string
           teammate_learnings?: string
           title?: string
@@ -2469,10 +2469,10 @@ export type Database = {
           previous_engagement?: string
           previous_engagement_ways?: string[]
           psychological_safety?: string
-          servant_leadership_actions?: string
-          servant_leadership_challenges?: string
-          servant_leadership_definition?: string
-          servant_leadership_situation?: string
+          service_leadership_actions?: string
+          service_leadership_challenges?: string
+          service_leadership_definition?: string
+          service_leadership_situation?: string
           status?: string
           teammate_learnings?: string
           title?: string
