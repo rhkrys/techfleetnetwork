@@ -12,6 +12,7 @@ const BodySchema = z.object({
   email: z.string().trim().email().max(320),
   password: z.string().min(1).max(4096),
   captchaToken: z.string().trim().min(20).max(4096),
+  attemptId: z.string().trim().uuid().optional(),
 });
 
 function jsonResponse(body: unknown, status = 200, extraHeaders: Record<string, string> = {}) {
@@ -167,5 +168,46 @@ Deno.serve(withAuditWrapper("login-with-captcha", async (req) => {
     // LCL-FIX-001: Unconditional exit log.
     // eslint-disable-next-line no-console
     console.log(`[login-with-captcha] EXIT req=${requestId} status=${exitStatus} branch=${branch} duration_ms=${Date.now() - startedAt}`);
+
+    // Persist a telemetry row for every invocation so the System Health
+    // Login tab can surface failure-branch counts. Best-effort, never blocks.
+    try {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL");
+      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+      const body = (parsed?.success ? parsed.data : null) as { email?: string; attemptId?: string } | null;
+      if (supabaseUrl && serviceKey && body?.attemptId) {
+        const ip = clientIp(req) ?? null;
+        await fetch(`${supabaseUrl}/rest/v1/rpc/record_login_event`, {
+          method: "POST",
+          headers: {
+            apikey: serviceKey,
+            Authorization: `Bearer ${serviceKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            p_attempt_id: body.attemptId,
+            p_outcome: branch === "ok" ? "edge_entered" : (
+              branch === "captcha_fail" ? "captcha_failed" :
+              branch === "domain_reject" ? "domain_reject" :
+              branch === "throttle" ? "auth_throttle" :
+              branch === "token_4xx" ? "invalid_credentials" :
+              branch === "token_5xx" ? "server_error" :
+              branch === "validate_fail" ? "unknown" :
+              branch === "config_missing" ? "server_error" :
+              "edge_entered"
+            ),
+            p_branch: branch,
+            p_http_status: exitStatus,
+            p_duration_ms: Date.now() - startedAt,
+            p_email: body.email ?? null,
+            p_ip: ip,
+            p_user_agent: req.headers.get("user-agent")?.slice(0, 120) ?? null,
+            p_origin_host: originHost,
+            p_request_id: requestId,
+            p_user_id: null,
+          }),
+        }).catch(() => undefined);
+      }
+    } catch { /* telemetry must never fail */ }
   }
 }));
