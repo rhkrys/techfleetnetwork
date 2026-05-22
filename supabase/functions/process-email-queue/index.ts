@@ -316,13 +316,15 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
               error_message: `Recipient already received ${perRecipientMax} ${labelStr} email(s) in the last ${perRecipientWindowHours}h`,
             })
             // Surface to triage queue (deduped) so admins can see drops.
-            await supabase.rpc('upsert_agent_fix_queue', {
+            await supabase.rpc('upsert_fix_queue_entry', {
               p_fingerprint: `email.frequency_capped.${labelStr}`,
+              p_event_type: 'email_frequency_capped',
+              p_source: 'process-email-queue',
+              p_error_message: `Recipient hit ${perRecipientWindowHours}h per-recipient cap for ${labelStr}.`,
               p_severity: 'warning',
-              p_title: `Bulk email capped for ${labelStr}`,
-              p_summary: `One or more recipients hit the ${perRecipientWindowHours}h per-recipient cap for ${labelStr}.`,
-              p_metadata: { template: labelStr, window_hours: perRecipientWindowHours },
-            }).then(() => {}, () => {})
+            }).then(() => {}, (e: unknown) => {
+              console.warn('Failed to upsert triage entry', { error: e })
+            })
             const { error: capDelErr } = await supabase.rpc('delete_email', {
               queue_name: queue,
               message_id: msg.msg_id,
