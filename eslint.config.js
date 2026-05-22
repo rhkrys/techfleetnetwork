@@ -7,6 +7,7 @@ import tseslint from "typescript-eslint";
 import compat from "eslint-plugin-compat";
 import brandTerms from "./scripts/lint/eslint-plugin-brand-terms.mjs";
 import cssPortability from "./scripts/lint/eslint-plugin-css-portability.mjs";
+import noRawDiscordInput from "./scripts/lint/eslint-plugin-no-raw-discord-input.mjs";
 
 export default tseslint.config(
   { ignores: ["dist"] },
