@@ -68,6 +68,7 @@ export function usePageHeader() {
 // two divergent context instances coexisting in memory.
 if (import.meta.hot) {
   import.meta.hot.accept(() => {
-    window.location.reload();
+    try { window.dispatchEvent(new Event("lovable:pre-hmr-reload")); } catch { /* noop */ }
+    queueMicrotask(() => window.location.reload());
   });
 }
