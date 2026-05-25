@@ -82,6 +82,33 @@ export default function ClassFormPage() {
     },
   });
 
+  // Server-side draft for create mode only. Edit-mode pages already autosave
+  // straight to the real row above.
+  const draft = useServerDraft<{ form: ClassFormValues; prereqText: string }>({
+    draftKey: "class:new",
+    schemaVersion: 1,
+    initialValue: { form: defaults, prereqText: "" },
+    enabled: !isEdit,
+    label: "class-form",
+  });
+
+  // Mirror watched form state + prereqText into the draft buffer.
+  useEffect(() => {
+    if (isEdit) return;
+    draft.setValue({ form: watched as ClassFormValues, prereqText });
+  }, [watched, prereqText, isEdit, draft]);
+
+  // Hydrate the form once when an existing draft is restored.
+  useEffect(() => {
+    if (isEdit) return;
+    if (draft.restored && !draft.hydrating) {
+      form.reset(draft.value.form);
+      setPrereqText(draft.value.prereqText ?? "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft.restored, draft.hydrating, isEdit]);
+
+
 
   useEffect(() => {
     if (existing) {
