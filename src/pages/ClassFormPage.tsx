@@ -27,6 +27,8 @@ import { SKILLS_OPTIONS as SKILLS_FALLBACK } from "@/lib/skills-framework";
 import { useReferenceList } from "@/hooks/use-reference";
 import { useAutosave } from "@/hooks/use-autosave";
 import { AutosaveStatus } from "@/components/ui/AutosaveStatus";
+import { useServerDraft } from "@/hooks/use-server-draft";
+import { DraftRestoredBanner } from "@/components/forms/DraftRestoredBanner";
 
 
 function csvToList(s: string): string[] {
