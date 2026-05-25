@@ -218,6 +218,11 @@ function BannerFormDialog({
         </div>
 
         <DialogFooter>
+          {isCreate && (
+            <div className="mr-auto">
+              <AutosaveStatus status={draft.status} lastSavedAt={draft.lastSavedAt} onRetry={() => void draft.flush()} />
+            </div>
+          )}
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancel
           </Button>
