@@ -154,6 +154,20 @@ function BannerFormDialog({
         </DialogHeader>
 
         <div className="space-y-4">
+          {isCreate && draft.restored && (
+            <DraftRestoredBanner
+              restoredAt={draft.restoredAt}
+              onDiscard={async () => {
+                await draft.clearDraft();
+                setTitle("");
+                setBodyHtml("");
+                setStatus("draft");
+                setReopenAfterDismiss(false);
+              }}
+              noun="banner draft"
+            />
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="banner-title">Title</Label>
             <Input
