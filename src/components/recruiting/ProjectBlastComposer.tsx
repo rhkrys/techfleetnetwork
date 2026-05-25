@@ -9,7 +9,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, Send, Mail, Users } from "lucide-react";
+import { Loader2, Send, Users } from "lucide-react";
+import { useServerDraft } from "@/hooks/use-server-draft";
+import { DraftRestoredBanner } from "@/components/forms/DraftRestoredBanner";
 
 const SUBJECT_MAX = 150;
 const BODY_MAX = 50_000;
