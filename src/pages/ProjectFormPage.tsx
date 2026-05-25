@@ -364,6 +364,8 @@ export default function ProjectFormPage() {
       queryClient.invalidateQueries({ queryKey: ["project-init", data.id] });
       toast.success("Project created");
       notifyProjectUpdate("created", values, data.id);
+      // Clear server-side draft now that the real row exists.
+      void draft.clearDraft();
       navigate("/admin/clients?tab=projects");
     },
     onError: (err: Error) => toast.error(err.message),
