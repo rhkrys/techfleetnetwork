@@ -9,7 +9,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, Send, Mail, Users } from "lucide-react";
+import { Loader2, Send, Users } from "lucide-react";
+import { useServerDraft } from "@/hooks/use-server-draft";
+import { DraftRestoredBanner } from "@/components/forms/DraftRestoredBanner";
 
 const SUBJECT_MAX = 150;
 const BODY_MAX = 50_000;
@@ -23,8 +25,17 @@ interface Props {
 export default function ProjectBlastComposer({ projectId, projectName, canSend: canSendProp = true }: Props) {
   const { user } = useAuth();
   const qc = useQueryClient();
-  const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
+  const draft = useServerDraft<{ subject: string; body: string }>({
+    draftKey: `project-blast:${projectId}`,
+    schemaVersion: 1,
+    initialValue: { subject: "", body: "" },
+    enabled: canSendProp,
+    label: "project-blast",
+  });
+  const subject = draft.value.subject;
+  const body = draft.value.body;
+  const setSubject = (v: string) => draft.setValue((d) => ({ ...d, subject: v }));
+  const setBody = (v: string) => draft.setValue((d) => ({ ...d, body: v }));
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [sending, setSending] = useState(false);
 
@@ -94,6 +105,7 @@ export default function ProjectBlastComposer({ projectId, projectName, canSend: 
       });
       setSubject("");
       setBody("");
+      void draft.clearDraft();
       setConfirmOpen(false);
       qc.invalidateQueries({ queryKey: ["project-blasts-history", projectId] });
     } catch (e: any) {
@@ -109,6 +121,16 @@ export default function ProjectBlastComposer({ projectId, projectName, canSend: 
 
   return (
     <div className="space-y-6">
+      {draft.restored && (
+        <DraftRestoredBanner
+          restoredAt={draft.restoredAt}
+          noun="blast draft"
+          onDiscard={async () => {
+            await draft.clearDraft();
+            draft.setValue({ subject: "", body: "" });
+          }}
+        />
+      )}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">Send a project blast

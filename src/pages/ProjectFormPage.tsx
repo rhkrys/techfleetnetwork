@@ -1,5 +1,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { useAutosave } from "@/hooks/use-autosave";
+import { useServerDraft } from "@/hooks/use-server-draft";
+import { DraftRestoredBanner } from "@/components/forms/DraftRestoredBanner";
 import { AutosaveStatus } from "@/components/ui/AutosaveStatus";
 
 import { useNavigate, useParams } from "react-router-dom";
@@ -119,7 +121,24 @@ export default function ProjectFormPage() {
   // Admin access is enforced by AdminRoute wrapper
   const queryClient = useQueryClient();
 
-  const [form, setForm] = useState<ProjectForm>(EMPTY_FORM);
+  // ── Server-side draft (create-mode only) ───────────────────────────────
+  // Edit-mode rows are persisted directly via useAutosave below, so drafts
+  // are unnecessary there.
+  const draft = useServerDraft<ProjectForm>({
+    draftKey: "project:new",
+    schemaVersion: 1,
+    initialValue: EMPTY_FORM,
+    enabled: !isEditing,
+    label: "project-form",
+  });
+
+  // In create mode the draft hook owns the form state; in edit mode we keep
+  // a local state seeded from the fetched project row.
+  const [editForm, setEditForm] = useState<ProjectForm>(EMPTY_FORM);
+  const form: ProjectForm = isEditing ? editForm : draft.value;
+  const setForm: React.Dispatch<React.SetStateAction<ProjectForm>> =
+    isEditing ? setEditForm : draft.setValue;
+
   const [errors, setErrors] = useState<Partial<Record<keyof ProjectForm, string>>>({});
   const [initialized, setInitialized] = useState(!isEditing);
 
@@ -345,6 +364,8 @@ export default function ProjectFormPage() {
       queryClient.invalidateQueries({ queryKey: ["project-init", data.id] });
       toast.success("Project created");
       notifyProjectUpdate("created", values, data.id);
+      // Clear server-side draft now that the real row exists.
+      void draft.clearDraft();
       navigate("/admin/clients?tab=projects");
     },
     onError: (err: Error) => toast.error(err.message),
@@ -434,6 +455,18 @@ export default function ProjectFormPage() {
           {isEditing ? "Edit Project" : "Create Project"}
         </h1>
       </div>
+
+      {/* Restored-draft banner (create mode only) */}
+      {!isEditing && draft.restored && (
+        <DraftRestoredBanner
+          restoredAt={draft.restoredAt}
+          noun="project draft"
+          onDiscard={async () => {
+            await draft.clearDraft();
+            draft.setValue(EMPTY_FORM);
+          }}
+        />
+      )}
 
       {/* Form */}
       <div className="rounded-lg border bg-card p-6 space-y-5">
@@ -758,11 +791,18 @@ export default function ProjectFormPage() {
 
       {/* Actions */}
       <div className="flex items-center justify-end gap-3 pb-8 flex-wrap">
-        {isEditing && (
+        {isEditing ? (
           <AutosaveStatus
             status={autosave.status}
             lastSavedAt={autosave.lastSavedAt}
             onRetry={autosave.retry}
+            className="mr-auto sm:mr-0"
+          />
+        ) : (
+          <AutosaveStatus
+            status={draft.status}
+            lastSavedAt={draft.lastSavedAt}
+            onRetry={() => { void draft.flush(); }}
             className="mr-auto sm:mr-0"
           />
         )}

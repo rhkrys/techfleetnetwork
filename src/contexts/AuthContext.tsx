@@ -331,6 +331,9 @@ export function useAuth() {
 
 if (import.meta.hot) {
   import.meta.hot.accept(() => {
-    window.location.reload();
+    // Let draft/autosave hooks flush via beacon before the page goes away.
+    try { window.dispatchEvent(new Event("lovable:pre-hmr-reload")); } catch { /* noop */ }
+    // Give the synchronous beacon a tick before reloading.
+    queueMicrotask(() => window.location.reload());
   });
 }
