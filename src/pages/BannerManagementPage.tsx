@@ -297,11 +297,16 @@ export default function BannerManagementPage() {
   });
 
   const handleSave = useCallback(
-    (data: { title: string; body_html: string; status: "draft" | "published" | "archived"; reopen_after_dismiss: boolean }) => {
-      if (editing) {
-        updateMutation.mutate({ id: editing.id, updates: data });
-      } else {
-        createMutation.mutate({ ...data, created_by: user!.id });
+    async (data: BannerDraftPayload): Promise<boolean> => {
+      try {
+        if (editing) {
+          await updateMutation.mutateAsync({ id: editing.id, updates: data });
+        } else {
+          await createMutation.mutateAsync({ ...data, created_by: user!.id });
+        }
+        return true;
+      } catch {
+        return false;
       }
     },
     [editing, user, createMutation, updateMutation],
