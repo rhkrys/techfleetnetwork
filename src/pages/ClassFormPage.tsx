@@ -295,6 +295,13 @@ export default function ClassFormPage() {
               onRetry={autosave.retry}
             />
           )}
+          {!isEdit && (
+            <AutosaveStatus
+              status={draft.status}
+              lastSavedAt={draft.lastSavedAt}
+              onRetry={() => void draft.flush()}
+            />
+          )}
           <Button type="submit" disabled={submitting}>
             {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             {isEdit ? "Save changes" : "Create draft"}
