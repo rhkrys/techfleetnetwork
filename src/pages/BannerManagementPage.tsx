@@ -82,19 +82,53 @@ function BannerFormDialog({
   onSave: (data: { title: string; body_html: string; status: "draft" | "published" | "archived"; reopen_after_dismiss: boolean }) => void;
   saving: boolean;
 }) {
+  const isCreate = !banner;
   const [title, setTitle] = useState("");
   const [bodyHtml, setBodyHtml] = useState("");
   const [status, setStatus] = useState<"draft" | "published" | "archived">("draft");
   const [reopenAfterDismiss, setReopenAfterDismiss] = useState(false);
 
+  // Server-side draft only for create mode (edit mode persists straight to the row).
+  const EMPTY_DRAFT: BannerDraftPayload = {
+    title: "",
+    body_html: "",
+    status: "draft",
+    reopen_after_dismiss: false,
+  };
+  const draft = useServerDraft<BannerDraftPayload>({
+    draftKey: "banner:new",
+    schemaVersion: 1,
+    initialValue: EMPTY_DRAFT,
+    enabled: open && isCreate,
+    label: "banner-form",
+  });
+
+  // Hydrate dialog state when dialog opens (edit -> from row, create -> from draft).
   useEffect(() => {
-    if (open) {
+    if (!open) return;
+    if (isCreate) {
+      // Wait for draft hydration; if a draft exists use it, else start blank.
+      if (!draft.hydrating) {
+        const src = draft.restored ? draft.value : EMPTY_DRAFT;
+        setTitle(src.title);
+        setBodyHtml(src.body_html);
+        setStatus(src.status);
+        setReopenAfterDismiss(src.reopen_after_dismiss);
+      }
+    } else {
       setTitle(banner?.title ?? "");
       setBodyHtml(banner?.body_html ?? "");
       setStatus(banner?.status ?? "draft");
       setReopenAfterDismiss(banner?.reopen_after_dismiss ?? false);
     }
-  }, [open, banner]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, banner, isCreate, draft.hydrating, draft.restored]);
+
+  // Mirror local state into the draft buffer.
+  useEffect(() => {
+    if (!isCreate || !open) return;
+    draft.setValue({ title, body_html: bodyHtml, status, reopen_after_dismiss: reopenAfterDismiss });
+  }, [title, bodyHtml, status, reopenAfterDismiss, isCreate, open, draft]);
 
   const handleSubmit = () => {
     if (!title.trim()) {
