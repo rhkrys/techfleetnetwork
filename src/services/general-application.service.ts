@@ -128,7 +128,7 @@ export const GeneralApplicationService = {
         .order("updated_at", { ascending: false });
       if (error) {
         log.error("list", `Failed to list general apps: ${error.message}`, { userId }, error);
-        throw new Error("We couldn't load your application. Refresh to try again.s.");
+        throw new Error(`We couldn't load your application. Refresh to try again. (${error.message})`, { cause: error });
       }
       return (data ?? []) as unknown as GeneralApplication[];
     });
