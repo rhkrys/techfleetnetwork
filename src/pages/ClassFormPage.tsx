@@ -141,6 +141,7 @@ export default function ClassFormPage() {
         toast.success("Class saved");
       } else {
         const newId = await ClassService.create(user.id, payload);
+        await draft.clearDraft();
         toast.success("Class created");
         await queryClient.invalidateQueries({ queryKey: ["classes"] });
         navigate(`/teach/classes/${newId}`);
