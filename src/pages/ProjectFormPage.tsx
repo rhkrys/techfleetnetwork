@@ -791,11 +791,18 @@ export default function ProjectFormPage() {
 
       {/* Actions */}
       <div className="flex items-center justify-end gap-3 pb-8 flex-wrap">
-        {isEditing && (
+        {isEditing ? (
           <AutosaveStatus
             status={autosave.status}
             lastSavedAt={autosave.lastSavedAt}
             onRetry={autosave.retry}
+            className="mr-auto sm:mr-0"
+          />
+        ) : (
+          <AutosaveStatus
+            status={draft.status}
+            lastSavedAt={draft.lastSavedAt}
+            onRetry={() => { void draft.flush(); }}
             className="mr-auto sm:mr-0"
           />
         )}
