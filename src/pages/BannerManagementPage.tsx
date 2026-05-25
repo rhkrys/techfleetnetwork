@@ -52,6 +52,16 @@ import { Plus, Pencil, Trash2, Eye, EyeOff, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { sanitizeHtml } from "@/lib/security";
 import { RichTextEditor } from "@/components/RichTextEditor";
+import { useServerDraft } from "@/hooks/use-server-draft";
+import { DraftRestoredBanner } from "@/components/forms/DraftRestoredBanner";
+import { AutosaveStatus } from "@/components/ui/AutosaveStatus";
+
+interface BannerDraftPayload {
+  title: string;
+  body_html: string;
+  status: "draft" | "published" | "archived";
+  reopen_after_dismiss: boolean;
+}
 
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
