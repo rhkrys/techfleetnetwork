@@ -121,6 +121,16 @@ export default function ProjectBlastComposer({ projectId, projectName, canSend: 
 
   return (
     <div className="space-y-6">
+      {draft.restored && (
+        <DraftRestoredBanner
+          restoredAt={draft.restoredAt}
+          noun="blast draft"
+          onDiscard={async () => {
+            await draft.clearDraft();
+            draft.setValue({ subject: "", body: "" });
+          }}
+        />
+      )}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">Send a project blast
