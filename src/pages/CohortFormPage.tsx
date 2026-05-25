@@ -20,18 +20,40 @@ export default function CohortFormPage() {
   const queryClient = useQueryClient();
   const [submitting, setSubmitting] = useState(false);
 
+  const EMPTY: CohortFormValues = {
+    label: "",
+    start_date: "",
+    end_date: "",
+    registration_url: "",
+    meeting_url: "",
+    timezone: "America/New_York",
+    capacity: null,
+  };
+
   const form = useForm<CohortFormValues>({
     resolver: zodResolver(cohortFormSchema),
-    defaultValues: {
-      label: "",
-      start_date: "",
-      end_date: "",
-      registration_url: "",
-      meeting_url: "",
-      timezone: "America/New_York",
-      capacity: null,
-    },
+    defaultValues: EMPTY,
   });
+
+  // Server-side draft (cohort create is always create-mode on this page).
+  const draft = useServerDraft<CohortFormValues>({
+    draftKey: `cohort:new:${classId ?? "unknown"}`,
+    schemaVersion: 1,
+    initialValue: EMPTY,
+    enabled: !!classId,
+    label: "cohort-form",
+  });
+
+  const watched = form.watch();
+  useEffect(() => { draft.setValue(watched as CohortFormValues); }, [watched, draft]);
+
+  // Hydrate the form from the restored draft once on mount.
+  useEffect(() => {
+    if (draft.restored && !draft.hydrating) {
+      form.reset(draft.value);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft.restored, draft.hydrating]);
 
   const onSubmit = async (values: CohortFormValues) => {
     if (!classId) return;
