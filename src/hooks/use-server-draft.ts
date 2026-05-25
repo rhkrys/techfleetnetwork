@@ -176,12 +176,12 @@ export function useServerDraft<T>({
       const { error: upsertErr } = await supabase
         .from("form_drafts")
         .upsert(
-          {
+          [{
             user_id: userId,
             draft_key: draftKey,
             schema_version: schemaVersion,
-            payload: current as unknown as Record<string, unknown>,
-          },
+            payload: current as never,
+          }],
           { onConflict: "user_id,draft_key" },
         );
       if (upsertErr) throw upsertErr;
