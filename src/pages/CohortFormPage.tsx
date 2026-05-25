@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -10,6 +10,9 @@ import { Label } from "@/components/ui/label";
 import { CohortService } from "@/services/cohort.service";
 import { cohortFormSchema, type CohortFormValues } from "@/lib/validators/cohort";
 import { useQueryClient } from "@/lib/react-query";
+import { useServerDraft } from "@/hooks/use-server-draft";
+import { DraftRestoredBanner } from "@/components/forms/DraftRestoredBanner";
+import { AutosaveStatus } from "@/components/ui/AutosaveStatus";
 
 export default function CohortFormPage() {
   const { id: classId } = useParams<{ id: string }>();
