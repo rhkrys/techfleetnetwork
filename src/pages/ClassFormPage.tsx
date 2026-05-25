@@ -182,7 +182,22 @@ export default function ClassFormPage() {
         {isEdit ? "Edit Class" : "New Class"}
       </h1>
 
+      {!isEdit && draft.restored && (
+        <div className="mb-4">
+          <DraftRestoredBanner
+            restoredAt={draft.restoredAt}
+            onDiscard={async () => {
+              await draft.clearDraft();
+              form.reset(defaults);
+              setPrereqText("");
+            }}
+            noun="class draft"
+          />
+        </div>
+      )}
+
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+
         <div>
           <Label htmlFor="title">Title</Label>
           <Input id="title" {...form.register("title")} />
