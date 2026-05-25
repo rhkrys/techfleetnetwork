@@ -456,6 +456,18 @@ export default function ProjectFormPage() {
         </h1>
       </div>
 
+      {/* Restored-draft banner (create mode only) */}
+      {!isEditing && draft.restored && (
+        <DraftRestoredBanner
+          restoredAt={draft.restoredAt}
+          noun="project draft"
+          onDiscard={async () => {
+            await draft.clearDraft();
+            draft.setValue(EMPTY_FORM);
+          }}
+        />
+      )}
+
       {/* Form */}
       <div className="rounded-lg border bg-card p-6 space-y-5">
         {/* Client */}
