@@ -60,6 +60,7 @@ export default function CohortFormPage() {
     setSubmitting(true);
     try {
       await CohortService.create(classId, values);
+      await draft.clearDraft();
       toast.success("Cohort created");
       await queryClient.invalidateQueries({ queryKey: ["cohorts", "class", classId] });
       navigate(`/teach/classes/${classId}`);
