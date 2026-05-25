@@ -121,7 +121,24 @@ export default function ProjectFormPage() {
   // Admin access is enforced by AdminRoute wrapper
   const queryClient = useQueryClient();
 
-  const [form, setForm] = useState<ProjectForm>(EMPTY_FORM);
+  // ── Server-side draft (create-mode only) ───────────────────────────────
+  // Edit-mode rows are persisted directly via useAutosave below, so drafts
+  // are unnecessary there.
+  const draft = useServerDraft<ProjectForm>({
+    draftKey: "project:new",
+    schemaVersion: 1,
+    initialValue: EMPTY_FORM,
+    enabled: !isEditing,
+    label: "project-form",
+  });
+
+  // In create mode the draft hook owns the form state; in edit mode we keep
+  // a local state seeded from the fetched project row.
+  const [editForm, setEditForm] = useState<ProjectForm>(EMPTY_FORM);
+  const form: ProjectForm = isEditing ? editForm : draft.value;
+  const setForm: React.Dispatch<React.SetStateAction<ProjectForm>> =
+    isEditing ? setEditForm : draft.setValue;
+
   const [errors, setErrors] = useState<Partial<Record<keyof ProjectForm, string>>>({});
   const [initialized, setInitialized] = useState(!isEditing);
 
