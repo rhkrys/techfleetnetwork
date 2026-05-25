@@ -350,7 +350,7 @@ export default function DashboardPage() {
         switch (widgetId) {
           case "badges":
             return isVisible("badges") ? (
-              <section key="badges">
+              <section key="badges" className="py-8">
                 <BadgesDisplay
                   allFirstStepsDone={allFirstStepsDone}
                   allSecondStepsDone={allSecondStepsDone}
@@ -365,7 +365,7 @@ export default function DashboardPage() {
 
           case "core_courses":
             return isVisible("core_courses") ? (
-              <section key="core_courses">
+              <section key="core_courses" className="py-8">
                 {allOnboardingDone ? (
                   <div className="tf-card overflow-hidden" aria-labelledby="core-courses-heading">
                     <h2 id="core-courses-heading" className="sr-only">Onboard to Tech Fleet</h2>
@@ -410,7 +410,7 @@ export default function DashboardPage() {
 
           case "my_project_apps":
             return isVisible("my_project_apps") ? (
-              <section key="my_project_apps" aria-labelledby="my-apps-heading">
+              <section key="my_project_apps" aria-labelledby="my-apps-heading" className="py-8">
                 <div className="flex items-center justify-between mb-4">
                   <SectionTitle id="my-apps-heading">
                     My Applications
@@ -496,7 +496,7 @@ export default function DashboardPage() {
 
           case "latest_updates":
             return isVisible("latest_updates") ? (
-              <section key="latest_updates" aria-labelledby="announcements-heading">
+              <section key="latest_updates" aria-labelledby="announcements-heading" className="py-8">
                 <div className="flex items-center justify-between mb-4">
                   <SectionTitle id="announcements-heading">
                     Latest Updates
@@ -547,7 +547,7 @@ export default function DashboardPage() {
             // entire section to browser idle so it never blocks LCP on the
             // dashboard hero (welcome card + getting-started checklist).
             return showAny ? (
-              <section key="network" className="border-t pt-9 min-h-[400px]">
+              <section key="network" className="py-8 min-h-[400px]">
                 <IdleMount>
                   <Suspense fallback={<Skeleton className="h-[400px] rounded-lg" />}>
                     <NetworkActivity
@@ -563,7 +563,7 @@ export default function DashboardPage() {
           case "system_health":
             // Admin-only widget — defer to idle so it never blocks LCP on /dashboard.
             return isAdmin && isVisible("system_health") ? (
-              <section key="system_health" className="min-h-[200px]">
+              <section key="system_health" className="py-8 min-h-[200px]">
                 <IdleMount>
                   <Suspense fallback={<Skeleton className="h-[200px] rounded-lg" />}>
                     <SystemHealthWidget />
