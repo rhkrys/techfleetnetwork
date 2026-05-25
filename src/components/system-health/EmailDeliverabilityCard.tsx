@@ -7,13 +7,14 @@ import { AlertTriangle, CheckCircle2, ShieldAlert } from "lucide-react";
 
 interface DomainHealthRow {
   recipient_domain: string;
-  window_days: number;
-  sent: number;
-  bounced: number;
-  complained: number;
+  window_start: string;
+  window_end: string;
+  sent_count: number;
+  bounced_count: number;
+  complained_count: number;
   bounce_rate: number;
   complaint_rate: number;
-  computed_at: string;
+  created_at: string;
 }
 
 interface SendStateRow {
@@ -34,8 +35,8 @@ export function EmailDeliverabilityCard() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("email_domain_health" as any)
-        .select("recipient_domain, window_days, sent, bounced, complained, bounce_rate, complaint_rate, computed_at")
-        .order("sent", { ascending: false })
+        .select("recipient_domain, window_start, window_end, sent_count, bounced_count, complained_count, bounce_rate, complaint_rate, created_at")
+        .order("sent_count", { ascending: false })
         .limit(10);
       if (error) throw error;
       return (data as unknown as DomainHealthRow[]) ?? [];
