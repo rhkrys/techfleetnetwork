@@ -442,18 +442,23 @@ body {
        (button, link group, card, image, list, etc.) within the same section.
      Adjacent-sibling selectors only fire when elements are DOM siblings,
      so flex/grid/space-y layouts that wrap children are unaffected. */
-  :where(h1, h2, h3, h4, h5, h6) + p {
+  /* Brand rhythm applies to long-form prose surfaces only. Card interiors,
+     forms, and dense UI compose spacing via Tailwind utilities (mb-1,
+     space-y-*, flex gap) and must NOT be overridden by adjacent-sibling
+     margins — otherwise label/value pairs blow apart to 36px. */
+  :where(h1, h2, h3, h4, h5, h6) + p:not(.tf-card *):not([data-no-rhythm] *) {
     margin-top: 12px;
   }
-  p + :where(button, a, .btn, .button, ul, ol, img, figure, video, iframe, div, section, form, blockquote, hr) {
+  p + :where(button, a, .btn, .button, ul, ol, img, figure, video, iframe, div, section, form, blockquote, hr):not(.tf-card *):not([data-no-rhythm] *) {
     margin-top: 36px;
   }
   /* Typography-component spec: higher specificity so Tailwind utilities
      like mt-3/mb-2 don't silently override the brand rhythm. Any
      <Tf heading> immediately followed by a <Tf body> = 12px gap; any
-     <Tf body> followed by a non-paragraph sibling = 36px gap. */
-  .tf-h + .tf-p { margin-top: 12px; }
-  .tf-p + :not(p):not(.tf-p) { margin-top: 36px; }
+     <Tf body> followed by a non-paragraph sibling = 36px gap.
+     Also scoped out of cards/dense UI. */
+  .tf-h + .tf-p:not(.tf-card *):not([data-no-rhythm] *) { margin-top: 12px; }
+  .tf-p + :not(p):not(.tf-p):not(.tf-card *):not([data-no-rhythm] *) { margin-top: 36px; }
 
   /* WCAG 2.0 / 3.0: Visible focus indicators */
   :focus-visible {
