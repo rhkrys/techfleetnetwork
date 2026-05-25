@@ -79,6 +79,16 @@ export default function CohortFormPage() {
       </Button>
       <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-6">New Cohort</h1>
 
+      {draft.restored && (
+        <div className="mb-4">
+          <DraftRestoredBanner
+            restoredAt={draft.restoredAt}
+            onDiscard={async () => { await draft.clearDraft(); form.reset(EMPTY); }}
+            noun="cohort draft"
+          />
+        </div>
+      )}
+
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
         <div>
           <Label htmlFor="label">Label</Label>
