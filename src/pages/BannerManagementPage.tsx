@@ -52,6 +52,16 @@ import { Plus, Pencil, Trash2, Eye, EyeOff, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { sanitizeHtml } from "@/lib/security";
 import { RichTextEditor } from "@/components/RichTextEditor";
+import { useServerDraft } from "@/hooks/use-server-draft";
+import { DraftRestoredBanner } from "@/components/forms/DraftRestoredBanner";
+import { AutosaveStatus } from "@/components/ui/AutosaveStatus";
+
+interface BannerDraftPayload {
+  title: string;
+  body_html: string;
+  status: "draft" | "published" | "archived";
+  reopen_after_dismiss: boolean;
+}
 
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
@@ -69,34 +79,71 @@ function BannerFormDialog({
   open: boolean;
   onOpenChange: (o: boolean) => void;
   banner: AdminBanner | null;
-  onSave: (data: { title: string; body_html: string; status: "draft" | "published" | "archived"; reopen_after_dismiss: boolean }) => void;
+  onSave: (data: BannerDraftPayload) => Promise<boolean>;
   saving: boolean;
 }) {
+  const isCreate = !banner;
   const [title, setTitle] = useState("");
   const [bodyHtml, setBodyHtml] = useState("");
   const [status, setStatus] = useState<"draft" | "published" | "archived">("draft");
   const [reopenAfterDismiss, setReopenAfterDismiss] = useState(false);
 
+  // Server-side draft only for create mode (edit mode persists straight to the row).
+  const EMPTY_DRAFT: BannerDraftPayload = {
+    title: "",
+    body_html: "",
+    status: "draft",
+    reopen_after_dismiss: false,
+  };
+  const draft = useServerDraft<BannerDraftPayload>({
+    draftKey: "banner:new",
+    schemaVersion: 1,
+    initialValue: EMPTY_DRAFT,
+    enabled: open && isCreate,
+    label: "banner-form",
+  });
+
+  // Hydrate dialog state when dialog opens (edit -> from row, create -> from draft).
   useEffect(() => {
-    if (open) {
+    if (!open) return;
+    if (isCreate) {
+      // Wait for draft hydration; if a draft exists use it, else start blank.
+      if (!draft.hydrating) {
+        const src = draft.restored ? draft.value : EMPTY_DRAFT;
+        setTitle(src.title);
+        setBodyHtml(src.body_html);
+        setStatus(src.status);
+        setReopenAfterDismiss(src.reopen_after_dismiss);
+      }
+    } else {
       setTitle(banner?.title ?? "");
       setBodyHtml(banner?.body_html ?? "");
       setStatus(banner?.status ?? "draft");
       setReopenAfterDismiss(banner?.reopen_after_dismiss ?? false);
     }
-  }, [open, banner]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, banner, isCreate, draft.hydrating, draft.restored]);
 
-  const handleSubmit = () => {
+  // Mirror local state into the draft buffer.
+  useEffect(() => {
+    if (!isCreate || !open) return;
+    draft.setValue({ title, body_html: bodyHtml, status, reopen_after_dismiss: reopenAfterDismiss });
+  }, [title, bodyHtml, status, reopenAfterDismiss, isCreate, open, draft]);
+
+  const handleSubmit = async () => {
     if (!title.trim()) {
       toast.error("Title is required");
       return;
     }
-    onSave({
+    const ok = await onSave({
       title: title.trim(),
       body_html: sanitizeHtml(bodyHtml),
       status,
       reopen_after_dismiss: reopenAfterDismiss,
     });
+    if (ok && isCreate) {
+      await draft.clearDraft();
+    }
   };
 
   return (
@@ -110,6 +157,20 @@ function BannerFormDialog({
         </DialogHeader>
 
         <div className="space-y-4">
+          {isCreate && draft.restored && (
+            <DraftRestoredBanner
+              restoredAt={draft.restoredAt}
+              onDiscard={async () => {
+                await draft.clearDraft();
+                setTitle("");
+                setBodyHtml("");
+                setStatus("draft");
+                setReopenAfterDismiss(false);
+              }}
+              noun="banner draft"
+            />
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="banner-title">Title</Label>
             <Input
@@ -160,6 +221,11 @@ function BannerFormDialog({
         </div>
 
         <DialogFooter>
+          {isCreate && (
+            <div className="mr-auto">
+              <AutosaveStatus status={draft.status} lastSavedAt={draft.lastSavedAt} onRetry={() => void draft.flush()} />
+            </div>
+          )}
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancel
           </Button>
@@ -231,11 +297,16 @@ export default function BannerManagementPage() {
   });
 
   const handleSave = useCallback(
-    (data: { title: string; body_html: string; status: "draft" | "published" | "archived"; reopen_after_dismiss: boolean }) => {
-      if (editing) {
-        updateMutation.mutate({ id: editing.id, updates: data });
-      } else {
-        createMutation.mutate({ ...data, created_by: user!.id });
+    async (data: BannerDraftPayload): Promise<boolean> => {
+      try {
+        if (editing) {
+          await updateMutation.mutateAsync({ id: editing.id, updates: data });
+        } else {
+          await createMutation.mutateAsync({ ...data, created_by: user!.id });
+        }
+        return true;
+      } catch {
+        return false;
       }
     },
     [editing, user, createMutation, updateMutation],

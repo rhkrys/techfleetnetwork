@@ -27,6 +27,8 @@ import { SKILLS_OPTIONS as SKILLS_FALLBACK } from "@/lib/skills-framework";
 import { useReferenceList } from "@/hooks/use-reference";
 import { useAutosave } from "@/hooks/use-autosave";
 import { AutosaveStatus } from "@/components/ui/AutosaveStatus";
+import { useServerDraft } from "@/hooks/use-server-draft";
+import { DraftRestoredBanner } from "@/components/forms/DraftRestoredBanner";
 
 
 function csvToList(s: string): string[] {
@@ -80,6 +82,33 @@ export default function ClassFormPage() {
     },
   });
 
+  // Server-side draft for create mode only. Edit-mode pages already autosave
+  // straight to the real row above.
+  const draft = useServerDraft<{ form: ClassFormValues; prereqText: string }>({
+    draftKey: "class:new",
+    schemaVersion: 1,
+    initialValue: { form: defaults, prereqText: "" },
+    enabled: !isEdit,
+    label: "class-form",
+  });
+
+  // Mirror watched form state + prereqText into the draft buffer.
+  useEffect(() => {
+    if (isEdit) return;
+    draft.setValue({ form: watched as ClassFormValues, prereqText });
+  }, [watched, prereqText, isEdit, draft]);
+
+  // Hydrate the form once when an existing draft is restored.
+  useEffect(() => {
+    if (isEdit) return;
+    if (draft.restored && !draft.hydrating) {
+      form.reset(draft.value.form);
+      setPrereqText(draft.value.prereqText ?? "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft.restored, draft.hydrating, isEdit]);
+
+
 
   useEffect(() => {
     if (existing) {
@@ -112,6 +141,7 @@ export default function ClassFormPage() {
         toast.success("Class saved");
       } else {
         const newId = await ClassService.create(user.id, payload);
+        await draft.clearDraft();
         toast.success("Class created");
         await queryClient.invalidateQueries({ queryKey: ["classes"] });
         navigate(`/teach/classes/${newId}`);
@@ -152,7 +182,22 @@ export default function ClassFormPage() {
         {isEdit ? "Edit Class" : "New Class"}
       </h1>
 
+      {!isEdit && draft.restored && (
+        <div className="mb-4">
+          <DraftRestoredBanner
+            restoredAt={draft.restoredAt}
+            onDiscard={async () => {
+              await draft.clearDraft();
+              form.reset(defaults);
+              setPrereqText("");
+            }}
+            noun="class draft"
+          />
+        </div>
+      )}
+
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+
         <div>
           <Label htmlFor="title">Title</Label>
           <Input id="title" {...form.register("title")} />
@@ -248,6 +293,13 @@ export default function ClassFormPage() {
               status={autosave.status}
               lastSavedAt={autosave.lastSavedAt}
               onRetry={autosave.retry}
+            />
+          )}
+          {!isEdit && (
+            <AutosaveStatus
+              status={draft.status}
+              lastSavedAt={draft.lastSavedAt}
+              onRetry={() => void draft.flush()}
             />
           )}
           <Button type="submit" disabled={submitting}>

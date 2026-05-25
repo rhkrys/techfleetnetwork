@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -10,6 +10,9 @@ import { Label } from "@/components/ui/label";
 import { CohortService } from "@/services/cohort.service";
 import { cohortFormSchema, type CohortFormValues } from "@/lib/validators/cohort";
 import { useQueryClient } from "@/lib/react-query";
+import { useServerDraft } from "@/hooks/use-server-draft";
+import { DraftRestoredBanner } from "@/components/forms/DraftRestoredBanner";
+import { AutosaveStatus } from "@/components/ui/AutosaveStatus";
 
 export default function CohortFormPage() {
   const { id: classId } = useParams<{ id: string }>();
@@ -17,24 +20,47 @@ export default function CohortFormPage() {
   const queryClient = useQueryClient();
   const [submitting, setSubmitting] = useState(false);
 
+  const EMPTY: CohortFormValues = {
+    label: "",
+    start_date: "",
+    end_date: "",
+    registration_url: "",
+    meeting_url: "",
+    timezone: "America/New_York",
+    capacity: null,
+  };
+
   const form = useForm<CohortFormValues>({
     resolver: zodResolver(cohortFormSchema),
-    defaultValues: {
-      label: "",
-      start_date: "",
-      end_date: "",
-      registration_url: "",
-      meeting_url: "",
-      timezone: "America/New_York",
-      capacity: null,
-    },
+    defaultValues: EMPTY,
   });
+
+  // Server-side draft (cohort create is always create-mode on this page).
+  const draft = useServerDraft<CohortFormValues>({
+    draftKey: `cohort:new:${classId ?? "unknown"}`,
+    schemaVersion: 1,
+    initialValue: EMPTY,
+    enabled: !!classId,
+    label: "cohort-form",
+  });
+
+  const watched = form.watch();
+  useEffect(() => { draft.setValue(watched as CohortFormValues); }, [watched, draft]);
+
+  // Hydrate the form from the restored draft once on mount.
+  useEffect(() => {
+    if (draft.restored && !draft.hydrating) {
+      form.reset(draft.value);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft.restored, draft.hydrating]);
 
   const onSubmit = async (values: CohortFormValues) => {
     if (!classId) return;
     setSubmitting(true);
     try {
       await CohortService.create(classId, values);
+      await draft.clearDraft();
       toast.success("Cohort created");
       await queryClient.invalidateQueries({ queryKey: ["cohorts", "class", classId] });
       navigate(`/teach/classes/${classId}`);
@@ -52,6 +78,16 @@ export default function CohortFormPage() {
         <Link to={`/teach/classes/${classId}`}><ArrowLeft className="h-4 w-4 mr-1" />Back to class</Link>
       </Button>
       <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-6">New Cohort</h1>
+
+      {draft.restored && (
+        <div className="mb-4">
+          <DraftRestoredBanner
+            restoredAt={draft.restoredAt}
+            onDiscard={async () => { await draft.clearDraft(); form.reset(EMPTY); }}
+            noun="cohort draft"
+          />
+        </div>
+      )}
 
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
         <div>
@@ -91,7 +127,8 @@ export default function CohortFormPage() {
           </div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center flex-wrap">
+          <AutosaveStatus status={draft.status} lastSavedAt={draft.lastSavedAt} onRetry={() => void draft.flush()} />
           <Button type="submit" disabled={submitting}>
             {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             Create cohort
