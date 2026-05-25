@@ -105,6 +105,7 @@ export default function ProjectBlastComposer({ projectId, projectName, canSend: 
       });
       setSubject("");
       setBody("");
+      void draft.clearDraft();
       setConfirmOpen(false);
       qc.invalidateQueries({ queryKey: ["project-blasts-history", projectId] });
     } catch (e: any) {
