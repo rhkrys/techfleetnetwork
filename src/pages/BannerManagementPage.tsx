@@ -130,17 +130,20 @@ function BannerFormDialog({
     draft.setValue({ title, body_html: bodyHtml, status, reopen_after_dismiss: reopenAfterDismiss });
   }, [title, bodyHtml, status, reopenAfterDismiss, isCreate, open, draft]);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!title.trim()) {
       toast.error("Title is required");
       return;
     }
-    onSave({
+    const ok = await onSave({
       title: title.trim(),
       body_html: sanitizeHtml(bodyHtml),
       status,
       reopen_after_dismiss: reopenAfterDismiss,
     });
+    if (ok && isCreate) {
+      await draft.clearDraft();
+    }
   };
 
   return (
