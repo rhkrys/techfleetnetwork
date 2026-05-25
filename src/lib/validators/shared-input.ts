@@ -53,11 +53,13 @@ export const safeUrlSchema = (label: string, max = 500) =>
       if (typeof value !== "string") return value;
       const trimmed = value.trim();
       if (trimmed === "") return "";
-      // Auto-prepend https:// when scheme is missing, so members never have to think about it.
       if (/^https?:\/\//i.test(trimmed)) return trimmed;
-      // Skip if it looks like another explicit scheme (mailto:, ftp:, etc.) — leave for the refine to flag.
-      if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return trimmed;
-      return `https://${trimmed}`;
+      // Force https:// for everything else (typos like "htp://...", scheme-less
+      // domains, accidental "linkedin.com:in/..."). Members shouldn't have to
+      // think about the protocol — and obviously dangerous inputs like
+      // javascript:/data: still fail the refine below.
+      const stripped = trimmed.replace(/^\/+/, "");
+      return `https://${stripped}`;
     },
     z.string().trim().max(max, `${label} must be under ${max} characters`).refine((value) => value === "" || /^https?:\/\/.+/i.test(value), `${label} must start with http:// or https://`).superRefine(attachUnsafeIssue(label, false)),
   );
