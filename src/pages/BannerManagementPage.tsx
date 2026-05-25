@@ -79,7 +79,7 @@ function BannerFormDialog({
   open: boolean;
   onOpenChange: (o: boolean) => void;
   banner: AdminBanner | null;
-  onSave: (data: { title: string; body_html: string; status: "draft" | "published" | "archived"; reopen_after_dismiss: boolean }) => void;
+  onSave: (data: BannerDraftPayload) => Promise<boolean>;
   saving: boolean;
 }) {
   const isCreate = !banner;
