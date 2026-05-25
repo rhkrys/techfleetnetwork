@@ -25,8 +25,17 @@ interface Props {
 export default function ProjectBlastComposer({ projectId, projectName, canSend: canSendProp = true }: Props) {
   const { user } = useAuth();
   const qc = useQueryClient();
-  const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
+  const draft = useServerDraft<{ subject: string; body: string }>({
+    draftKey: `project-blast:${projectId}`,
+    schemaVersion: 1,
+    initialValue: { subject: "", body: "" },
+    enabled: canSendProp,
+    label: "project-blast",
+  });
+  const subject = draft.value.subject;
+  const body = draft.value.body;
+  const setSubject = (v: string) => draft.setValue((d) => ({ ...d, subject: v }));
+  const setBody = (v: string) => draft.setValue((d) => ({ ...d, body: v }));
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [sending, setSending] = useState(false);
 
