@@ -1,6 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { ClassFormValues } from "@/lib/validators/class";
 import { assertWritten } from "@/lib/db-helpers";
+import { sendClassStatusEmails } from "./class-emails";
 
 export type ClassRow = {
   id: string;
@@ -105,11 +106,13 @@ export const ClassService = {
       p_cohort_ids: cohortIds,
     });
     if (error) throw error;
+    void sendClassStatusEmails(id, "submitted");
   },
 
   async approveAndPublish(id: string): Promise<void> {
     const { error } = await (supabase as any).rpc("approve_and_publish_class", { p_class_id: id });
     if (error) throw error;
+    void sendClassStatusEmails(id, "approved");
   },
 
   async requestChanges(id: string, reason: string): Promise<void> {
@@ -118,6 +121,7 @@ export const ClassService = {
       p_reason: reason,
     });
     if (error) throw error;
+    void sendClassStatusEmails(id, "changes_requested", reason);
   },
 
   async archive(id: string, reason?: string): Promise<void> {
@@ -126,6 +130,7 @@ export const ClassService = {
       p_reason: reason ?? null,
     });
     if (error) throw error;
+    void sendClassStatusEmails(id, "archived", reason);
   },
 
   async listAuditHistory(classId: string): Promise<Array<{

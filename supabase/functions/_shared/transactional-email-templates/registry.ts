@@ -19,6 +19,7 @@ import { template as observerRoleGranted } from './observer-role-granted.tsx'
 import { template as projectBlast } from './project-blast.tsx'
 import { template as communityAgreementRequest } from './community-agreement-request.tsx'
 import { template as adminMemberAlert } from './admin-member-alert.tsx'
+import { template as classStatusChange } from './class-status-change.tsx'
 
 export const TEMPLATES: Record<string, TemplateEntry> = {
   'interview-invite': interviewInvite,
@@ -31,4 +32,5 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
   'project-blast': projectBlast,
   'community-agreement-request': communityAgreementRequest,
   'admin-member-alert': adminMemberAlert,
+  'class-status-change': classStatusChange,
 }

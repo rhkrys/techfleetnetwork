@@ -1,48 +1,85 @@
-## Problem
+# Fix the class review flow end-to-end
 
-`process-email-queue` correctly enforces the 24h per-recipient bulk-email cap (project-blast / fleety-coach-digest), but every cap-hit also calls `upsert_fix_queue_entry` with fingerprint `email.frequency_capped.<label>`. That surfaces a normal, healthy guardrail as a triage item — exactly the noise the user is seeing.
+## Root cause of the error you're seeing
 
-The cap-hit is already captured two cleaner ways:
-- `email_send_log` row with `status = 'frequency_capped'` (durable audit).
-- System Health → Email tab counts those rows in the deliverability card (`EmailDeliverabilityCard.tsx` line 67).
+The four class-workflow database functions (`submit_class_for_review`, `approve_and_publish_class`, `request_class_changes`, `archive_class`) were created as SECURITY DEFINER but **EXECUTE was never granted to `authenticated`** — only `postgres` and `service_role` can call them. The browser calls them with a regular signed-in user token, so PostgREST returns:
 
-So the triage upsert is redundant and miscategorised.
+> 42501: permission denied for function submit_class_for_review
 
-## Fix
+That's why submitting a drafted class errors every time. Approve/Deny/Archive would fail the same way for the same reason. None of the notification or email code ever runs because the RPC is rejected before it executes.
 
-1. **`supabase/functions/process-email-queue/index.ts`** — delete the `upsert_fix_queue_entry` block (lines ~319–327). The `email_send_log` insert at line 311 stays as the source of truth; the cap behavior is unchanged.
+On top of that, two things are missing from the existing flow:
+- The in-app notification trigger only covers some transitions: it notifies admins on submit, the teacher on approve / changes-requested / archive — but it does NOT notify the teacher on submit (a confirmation), and does NOT notify admins on approve/deny (visibility for the other admins).
+- There is no email path at all — admins and teachers only get in-app notifications today.
 
-2. **Belt-and-suspenders catalog entry** — insert one `known_issue_catalog` row so any legacy caller or future regression is auto-suppressed at the queue gate:
-   - `match_kind = 'fingerprint'`
-   - `pattern = 'email.frequency_capped.'` won't help with fingerprint kind, so use `match_kind = 'substring'`, `pattern = 'email.frequency_capped.'`, `event_type_filter = 'email_frequency_capped'`, reason = "Intended frequency-cap guardrail; tracked via email_send_log.status='frequency_capped'."
+## Phase 1 — Unbrick the workflow (the actual fix for the error)
 
-3. **Clean current queue** — auto-resolve all open `agent_fix_queue` rows where `fingerprint LIKE 'email.frequency_capped.%'`: set `status='resolved'`, `resolved_at=now()`, `dismissed_reason='Reclassified as info — guardrail working as designed'`.
+Migration that grants EXECUTE on the four RPCs to `authenticated`:
 
-4. **Redeploy** `process-email-queue`.
+- `submit_class_for_review(uuid, uuid[])`
+- `approve_and_publish_class(uuid)`
+- `request_class_changes(uuid, text)`
+- `archive_class(uuid, text)`
 
-5. **BDD** — add `EMAIL-CAP-TRIAGE-001` to `bdd_scenarios`:
-   - Given a recipient at the 24h bulk cap, When `process-email-queue` drops the email, Then
-     - [UI] System Health → Email shows the frequency-capped count incrementing; System Health → Triage shows no new row for `email_frequency_capped`.
-     - [DB] new `email_send_log` row with `status='frequency_capped'`; zero rows inserted into `agent_fix_queue` for fingerprint prefix `email.frequency_capped.`.
-     - [Code] `process-email-queue` does not call `upsert_fix_queue_entry` for cap drops; `known_issue_catalog` row with substring `email.frequency_capped.` is active.
+These functions already enforce their own access checks (owner-or-admin for submit, admin-only for approve/changes/archive), so granting EXECUTE to `authenticated` is safe — the inner checks gate who can actually mutate state.
 
-6. **Memory** — append a one-liner to `mem://features/triage-noise-suppression` noting frequency-cap drops are now treated as info, not triage events.
+After this single migration, "submit for review" works, admins see the class in the Submitted Courses queue (that page already exists and reads from `classes` with `status = 'pending_review'` via the admin SELECT policy), and the existing in-app notification trigger starts firing again.
 
-## Out of scope
+## Phase 2 — Complete the in-app notification trigger
 
-- The cap behavior, window, and `bypass_frequency_cap` flag stay exactly as-is.
-- DLQ replay path (`replay-dlq-emails`) and the `replay_frequency_capped` RPC stay as-is — admins can still manually replay.
-- The `email_send_log` status enum stays unchanged.
+Update `trg_notify_class_status_change` so every action notifies both sides:
 
-## Files
+| Transition | Existing | Add |
+|---|---|---|
+| draft → pending_review | notifies all admins | also notify the teacher ("Your class is being reviewed") |
+| pending_review → published | notifies the teacher | also notify all admins ("`<Admin>` approved `<title>`") |
+| pending_review → draft (changes requested) | notifies the teacher | also notify all admins ("`<Admin>` requested changes on `<title>`") |
+| * → archived | notifies the teacher | also notify all admins |
 
-**Edit**
-- `supabase/functions/process-email-queue/index.ts`
+Also: replace the silent `EXCEPTION WHEN OTHERS THEN RETURN NEW` with `RAISE LOG` + `RETURN NEW` so we keep the transition resilient (notifications never block status changes) but failures show up in Postgres logs and the System Health Triage tab instead of vanishing.
 
-**Data only (insert tool, not migration)**
-- `known_issue_catalog` insert
-- `agent_fix_queue` resolve sweep
-- `bdd_scenarios` insert
+## Phase 3 — Wire up emails to both admin and teacher
 
-**Redeploy**
-- `process-email-queue`
+Use Lovable's built-in transactional email infrastructure (already set up — `send-transactional-email` exists). Two pieces:
+
+1. **One new template**: `supabase/functions/_shared/transactional-email-templates/class-status-change.tsx`, registered in `registry.ts`. Accepts `templateData`:
+   - `action`: `"submitted" | "approved" | "changes_requested" | "archived"`
+   - `recipientName`, `recipientRole` (`"teacher" | "admin"`)
+   - `classTitle`, `actorName`, `reason?`, `linkUrl`
+   
+   Subject and copy branch on `action` + `recipientRole` so the same template covers all six combinations (e.g. admin gets "New class submitted for review" while teacher gets "Your class is being reviewed").
+
+2. **Two helper RPCs** so the client can resolve recipients without needing direct `auth.users` access:
+   - `get_class_email_recipients(p_class_id uuid)` → returns `{ owner_user_id, owner_email, owner_name, class_title }`
+   - `list_admin_email_recipients()` → returns rows of `{ user_id, email, full_name }`
+   
+   Both SECURITY DEFINER, EXECUTE granted to `authenticated`, internally gated to admins-or-class-owner.
+
+3. **Client-side dispatch** in `src/services/class.service.ts`. After each of `submitForReview / approveAndPublish / requestChanges / archive` succeeds, call a new helper `sendClassStatusEmails(classId, action, reason?)` that:
+   - Resolves owner + admin recipients via the RPCs above.
+   - Fires `supabase.functions.invoke('send-transactional-email', …)` for each recipient with:
+     - `templateName: 'class-status-change'`
+     - One-recipient-per-invoke (no list looping into a single send — each is its own transactional send triggered by the same action)
+     - `idempotencyKey: \`class-${action}-${classId}-${recipientUserId}\`` so retries are safe
+     - `templateData` populated per recipient/role
+   - Wrapped in try/catch so an email failure never breaks the UI flow (the in-app notification already covers that path; email is best-effort with the queue handling retries).
+
+The send is invoked client-side because the action is always taken by a signed-in user (teacher or admin) and the queue handles delivery/retry/suppression. No new edge function is created — everything routes through the existing `send-transactional-email`.
+
+## Files touched
+
+- New migration: grants + trigger update + two recipient RPCs
+- `supabase/functions/_shared/transactional-email-templates/class-status-change.tsx` (new)
+- `supabase/functions/_shared/transactional-email-templates/registry.ts` (register new template)
+- Redeploy `send-transactional-email`
+- `src/services/class.service.ts` (call email helper after each of the four actions)
+- New `src/services/class-emails.ts` (the `sendClassStatusEmails` helper + recipient resolution)
+
+## Verification after shipping
+
+1. Sign in as a teacher, submit a draft class → no error, toast says "Submitted for review".
+2. The class appears in `/admin/classes` Submitted queue.
+3. Teacher sees an in-app "Your class is being reviewed" notification.
+4. All admins see an in-app "A teacher submitted …" notification.
+5. Teacher receives a confirmation email; admins receive a review-request email (visible in `email_send_log` with `template_name = 'class-status-change'`).
+6. Admin clicks Approve → teacher gets in-app + email; other admins get in-app + email. Same for Request changes (with reason) and Archive.

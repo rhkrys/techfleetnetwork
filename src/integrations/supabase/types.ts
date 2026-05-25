@@ -6481,6 +6481,15 @@ export type Database = {
           min_occurrences_before_escalate: number
         }[]
       }
+      get_class_email_recipients: {
+        Args: { p_class_id: string }
+        Returns: {
+          class_title: string
+          owner_email: string
+          owner_name: string
+          owner_user_id: string
+        }[]
+      }
       get_community_events_health: {
         Args: never
         Returns: {
@@ -6594,6 +6603,14 @@ export type Database = {
         Returns: string
       }
       kick_community_events_refresh: { Args: never; Returns: undefined }
+      list_admin_email_recipients: {
+        Args: never
+        Returns: {
+          email: string
+          full_name: string
+          user_id: string
+        }[]
+      }
       list_pending_fanout_jobs: {
         Args: { p_limit?: number }
         Returns: {
