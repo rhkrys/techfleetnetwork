@@ -160,7 +160,7 @@ export function EmailDeliverabilityCard() {
                     return (
                       <tr key={row.recipient_domain} className="border-b last:border-b-0">
                         <td className="px-2 py-2 font-medium">{row.recipient_domain}</td>
-                        <td className="px-2 py-2 text-right">{row.sent}</td>
+                        <td className="px-2 py-2 text-right">{row.sent_count}</td>
                         <td className="px-2 py-2 text-right">{bouncePct.toFixed(2)}%</td>
                         <td className="px-2 py-2 text-right">{complaintPct.toFixed(3)}%</td>
                         <td className="px-2 py-2">
