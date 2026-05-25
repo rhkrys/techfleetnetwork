@@ -2305,6 +2305,39 @@ export type Database = {
           },
         ]
       }
+      form_drafts: {
+        Row: {
+          created_at: string
+          draft_key: string
+          expires_at: string
+          id: string
+          payload: Json
+          schema_version: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          draft_key: string
+          expires_at?: string
+          id?: string
+          payload: Json
+          schema_version?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          draft_key?: string
+          expires_at?: string
+          id?: string
+          payload?: Json
+          schema_version?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       framework_edge_staging: {
         Row: {
           created_at: string
@@ -6640,6 +6673,7 @@ export type Database = {
         }[]
       }
       prune_email_send_log: { Args: never; Returns: number }
+      prune_expired_form_drafts: { Args: never; Returns: number }
       prune_login_attempts: { Args: never; Returns: number }
       prune_stale_rate_limits: { Args: never; Returns: number }
       purge_old_audit_logs: {
