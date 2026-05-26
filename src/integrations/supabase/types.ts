@@ -7092,6 +7092,18 @@ export type Database = {
         | "application_design"
         | "strategy"
         | "discovery"
+        | "website"
+        | "mobile_application"
+        | "web_application"
+        | "marketing"
+        | "content_management"
+        | "branding"
+        | "community_operations"
+        | "nonprofit_operations"
+        | "program_design"
+        | "systems_design"
+        | "development_and_qa"
+        | "data_infrastructure"
       quest_step_type:
         | "course"
         | "self_report"
@@ -7327,6 +7339,18 @@ export const Constants = {
         "application_design",
         "strategy",
         "discovery",
+        "website",
+        "mobile_application",
+        "web_application",
+        "marketing",
+        "content_management",
+        "branding",
+        "community_operations",
+        "nonprofit_operations",
+        "program_design",
+        "systems_design",
+        "development_and_qa",
+        "data_infrastructure",
       ],
       quest_step_type: [
         "course",
