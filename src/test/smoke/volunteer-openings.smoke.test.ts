@@ -9,6 +9,9 @@ const read = (p: string) => fs.readFileSync(path.join(process.cwd(), p), "utf8")
 const openingsPage = read("src/pages/ProjectOpeningsPage.tsx");
 const detailPage = read("src/pages/ProjectOpeningDetailPage.tsx");
 const clientsTab = read("src/components/clients/ClientsTab.tsx");
+const projectFormPage = read("src/pages/ProjectFormPage.tsx");
+const dashboardPage = read("src/pages/DashboardPage.tsx");
+const myProjectsTab = read("src/components/MyProjectsTab.tsx");
 const publicOpeningsFn = read("supabase/functions/public-project-openings/index.ts");
 const publicDetailFn = read("supabase/functions/public-project-detail/index.ts");
 
@@ -22,6 +25,7 @@ describe("Volunteer Openings (smoke)", () => {
     // Tab labels both exist and a shared renderer is referenced for both subsets.
     expect(openingsPage).toMatch(/Client Project Openings/);
     expect(openingsPage).toMatch(/Volunteer Openings/);
+    expect(openingsPage).toMatch(/function OpeningsTabContent/);
   });
 
   it("VOL-OPEN-004: detail page renders a Volunteer Opening badge for internal clients", () => {
@@ -32,6 +36,8 @@ describe("Volunteer Openings (smoke)", () => {
   it("VOL-OPEN-005: application flow has no kind-specific branching", () => {
     const appPage = read("src/pages/ProjectApplicationPage.tsx");
     expect(appPage).not.toMatch(/client\.kind\s*===\s*['"]internal/);
+    expect(dashboardPage).toMatch(/Volunteer Opening/);
+    expect(myProjectsTab).toMatch(/Volunteer Opening/);
   });
 
   it("CLIENT-KIND-001: ClientsTab schema and form expose kind with external default", () => {
@@ -42,5 +48,7 @@ describe("Volunteer Openings (smoke)", () => {
   it("CLIENT-KIND-002: public openings + detail edge fns select client kind", () => {
     expect(publicOpeningsFn).toMatch(/kind/);
     expect(publicDetailFn).toMatch(/kind/);
+    expect(projectFormPage).toMatch(/Client Details/);
+    expect(projectFormPage).toMatch(/selectedClient\.kind/);
   });
 });
