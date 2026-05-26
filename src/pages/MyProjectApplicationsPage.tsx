@@ -128,9 +128,9 @@ export default function MyProjectApplicationsPage() {
     queryFn: async () => {
       if (clientIds.length === 0) return [];
       const { data, error } = await supabase
-        .from("clients").select("id, name, logo_url").in("id", clientIds);
+        .from("clients").select("id, name, logo_url, kind").in("id", clientIds);
       if (error) throw error;
-      return (data ?? []) as { id: string; name: string; logo_url: string | null }[];
+      return (data ?? []) as { id: string; name: string; logo_url: string | null; kind?: "external" | "internal" }[];
     },
     enabled: clientIds.length > 0,
   });
