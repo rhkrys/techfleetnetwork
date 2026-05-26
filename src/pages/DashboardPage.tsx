@@ -205,7 +205,7 @@ export default function DashboardPage() {
         .from("projects").select("id, client_id, project_type, phase, project_status, friendly_name").in("id", projectIds);
       const clientIds = [...new Set((projects ?? []).map((p) => p.client_id))];
       const { data: clients } = clientIds.length > 0
-        ? await supabase.from("clients").select("id, name").in("id", clientIds)
+        ? await supabase.from("clients").select("id, name, kind").in("id", clientIds)
         : { data: [] };
       return { projects: projects ?? [], clients: clients ?? [] };
     },
@@ -477,13 +477,15 @@ export default function DashboardPage() {
                   <div className="space-y-2">
                     {myProjectApps.map((app) => {
                       const proj = dashProjectMap.get(app.project_id);
-                      const clientName = proj ? (dashClientMap.get(proj.client_id)?.name ?? "Client") : "Client";
+                      const client = proj ? dashClientMap.get(proj.client_id) : null;
+                      const clientName = client?.name ?? "Client";
                       const friendly = (proj as any)?.friendly_name?.trim();
                       return (
                         <DashboardProjectAppCard
                           key={app.id}
                           app={app}
                           clientName={clientName}
+                          isVolunteerOpening={(client as { kind?: string } | null)?.kind === "internal"}
                           friendly={friendly}
                           onOpenAgreement={() => setAgreementCtx({ id: app.id, name: friendly || clientName, clientName })}
                         />
@@ -608,11 +610,13 @@ interface DashboardAppLike {
 function DashboardProjectAppCard({
   app,
   clientName,
+  isVolunteerOpening,
   friendly,
   onOpenAgreement,
 }: {
   app: DashboardAppLike;
   clientName: string;
+  isVolunteerOpening?: boolean;
   friendly?: string;
   onOpenAgreement: () => void;
 }) {
@@ -635,6 +639,9 @@ function DashboardProjectAppCard({
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="font-semibold text-sm text-foreground truncate">{clientName}</h3>
               <ApplicationStatusBadge status={app.status} applicantStatus={applicantStatus} />
+              {isVolunteerOpening && (
+                <Badge className="bg-info/10 text-info border-info/30 text-xs">Volunteer Opening</Badge>
+              )}
               {showAgreementPending && (
                 <Badge variant="outline" className="border-amber-500/40 text-amber-700 dark:text-amber-300 text-xs">
                   Sign Community Agreement

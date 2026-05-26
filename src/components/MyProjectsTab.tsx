@@ -80,6 +80,7 @@ interface ProjectData {
     mission: string;
     project_summary: string;
     primary_contact: string;
+    kind?: "external" | "internal";
   } | null;
 }
 
@@ -133,6 +134,9 @@ function ProjectSummaryCard({
               <Badge variant="secondary" className="gap-1 text-xs">
                 <LogOut className="h-3 w-3" /> Left the Team
               </Badge>
+            )}
+            {client?.kind === "internal" && (
+              <Badge className="bg-info/10 text-info border-info/30 text-xs">Volunteer Opening</Badge>
             )}
           </div>
           <p className="text-sm text-muted-foreground mt-0.5">
@@ -231,6 +235,9 @@ function ActiveProjectDetail({
                   <Badge variant="secondary" className="gap-1">
                     <LogOut className="h-3 w-3" /> Left the Team
                   </Badge>
+                )}
+                {client?.kind === "internal" && (
+                  <Badge className="bg-info/10 text-info border-info/30">Volunteer Opening</Badge>
                 )}
               </div>
               <p className="text-sm text-muted-foreground">
@@ -407,7 +414,7 @@ export function MyProjectsTab() {
           anticipated_start_date, anticipated_end_date,
           created_at,
           friendly_name, description,
-          clients!projects_client_id_fkey ( name, website, mission, project_summary, primary_contact )
+          clients!projects_client_id_fkey ( name, website, mission, project_summary, primary_contact, kind )
         `)
         .in("id", projectIds);
       if (error) throw error;

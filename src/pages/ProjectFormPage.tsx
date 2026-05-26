@@ -485,7 +485,12 @@ export default function ProjectFormPage() {
         {/* Read-only client info */}
         {selectedClient && (
           <div className="rounded-md border p-4 bg-muted/30 space-y-3">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Client Details</p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Client Details</p>
+              <Badge variant="outline" className={selectedClient.kind === "internal" ? "bg-info/10 text-info border-info/30" : "bg-muted text-muted-foreground"}>
+                {selectedClient.kind === "internal" ? "Internal" : "External"}
+              </Badge>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Globe className="h-3.5 w-3.5 shrink-0" />

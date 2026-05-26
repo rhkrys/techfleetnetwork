@@ -5,6 +5,7 @@ import fs from "fs";
 import path from "path";
 
 const appSrc = fs.readFileSync(path.join(process.cwd(), "src", "App.tsx"), "utf8");
+const openingsPage = fs.readFileSync(path.join(process.cwd(), "src", "pages", "ProjectOpeningsPage.tsx"), "utf8");
 const servicesIndex = fs.existsSync(path.join(process.cwd(), "src", "services", "index.ts"))
   ? fs.readFileSync(path.join(process.cwd(), "src", "services", "index.ts"), "utf8")
   : "";
@@ -25,5 +26,11 @@ describe("Project Openings Page" + " (smoke)", () => {
   it("87.3: Apply button shown only for apply_now projects", () => {
     expect(appSrc.length).toBeGreaterThan(1000);
     expect(scenarioIds).toContain("87.3");
+  });
+
+  it("VOL-OPEN: Volunteer openings tab is present and shares the openings renderer", () => {
+    expect(openingsPage).toMatch(/Volunteer Openings/);
+    expect(openingsPage).toMatch(/Client Project Openings/);
+    expect(openingsPage).toMatch(/function OpeningsTabContent/);
   });
 });

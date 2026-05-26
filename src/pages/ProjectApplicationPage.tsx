@@ -77,6 +77,7 @@ interface ClientInfo {
   mission: string;
   project_summary: string;
   primary_contact: string;
+  kind?: "external" | "internal";
 }
 
 const STEP_LABELS = ["Review General App", "Project Questions", "Client Questions", "Review & Submit"];
@@ -627,7 +628,12 @@ export default function ProjectApplicationPage() {
                   size="md"
                   as="p"
                 />
-                <Badge className="bg-warning/10 text-warning border-warning/20 shrink-0">Apply Now</Badge>
+                <div className="flex flex-wrap justify-end gap-1.5 shrink-0">
+                  {client?.kind === "internal" && (
+                    <Badge className="bg-info/10 text-info border-info/30">Volunteer Opening</Badge>
+                  )}
+                  <Badge className="bg-warning/10 text-warning border-warning/20">Apply Now</Badge>
+                </div>
               </div>
               <p className="text-sm text-muted-foreground">{typeLabel(project.project_type)} · {phaseLabel(project.phase)}</p>
               {client && (
