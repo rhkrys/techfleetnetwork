@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { ReadinessChecklist } from "@/components/ReadinessChecklist";
 import { useQuery } from "@/lib/react-query";
 import { supabase } from "@/integrations/supabase/client";
