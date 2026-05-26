@@ -162,7 +162,6 @@ export default function ProjectOpeningsPage() {
 
   const activeProjects = activeTab === "volunteer" ? volunteerProjects : clientProjects;
   const openApplications = activeTab === "volunteer" ? volunteerOpenApplications : clientOpenApplications;
-  const comingSoon = activeTab === "volunteer" ? volunteerComingSoon : clientComingSoon;
   const startingSoon = activeTab === "volunteer" ? volunteerStartingSoon : clientStartingSoon;
   const liveProjects = activeTab === "volunteer" ? volunteerLiveProjects : clientLiveProjects;
 
