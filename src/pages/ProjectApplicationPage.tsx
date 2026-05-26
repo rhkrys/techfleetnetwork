@@ -133,8 +133,6 @@ export default function ProjectApplicationPage() {
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [initialized, setInitialized] = useState(false);
-  const [genAppDialogOpen, setGenAppDialogOpen] = useState(false);
-  const [genAppDialogShown, setGenAppDialogShown] = useState(false);
 
   /* ── fetch project info ────────────────────────────────── */
   const { data: project, isLoading: projLoading } = useQuery({
@@ -517,15 +515,20 @@ export default function ProjectApplicationPage() {
     return Object.keys(errs2).length === 0 && Object.keys(errs3).length === 0;
   }, [validateStep2, validateStep3]);
 
-  const genAppComplete = genApp?.status === "completed" || genApp?.status === "submitted";
+  // Authoritative completion signal: completed_at takes precedence over status
+  // string to avoid relying on a single enum value. Either signal alone is
+  // sufficient — defends against legacy rows where one field drifts.
+  const genAppComplete = !!genApp && (
+    !!(genApp.completed_at as string | null) ||
+    genApp.status === "completed" ||
+    genApp.status === "submitted"
+  );
 
-  /* Show dialog once when general app is not completed — only after query has resolved */
-  useEffect(() => {
-    if (!genAppDialogShown && genAppLoaded && !genAppComplete && initialized) {
-      setGenAppDialogOpen(true);
-      setGenAppDialogShown(true);
-    }
-  }, [genAppLoaded, genAppComplete, initialized, genAppDialogShown]);
+  // Derived dialog open state — no useEffect, no "shown once" gate. The
+  // moment a completion is detected (e.g., user finishes the general app in
+  // another tab and returns), the blocking dialog disappears automatically.
+  const genAppDialogOpen =
+    !!user && initialized && genAppLoaded && !genAppComplete;
 
   if (authLoading || !user || !profileLoaded || projLoading || appLoading || !initialized) {
     return (
