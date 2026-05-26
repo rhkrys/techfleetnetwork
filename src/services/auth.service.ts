@@ -206,21 +206,27 @@ export const AuthService = {
         if (error.status === 429 || error.message.toLowerCase().includes("too many rapid auth attempts")) throw createAuthThrottleCaptchaError();
         throw new Error("Invalid email or password. Please try again.");
       }
-      // LCL-FIX-004: Post-setSession round-trip validation. If localStorage
-      // was corrupted by a concurrent write, getUser() will fail with a
-      // malformed-JWT error. Clear local state and ask the user to retry —
-      // safer than letting a half-baked session through.
+      // LCL-FIX-004 (revised): Post-setSession round-trip validation is
+      // non-fatal. The supabase client already validated tokens during
+      // setSession; an extra getUser() call here can race against residual
+      // `sb-*-auth-token` entries from a just-ended session and return
+      // `bad_jwt` even though the new session is valid. If it fails, retry
+      // once after letting the storage write settle; if it still fails, log
+      // and continue — the onAuthStateChange listener and subsequent API
+      // calls will surface any real problem.
       try {
-        const { data: userCheck, error: userErr } = await supabase.auth.getUser();
+        let { data: userCheck, error: userErr } = await supabase.auth.getUser();
         if (userErr || !userCheck?.user) {
-          throw userErr ?? new Error("Sign-in didn't complete — please try again.");
+          await new Promise((r) => setTimeout(r, 120));
+          ({ data: userCheck, error: userErr } = await supabase.auth.getUser());
+        }
+        if (userErr || !userCheck?.user) {
+          log.warn("signInWithPassword", "Post-setSession getUser() did not confirm a user; continuing (session was set successfully).", { email: safeEmail }, userErr ?? undefined);
         }
       } catch (validationErr) {
-        log.warn("signInWithPassword", "Post-setSession validation failed; clearing local auth", { email: safeEmail }, validationErr);
-        clearLocalAuthArtifacts();
-        await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
-        throw new Error("Sign-in didn't complete — please try again.");
+        log.warn("signInWithPassword", "Post-setSession validation threw; continuing without forcing sign-out.", { email: safeEmail }, validationErr);
       }
+
       if (data.session) writeSessionMarker(data.session);
       log.info("signInWithPassword", `User ${safeEmail} authenticated successfully`, { userId: data.user?.id });
       void logAccountActivity("login_succeeded", { email: safeEmail, userId: data.user?.id });
