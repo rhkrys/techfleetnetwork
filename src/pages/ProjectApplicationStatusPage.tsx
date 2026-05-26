@@ -446,7 +446,7 @@ export default function ProjectApplicationStatusPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("clients")
-        .select("id, name, website, mission, logo_url")
+        .select("id, name, website, mission, logo_url, kind")
         .eq("id", project!.client_id)
         .single();
       if (error) throw error;
