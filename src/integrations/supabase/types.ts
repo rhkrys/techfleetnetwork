@@ -1434,6 +1434,7 @@ export type Database = {
           id: string
           recipient_domain: string
           sent_count: number
+          window_days: number
           window_end: string
           window_start: string
         }
@@ -1446,6 +1447,7 @@ export type Database = {
           id?: string
           recipient_domain: string
           sent_count?: number
+          window_days?: number
           window_end: string
           window_start: string
         }
@@ -1458,6 +1460,7 @@ export type Database = {
           id?: string
           recipient_domain?: string
           sent_count?: number
+          window_days?: number
           window_end?: string
           window_start?: string
         }
