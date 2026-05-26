@@ -736,6 +736,7 @@ export type Database = {
           created_at: string
           created_by: string
           id: string
+          kind: Database["public"]["Enums"]["client_kind"]
           logo_url: string
           mission: string
           name: string
@@ -749,6 +750,7 @@ export type Database = {
           created_at?: string
           created_by: string
           id?: string
+          kind?: Database["public"]["Enums"]["client_kind"]
           logo_url?: string
           mission?: string
           name: string
@@ -762,6 +764,7 @@ export type Database = {
           created_at?: string
           created_by?: string
           id?: string
+          kind?: Database["public"]["Enums"]["client_kind"]
           logo_url?: string
           mission?: string
           name?: string
@@ -6999,6 +7002,7 @@ export type Database = {
       bdd_test_type: "unit" | "e2e" | "both" | "none" | "manual"
       class_status: "draft" | "pending_review" | "published" | "archived"
       class_track: "basic_training" | "advanced_training"
+      client_kind: "external" | "internal"
       client_status: "active" | "inactive"
       cohort_status:
         | "draft"
@@ -7226,6 +7230,7 @@ export const Constants = {
       bdd_test_type: ["unit", "e2e", "both", "none", "manual"],
       class_status: ["draft", "pending_review", "published", "archived"],
       class_track: ["basic_training", "advanced_training"],
+      client_kind: ["external", "internal"],
       client_status: ["active", "inactive"],
       cohort_status: [
         "draft",
