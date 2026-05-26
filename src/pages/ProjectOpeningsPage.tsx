@@ -128,6 +128,7 @@ export default function ProjectOpeningsPage() {
         ...p,
         clientName: client?.name ?? "Client",
         clientLogoUrl: client?.logo_url || undefined,
+        clientKind: client?.kind ?? "external",
         totalApps: stats?.total ?? 0,
         hatCounts: stats?.hatCounts ?? {},
         userApplied: appliedProjectIds.has(p.id),
@@ -135,6 +136,11 @@ export default function ProjectOpeningsPage() {
     }),
     [projects, clientMap, statsMap, appliedProjectIds]
   );
+
+  /* ── Partition by client kind ──────────────────────────────── */
+  const clientProjects = useMemo(() => enrichedProjects.filter((p) => p.clientKind !== "internal"), [enrichedProjects]);
+  const volunteerProjects = useMemo(() => enrichedProjects.filter((p) => p.clientKind === "internal"), [enrichedProjects]);
+
 
   /* ── Split into sections ─────────────────────────────────── */
   const comingSoon = useMemo(() => enrichedProjects.filter((p) => p.project_status === "coming_soon"), [enrichedProjects]);
