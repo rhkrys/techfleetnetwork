@@ -61,7 +61,7 @@ const APPLICANT_STATUS_LABELS: Record<string, string> = {
 
 interface EnrichedApp extends ProjectApp {
   project?: { id: string; project_type: string; phase: string; project_status: string; client_id: string; team_hats: string[]; friendly_name?: string | null };
-  client?: { id: string; name: string; logo_url?: string | null };
+  client?: { id: string; name: string; logo_url?: string | null; kind?: "external" | "internal" };
 }
 
 /** Returns the correct route for a given application based on its status. */
