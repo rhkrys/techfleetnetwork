@@ -438,91 +438,29 @@ function ProjectOpeningsTabs(props: OpeningsTabsProps) {
     { value: "volunteer", label: <span className="flex items-center gap-2">Volunteer Openings {countBadge(volunteerOpenCount)}</span> },
   ];
 
-  const emptyCopy = activeTab === "volunteer"
-    ? {
-        title: "No Volunteer Openings Right Now",
-        body: "There are no volunteer team openings currently available. Check back soon or visit the guide for more details.",
-        url: "https://guide.techfleet.org/training-openings/current-and-upcoming-program-openings/volunteer-project-openings",
-      }
-    : {
-        title: "No Openings Right Now",
-        body: "There are no client projects currently available. Check back soon or visit the guide for more details.",
-        url: "https://guide.techfleet.org/training-openings/current-and-upcoming-program-openings/project-training-openings",
-      };
-
-  const body = (
-    <>
-      {content.projects.length > 0 && (
-        <div className="flex justify-end mb-4">
-          <div className="flex border rounded-md overflow-hidden">
-            <Button variant={view === "card" ? "default" : "ghost"} size="sm" onClick={() => setView("card")} aria-label="Card view">
-              <LayoutGrid className="h-4 w-4" />
-            </Button>
-            <Button variant={view === "table" ? "default" : "ghost"} size="sm" onClick={() => setView("table")} aria-label="Table view">
-              <List className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {projLoading ? (
-        <div className="flex items-center justify-center py-16">
-          <Loader2 className="h-6 w-6 animate-spin text-primary" />
-        </div>
-      ) : content.projects.length === 0 ? (
-        <div className="rounded-lg border bg-card p-8 text-center">
-          <Handshake className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <h2 className="text-lg font-semibold text-foreground mb-2">{emptyCopy.title}</h2>
-          <p className="text-muted-foreground max-w-md mx-auto mb-4">{emptyCopy.body}</p>
-          <a href={emptyCopy.url} target="_blank" rel="noopener noreferrer">
-            <Button variant="outline">
-              <ExternalLink className="h-4 w-4 mr-1.5" />View on Guide
-            </Button>
-          </a>
-        </div>
-      ) : view === "table" ? (
-        <ThemedAgGrid<EnrichedProject>
-          gridId={`project-openings-${activeTab}`}
-          height="400px"
-          rowData={content.projects}
-          columnDefs={columnDefs}
-          getRowId={(params) => params.data.id}
-          onRowClicked={(params) => {
-            if (!params.data) return;
-            navigate(`/project-openings/${params.data.id}${params.data.clientKind === "internal" ? "?from=volunteer" : ""}`);
-          }}
-          rowStyle={{ cursor: "pointer" }}
-          showExportCsv={isAdmin}
-          exportFileName={`project-openings-${activeTab}`}
-        />
-      ) : (
-        <div className="space-y-10">
-          <div>
-            <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Open Applications</h3>
-            <ProjectSection icon={Handshake} items={content.openApplications} emptyText="No projects are currently accepting applications." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} />
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Opening Soon</h3>
-            <ProjectSection icon={Clock} items={content.comingSoon} emptyText="No projects are opening soon." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} />
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Starting Soon</h3>
-            <ProjectSection icon={Rocket} items={content.startingSoon} emptyText="No projects are starting soon." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} />
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Live Projects</h3>
-            <ProjectSection icon={PlayCircle} items={content.liveProjects} emptyText="No projects are currently in progress." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} />
-          </div>
-        </div>
-      )}
-    </>
-  );
-
   return (
     <ResponsiveTabs value={activeTab} onValueChange={(v) => setActiveTab(v as "client" | "volunteer")} className="w-full">
       <ResponsiveTabsList tabs={tabs} value={activeTab} onValueChange={(v) => setActiveTab(v as "client" | "volunteer")} className="mb-6" />
-      <ResponsiveTabsContent value="client">{activeTab === "client" && body}</ResponsiveTabsContent>
-      <ResponsiveTabsContent value="volunteer">{activeTab === "volunteer" && body}</ResponsiveTabsContent>
+      <ResponsiveTabsContent value="client">
+        {activeTab === "client" && (
+          <OpeningsTabContent
+            tab="client"
+            content={clientContent}
+            emptyCopy={{ title: "No Openings Right Now", body: "There are no client projects currently available. Check back soon or visit the guide for more details.", url: "https://guide.techfleet.org/training-openings/current-and-upcoming-program-openings/project-training-openings" }}
+            {...{ projLoading, view, setView, navigate, isAdmin, columnDefs, typeLabel, phaseLabel, statusLabel, statusClass }}
+          />
+        )}
+      </ResponsiveTabsContent>
+      <ResponsiveTabsContent value="volunteer">
+        {activeTab === "volunteer" && (
+          <OpeningsTabContent
+            tab="volunteer"
+            content={volunteerContent}
+            emptyCopy={{ title: "No Volunteer Openings Right Now", body: "There are no volunteer team openings currently available. Check back soon or visit the guide for more details.", url: "https://guide.techfleet.org/training-openings/current-and-upcoming-program-openings/volunteer-project-openings" }}
+            {...{ projLoading, view, setView, navigate, isAdmin, columnDefs, typeLabel, phaseLabel, statusLabel, statusClass }}
+          />
+        )}
+      </ResponsiveTabsContent>
     </ResponsiveTabs>
   );
 }
