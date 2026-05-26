@@ -74,6 +74,20 @@ export default function ClassDetailPage() {
         </Link>
       </Button>
 
+      {canEdit && (
+        <div
+          className="sticky top-0 z-10 -mx-4 sm:-mx-6 px-4 sm:px-6 py-2 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex flex-wrap justify-end gap-2"
+          data-no-card
+        >
+          <Button asChild variant="outline" size="sm">
+            <Link to={`/teach/classes/${cls.id}/edit`}>
+              <Pencil className="h-4 w-4 mr-1" aria-hidden="true" />Edit
+            </Link>
+          </Button>
+          <ApprovalActions cls={cls} isOwner={isOwner} isAdmin={isAdmin} />
+        </div>
+      )}
+
       {cls.hero_image_url && (
         <img
           src={cls.hero_image_url}
@@ -94,30 +108,19 @@ export default function ClassDetailPage() {
         </div>
       )}
 
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <Badge variant="outline" className={`mb-2 ${STATUS_CLASS[cls.status] ?? ""}`}>
-            {cls.status.replace("_", " ")}
-          </Badge>
-          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">{cls.title}</h1>
-          {cls.summary && (
-            <div
-              className="prose prose-invert max-w-none text-sm text-muted-foreground mt-1"
-              dangerouslySetInnerHTML={{ __html: sanitizeHtml(cls.summary) }}
-            />
-          )}
-        </div>
-        {canEdit && (
-          <div className="flex flex-wrap gap-2">
-            <Button asChild variant="outline" size="sm">
-              <Link to={`/teach/classes/${cls.id}/edit`}>
-                <Pencil className="h-4 w-4 mr-1" aria-hidden="true" />Edit
-              </Link>
-            </Button>
-            <ApprovalActions cls={cls} isOwner={isOwner} isAdmin={isAdmin} />
-          </div>
+      <div>
+        <Badge variant="outline" className={`mb-2 ${STATUS_CLASS[cls.status] ?? ""}`}>
+          {cls.status.replace("_", " ")}
+        </Badge>
+        <h1 className="text-2xl sm:text-3xl font-bold text-foreground">{cls.title}</h1>
+        {cls.summary && (
+          <div
+            className="prose prose-invert max-w-none text-sm text-muted-foreground mt-1"
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(cls.summary) }}
+          />
         )}
       </div>
+
 
       {cls.description && (
         <section>
