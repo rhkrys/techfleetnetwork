@@ -305,7 +305,7 @@ function ProjectSection({ icon: Icon, items, emptyText, navigate, typeLabel, pha
     <div className="grid grid-cols-12 gap-4">
       {items.map((p) => (
         <div key={p.id} className="col-span-12 xl:col-span-6">
-          <Card className="flex flex-col h-full cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate(`/project-openings/${p.id}`)}>
+          <Card className="flex flex-col h-full cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate(`/project-openings/${p.id}${p.clientKind === "internal" ? "?from=volunteer" : ""}`)}>
             <CardHeader className="pb-3">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-3 min-w-0">
