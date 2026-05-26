@@ -287,11 +287,8 @@ export default function ProjectOpeningsPage() {
         setActiveTab={setActiveTab}
         clientOpenCount={clientOpenCount}
         volunteerOpenCount={volunteerOpenCount}
-        activeProjects={activeProjects}
-        openApplications={openApplications}
-        comingSoon={comingSoon}
-        startingSoon={startingSoon}
-        liveProjects={liveProjects}
+        clientContent={{ projects: clientProjects, openApplications: clientOpenApplications, comingSoon: clientComingSoon, startingSoon: clientStartingSoon, liveProjects: clientLiveProjects }}
+        volunteerContent={{ projects: volunteerProjects, openApplications: volunteerOpenApplications, comingSoon: volunteerComingSoon, startingSoon: volunteerStartingSoon, liveProjects: volunteerLiveProjects }}
         projLoading={projLoading}
         view={view}
         setView={setView}
@@ -400,11 +397,8 @@ interface OpeningsTabsProps {
   setActiveTab: (v: "client" | "volunteer") => void;
   clientOpenCount: number;
   volunteerOpenCount: number;
-  activeProjects: EnrichedProject[];
-  openApplications: EnrichedProject[];
-  comingSoon: EnrichedProject[];
-  startingSoon: EnrichedProject[];
-  liveProjects: EnrichedProject[];
+  clientContent: OpeningsTabContentData;
+  volunteerContent: OpeningsTabContentData;
   projLoading: boolean;
   view: "card" | "table";
   setView: (v: "card" | "table") => void;
