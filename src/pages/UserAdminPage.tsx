@@ -21,6 +21,30 @@ import type { ColDef, ICellRendererParams } from "ag-grid-community";
 import { UserActionsDropdown } from "@/components/admin/UserActionsDropdown";
 import { UserDetailDialog } from "@/components/admin/UserDetailDialog";
 import type { UserRow } from "@/components/admin/UserActionsDropdown";
+import { StepUpMfaDialog } from "@/components/StepUpMfaDialog";
+
+/**
+ * Detect a "Fresh 2FA verification required" 403 from a privileged edge function.
+ * Supabase functions.invoke surfaces non-2xx as FunctionsHttpError with the original
+ * Response on `error.context`; the body's `error` field carries the message.
+ */
+async function isFresh2faRequired(invokeResult: { error: unknown; data: unknown }): Promise<boolean> {
+  const err = invokeResult.error as { message?: string; context?: Response } | null;
+  if (!err) return false;
+  const direct = typeof err.message === "string" && /fresh\s*2fa/i.test(err.message);
+  if (direct) return true;
+  try {
+    const ctx = err.context;
+    if (ctx && typeof ctx.clone === "function") {
+      const body = await ctx.clone().json().catch(() => null) as { error?: string } | null;
+      if (body?.error && /fresh\s*2fa/i.test(body.error)) return true;
+      if (ctx.status === 403) return false;
+    }
+  } catch {
+    // ignore
+  }
+  return false;
+}
 
 export default function UserAdminPage() {
   const { user } = useAuth();
@@ -36,8 +60,38 @@ export default function UserAdminPage() {
   // We surface completion % so admins can see who still needs to take it.
   const [a11yTrainedIds, setA11yTrainedIds] = useState<Set<string>>(new Set());
 
+  // Step-up 2FA: privileged edge functions (promote-to-admin, admin-purge-auth-user)
+  // require a fresh TOTP proof. When they 403, we open this dialog and retry on success.
+  const [stepUp, setStepUp] = useState<{ actionLabel: string; resolve: (ok: boolean) => void } | null>(null);
+
+  const requestStepUp = (actionLabel: string) =>
+    new Promise<boolean>((resolve) => setStepUp({ actionLabel, resolve }));
+
+  /**
+   * Invoke a privileged edge function; if it returns 403 "Fresh 2FA verification
+   * required", prompt for a TOTP code and retry once.
+   */
+  const invokeWithStepUp = async (
+    fnName: string,
+    body: Record<string, unknown>,
+    actionLabel: string,
+  ) => {
+    let res = await supabase.functions.invoke(fnName, { body });
+    if (res.error && (await isFresh2faRequired(res))) {
+      const verified = await requestStepUp(actionLabel);
+      if (!verified) {
+        const err = new Error("Admin action cancelled.");
+        (err as Error & { cancelled?: boolean }).cancelled = true;
+        throw err;
+      }
+      res = await supabase.functions.invoke(fnName, { body });
+    }
+    return res;
+  };
+
   const fetchData = async () => {
     try {
+
       const { data: profiles, error: profilesErr } = await supabase
         .from("profiles")
         .select("user_id, email, first_name, last_name, display_name, created_at")
@@ -123,17 +177,23 @@ export default function UserAdminPage() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
-      const res = await supabase.functions.invoke("promote-to-admin", {
-        body: { user_id: targetUser.user_id },
-      });
+      const res = await invokeWithStepUp(
+        "promote-to-admin",
+        { user_id: targetUser.user_id },
+        `promote ${targetUser.email} to admin`,
+      );
       if (res.error) throw new Error(res.error.message || "We couldn't promote that member. Try again in a moment.");
       const result = res.data;
       if (result?.error) throw new Error(result.error);
       toast.success(result?.message || "Confirmation email sent — they'll need to accept it.");
       await fetchData();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "We couldn't promote that member. Try again in a moment.";
-      toast.error(message);
+      if ((err as Error & { cancelled?: boolean })?.cancelled) {
+        toast.info("Admin action cancelled.");
+      } else {
+        const message = err instanceof Error ? err.message : "We couldn't promote that member. Try again in a moment.";
+        toast.error(message);
+      }
     } finally {
       setPromoting(null);
       setConfirmUser(null);
@@ -145,44 +205,58 @@ export default function UserAdminPage() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
-      const res = await supabase.functions.invoke("promote-to-admin", {
-        body: { user_id: targetUser.user_id },
-      });
+      const res = await invokeWithStepUp(
+        "promote-to-admin",
+        { user_id: targetUser.user_id },
+        `resend the admin invite to ${targetUser.email}`,
+      );
       if (res.error) throw new Error(res.error.message || "We couldn't resend that invite. Try again in a moment.");
       const result = res.data;
       if (result?.error) throw new Error(result.error);
       toast.success(`Admin invite resent to ${targetUser.email}.`);
       await fetchData();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "We couldn't resend that invite. Try again in a moment.";
-      toast.error(message);
+      if ((err as Error & { cancelled?: boolean })?.cancelled) {
+        toast.info("Admin action cancelled.");
+      } else {
+        const message = err instanceof Error ? err.message : "We couldn't resend that invite. Try again in a moment.";
+        toast.error(message);
+      }
     } finally {
       setPromoting(null);
       setConfirmUser(null);
     }
   };
 
+
   const handleDeleteUser = async (targetUser: UserRow) => {
     setPromoting(targetUser.user_id);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
-      const res = await supabase.functions.invoke("admin-purge-auth-user", {
-        body: { email: targetUser.email },
-      });
+      const res = await invokeWithStepUp(
+        "admin-purge-auth-user",
+        { email: targetUser.email },
+        `delete ${targetUser.email}`,
+      );
       if (res.error) throw new Error(res.error.message || "We couldn't delete that account. Try again in a moment.");
       const result = res.data;
       if (result?.error) throw new Error(result.error);
       toast.success(`Account for ${targetUser.email} deleted.`);
       await fetchData();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "We couldn't delete that account. Try again in a moment.";
-      toast.error(message);
+      if ((err as Error & { cancelled?: boolean })?.cancelled) {
+        toast.info("Admin action cancelled.");
+      } else {
+        const message = err instanceof Error ? err.message : "We couldn't delete that account. Try again in a moment.";
+        toast.error(message);
+      }
     } finally {
       setPromoting(null);
       setConfirmUser(null);
     }
   };
+
 
   const handlePromoteTeacher = async (targetUser: UserRow) => {
     setPromoting(targetUser.user_id);
@@ -479,6 +553,13 @@ export default function UserAdminPage() {
       </AlertDialog>
 
       <UserDetailDialog user={viewUser} onClose={() => setViewUser(null)} />
+
+      <StepUpMfaDialog
+        open={!!stepUp}
+        actionLabel={stepUp?.actionLabel}
+        onSuccess={() => { stepUp?.resolve(true); setStepUp(null); }}
+        onCancel={() => { stepUp?.resolve(false); setStepUp(null); }}
+      />
     </div>
   );
 }

@@ -1,77 +1,41 @@
-## Goal
+# Fix: Admin promotion email not sending
 
-Differentiate clients as **Internal** (Tech Fleet volunteer teams) or **External** (paying/partner clients). Internal-client projects power a fully-functional **Volunteer Openings** tab that mirrors the existing Client Project Openings experience: stats, status-chunked cards, detail page, application flow, my-applications, and dashboard surfacing.
+## Root cause
 
-## 1. Database
+The `promote-to-admin` edge function calls `requireFreshAdmin2fa` which requires the calling admin to have a TOTP verification **within the last 10 minutes** (`two_factor_login_sessions.verified_at`). When that window has passed, the function returns **403 "Fresh 2FA verification required"** and bails out *before* creating the `admin_promotions` row or enqueuing the email.
 
-New migration:
-- Add enum `public.client_kind` = `('external', 'internal')`.
-- `ALTER TABLE public.clients ADD COLUMN kind public.client_kind NOT NULL DEFAULT 'external'`.
-- No RLS change (already admin-managed). Project rows inherit kind via `client_id` join — no project column needed.
+Edge logs confirm this for the user's last attempt: `POST /promote-to-admin → 403`, no new `admin_promotions` row, no `email_send_log` entry.
 
-## 2. Clients admin (`src/components/clients/ClientsTab.tsx`)
+The UI (`src/pages/UserAdminPage.tsx → handlePromote / handleResendInvite`) just surfaces the error as a generic toast, so it looks like "email broken" when really the action was rejected pre-send.
 
-- Add `kind` to `clientSchema`, `EMPTY_FORM`, edit dialog (Select: External / Internal) under the **Client section**.
-- Show kind as a small badge in the client list/cards.
-- Hide from project cards.
+`admin-purge-auth-user`, `admin-sign-out-all-users`, and `revoke-user-sessions` have the exact same gate, so they hit the same UX hole.
 
-## 3. Projects admin
+## Fix
 
-- `ProjectsTab.tsx` card + table: keep cards clean; show client kind only on the Edit page (read-only field derived from selected client) — i.e. visible "when you click into details".
-- No projects-table schema change.
+Add a small reusable step-up dialog and wire it into the admin actions so a stale 2FA session re-prompts instead of failing silently.
 
-## 4. Project Openings page (`src/pages/ProjectOpeningsPage.tsx`)
+### 1. New component `src/components/StepUpMfaDialog.tsx`
+- Adapted from existing `MfaChallengeDialog`.
+- Same TOTP entry UX (`InputOTP`, pre-created challenge, `MfaService.verifyChallenge` → which already calls `markCurrentSessionVerified` to refresh `two_factor_login_sessions.verified_at`).
+- Cancel just closes the dialog (no `signOut` — user stays logged in, the original action is simply aborted).
+- Copy: "Confirm it's you", "Enter the 6-digit code to continue this admin action."
 
-Split enriched projects by `client.kind`:
-- **Client Project Openings** tab → external clients only (today's behavior).
-- **Volunteer Openings** tab → internal clients, using the **same** rendering pipeline:
-  - Same stats counts (recomputed from internal subset).
-  - Same status-chunked sections: Open Applications, Opening Soon, Starting Soon, Live Projects.
-  - Same card view / table view toggle.
-  - Same empty state styling.
-- Tab badge counts use each subset's open-application count.
-- Refactor the current `ResponsiveTabsContent value="client"` body into a shared `<OpeningsTabContent>` component reused by both tabs, parameterized by `{ projects, openApplications, comingSoon, startingSoon, liveProjects, emptyCopy }`.
+### 2. `src/pages/UserAdminPage.tsx`
+- Add a tiny helper `invokeWithStepUp(fnName, body)` that:
+  1. Calls `supabase.functions.invoke(fnName, { body })`.
+  2. If the response is 403 with message matching `/Fresh 2FA verification required/i`, opens `StepUpMfaDialog`, awaits success, then re-invokes once.
+  3. Returns the final result.
+- Use it in `handlePromote`, `handleResendInvite`, and `handleDeleteUser` (which calls `admin-purge-auth-user`, also gated).
+- Add state: `stepUpRequest: { resolve, reject } | null` to coordinate the async retry with the dialog.
 
-## 5. Public openings edge function (`supabase/functions/public-project-openings/index.ts`)
+### 3. No backend changes
+The edge functions are correct — they should keep enforcing fresh 2FA. The fix is purely UX recovery so the user can complete the action.
 
-- Include `kind` in the clients select.
-- Return clients with kind so the client can partition.
-- No filter change — both kinds returned; UI partitions.
+## Verification
+- Reproduce: log in normally, wait 10+ min, try Promote → dialog appears, enter TOTP, promotion succeeds, `email_send_log` shows new `pending` then `sent` row for `admin_promotion`.
+- Cancel path: dialog closes, toast "Admin action cancelled", no promotion created.
+- Wrong code: existing `MfaService` error surfaces inline in the dialog; user can retry.
 
-## 6. Detail page (`src/pages/ProjectOpeningDetailPage.tsx`)
-
-- Render a **Volunteer Opening** vs **Client Project** badge near the title using `client.kind`.
-- Keep all existing detail sections; volunteer openings get the **same level of detail** (description, team hats, milestones, deliverables, timeline, apply CTA).
-- Breadcrumb back-link respects which tab the user came from (query param `?from=volunteer` falls back to `client`).
-
-## 7. Application flow
-
-- `ProjectApplicationPage.tsx`, `MyProjectApplicationsPage.tsx`, `ProjectApplicationStatusPage.tsx`, dashboard widgets: no schema change needed — `project_applications` already references `project_id`. They will automatically work for internal-client projects.
-- Add a small "Volunteer Opening" badge wherever the existing pages already show a project-type label, so applicants see the same context.
-
-## 8. Types / services
-
-- Regenerate `src/integrations/supabase/types.ts` after migration.
-- Update local `Client` interface in `ClientsTab.tsx` and `ProjectsTab.tsx` to include `kind`.
-
-## 9. BDD scenarios (per workspace rule)
-
-Insert into `bdd_scenarios`:
-- `VOL-OPEN-001` Internal client projects appear under Volunteer Openings tab only.
-- `VOL-OPEN-002` External client projects appear under Client Project Openings tab only.
-- `VOL-OPEN-003` Volunteer tab shows stats + status-chunked sections identical to Client tab.
-- `VOL-OPEN-004` Detail page shows Volunteer Opening badge for internal client projects.
-- `VOL-OPEN-005` User can apply to a volunteer opening and it appears in My Applications + Dashboard.
-- `CLIENT-KIND-001` Admin can set client kind = Internal/External; defaults to External.
-- `CLIENT-KIND-002` Kind hidden on project cards; visible on detail/edit.
-Each with tri-layer [UI]/[DB]/[Code] Then-clauses.
-
-## 10. Smoke tests
-
-Extend `project-openings-page.smoke.test.ts` with volunteer-tab assertions; add `volunteer-openings.smoke.test.ts`.
-
-## Out of scope
-
-- Separate routing per kind (kept as tabs).
-- Volunteer-specific application questions (uses existing form).
-- Public unauth volunteer page changes beyond the partition.
+## Files
+- **New**: `src/components/StepUpMfaDialog.tsx`
+- **Edit**: `src/pages/UserAdminPage.tsx` (wire dialog + retry helper into 3 handlers)
