@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { ReadinessChecklist } from "@/components/ReadinessChecklist";
 import { useQuery } from "@/lib/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -122,6 +122,10 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
 export default function ProjectOpeningDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const fromVolunteer = searchParams.get("from") === "volunteer";
+  const openingsHref = fromVolunteer ? "/project-openings?tab=volunteer" : "/project-openings";
+  const openingsLabel = fromVolunteer ? "Volunteer Openings" : "Project Openings";
   const { user } = useAuth();
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -242,7 +246,7 @@ export default function ProjectOpeningDetailPage() {
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <NavLink to={user ? "/project-openings" : "/login?redirect=%2Fproject-openings"}>Project Openings</NavLink>
+              <NavLink to={user ? openingsHref : `/login?redirect=${encodeURIComponent(openingsHref)}`}>{openingsLabel}</NavLink>
             </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />

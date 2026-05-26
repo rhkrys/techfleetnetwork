@@ -61,7 +61,7 @@ const APPLICANT_STATUS_LABELS: Record<string, string> = {
 
 interface EnrichedApp extends ProjectApp {
   project?: { id: string; project_type: string; phase: string; project_status: string; client_id: string; team_hats: string[]; friendly_name?: string | null };
-  client?: { id: string; name: string; logo_url?: string | null };
+  client?: { id: string; name: string; logo_url?: string | null; kind?: "external" | "internal" };
 }
 
 /** Returns the correct route for a given application based on its status. */
@@ -128,9 +128,9 @@ export default function MyProjectApplicationsPage() {
     queryFn: async () => {
       if (clientIds.length === 0) return [];
       const { data, error } = await supabase
-        .from("clients").select("id, name, logo_url").in("id", clientIds);
+        .from("clients").select("id, name, logo_url, kind").in("id", clientIds);
       if (error) throw error;
-      return (data ?? []) as { id: string; name: string; logo_url: string | null }[];
+      return (data ?? []) as { id: string; name: string; logo_url: string | null; kind?: "external" | "internal" }[];
     },
     enabled: clientIds.length > 0,
   });
@@ -384,6 +384,9 @@ export default function MyProjectApplicationsPage() {
 
                   {/* Project details */}
                   <div className="flex flex-wrap gap-1.5">
+                    {app.client?.kind === "internal" && (
+                      <Badge className="bg-info/10 text-info border-info/30 text-xs">Volunteer Opening</Badge>
+                    )}
                     <Badge variant="outline" className="text-xs">{typeLabel(app.project?.project_type ?? "")}</Badge>
                     <Badge variant="outline" className="text-xs">{phaseLabel(app.project?.phase ?? "")}</Badge>
                     <Badge variant="secondary" className="text-xs">{statusLabel(app.project?.project_status ?? "")}</Badge>

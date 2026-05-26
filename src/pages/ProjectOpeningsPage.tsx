@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@/lib/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -142,7 +142,15 @@ export default function ProjectOpeningsPage() {
   const volunteerProjects = useMemo(() => enrichedProjects.filter((p) => p.clientKind === "internal"), [enrichedProjects]);
 
 
-  const [activeTab, setActiveTab] = useState<"client" | "volunteer">("client");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = searchParams.get("tab") === "volunteer" ? "volunteer" : "client";
+  const [activeTab, setActiveTabState] = useState<"client" | "volunteer">(initialTab);
+  const setActiveTab = (v: "client" | "volunteer") => {
+    setActiveTabState(v);
+    const next = new URLSearchParams(searchParams);
+    if (v === "volunteer") next.set("tab", "volunteer"); else next.delete("tab");
+    setSearchParams(next, { replace: true });
+  };
   const activeProjects = activeTab === "volunteer" ? volunteerProjects : clientProjects;
 
   /* ── Split active tab into sections ─────────────────────── */
@@ -305,7 +313,7 @@ function ProjectSection({ icon: Icon, items, emptyText, navigate, typeLabel, pha
     <div className="grid grid-cols-12 gap-4">
       {items.map((p) => (
         <div key={p.id} className="col-span-12 xl:col-span-6">
-          <Card className="flex flex-col h-full cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate(`/project-openings/${p.id}`)}>
+          <Card className="flex flex-col h-full cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate(`/project-openings/${p.id}${p.clientKind === "internal" ? "?from=volunteer" : ""}`)}>
             <CardHeader className="pb-3">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-3 min-w-0">
@@ -369,7 +377,7 @@ function ProjectSection({ icon: Icon, items, emptyText, navigate, typeLabel, pha
               )}
             </CardContent>
             <CardFooter className="pt-3 border-t">
-              <Button variant="outline" className="w-full gap-2" onClick={(e) => { e.stopPropagation(); navigate(`/project-openings/${p.id}`); }}>
+              <Button variant="outline" className="w-full gap-2" onClick={(e) => { e.stopPropagation(); navigate(`/project-openings/${p.id}${p.clientKind === "internal" ? "?from=volunteer" : ""}`); }}>
                 <Eye className="h-4 w-4" /> View
               </Button>
             </CardFooter>
@@ -472,7 +480,7 @@ function ProjectOpeningsTabs(props: OpeningsTabsProps) {
           getRowId={(params) => params.data.id}
           onRowClicked={(params) => {
             if (!params.data) return;
-            navigate(`/project-openings/${params.data.id}`);
+            navigate(`/project-openings/${params.data.id}${params.data.clientKind === "internal" ? "?from=volunteer" : ""}`);
           }}
           rowStyle={{ cursor: "pointer" }}
           showExportCsv={isAdmin}
