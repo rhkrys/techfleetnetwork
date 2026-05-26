@@ -553,6 +553,13 @@ export default function UserAdminPage() {
       </AlertDialog>
 
       <UserDetailDialog user={viewUser} onClose={() => setViewUser(null)} />
+
+      <StepUpMfaDialog
+        open={!!stepUp}
+        actionLabel={stepUp?.actionLabel}
+        onSuccess={() => { stepUp?.resolve(true); setStepUp(null); }}
+        onCancel={() => { stepUp?.resolve(false); setStepUp(null); }}
+      />
     </div>
   );
 }
