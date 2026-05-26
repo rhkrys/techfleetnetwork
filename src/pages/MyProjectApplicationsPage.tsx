@@ -384,6 +384,9 @@ export default function MyProjectApplicationsPage() {
 
                   {/* Project details */}
                   <div className="flex flex-wrap gap-1.5">
+                    {app.client?.kind === "internal" && (
+                      <Badge className="bg-info/10 text-info border-info/30 text-xs">Volunteer Opening</Badge>
+                    )}
                     <Badge variant="outline" className="text-xs">{typeLabel(app.project?.project_type ?? "")}</Badge>
                     <Badge variant="outline" className="text-xs">{phaseLabel(app.project?.phase ?? "")}</Badge>
                     <Badge variant="secondary" className="text-xs">{statusLabel(app.project?.project_status ?? "")}</Badge>
