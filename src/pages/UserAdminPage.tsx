@@ -177,17 +177,23 @@ export default function UserAdminPage() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
-      const res = await supabase.functions.invoke("promote-to-admin", {
-        body: { user_id: targetUser.user_id },
-      });
+      const res = await invokeWithStepUp(
+        "promote-to-admin",
+        { user_id: targetUser.user_id },
+        `promote ${targetUser.email} to admin`,
+      );
       if (res.error) throw new Error(res.error.message || "We couldn't promote that member. Try again in a moment.");
       const result = res.data;
       if (result?.error) throw new Error(result.error);
       toast.success(result?.message || "Confirmation email sent — they'll need to accept it.");
       await fetchData();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "We couldn't promote that member. Try again in a moment.";
-      toast.error(message);
+      if ((err as Error & { cancelled?: boolean })?.cancelled) {
+        toast.info("Admin action cancelled.");
+      } else {
+        const message = err instanceof Error ? err.message : "We couldn't promote that member. Try again in a moment.";
+        toast.error(message);
+      }
     } finally {
       setPromoting(null);
       setConfirmUser(null);
@@ -199,22 +205,29 @@ export default function UserAdminPage() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
-      const res = await supabase.functions.invoke("promote-to-admin", {
-        body: { user_id: targetUser.user_id },
-      });
+      const res = await invokeWithStepUp(
+        "promote-to-admin",
+        { user_id: targetUser.user_id },
+        `resend the admin invite to ${targetUser.email}`,
+      );
       if (res.error) throw new Error(res.error.message || "We couldn't resend that invite. Try again in a moment.");
       const result = res.data;
       if (result?.error) throw new Error(result.error);
       toast.success(`Admin invite resent to ${targetUser.email}.`);
       await fetchData();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "We couldn't resend that invite. Try again in a moment.";
-      toast.error(message);
+      if ((err as Error & { cancelled?: boolean })?.cancelled) {
+        toast.info("Admin action cancelled.");
+      } else {
+        const message = err instanceof Error ? err.message : "We couldn't resend that invite. Try again in a moment.";
+        toast.error(message);
+      }
     } finally {
       setPromoting(null);
       setConfirmUser(null);
     }
   };
+
 
   const handleDeleteUser = async (targetUser: UserRow) => {
     setPromoting(targetUser.user_id);
