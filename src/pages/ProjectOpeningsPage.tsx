@@ -142,11 +142,27 @@ export default function ProjectOpeningsPage() {
   const volunteerProjects = useMemo(() => enrichedProjects.filter((p) => p.clientKind === "internal"), [enrichedProjects]);
 
 
-  /* ── Split into sections ─────────────────────────────────── */
-  const comingSoon = useMemo(() => enrichedProjects.filter((p) => p.project_status === "coming_soon"), [enrichedProjects]);
-  const openApplications = useMemo(() => enrichedProjects.filter((p) => p.project_status === "apply_now"), [enrichedProjects]);
-  const startingSoon = useMemo(() => enrichedProjects.filter((p) => p.project_status === "recruiting" || p.project_status === "team_onboarding"), [enrichedProjects]);
-  const liveProjects = useMemo(() => enrichedProjects.filter((p) => p.project_status === "project_in_progress"), [enrichedProjects]);
+  const [activeTab, setActiveTab] = useState<"client" | "volunteer">("client");
+  const activeProjects = activeTab === "volunteer" ? volunteerProjects : clientProjects;
+
+  /* ── Split active tab into sections ─────────────────────── */
+  const comingSoon = useMemo(() => activeProjects.filter((p) => p.project_status === "coming_soon"), [activeProjects]);
+  const openApplications = useMemo(() => activeProjects.filter((p) => p.project_status === "apply_now"), [activeProjects]);
+  const startingSoon = useMemo(() => activeProjects.filter((p) => p.project_status === "recruiting" || p.project_status === "team_onboarding"), [activeProjects]);
+  const liveProjects = useMemo(() => activeProjects.filter((p) => p.project_status === "project_in_progress"), [activeProjects]);
+
+  /* ── Per-tab counts for tab badges ──────────────────────── */
+  const clientOpenCount = useMemo(() => clientProjects.filter((p) => p.project_status === "apply_now").length, [clientProjects]);
+  const volunteerOpenCount = useMemo(() => volunteerProjects.filter((p) => p.project_status === "apply_now").length, [volunteerProjects]);
+
+  /* ── Per-tab stats (replace global edge stats) ──────────── */
+  const tabStats: OpeningStats = useMemo(() => ({
+    projects_open_applications: openApplications.length,
+    projects_coming_soon: activeProjects.filter((p) => ["coming_soon", "recruiting", "team_onboarding"].includes(p.project_status)).length,
+    projects_live: liveProjects.length,
+    projects_previously_completed: 0,
+  }), [openApplications, activeProjects, liveProjects]);
+
 
   const typeLabel = (v: string) => PROJECT_TYPES.find((t) => t.value === v)?.label ?? v;
   const phaseLabel = (v: string) => PROJECT_PHASES.find((p) => p.value === v)?.label ?? v;
