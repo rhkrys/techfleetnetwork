@@ -217,56 +217,55 @@ export default function ProjectOpeningsPage() {
         </p>
       </div>
 
-      {/* Stats Cards */}
-      {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-8">
-          <div className="card-elevated p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-success/10 flex items-center justify-center flex-shrink-0">
-              <Briefcase className="h-5 w-5 text-success" aria-hidden="true" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-foreground leading-tight">{stats.projects_open_applications}</p>
-              <p className="text-xs text-muted-foreground">Open Applications</p>
-            </div>
+      {/* Stats Cards (per active tab) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-8">
+        <div className="card-elevated p-4 flex items-center gap-3">
+          <div className="h-10 w-10 rounded-lg bg-success/10 flex items-center justify-center flex-shrink-0">
+            <Briefcase className="h-5 w-5 text-success" aria-hidden="true" />
           </div>
-          <div className="card-elevated p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-warning/10 flex items-center justify-center flex-shrink-0">
-              <Clock className="h-5 w-5 text-warning" aria-hidden="true" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-foreground leading-tight">{stats.projects_coming_soon}</p>
-              <p className="text-xs text-muted-foreground">Opening Soon</p>
-            </div>
-          </div>
-          <div className="card-elevated p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-info/10 flex items-center justify-center flex-shrink-0">
-              <Rocket className="h-5 w-5 text-info" aria-hidden="true" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-foreground leading-tight">{startingSoon.length}</p>
-              <p className="text-xs text-muted-foreground">Starting Soon</p>
-            </div>
-          </div>
-          <div className="card-elevated p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-              <PlayCircle className="h-5 w-5 text-primary" aria-hidden="true" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-foreground leading-tight">{stats.projects_live}</p>
-              <p className="text-xs text-muted-foreground">Live</p>
-            </div>
-          </div>
-          <div className="card-elevated p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
-              <CheckCircle2 className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-foreground leading-tight">{stats.projects_previously_completed}</p>
-              <p className="text-xs text-muted-foreground">Previously Completed</p>
-            </div>
+          <div>
+            <p className="text-2xl font-bold text-foreground leading-tight">{tabStats.projects_open_applications}</p>
+            <p className="text-xs text-muted-foreground">Open Applications</p>
           </div>
         </div>
-      )}
+        <div className="card-elevated p-4 flex items-center gap-3">
+          <div className="h-10 w-10 rounded-lg bg-warning/10 flex items-center justify-center flex-shrink-0">
+            <Clock className="h-5 w-5 text-warning" aria-hidden="true" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-foreground leading-tight">{tabStats.projects_coming_soon}</p>
+            <p className="text-xs text-muted-foreground">Opening Soon</p>
+          </div>
+        </div>
+        <div className="card-elevated p-4 flex items-center gap-3">
+          <div className="h-10 w-10 rounded-lg bg-info/10 flex items-center justify-center flex-shrink-0">
+            <Rocket className="h-5 w-5 text-info" aria-hidden="true" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-foreground leading-tight">{startingSoon.length}</p>
+            <p className="text-xs text-muted-foreground">Starting Soon</p>
+          </div>
+        </div>
+        <div className="card-elevated p-4 flex items-center gap-3">
+          <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+            <PlayCircle className="h-5 w-5 text-primary" aria-hidden="true" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-foreground leading-tight">{tabStats.projects_live}</p>
+            <p className="text-xs text-muted-foreground">Live</p>
+          </div>
+        </div>
+        <div className="card-elevated p-4 flex items-center gap-3">
+          <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+            <CheckCircle2 className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-foreground leading-tight">{tabStats.projects_previously_completed}</p>
+            <p className="text-xs text-muted-foreground">Previously Completed</p>
+          </div>
+        </div>
+      </div>
+
 
       <ProjectOpeningsTabs
         openApplications={openApplications}
