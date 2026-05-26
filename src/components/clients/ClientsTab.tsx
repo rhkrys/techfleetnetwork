@@ -485,6 +485,17 @@ export function ClientsTab() {
               {errors.primary_contact && <p className="text-xs text-destructive">{errors.primary_contact}</p>}
             </div>
             <div className="space-y-1.5">
+              <Label htmlFor="client-kind">Internal or External <span className="text-destructive">*</span></Label>
+              <Select value={form.kind} onValueChange={(v) => setForm((f) => ({ ...f, kind: v as "external" | "internal" }))}>
+                <SelectTrigger id="client-kind"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="external">External (paying or partner client)</SelectItem>
+                  <SelectItem value="internal">Internal (Tech Fleet volunteer team)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Internal clients power the Volunteer Openings tab.</p>
+            </div>
+            <div className="space-y-1.5">
               <Label htmlFor="client-status">Status <span className="text-destructive">*</span></Label>
               <Select value={form.status} onValueChange={(v) => setForm((f) => ({ ...f, status: v as "active" | "inactive" }))}>
                 <SelectTrigger id="client-status"><SelectValue /></SelectTrigger>
