@@ -380,8 +380,35 @@ function ProjectSection({ icon: Icon, items, emptyText, navigate, typeLabel, pha
   );
 }
 
-function ProjectOpeningsTabs({ openApplications, enrichedProjects, projLoading, view, setView, navigate, isAdmin, columnDefs, comingSoon, startingSoon, liveProjects, typeLabel, phaseLabel, statusLabel, statusClass }: any) {
-  const [tab, setTab] = useState("client");
+interface OpeningsTabsProps {
+  activeTab: "client" | "volunteer";
+  setActiveTab: (v: "client" | "volunteer") => void;
+  clientOpenCount: number;
+  volunteerOpenCount: number;
+  activeProjects: EnrichedProject[];
+  openApplications: EnrichedProject[];
+  comingSoon: EnrichedProject[];
+  startingSoon: EnrichedProject[];
+  liveProjects: EnrichedProject[];
+  projLoading: boolean;
+  view: "card" | "table";
+  setView: (v: "card" | "table") => void;
+  navigate: (path: string) => void;
+  isAdmin: boolean;
+  columnDefs: ColDef<EnrichedProject>[];
+  typeLabel: (v: string) => string;
+  phaseLabel: (v: string) => string;
+  statusLabel: (v: string) => string;
+  statusClass: (v: string) => string;
+}
+
+function ProjectOpeningsTabs(props: OpeningsTabsProps) {
+  const {
+    activeTab, setActiveTab, clientOpenCount, volunteerOpenCount,
+    activeProjects, openApplications, comingSoon, startingSoon, liveProjects,
+    projLoading, view, setView, navigate, isAdmin, columnDefs,
+    typeLabel, phaseLabel, statusLabel, statusClass,
+  } = props;
 
   const countBadge = (count: number) => (
     <span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-bold text-primary-foreground ${count > 0 ? "bg-primary" : "bg-muted-foreground"}`}>
@@ -390,106 +417,97 @@ function ProjectOpeningsTabs({ openApplications, enrichedProjects, projLoading, 
   );
 
   const tabs: TabItem[] = [
-    {
-      value: "client",
-      label: <span className="flex items-center gap-2">Client Project Openings {countBadge(openApplications.length)}</span>,
-    },
-    {
-      value: "volunteer",
-      label: <span className="flex items-center gap-2">Volunteer Openings {countBadge(0)}</span>,
-    },
+    { value: "client", label: <span className="flex items-center gap-2">Client Project Openings {countBadge(clientOpenCount)}</span> },
+    { value: "volunteer", label: <span className="flex items-center gap-2">Volunteer Openings {countBadge(volunteerOpenCount)}</span> },
   ];
 
-  return (
-    <ResponsiveTabs value={tab} onValueChange={setTab} className="w-full">
-      <ResponsiveTabsList tabs={tabs} value={tab} onValueChange={setTab} className="mb-6" />
+  const emptyCopy = activeTab === "volunteer"
+    ? {
+        title: "No Volunteer Openings Right Now",
+        body: "There are no volunteer team openings currently available. Check back soon or visit the guide for more details.",
+        url: "https://guide.techfleet.org/training-openings/current-and-upcoming-program-openings/volunteer-project-openings",
+      }
+    : {
+        title: "No Openings Right Now",
+        body: "There are no client projects currently available. Check back soon or visit the guide for more details.",
+        url: "https://guide.techfleet.org/training-openings/current-and-upcoming-program-openings/project-training-openings",
+      };
 
-      <ResponsiveTabsContent value="client">
-        {enrichedProjects.length > 0 && (
-          <div className="flex justify-end mb-4">
-            <div className="flex border rounded-md overflow-hidden">
-              <Button variant={view === "card" ? "default" : "ghost"} size="sm" onClick={() => setView("card")} aria-label="Card view">
-                <LayoutGrid className="h-4 w-4" />
-              </Button>
-              <Button variant={view === "table" ? "default" : "ghost"} size="sm" onClick={() => setView("table")} aria-label="Table view">
-                <List className="h-4 w-4" />
-              </Button>
-            </div>
+  const body = (
+    <>
+      {activeProjects.length > 0 && (
+        <div className="flex justify-end mb-4">
+          <div className="flex border rounded-md overflow-hidden">
+            <Button variant={view === "card" ? "default" : "ghost"} size="sm" onClick={() => setView("card")} aria-label="Card view">
+              <LayoutGrid className="h-4 w-4" />
+            </Button>
+            <Button variant={view === "table" ? "default" : "ghost"} size="sm" onClick={() => setView("table")} aria-label="Table view">
+              <List className="h-4 w-4" />
+            </Button>
           </div>
-        )}
+        </div>
+      )}
 
-        {projLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
-          </div>
-        ) : enrichedProjects.length === 0 ? (
-          <div className="rounded-lg border bg-card p-8 text-center">
-            <Handshake className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h2 className="text-lg font-semibold text-foreground mb-2">No Openings Right Now</h2>
-            <p className="text-muted-foreground max-w-md mx-auto mb-4">
-              There are no client projects currently available. Check back soon or visit the guide for more details.
-            </p>
-            <a href="https://guide.techfleet.org/training-openings/current-and-upcoming-program-openings/project-training-openings" target="_blank" rel="noopener noreferrer">
-              <Button variant="outline">
-                <ExternalLink className="h-4 w-4 mr-1.5" />View on Guide
-              </Button>
-            </a>
-          </div>
-        ) : view === "table" ? (
-          <ThemedAgGrid<EnrichedProject>
-            gridId="project-openings"
-            height="400px"
-            rowData={enrichedProjects}
-            columnDefs={columnDefs}
-            getRowId={(params) => params.data.id}
-            onRowClicked={(params) => {
-              if (!params.data) return;
-              navigate(`/project-openings/${params.data.id}`);
-            }}
-            rowStyle={{ cursor: "pointer" }}
-            showExportCsv={isAdmin}
-            exportFileName="project-openings"
-          />
-        ) : (
-          <div className="space-y-10">
-            <div>
-              <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Open Applications
-              </h3>
-              <ProjectSection icon={Handshake} items={openApplications} emptyText="No projects are currently accepting applications." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Opening Soon
-              </h3>
-              <ProjectSection icon={Clock} items={comingSoon} emptyText="No projects are opening soon." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Starting Soon
-              </h3>
-              <ProjectSection icon={Rocket} items={startingSoon} emptyText="No projects are starting soon." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Live Projects
-              </h3>
-              <ProjectSection icon={PlayCircle} items={liveProjects} emptyText="No projects are currently in progress." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} />
-            </div>
-          </div>
-        )}
-      </ResponsiveTabsContent>
-
-      <ResponsiveTabsContent value="volunteer">
+      {projLoading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        </div>
+      ) : activeProjects.length === 0 ? (
         <div className="rounded-lg border bg-card p-8 text-center">
           <Handshake className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <h2 className="text-lg font-semibold text-foreground mb-2">Volunteer Openings</h2>
-          <p className="text-muted-foreground max-w-md mx-auto mb-4">
-            View current volunteer team opportunities to support Tech Fleet's mission and operations.
-          </p>
-          <a href="https://guide.techfleet.org/training-openings/current-and-upcoming-program-openings/volunteer-project-openings" target="_blank" rel="noopener noreferrer">
+          <h2 className="text-lg font-semibold text-foreground mb-2">{emptyCopy.title}</h2>
+          <p className="text-muted-foreground max-w-md mx-auto mb-4">{emptyCopy.body}</p>
+          <a href={emptyCopy.url} target="_blank" rel="noopener noreferrer">
             <Button variant="outline">
               <ExternalLink className="h-4 w-4 mr-1.5" />View on Guide
             </Button>
           </a>
         </div>
-      </ResponsiveTabsContent>
+      ) : view === "table" ? (
+        <ThemedAgGrid<EnrichedProject>
+          gridId={`project-openings-${activeTab}`}
+          height="400px"
+          rowData={activeProjects}
+          columnDefs={columnDefs}
+          getRowId={(params) => params.data.id}
+          onRowClicked={(params) => {
+            if (!params.data) return;
+            navigate(`/project-openings/${params.data.id}`);
+          }}
+          rowStyle={{ cursor: "pointer" }}
+          showExportCsv={isAdmin}
+          exportFileName={`project-openings-${activeTab}`}
+        />
+      ) : (
+        <div className="space-y-10">
+          <div>
+            <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Open Applications</h3>
+            <ProjectSection icon={Handshake} items={openApplications} emptyText="No projects are currently accepting applications." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Opening Soon</h3>
+            <ProjectSection icon={Clock} items={comingSoon} emptyText="No projects are opening soon." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Starting Soon</h3>
+            <ProjectSection icon={Rocket} items={startingSoon} emptyText="No projects are starting soon." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Live Projects</h3>
+            <ProjectSection icon={PlayCircle} items={liveProjects} emptyText="No projects are currently in progress." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} />
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  return (
+    <ResponsiveTabs value={activeTab} onValueChange={(v) => setActiveTab(v as "client" | "volunteer")} className="w-full">
+      <ResponsiveTabsList tabs={tabs} value={activeTab} onValueChange={(v) => setActiveTab(v as "client" | "volunteer")} className="mb-6" />
+      <ResponsiveTabsContent value="client">{activeTab === "client" && body}</ResponsiveTabsContent>
+      <ResponsiveTabsContent value="volunteer">{activeTab === "volunteer" && body}</ResponsiveTabsContent>
     </ResponsiveTabs>
   );
+}
+
 }
