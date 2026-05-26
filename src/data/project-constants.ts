@@ -2,10 +2,22 @@
 
 export const PROJECT_TYPES = [
   { value: "website_design", label: "Website Design" },
+  { value: "website", label: "Website" },
   { value: "service_design", label: "Service Design" },
   { value: "application_design", label: "Application Design" },
+  { value: "mobile_application", label: "Mobile Application" },
+  { value: "web_application", label: "Web Application" },
   { value: "strategy", label: "Strategy" },
   { value: "discovery", label: "Discovery" },
+  { value: "marketing", label: "Marketing" },
+  { value: "content_management", label: "Content Management" },
+  { value: "branding", label: "Branding" },
+  { value: "community_operations", label: "Community Operations" },
+  { value: "nonprofit_operations", label: "Nonprofit Operations" },
+  { value: "program_design", label: "Program Design" },
+  { value: "systems_design", label: "Systems Design" },
+  { value: "development_and_qa", label: "Development and QA" },
+  { value: "data_infrastructure", label: "Data Infrastructure" },
 ] as const;
 
 export const PROJECT_PHASES = [

@@ -1,0 +1,12 @@
+ALTER TYPE project_type ADD VALUE IF NOT EXISTS 'website';
+ALTER TYPE project_type ADD VALUE IF NOT EXISTS 'mobile_application';
+ALTER TYPE project_type ADD VALUE IF NOT EXISTS 'web_application';
+ALTER TYPE project_type ADD VALUE IF NOT EXISTS 'marketing';
+ALTER TYPE project_type ADD VALUE IF NOT EXISTS 'content_management';
+ALTER TYPE project_type ADD VALUE IF NOT EXISTS 'branding';
+ALTER TYPE project_type ADD VALUE IF NOT EXISTS 'community_operations';
+ALTER TYPE project_type ADD VALUE IF NOT EXISTS 'nonprofit_operations';
+ALTER TYPE project_type ADD VALUE IF NOT EXISTS 'program_design';
+ALTER TYPE project_type ADD VALUE IF NOT EXISTS 'systems_design';
+ALTER TYPE project_type ADD VALUE IF NOT EXISTS 'development_and_qa';
+ALTER TYPE project_type ADD VALUE IF NOT EXISTS 'data_infrastructure';

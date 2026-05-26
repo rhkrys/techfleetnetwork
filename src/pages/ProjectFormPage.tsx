@@ -71,11 +71,12 @@ const optionalUrl = z.string().refine(
 );
 
 // ---------- Schema ----------
+const PROJECT_TYPE_VALUES = PROJECT_TYPES.map((t) => t.value) as [string, ...string[]];
 const projectSchema = z.object({
   client_id: z.string().uuid("Select a client"),
   friendly_name: z.string().trim().max(200, "Keep it under 200 characters").default(""),
   description: z.string().max(5000, "Keep it under 5,000 characters").default(""),
-  project_type: z.enum(["website_design", "service_design", "application_design", "strategy", "discovery"] as const),
+  project_type: z.enum(PROJECT_TYPE_VALUES),
   phase: z.enum(["phase_1", "phase_2", "phase_3", "phase_4"] as const),
   team_hats: z.array(z.string()).min(1, "Select at least one team hat"),
   project_status: z.enum(["coming_soon", "apply_now", "recruiting", "team_onboarding", "project_in_progress", "project_complete"] as const),
