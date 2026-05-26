@@ -369,7 +369,7 @@ function ProjectSection({ icon: Icon, items, emptyText, navigate, typeLabel, pha
               )}
             </CardContent>
             <CardFooter className="pt-3 border-t">
-              <Button variant="outline" className="w-full gap-2" onClick={(e) => { e.stopPropagation(); navigate(`/project-openings/${p.id}`); }}>
+              <Button variant="outline" className="w-full gap-2" onClick={(e) => { e.stopPropagation(); navigate(`/project-openings/${p.id}${p.clientKind === "internal" ? "?from=volunteer" : ""}`); }}>
                 <Eye className="h-4 w-4" /> View
               </Button>
             </CardFooter>
