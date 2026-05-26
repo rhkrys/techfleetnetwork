@@ -36,6 +36,7 @@ interface ClientInfo {
   id: string;
   name: string;
   logo_url?: string;
+  kind?: "external" | "internal";
 }
 
 interface ProjectAppStat {
