@@ -418,6 +418,68 @@ interface OpeningsTabContentData {
   liveProjects: EnrichedProject[];
 }
 
+function OpeningsTabContent({ tab, content, emptyCopy, projLoading, view, setView, navigate, isAdmin, columnDefs, typeLabel, phaseLabel, statusLabel, statusClass }: {
+  tab: "client" | "volunteer";
+  content: OpeningsTabContentData;
+  emptyCopy: { title: string; body: string; url: string };
+  projLoading: boolean;
+  view: "card" | "table";
+  setView: (v: "card" | "table") => void;
+  navigate: (path: string) => void;
+  isAdmin: boolean;
+  columnDefs: ColDef<EnrichedProject>[];
+  typeLabel: (v: string) => string;
+  phaseLabel: (v: string) => string;
+  statusLabel: (v: string) => string;
+  statusClass: (v: string) => string;
+}) {
+  if (projLoading) {
+    return <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
+  }
+
+  if (content.projects.length === 0) {
+    return (
+      <div className="rounded-lg border bg-card p-8 text-center">
+        <Handshake className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+        <h2 className="text-lg font-semibold text-foreground mb-2">{emptyCopy.title}</h2>
+        <p className="text-muted-foreground max-w-md mx-auto mb-4">{emptyCopy.body}</p>
+        <a href={emptyCopy.url} target="_blank" rel="noopener noreferrer"><Button variant="outline"><ExternalLink className="h-4 w-4 mr-1.5" />View on Guide</Button></a>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="flex justify-end mb-4">
+        <div className="flex border rounded-md overflow-hidden">
+          <Button variant={view === "card" ? "default" : "ghost"} size="sm" onClick={() => setView("card")} aria-label="Card view"><LayoutGrid className="h-4 w-4" /></Button>
+          <Button variant={view === "table" ? "default" : "ghost"} size="sm" onClick={() => setView("table")} aria-label="Table view"><List className="h-4 w-4" /></Button>
+        </div>
+      </div>
+      {view === "table" ? (
+        <ThemedAgGrid<EnrichedProject>
+          gridId={`project-openings-${tab}`}
+          height="400px"
+          rowData={content.projects}
+          columnDefs={columnDefs}
+          getRowId={(params) => params.data.id}
+          onRowClicked={(params) => params.data && navigate(`/project-openings/${params.data.id}${params.data.clientKind === "internal" ? "?from=volunteer" : ""}`)}
+          rowStyle={{ cursor: "pointer" }}
+          showExportCsv={isAdmin}
+          exportFileName={`project-openings-${tab}`}
+        />
+      ) : (
+        <div className="space-y-10">
+          <div><h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Open Applications</h3><ProjectSection icon={Handshake} items={content.openApplications} emptyText="No projects are currently accepting applications." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} /></div>
+          <div><h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Opening Soon</h3><ProjectSection icon={Clock} items={content.comingSoon} emptyText="No projects are opening soon." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} /></div>
+          <div><h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Starting Soon</h3><ProjectSection icon={Rocket} items={content.startingSoon} emptyText="No projects are starting soon." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} /></div>
+          <div><h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Live Projects</h3><ProjectSection icon={PlayCircle} items={content.liveProjects} emptyText="No projects are currently in progress." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} /></div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function ProjectOpeningsTabs(props: OpeningsTabsProps) {
   const {
     activeTab, setActiveTab, clientOpenCount, volunteerOpenCount,
@@ -425,8 +487,6 @@ function ProjectOpeningsTabs(props: OpeningsTabsProps) {
     projLoading, view, setView, navigate, isAdmin, columnDefs,
     typeLabel, phaseLabel, statusLabel, statusClass,
   } = props;
-  const content = activeTab === "volunteer" ? volunteerContent : clientContent;
-
   const countBadge = (count: number) => (
     <span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-bold text-primary-foreground ${count > 0 ? "bg-primary" : "bg-muted-foreground"}`}>
       {count}
