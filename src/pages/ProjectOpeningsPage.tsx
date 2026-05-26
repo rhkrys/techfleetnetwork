@@ -36,6 +36,7 @@ interface ClientInfo {
   id: string;
   name: string;
   logo_url?: string;
+  kind?: "external" | "internal";
 }
 
 interface ProjectAppStat {
@@ -61,6 +62,7 @@ interface PublicOpeningsResponse {
 interface EnrichedProject extends OpenProject {
   clientName: string;
   clientLogoUrl?: string;
+  clientKind: "external" | "internal";
   totalApps: number;
   hatCounts: Record<string, number>;
   userApplied: boolean;
@@ -126,6 +128,7 @@ export default function ProjectOpeningsPage() {
         ...p,
         clientName: client?.name ?? "Client",
         clientLogoUrl: client?.logo_url || undefined,
+        clientKind: client?.kind ?? "external",
         totalApps: stats?.total ?? 0,
         hatCounts: stats?.hatCounts ?? {},
         userApplied: appliedProjectIds.has(p.id),
@@ -134,11 +137,32 @@ export default function ProjectOpeningsPage() {
     [projects, clientMap, statsMap, appliedProjectIds]
   );
 
-  /* ── Split into sections ─────────────────────────────────── */
-  const comingSoon = useMemo(() => enrichedProjects.filter((p) => p.project_status === "coming_soon"), [enrichedProjects]);
-  const openApplications = useMemo(() => enrichedProjects.filter((p) => p.project_status === "apply_now"), [enrichedProjects]);
-  const startingSoon = useMemo(() => enrichedProjects.filter((p) => p.project_status === "recruiting" || p.project_status === "team_onboarding"), [enrichedProjects]);
-  const liveProjects = useMemo(() => enrichedProjects.filter((p) => p.project_status === "project_in_progress"), [enrichedProjects]);
+  /* ── Partition by client kind ──────────────────────────────── */
+  const clientProjects = useMemo(() => enrichedProjects.filter((p) => p.clientKind !== "internal"), [enrichedProjects]);
+  const volunteerProjects = useMemo(() => enrichedProjects.filter((p) => p.clientKind === "internal"), [enrichedProjects]);
+
+
+  const [activeTab, setActiveTab] = useState<"client" | "volunteer">("client");
+  const activeProjects = activeTab === "volunteer" ? volunteerProjects : clientProjects;
+
+  /* ── Split active tab into sections ─────────────────────── */
+  const comingSoon = useMemo(() => activeProjects.filter((p) => p.project_status === "coming_soon"), [activeProjects]);
+  const openApplications = useMemo(() => activeProjects.filter((p) => p.project_status === "apply_now"), [activeProjects]);
+  const startingSoon = useMemo(() => activeProjects.filter((p) => p.project_status === "recruiting" || p.project_status === "team_onboarding"), [activeProjects]);
+  const liveProjects = useMemo(() => activeProjects.filter((p) => p.project_status === "project_in_progress"), [activeProjects]);
+
+  /* ── Per-tab counts for tab badges ──────────────────────── */
+  const clientOpenCount = useMemo(() => clientProjects.filter((p) => p.project_status === "apply_now").length, [clientProjects]);
+  const volunteerOpenCount = useMemo(() => volunteerProjects.filter((p) => p.project_status === "apply_now").length, [volunteerProjects]);
+
+  /* ── Per-tab stats (replace global edge stats) ──────────── */
+  const tabStats: OpeningStats = useMemo(() => ({
+    projects_open_applications: openApplications.length,
+    projects_coming_soon: activeProjects.filter((p) => ["coming_soon", "recruiting", "team_onboarding"].includes(p.project_status)).length,
+    projects_live: liveProjects.length,
+    projects_previously_completed: 0,
+  }), [openApplications, activeProjects, liveProjects]);
+
 
   const typeLabel = (v: string) => PROJECT_TYPES.find((t) => t.value === v)?.label ?? v;
   const phaseLabel = (v: string) => PROJECT_PHASES.find((p) => p.value === v)?.label ?? v;
@@ -193,74 +217,78 @@ export default function ProjectOpeningsPage() {
         </p>
       </div>
 
-      {/* Stats Cards */}
-      {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-8">
-          <div className="card-elevated p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-success/10 flex items-center justify-center flex-shrink-0">
-              <Briefcase className="h-5 w-5 text-success" aria-hidden="true" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-foreground leading-tight">{stats.projects_open_applications}</p>
-              <p className="text-xs text-muted-foreground">Open Applications</p>
-            </div>
+      {/* Stats Cards (per active tab) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-8">
+        <div className="card-elevated p-4 flex items-center gap-3">
+          <div className="h-10 w-10 rounded-lg bg-success/10 flex items-center justify-center flex-shrink-0">
+            <Briefcase className="h-5 w-5 text-success" aria-hidden="true" />
           </div>
-          <div className="card-elevated p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-warning/10 flex items-center justify-center flex-shrink-0">
-              <Clock className="h-5 w-5 text-warning" aria-hidden="true" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-foreground leading-tight">{stats.projects_coming_soon}</p>
-              <p className="text-xs text-muted-foreground">Opening Soon</p>
-            </div>
-          </div>
-          <div className="card-elevated p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-info/10 flex items-center justify-center flex-shrink-0">
-              <Rocket className="h-5 w-5 text-info" aria-hidden="true" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-foreground leading-tight">{startingSoon.length}</p>
-              <p className="text-xs text-muted-foreground">Starting Soon</p>
-            </div>
-          </div>
-          <div className="card-elevated p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-              <PlayCircle className="h-5 w-5 text-primary" aria-hidden="true" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-foreground leading-tight">{stats.projects_live}</p>
-              <p className="text-xs text-muted-foreground">Live</p>
-            </div>
-          </div>
-          <div className="card-elevated p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
-              <CheckCircle2 className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-foreground leading-tight">{stats.projects_previously_completed}</p>
-              <p className="text-xs text-muted-foreground">Previously Completed</p>
-            </div>
+          <div>
+            <p className="text-2xl font-bold text-foreground leading-tight">{tabStats.projects_open_applications}</p>
+            <p className="text-xs text-muted-foreground">Open Applications</p>
           </div>
         </div>
-      )}
+        <div className="card-elevated p-4 flex items-center gap-3">
+          <div className="h-10 w-10 rounded-lg bg-warning/10 flex items-center justify-center flex-shrink-0">
+            <Clock className="h-5 w-5 text-warning" aria-hidden="true" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-foreground leading-tight">{tabStats.projects_coming_soon}</p>
+            <p className="text-xs text-muted-foreground">Opening Soon</p>
+          </div>
+        </div>
+        <div className="card-elevated p-4 flex items-center gap-3">
+          <div className="h-10 w-10 rounded-lg bg-info/10 flex items-center justify-center flex-shrink-0">
+            <Rocket className="h-5 w-5 text-info" aria-hidden="true" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-foreground leading-tight">{startingSoon.length}</p>
+            <p className="text-xs text-muted-foreground">Starting Soon</p>
+          </div>
+        </div>
+        <div className="card-elevated p-4 flex items-center gap-3">
+          <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+            <PlayCircle className="h-5 w-5 text-primary" aria-hidden="true" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-foreground leading-tight">{tabStats.projects_live}</p>
+            <p className="text-xs text-muted-foreground">Live</p>
+          </div>
+        </div>
+        <div className="card-elevated p-4 flex items-center gap-3">
+          <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+            <CheckCircle2 className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-foreground leading-tight">{tabStats.projects_previously_completed}</p>
+            <p className="text-xs text-muted-foreground">Previously Completed</p>
+          </div>
+        </div>
+      </div>
+
 
       <ProjectOpeningsTabs
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        clientOpenCount={clientOpenCount}
+        volunteerOpenCount={volunteerOpenCount}
+        activeProjects={activeProjects}
         openApplications={openApplications}
-        enrichedProjects={enrichedProjects}
+        comingSoon={comingSoon}
+        startingSoon={startingSoon}
+        liveProjects={liveProjects}
         projLoading={projLoading}
         view={view}
         setView={setView}
         navigate={navigate}
         isAdmin={isAdmin}
         columnDefs={columnDefs}
-        comingSoon={comingSoon}
-        startingSoon={startingSoon}
-        liveProjects={liveProjects}
         typeLabel={typeLabel}
         phaseLabel={phaseLabel}
         statusLabel={statusLabel}
         statusClass={statusClass}
       />
+
 
     </div>
   );
@@ -352,8 +380,35 @@ function ProjectSection({ icon: Icon, items, emptyText, navigate, typeLabel, pha
   );
 }
 
-function ProjectOpeningsTabs({ openApplications, enrichedProjects, projLoading, view, setView, navigate, isAdmin, columnDefs, comingSoon, startingSoon, liveProjects, typeLabel, phaseLabel, statusLabel, statusClass }: any) {
-  const [tab, setTab] = useState("client");
+interface OpeningsTabsProps {
+  activeTab: "client" | "volunteer";
+  setActiveTab: (v: "client" | "volunteer") => void;
+  clientOpenCount: number;
+  volunteerOpenCount: number;
+  activeProjects: EnrichedProject[];
+  openApplications: EnrichedProject[];
+  comingSoon: EnrichedProject[];
+  startingSoon: EnrichedProject[];
+  liveProjects: EnrichedProject[];
+  projLoading: boolean;
+  view: "card" | "table";
+  setView: (v: "card" | "table") => void;
+  navigate: (path: string) => void;
+  isAdmin: boolean;
+  columnDefs: ColDef<EnrichedProject>[];
+  typeLabel: (v: string) => string;
+  phaseLabel: (v: string) => string;
+  statusLabel: (v: string) => string;
+  statusClass: (v: string) => string;
+}
+
+function ProjectOpeningsTabs(props: OpeningsTabsProps) {
+  const {
+    activeTab, setActiveTab, clientOpenCount, volunteerOpenCount,
+    activeProjects, openApplications, comingSoon, startingSoon, liveProjects,
+    projLoading, view, setView, navigate, isAdmin, columnDefs,
+    typeLabel, phaseLabel, statusLabel, statusClass,
+  } = props;
 
   const countBadge = (count: number) => (
     <span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-bold text-primary-foreground ${count > 0 ? "bg-primary" : "bg-muted-foreground"}`}>
@@ -362,106 +417,96 @@ function ProjectOpeningsTabs({ openApplications, enrichedProjects, projLoading, 
   );
 
   const tabs: TabItem[] = [
-    {
-      value: "client",
-      label: <span className="flex items-center gap-2">Client Project Openings {countBadge(openApplications.length)}</span>,
-    },
-    {
-      value: "volunteer",
-      label: <span className="flex items-center gap-2">Volunteer Openings {countBadge(0)}</span>,
-    },
+    { value: "client", label: <span className="flex items-center gap-2">Client Project Openings {countBadge(clientOpenCount)}</span> },
+    { value: "volunteer", label: <span className="flex items-center gap-2">Volunteer Openings {countBadge(volunteerOpenCount)}</span> },
   ];
 
-  return (
-    <ResponsiveTabs value={tab} onValueChange={setTab} className="w-full">
-      <ResponsiveTabsList tabs={tabs} value={tab} onValueChange={setTab} className="mb-6" />
+  const emptyCopy = activeTab === "volunteer"
+    ? {
+        title: "No Volunteer Openings Right Now",
+        body: "There are no volunteer team openings currently available. Check back soon or visit the guide for more details.",
+        url: "https://guide.techfleet.org/training-openings/current-and-upcoming-program-openings/volunteer-project-openings",
+      }
+    : {
+        title: "No Openings Right Now",
+        body: "There are no client projects currently available. Check back soon or visit the guide for more details.",
+        url: "https://guide.techfleet.org/training-openings/current-and-upcoming-program-openings/project-training-openings",
+      };
 
-      <ResponsiveTabsContent value="client">
-        {enrichedProjects.length > 0 && (
-          <div className="flex justify-end mb-4">
-            <div className="flex border rounded-md overflow-hidden">
-              <Button variant={view === "card" ? "default" : "ghost"} size="sm" onClick={() => setView("card")} aria-label="Card view">
-                <LayoutGrid className="h-4 w-4" />
-              </Button>
-              <Button variant={view === "table" ? "default" : "ghost"} size="sm" onClick={() => setView("table")} aria-label="Table view">
-                <List className="h-4 w-4" />
-              </Button>
-            </div>
+  const body = (
+    <>
+      {activeProjects.length > 0 && (
+        <div className="flex justify-end mb-4">
+          <div className="flex border rounded-md overflow-hidden">
+            <Button variant={view === "card" ? "default" : "ghost"} size="sm" onClick={() => setView("card")} aria-label="Card view">
+              <LayoutGrid className="h-4 w-4" />
+            </Button>
+            <Button variant={view === "table" ? "default" : "ghost"} size="sm" onClick={() => setView("table")} aria-label="Table view">
+              <List className="h-4 w-4" />
+            </Button>
           </div>
-        )}
+        </div>
+      )}
 
-        {projLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
-          </div>
-        ) : enrichedProjects.length === 0 ? (
-          <div className="rounded-lg border bg-card p-8 text-center">
-            <Handshake className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h2 className="text-lg font-semibold text-foreground mb-2">No Openings Right Now</h2>
-            <p className="text-muted-foreground max-w-md mx-auto mb-4">
-              There are no client projects currently available. Check back soon or visit the guide for more details.
-            </p>
-            <a href="https://guide.techfleet.org/training-openings/current-and-upcoming-program-openings/project-training-openings" target="_blank" rel="noopener noreferrer">
-              <Button variant="outline">
-                <ExternalLink className="h-4 w-4 mr-1.5" />View on Guide
-              </Button>
-            </a>
-          </div>
-        ) : view === "table" ? (
-          <ThemedAgGrid<EnrichedProject>
-            gridId="project-openings"
-            height="400px"
-            rowData={enrichedProjects}
-            columnDefs={columnDefs}
-            getRowId={(params) => params.data.id}
-            onRowClicked={(params) => {
-              if (!params.data) return;
-              navigate(`/project-openings/${params.data.id}`);
-            }}
-            rowStyle={{ cursor: "pointer" }}
-            showExportCsv={isAdmin}
-            exportFileName="project-openings"
-          />
-        ) : (
-          <div className="space-y-10">
-            <div>
-              <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Open Applications
-              </h3>
-              <ProjectSection icon={Handshake} items={openApplications} emptyText="No projects are currently accepting applications." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Opening Soon
-              </h3>
-              <ProjectSection icon={Clock} items={comingSoon} emptyText="No projects are opening soon." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Starting Soon
-              </h3>
-              <ProjectSection icon={Rocket} items={startingSoon} emptyText="No projects are starting soon." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Live Projects
-              </h3>
-              <ProjectSection icon={PlayCircle} items={liveProjects} emptyText="No projects are currently in progress." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} />
-            </div>
-          </div>
-        )}
-      </ResponsiveTabsContent>
-
-      <ResponsiveTabsContent value="volunteer">
+      {projLoading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        </div>
+      ) : activeProjects.length === 0 ? (
         <div className="rounded-lg border bg-card p-8 text-center">
           <Handshake className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <h2 className="text-lg font-semibold text-foreground mb-2">Volunteer Openings</h2>
-          <p className="text-muted-foreground max-w-md mx-auto mb-4">
-            View current volunteer team opportunities to support Tech Fleet's mission and operations.
-          </p>
-          <a href="https://guide.techfleet.org/training-openings/current-and-upcoming-program-openings/volunteer-project-openings" target="_blank" rel="noopener noreferrer">
+          <h2 className="text-lg font-semibold text-foreground mb-2">{emptyCopy.title}</h2>
+          <p className="text-muted-foreground max-w-md mx-auto mb-4">{emptyCopy.body}</p>
+          <a href={emptyCopy.url} target="_blank" rel="noopener noreferrer">
             <Button variant="outline">
               <ExternalLink className="h-4 w-4 mr-1.5" />View on Guide
             </Button>
           </a>
         </div>
-      </ResponsiveTabsContent>
+      ) : view === "table" ? (
+        <ThemedAgGrid<EnrichedProject>
+          gridId={`project-openings-${activeTab}`}
+          height="400px"
+          rowData={activeProjects}
+          columnDefs={columnDefs}
+          getRowId={(params) => params.data.id}
+          onRowClicked={(params) => {
+            if (!params.data) return;
+            navigate(`/project-openings/${params.data.id}`);
+          }}
+          rowStyle={{ cursor: "pointer" }}
+          showExportCsv={isAdmin}
+          exportFileName={`project-openings-${activeTab}`}
+        />
+      ) : (
+        <div className="space-y-10">
+          <div>
+            <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Open Applications</h3>
+            <ProjectSection icon={Handshake} items={openApplications} emptyText="No projects are currently accepting applications." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Opening Soon</h3>
+            <ProjectSection icon={Clock} items={comingSoon} emptyText="No projects are opening soon." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Starting Soon</h3>
+            <ProjectSection icon={Rocket} items={startingSoon} emptyText="No projects are starting soon." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Live Projects</h3>
+            <ProjectSection icon={PlayCircle} items={liveProjects} emptyText="No projects are currently in progress." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} />
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  return (
+    <ResponsiveTabs value={activeTab} onValueChange={(v) => setActiveTab(v as "client" | "volunteer")} className="w-full">
+      <ResponsiveTabsList tabs={tabs} value={activeTab} onValueChange={(v) => setActiveTab(v as "client" | "volunteer")} className="mb-6" />
+      <ResponsiveTabsContent value="client">{activeTab === "client" && body}</ResponsiveTabsContent>
+      <ResponsiveTabsContent value="volunteer">{activeTab === "volunteer" && body}</ResponsiveTabsContent>
     </ResponsiveTabs>
   );
 }
+

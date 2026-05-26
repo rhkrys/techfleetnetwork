@@ -38,7 +38,7 @@ Deno.serve(withAuditWrapper("public-project-openings", async (req) => {
     const projectIds = projectRows.map((p) => p.id);
 
     const { data: clients, error: clientError } = clientIds.length
-      ? await supabase.from("clients").select("id, name, logo_url").in("id", clientIds).eq("status", "active")
+      ? await supabase.from("clients").select("id, name, logo_url, kind").in("id", clientIds).eq("status", "active")
       : { data: [], error: null };
     if (clientError) throw clientError;
 

@@ -57,7 +57,7 @@ Deno.serve(withAuditWrapper("public-project-detail", async (req) => {
     // Fetch client
     const { data: client, error: clientErr } = await supabase
       .from("clients")
-      .select("id, name, website, mission, project_summary, primary_contact, status, logo_url")
+      .select("id, name, website, mission, project_summary, primary_contact, status, logo_url, kind")
       .eq("id", project.client_id)
       .eq("status", "active")
       .maybeSingle();

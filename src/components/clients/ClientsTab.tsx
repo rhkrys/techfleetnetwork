@@ -14,6 +14,7 @@ const CLIENT_FIELD_LABELS: Record<string, string> = {
   mission: "Mission",
   project_summary: "Project summary",
   status: "Status",
+  kind: "Internal or External",
   primary_contact: "Primary contact",
   logo: "Logo",
 };
@@ -23,6 +24,7 @@ const CLIENT_FIELD_GUIDANCE: Record<string, string> = {
   mission: "Describe the client's mission in a few sentences.",
   project_summary: "Summarize the project scope and goals.",
   primary_contact: "Add the main point of contact's name.",
+  kind: "External = paying or partner client. Internal = Tech Fleet volunteer team.",
 };
 import { z } from "zod";
 import {
@@ -56,6 +58,7 @@ const clientSchema = z.object({
   mission: z.string().trim().min(1, "Mission is required").max(2000),
   project_summary: z.string().trim().min(1, "Project summary is required").max(5000),
   status: z.enum(["active", "inactive"]),
+  kind: z.enum(["external", "internal"]),
   primary_contact: z.string().trim().min(1, "Primary contact is required").max(200),
 });
 
@@ -70,7 +73,7 @@ export interface Client extends ClientForm {
 }
 
 const EMPTY_FORM: ClientForm = {
-  name: "", website: "", mission: "", project_summary: "", status: "active", primary_contact: "",
+  name: "", website: "", mission: "", project_summary: "", status: "active", kind: "external", primary_contact: "",
 };
 
 const ACCEPTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
@@ -227,7 +230,7 @@ export function ClientsTab() {
 
   const openEdit = useCallback((client: Client) => {
     setEditingClient(client);
-    setForm({ name: client.name, website: client.website, mission: client.mission, project_summary: client.project_summary, status: client.status, primary_contact: client.primary_contact });
+    setForm({ name: client.name, website: client.website, mission: client.mission, project_summary: client.project_summary, status: client.status, kind: client.kind ?? "external", primary_contact: client.primary_contact });
     setErrors({});
     setLogoFile(null);
     setLogoPreview(client.logo_url || null);
@@ -390,7 +393,12 @@ export function ClientsTab() {
                     )}
                     <CardTitle className="text-lg leading-tight truncate">{c.name}</CardTitle>
                   </div>
-                  {statusBadge(c.status)}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Badge variant="outline" className={c.kind === "internal" ? "bg-info/10 text-info border-info/30" : "bg-muted text-muted-foreground"}>
+                      {c.kind === "internal" ? "Internal" : "External"}
+                    </Badge>
+                    {statusBadge(c.status)}
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="flex-1 space-y-3 text-sm">
@@ -480,6 +488,17 @@ export function ClientsTab() {
               <Label htmlFor="client-contact">Primary Contact <span className="text-destructive">*</span></Label>
               <Input id="client-contact" value={form.primary_contact} onChange={(e) => setForm((f) => ({ ...f, primary_contact: e.target.value }))} maxLength={200} aria-invalid={!!errors.primary_contact} />
               {errors.primary_contact && <p className="text-xs text-destructive">{errors.primary_contact}</p>}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="client-kind">Internal or External <span className="text-destructive">*</span></Label>
+              <Select value={form.kind} onValueChange={(v) => setForm((f) => ({ ...f, kind: v as "external" | "internal" }))}>
+                <SelectTrigger id="client-kind"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="external">External (paying or partner client)</SelectItem>
+                  <SelectItem value="internal">Internal (Tech Fleet volunteer team)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Internal clients power the Volunteer Openings tab.</p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="client-status">Status <span className="text-destructive">*</span></Label>

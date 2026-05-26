@@ -63,6 +63,7 @@ interface ClientDetail {
   primary_contact: string;
   status: string;
   logo_url?: string | null;
+  kind?: "external" | "internal";
 }
 
 interface MilestoneData {
@@ -257,6 +258,11 @@ export default function ProjectOpeningDetailPage() {
           <ClientLogo url={client?.logo_url} name={client?.name} size="lg" className="mt-1" />
           <div className="space-y-2 min-w-0">
             <div className="flex flex-wrap items-center gap-2">
+              {client?.kind === "internal" ? (
+                <Badge className="bg-info/10 text-info border-info/30">Volunteer Opening</Badge>
+              ) : (
+                <Badge variant="outline" className="bg-muted text-muted-foreground border-border">Client Project</Badge>
+              )}
               <Badge className="bg-success/10 text-success border-success/30 gap-1">
                 <CheckCircle2 className="h-3 w-3" /> Accepting Applications
               </Badge>
