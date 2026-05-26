@@ -37,9 +37,12 @@ Deno.serve(withAuditWrapper("public-project-openings", async (req) => {
     const clientIds = [...new Set(projectRows.map((p) => p.client_id).filter(Boolean))];
     const projectIds = projectRows.map((p) => p.id);
 
+    // NOTE: `kind` ('external' | 'internal') powers the Volunteer Openings tab partition on the
+    // client. The enum is aliased to text via `kind::text` because PostgREST sometimes omits
+    // custom enum columns when its schema cache hasn't picked up the type yet.
     const { data: clients, error: clientError } = clientIds.length
-      ? await supabase.from("clients").select("id, name, logo_url, kind").in("id", clientIds).eq("status", "active")
-      : { data: [], error: null };
+      ? await supabase.from("clients").select("id, name, logo_url, kind:kind::text").in("id", clientIds).eq("status", "active")
+      : { data: [] as Array<{ id: string; name: string; logo_url: string | null; kind: "external" | "internal" }>, error: null };
     if (clientError) throw clientError;
 
     const { data: applicationStats, error: appError } = projectIds.length
