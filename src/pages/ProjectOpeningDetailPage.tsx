@@ -63,6 +63,7 @@ interface ClientDetail {
   primary_contact: string;
   status: string;
   logo_url?: string | null;
+  kind?: "external" | "internal";
 }
 
 interface MilestoneData {
