@@ -138,7 +138,7 @@ export function useMembershipRealtime() {
     if (!user || !ready) return;
 
     const channel = supabase
-      .channel(`profile-membership-${user.id}`)
+      .channel(`user:${user.id}:profile-membership`)
       .on(
         "postgres_changes",
         {
