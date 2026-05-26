@@ -151,17 +151,23 @@ export default function ProjectOpeningsPage() {
     if (v === "volunteer") next.set("tab", "volunteer"); else next.delete("tab");
     setSearchParams(next, { replace: true });
   };
-  const activeProjects = activeTab === "volunteer" ? volunteerProjects : clientProjects;
+  const clientOpenApplications = useMemo(() => clientProjects.filter((p) => p.project_status === "apply_now"), [clientProjects]);
+  const clientComingSoon = useMemo(() => clientProjects.filter((p) => p.project_status === "coming_soon"), [clientProjects]);
+  const clientStartingSoon = useMemo(() => clientProjects.filter((p) => p.project_status === "recruiting" || p.project_status === "team_onboarding"), [clientProjects]);
+  const clientLiveProjects = useMemo(() => clientProjects.filter((p) => p.project_status === "project_in_progress"), [clientProjects]);
+  const volunteerOpenApplications = useMemo(() => volunteerProjects.filter((p) => p.project_status === "apply_now"), [volunteerProjects]);
+  const volunteerComingSoon = useMemo(() => volunteerProjects.filter((p) => p.project_status === "coming_soon"), [volunteerProjects]);
+  const volunteerStartingSoon = useMemo(() => volunteerProjects.filter((p) => p.project_status === "recruiting" || p.project_status === "team_onboarding"), [volunteerProjects]);
+  const volunteerLiveProjects = useMemo(() => volunteerProjects.filter((p) => p.project_status === "project_in_progress"), [volunteerProjects]);
 
-  /* ── Split active tab into sections ─────────────────────── */
-  const comingSoon = useMemo(() => activeProjects.filter((p) => p.project_status === "coming_soon"), [activeProjects]);
-  const openApplications = useMemo(() => activeProjects.filter((p) => p.project_status === "apply_now"), [activeProjects]);
-  const startingSoon = useMemo(() => activeProjects.filter((p) => p.project_status === "recruiting" || p.project_status === "team_onboarding"), [activeProjects]);
-  const liveProjects = useMemo(() => activeProjects.filter((p) => p.project_status === "project_in_progress"), [activeProjects]);
+  const activeProjects = activeTab === "volunteer" ? volunteerProjects : clientProjects;
+  const openApplications = activeTab === "volunteer" ? volunteerOpenApplications : clientOpenApplications;
+  const startingSoon = activeTab === "volunteer" ? volunteerStartingSoon : clientStartingSoon;
+  const liveProjects = activeTab === "volunteer" ? volunteerLiveProjects : clientLiveProjects;
 
   /* ── Per-tab counts for tab badges ──────────────────────── */
-  const clientOpenCount = useMemo(() => clientProjects.filter((p) => p.project_status === "apply_now").length, [clientProjects]);
-  const volunteerOpenCount = useMemo(() => volunteerProjects.filter((p) => p.project_status === "apply_now").length, [volunteerProjects]);
+  const clientOpenCount = clientOpenApplications.length;
+  const volunteerOpenCount = volunteerOpenApplications.length;
 
   /* ── Per-tab stats (replace global edge stats) ──────────── */
   const tabStats: OpeningStats = useMemo(() => ({
