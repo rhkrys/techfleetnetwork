@@ -52,7 +52,7 @@ interface StatCardProps {
 const StatCard = memo(function StatCard({ value, label, sublabel, tooltip }: StatCardProps) {
   return (
     <div
-      className="flex aspect-square w-full max-w-[190px] flex-col items-center justify-center text-center overflow-hidden p-4"
+      className="relative flex aspect-square w-full max-w-[190px] flex-col items-center text-center overflow-hidden p-4"
       style={{
         border: "3px solid var(--tf-stat-border)",
         backgroundColor: "var(--tf-stat-bg)",
@@ -61,48 +61,55 @@ const StatCard = memo(function StatCard({ value, label, sublabel, tooltip }: Sta
           "inset 5px 5px 20px 3px var(--tf-stat-glow-1), inset -5px -5px 20px 5px var(--tf-stat-glow-2)",
       }}
     >
-      <p
-        className="font-display font-semibold leading-none"
-        style={{
-          color: "var(--tf-stat-text)",
-          fontSize: "clamp(1.75rem, 3vw, 2.75rem)",
-          letterSpacing: "1px",
-        }}
-      >
-        {value}
-      </p>
-      <div className="mt-2 flex max-w-[90%] items-center justify-center gap-1.5">
+      {/* Top half: number anchored to the bottom of this region so every circle's
+          number sits at the same vertical position regardless of label length. */}
+      <div className="flex h-1/2 w-full items-end justify-center">
         <p
-          className="text-sm sm:text-base font-medium leading-tight"
-          style={{ color: "var(--tf-stat-label, var(--tf-stat-text))" }}
+          className="font-display font-semibold leading-none"
+          style={{
+            color: "var(--tf-stat-text)",
+            fontSize: "clamp(1.75rem, 3vw, 2.75rem)",
+            letterSpacing: "1px",
+          }}
         >
-          {label}
+          {value}
         </p>
-        {tooltip ? (
-          <TooltipProvider delayDuration={150}>
-            <Tooltip>
-              <TooltipTrigger
-                type="button"
-                className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                aria-label={`${label} details`}
-              >
-                <Icon icon={Info} size="micro" />
-              </TooltipTrigger>
-              <TooltipContent className="max-w-56 text-center">
-                {tooltip}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+      </div>
+      {/* Bottom half: label sits flush to the top of this region, just under the number. */}
+      <div className="flex h-1/2 w-full flex-col items-center pt-2">
+        <div className="flex max-w-[90%] items-center justify-center gap-1.5">
+          <p
+            className="text-sm sm:text-base font-medium leading-tight"
+            style={{ color: "var(--tf-stat-label, var(--tf-stat-text))" }}
+          >
+            {label}
+          </p>
+          {tooltip ? (
+            <TooltipProvider delayDuration={150}>
+              <Tooltip>
+                <TooltipTrigger
+                  type="button"
+                  className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  aria-label={`${label} details`}
+                >
+                  <Icon icon={Info} size="micro" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-56 text-center">
+                  {tooltip}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : null}
+        </div>
+        {sublabel ? (
+          <p
+            className="mt-1 text-[0.7rem] leading-tight max-w-[90%] opacity-80"
+            style={{ color: "var(--tf-stat-label, var(--tf-stat-text))" }}
+          >
+            {sublabel}
+          </p>
         ) : null}
       </div>
-      {sublabel ? (
-        <p
-          className="mt-1 text-[0.7rem] leading-tight max-w-[90%] opacity-80"
-          style={{ color: "var(--tf-stat-label, var(--tf-stat-text))" }}
-        >
-          {sublabel}
-        </p>
-      ) : null}
     </div>
   );
 });
