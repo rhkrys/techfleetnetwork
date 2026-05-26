@@ -268,22 +268,27 @@ export default function ProjectOpeningsPage() {
 
 
       <ProjectOpeningsTabs
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        clientOpenCount={clientOpenCount}
+        volunteerOpenCount={volunteerOpenCount}
+        activeProjects={activeProjects}
         openApplications={openApplications}
-        enrichedProjects={enrichedProjects}
+        comingSoon={comingSoon}
+        startingSoon={startingSoon}
+        liveProjects={liveProjects}
         projLoading={projLoading}
         view={view}
         setView={setView}
         navigate={navigate}
         isAdmin={isAdmin}
         columnDefs={columnDefs}
-        comingSoon={comingSoon}
-        startingSoon={startingSoon}
-        liveProjects={liveProjects}
         typeLabel={typeLabel}
         phaseLabel={phaseLabel}
         statusLabel={statusLabel}
         statusClass={statusClass}
       />
+
 
     </div>
   );
