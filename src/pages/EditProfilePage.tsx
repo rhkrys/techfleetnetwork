@@ -74,6 +74,14 @@ export default function EditProfilePage() {
     tabParam && validTabs.includes(tabParam) ? tabParam : "basic-info"
   );
 
+  // Sync activeTab with ?tab= changes (e.g. profile menu re-navigation while on /profile/edit)
+  useEffect(() => {
+    if (tabParam && validTabs.includes(tabParam) && tabParam !== activeTab) {
+      setActiveTab(tabParam);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabParam]);
+
   useEffect(() => {
     if (!initialized && profile) {
       setForm({
