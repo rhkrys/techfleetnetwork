@@ -62,6 +62,7 @@ interface PublicOpeningsResponse {
 interface EnrichedProject extends OpenProject {
   clientName: string;
   clientLogoUrl?: string;
+  clientKind: "external" | "internal";
   totalApps: number;
   hatCounts: Record<string, number>;
   userApplied: boolean;
