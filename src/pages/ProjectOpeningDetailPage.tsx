@@ -122,6 +122,10 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
 export default function ProjectOpeningDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const fromVolunteer = searchParams.get("from") === "volunteer";
+  const openingsHref = fromVolunteer ? "/project-openings?tab=volunteer" : "/project-openings";
+  const openingsLabel = fromVolunteer ? "Volunteer Openings" : "Project Openings";
   const { user } = useAuth();
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
