@@ -14,6 +14,7 @@ const CLIENT_FIELD_LABELS: Record<string, string> = {
   mission: "Mission",
   project_summary: "Project summary",
   status: "Status",
+  kind: "Internal or External",
   primary_contact: "Primary contact",
   logo: "Logo",
 };
@@ -23,6 +24,7 @@ const CLIENT_FIELD_GUIDANCE: Record<string, string> = {
   mission: "Describe the client's mission in a few sentences.",
   project_summary: "Summarize the project scope and goals.",
   primary_contact: "Add the main point of contact's name.",
+  kind: "External = paying or partner client. Internal = Tech Fleet volunteer team.",
 };
 import { z } from "zod";
 import {
