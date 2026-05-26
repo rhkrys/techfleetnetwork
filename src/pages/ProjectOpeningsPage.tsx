@@ -472,7 +472,7 @@ function ProjectOpeningsTabs(props: OpeningsTabsProps) {
           getRowId={(params) => params.data.id}
           onRowClicked={(params) => {
             if (!params.data) return;
-            navigate(`/project-openings/${params.data.id}`);
+            navigate(`/project-openings/${params.data.id}${params.data.clientKind === "internal" ? "?from=volunteer" : ""}`);
           }}
           rowStyle={{ cursor: "pointer" }}
           showExportCsv={isAdmin}
