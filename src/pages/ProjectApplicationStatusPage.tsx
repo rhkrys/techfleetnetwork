@@ -847,6 +847,9 @@ export default function ProjectApplicationStatusPage() {
               <div className="space-y-3">
                 <h3 className="text-sm font-semibold text-foreground">Project Details</h3>
                 <div className="flex flex-wrap gap-1.5">
+                  {(client as { kind?: string } | null)?.kind === "internal" && (
+                    <Badge className="bg-info/10 text-info border-info/30 text-xs">Volunteer Opening</Badge>
+                  )}
                   <Badge variant="secondary" className="text-xs">{typeLabel(project.project_type)}</Badge>
                   <Badge variant="outline" className="text-xs">{phaseLabel(project.phase)}</Badge>
                   <Badge variant="outline" className="text-xs">{statusLabel(project.project_status)}</Badge>
