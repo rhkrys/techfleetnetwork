@@ -56,6 +56,7 @@ const clientSchema = z.object({
   mission: z.string().trim().min(1, "Mission is required").max(2000),
   project_summary: z.string().trim().min(1, "Project summary is required").max(5000),
   status: z.enum(["active", "inactive"]),
+  kind: z.enum(["external", "internal"]),
   primary_contact: z.string().trim().min(1, "Primary contact is required").max(200),
 });
 
@@ -70,7 +71,7 @@ export interface Client extends ClientForm {
 }
 
 const EMPTY_FORM: ClientForm = {
-  name: "", website: "", mission: "", project_summary: "", status: "active", primary_contact: "",
+  name: "", website: "", mission: "", project_summary: "", status: "active", kind: "external", primary_contact: "",
 };
 
 const ACCEPTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
