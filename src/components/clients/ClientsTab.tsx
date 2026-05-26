@@ -228,7 +228,7 @@ export function ClientsTab() {
 
   const openEdit = useCallback((client: Client) => {
     setEditingClient(client);
-    setForm({ name: client.name, website: client.website, mission: client.mission, project_summary: client.project_summary, status: client.status, primary_contact: client.primary_contact });
+    setForm({ name: client.name, website: client.website, mission: client.mission, project_summary: client.project_summary, status: client.status, kind: client.kind ?? "external", primary_contact: client.primary_contact });
     setErrors({});
     setLogoFile(null);
     setLogoPreview(client.logo_url || null);
