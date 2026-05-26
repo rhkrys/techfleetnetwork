@@ -21,6 +21,30 @@ import type { ColDef, ICellRendererParams } from "ag-grid-community";
 import { UserActionsDropdown } from "@/components/admin/UserActionsDropdown";
 import { UserDetailDialog } from "@/components/admin/UserDetailDialog";
 import type { UserRow } from "@/components/admin/UserActionsDropdown";
+import { StepUpMfaDialog } from "@/components/StepUpMfaDialog";
+
+/**
+ * Detect a "Fresh 2FA verification required" 403 from a privileged edge function.
+ * Supabase functions.invoke surfaces non-2xx as FunctionsHttpError with the original
+ * Response on `error.context`; the body's `error` field carries the message.
+ */
+async function isFresh2faRequired(invokeResult: { error: unknown; data: unknown }): Promise<boolean> {
+  const err = invokeResult.error as { message?: string; context?: Response } | null;
+  if (!err) return false;
+  const direct = typeof err.message === "string" && /fresh\s*2fa/i.test(err.message);
+  if (direct) return true;
+  try {
+    const ctx = err.context;
+    if (ctx && typeof ctx.clone === "function") {
+      const body = await ctx.clone().json().catch(() => null) as { error?: string } | null;
+      if (body?.error && /fresh\s*2fa/i.test(body.error)) return true;
+      if (ctx.status === 403) return false;
+    }
+  } catch {
+    // ignore
+  }
+  return false;
+}
 
 export default function UserAdminPage() {
   const { user } = useAuth();
