@@ -60,7 +60,35 @@ export default function UserAdminPage() {
   // We surface completion % so admins can see who still needs to take it.
   const [a11yTrainedIds, setA11yTrainedIds] = useState<Set<string>>(new Set());
 
-  const fetchData = async () => {
+  // Step-up 2FA: privileged edge functions (promote-to-admin, admin-purge-auth-user)
+  // require a fresh TOTP proof. When they 403, we open this dialog and retry on success.
+  const [stepUp, setStepUp] = useState<{ actionLabel: string; resolve: (ok: boolean) => void } | null>(null);
+
+  const requestStepUp = (actionLabel: string) =>
+    new Promise<boolean>((resolve) => setStepUp({ actionLabel, resolve }));
+
+  /**
+   * Invoke a privileged edge function; if it returns 403 "Fresh 2FA verification
+   * required", prompt for a TOTP code and retry once.
+   */
+  const invokeWithStepUp = async (
+    fnName: string,
+    body: Record<string, unknown>,
+    actionLabel: string,
+  ) => {
+    let res = await supabase.functions.invoke(fnName, { body });
+    if (res.error && (await isFresh2faRequired(res))) {
+      const verified = await requestStepUp(actionLabel);
+      if (!verified) {
+        const err = new Error("Admin action cancelled.");
+        (err as Error & { cancelled?: boolean }).cancelled = true;
+        throw err;
+      }
+      res = await supabase.functions.invoke(fnName, { body });
+    }
+    return res;
+  };
+
     try {
       const { data: profiles, error: profilesErr } = await supabase
         .from("profiles")
