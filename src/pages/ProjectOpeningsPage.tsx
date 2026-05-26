@@ -411,13 +411,22 @@ interface OpeningsTabsProps {
   statusClass: (v: string) => string;
 }
 
+interface OpeningsTabContentData {
+  projects: EnrichedProject[];
+  openApplications: EnrichedProject[];
+  comingSoon: EnrichedProject[];
+  startingSoon: EnrichedProject[];
+  liveProjects: EnrichedProject[];
+}
+
 function ProjectOpeningsTabs(props: OpeningsTabsProps) {
   const {
     activeTab, setActiveTab, clientOpenCount, volunteerOpenCount,
-    activeProjects, openApplications, comingSoon, startingSoon, liveProjects,
+    clientContent, volunteerContent,
     projLoading, view, setView, navigate, isAdmin, columnDefs,
     typeLabel, phaseLabel, statusLabel, statusClass,
   } = props;
+  const content = activeTab === "volunteer" ? volunteerContent : clientContent;
 
   const countBadge = (count: number) => (
     <span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-bold text-primary-foreground ${count > 0 ? "bg-primary" : "bg-muted-foreground"}`}>
@@ -444,7 +453,7 @@ function ProjectOpeningsTabs(props: OpeningsTabsProps) {
 
   const body = (
     <>
-      {activeProjects.length > 0 && (
+      {content.projects.length > 0 && (
         <div className="flex justify-end mb-4">
           <div className="flex border rounded-md overflow-hidden">
             <Button variant={view === "card" ? "default" : "ghost"} size="sm" onClick={() => setView("card")} aria-label="Card view">
@@ -461,7 +470,7 @@ function ProjectOpeningsTabs(props: OpeningsTabsProps) {
         <div className="flex items-center justify-center py-16">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
         </div>
-      ) : activeProjects.length === 0 ? (
+      ) : content.projects.length === 0 ? (
         <div className="rounded-lg border bg-card p-8 text-center">
           <Handshake className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
           <h2 className="text-lg font-semibold text-foreground mb-2">{emptyCopy.title}</h2>
@@ -476,7 +485,7 @@ function ProjectOpeningsTabs(props: OpeningsTabsProps) {
         <ThemedAgGrid<EnrichedProject>
           gridId={`project-openings-${activeTab}`}
           height="400px"
-          rowData={activeProjects}
+          rowData={content.projects}
           columnDefs={columnDefs}
           getRowId={(params) => params.data.id}
           onRowClicked={(params) => {
@@ -491,19 +500,19 @@ function ProjectOpeningsTabs(props: OpeningsTabsProps) {
         <div className="space-y-10">
           <div>
             <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Open Applications</h3>
-            <ProjectSection icon={Handshake} items={openApplications} emptyText="No projects are currently accepting applications." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} />
+            <ProjectSection icon={Handshake} items={content.openApplications} emptyText="No projects are currently accepting applications." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} />
           </div>
           <div>
             <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Opening Soon</h3>
-            <ProjectSection icon={Clock} items={comingSoon} emptyText="No projects are opening soon." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} />
+            <ProjectSection icon={Clock} items={content.comingSoon} emptyText="No projects are opening soon." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} />
           </div>
           <div>
             <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Starting Soon</h3>
-            <ProjectSection icon={Rocket} items={startingSoon} emptyText="No projects are starting soon." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} />
+            <ProjectSection icon={Rocket} items={content.startingSoon} emptyText="No projects are starting soon." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} />
           </div>
           <div>
             <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Live Projects</h3>
-            <ProjectSection icon={PlayCircle} items={liveProjects} emptyText="No projects are currently in progress." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} />
+            <ProjectSection icon={PlayCircle} items={content.liveProjects} emptyText="No projects are currently in progress." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} />
           </div>
         </div>
       )}
