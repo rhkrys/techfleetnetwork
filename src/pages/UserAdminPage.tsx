@@ -89,7 +89,9 @@ export default function UserAdminPage() {
     return res;
   };
 
+  const fetchData = async () => {
     try {
+
       const { data: profiles, error: profilesErr } = await supabase
         .from("profiles")
         .select("user_id, email, first_name, last_name, display_name, created_at")
