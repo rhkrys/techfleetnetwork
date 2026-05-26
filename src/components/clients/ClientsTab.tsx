@@ -393,7 +393,12 @@ export function ClientsTab() {
                     )}
                     <CardTitle className="text-lg leading-tight truncate">{c.name}</CardTitle>
                   </div>
-                  {statusBadge(c.status)}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Badge variant="outline" className={c.kind === "internal" ? "bg-info/10 text-info border-info/30" : "bg-muted text-muted-foreground"}>
+                      {c.kind === "internal" ? "Internal" : "External"}
+                    </Badge>
+                    {statusBadge(c.status)}
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="flex-1 space-y-3 text-sm">
