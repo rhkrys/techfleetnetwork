@@ -234,22 +234,29 @@ export default function UserAdminPage() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
-      const res = await supabase.functions.invoke("admin-purge-auth-user", {
-        body: { email: targetUser.email },
-      });
+      const res = await invokeWithStepUp(
+        "admin-purge-auth-user",
+        { email: targetUser.email },
+        `delete ${targetUser.email}`,
+      );
       if (res.error) throw new Error(res.error.message || "We couldn't delete that account. Try again in a moment.");
       const result = res.data;
       if (result?.error) throw new Error(result.error);
       toast.success(`Account for ${targetUser.email} deleted.`);
       await fetchData();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "We couldn't delete that account. Try again in a moment.";
-      toast.error(message);
+      if ((err as Error & { cancelled?: boolean })?.cancelled) {
+        toast.info("Admin action cancelled.");
+      } else {
+        const message = err instanceof Error ? err.message : "We couldn't delete that account. Try again in a moment.";
+        toast.error(message);
+      }
     } finally {
       setPromoting(null);
       setConfirmUser(null);
     }
   };
+
 
   const handlePromoteTeacher = async (targetUser: UserRow) => {
     setPromoting(targetUser.user_id);
