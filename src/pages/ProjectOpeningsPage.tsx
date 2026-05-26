@@ -142,7 +142,15 @@ export default function ProjectOpeningsPage() {
   const volunteerProjects = useMemo(() => enrichedProjects.filter((p) => p.clientKind === "internal"), [enrichedProjects]);
 
 
-  const [activeTab, setActiveTab] = useState<"client" | "volunteer">("client");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = searchParams.get("tab") === "volunteer" ? "volunteer" : "client";
+  const [activeTab, setActiveTabState] = useState<"client" | "volunteer">(initialTab);
+  const setActiveTab = (v: "client" | "volunteer") => {
+    setActiveTabState(v);
+    const next = new URLSearchParams(searchParams);
+    if (v === "volunteer") next.set("tab", "volunteer"); else next.delete("tab");
+    setSearchParams(next, { replace: true });
+  };
   const activeProjects = activeTab === "volunteer" ? volunteerProjects : clientProjects;
 
   /* ── Split active tab into sections ─────────────────────── */
