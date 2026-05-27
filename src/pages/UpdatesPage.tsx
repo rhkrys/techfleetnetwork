@@ -30,6 +30,8 @@ import {
   useRecordAnnouncementView,
 } from "@/hooks/use-announcements";
 import { stripHtml, normalizeRichTextHtml } from "@/lib/html";
+import { TranslatedContent } from "@/components/i18n/TranslatedContent";
+import { useUgcTranslation } from "@/hooks/useUgcTranslation";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import type { Announcement } from "@/services/announcement.service";
 import { AnnouncementViewStats } from "@/components/AnnouncementViewStats";
@@ -39,6 +41,35 @@ import type { ColDef } from "ag-grid-community";
 const MediaRecorder = lazy(() => import("@/components/VideoRecorder"));
 
 type ViewMode = "table" | "card";
+
+/**
+ * Renders an announcement body in the member's locale, falling back to source
+ * while the worker fills the cache. HTML is sanitized after translation.
+ */
+function TranslatedAnnouncementBody({ id, html }: { id: string; html: string }) {
+  const { text, isTranslating } = useUgcTranslation({
+    entityTable: "announcements",
+    entityId: id,
+    columnName: "body_html",
+    sourceText: html,
+    contentFormat: "html",
+  });
+  return (
+    <>
+      {isTranslating && (
+        <p className="text-xs text-muted-foreground italic" role="status" aria-live="polite">
+          Translating…
+        </p>
+      )}
+      <div
+        className="prose prose-sm dark:prose-invert max-w-none break-words"
+        style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
+        data-no-translate
+        dangerouslySetInnerHTML={{ __html: sanitizeHtml(linkifyHtml(normalizeRichTextHtml(text))) }}
+      />
+    </>
+  );
+}
 
 export default function UpdatesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -203,9 +234,9 @@ export default function UpdatesPage() {
             >
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div className="flex items-center gap-2">
-                  <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors line-clamp-2">
-                    {a.title}
-                  </h3>
+                <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors line-clamp-2">
+                  <TranslatedContent entityTable="announcements" entityId={a.id} columnName="title" sourceText={a.title} />
+                </h3>
                   {a.video_url && (
                     <Video className="h-4 w-4 text-primary shrink-0" aria-label="Has video" />
                   )}
@@ -243,7 +274,11 @@ export default function UpdatesPage() {
       <Sheet open={!!selectedAnnouncement} onOpenChange={(open) => !open && setSelectedAnnouncement(null)}>
         <SheetContent side="right" resizeKey="updates-detail" className="w-full sm:max-w-xl flex flex-col p-0 overflow-hidden">
           <SheetHeader className="px-6 pt-6 pb-4 border-b min-w-0">
-            <SheetTitle className="text-xl pr-8 break-words whitespace-normal overflow-hidden overflow-wrap-anywhere" style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}>{selectedAnnouncement?.title}</SheetTitle>
+            <SheetTitle className="text-xl pr-8 break-words whitespace-normal overflow-hidden overflow-wrap-anywhere" style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}>
+              {selectedAnnouncement && (
+                <TranslatedContent entityTable="announcements" entityId={selectedAnnouncement.id} columnName="title" sourceText={selectedAnnouncement.title} />
+              )}
+            </SheetTitle>
             <SheetDescription>
               {selectedAnnouncement && format(new Date(selectedAnnouncement.created_at), "MMMM d, yyyy 'at' h:mm a")}
             </SheetDescription>
@@ -284,11 +319,7 @@ export default function UpdatesPage() {
                 </div>
               )}
               {selectedAnnouncement && (
-                <div
-                  className="prose prose-sm dark:prose-invert max-w-none break-words"
-                  style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
-                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(linkifyHtml(normalizeRichTextHtml(selectedAnnouncement.body_html))) }}
-                />
+                <TranslatedAnnouncementBody id={selectedAnnouncement.id} html={selectedAnnouncement.body_html} />
               )}
             </div>
           </ScrollArea>
