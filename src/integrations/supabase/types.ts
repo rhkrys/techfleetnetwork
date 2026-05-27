@@ -2646,37 +2646,332 @@ export type Database = {
         }
         Relationships: []
       }
+      i18n_banned_terms: {
+        Row: {
+          category: string
+          created_at: string
+          id: string
+          locale: string
+          term: string
+          whole_word: boolean
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          id?: string
+          locale: string
+          term: string
+          whole_word?: boolean
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          id?: string
+          locale?: string
+          term?: string
+          whole_word?: boolean
+        }
+        Relationships: []
+      }
+      i18n_content_registry: {
+        Row: {
+          column_name: string
+          content_format: string
+          created_at: string
+          id: string
+          is_active: boolean
+          is_pii: boolean
+          max_chars: number | null
+          priority: string
+          table_name: string
+        }
+        Insert: {
+          column_name: string
+          content_format?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_pii?: boolean
+          max_chars?: number | null
+          priority?: string
+          table_name: string
+        }
+        Update: {
+          column_name?: string
+          content_format?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_pii?: boolean
+          max_chars?: number | null
+          priority?: string
+          table_name?: string
+        }
+        Relationships: []
+      }
+      i18n_coverage_audit: {
+        Row: {
+          audited_at: string
+          coverage_pct: number
+          id: string
+          locale: string
+          missing: number
+          qa_failed: number
+          qa_passed: number
+          total_strings: number
+          translated: number
+          ugc_coverage_pct: number
+          ugc_total: number
+          ugc_translated: number
+        }
+        Insert: {
+          audited_at?: string
+          coverage_pct?: number
+          id?: string
+          locale: string
+          missing?: number
+          qa_failed?: number
+          qa_passed?: number
+          total_strings?: number
+          translated?: number
+          ugc_coverage_pct?: number
+          ugc_total?: number
+          ugc_translated?: number
+        }
+        Update: {
+          audited_at?: string
+          coverage_pct?: number
+          id?: string
+          locale?: string
+          missing?: number
+          qa_failed?: number
+          qa_passed?: number
+          total_strings?: number
+          translated?: number
+          ugc_coverage_pct?: number
+          ugc_total?: number
+          ugc_translated?: number
+        }
+        Relationships: []
+      }
+      i18n_prewarm_jobs: {
+        Row: {
+          attempts: number
+          created_at: string
+          id: string
+          last_error: string | null
+          locale: string
+          priority: string
+          status: string
+          string_id: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          locale: string
+          priority?: string
+          status?: string
+          string_id: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          locale?: string
+          priority?: string
+          status?: string
+          string_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "i18n_prewarm_jobs_string_id_fkey"
+            columns: ["string_id"]
+            isOneToOne: false
+            referencedRelation: "i18n_strings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      i18n_qa_failures: {
+        Row: {
+          attempted_text: string | null
+          column_name: string | null
+          created_at: string
+          entity_id: string | null
+          entity_table: string | null
+          gate_failed: string
+          id: string
+          locale: string
+          qa_report: Json
+          source_text: string
+          string_id: string | null
+        }
+        Insert: {
+          attempted_text?: string | null
+          column_name?: string | null
+          created_at?: string
+          entity_id?: string | null
+          entity_table?: string | null
+          gate_failed: string
+          id?: string
+          locale: string
+          qa_report: Json
+          source_text: string
+          string_id?: string | null
+        }
+        Update: {
+          attempted_text?: string | null
+          column_name?: string | null
+          created_at?: string
+          entity_id?: string | null
+          entity_table?: string | null
+          gate_failed?: string
+          id?: string
+          locale?: string
+          qa_report?: Json
+          source_text?: string
+          string_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "i18n_qa_failures_string_id_fkey"
+            columns: ["string_id"]
+            isOneToOne: false
+            referencedRelation: "i18n_strings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      i18n_snapshots: {
+        Row: {
+          byte_size: number
+          created_at: string
+          entry_count: number
+          locale: string
+          payload_gzip: string
+          version: number
+        }
+        Insert: {
+          byte_size?: number
+          created_at?: string
+          entry_count?: number
+          locale: string
+          payload_gzip: string
+          version: number
+        }
+        Update: {
+          byte_size?: number
+          created_at?: string
+          entry_count?: number
+          locale?: string
+          payload_gzip?: string
+          version?: number
+        }
+        Relationships: []
+      }
+      i18n_strings: {
+        Row: {
+          context: string | null
+          created_at: string
+          do_not_translate: boolean
+          first_seen_at: string
+          id: string
+          is_active: boolean
+          last_seen_at: string
+          max_length: number | null
+          namespace: string
+          placeholders: Json | null
+          seen_count: number
+          source_hash: string
+          source_text: string
+          updated_at: string
+        }
+        Insert: {
+          context?: string | null
+          created_at?: string
+          do_not_translate?: boolean
+          first_seen_at?: string
+          id?: string
+          is_active?: boolean
+          last_seen_at?: string
+          max_length?: number | null
+          namespace?: string
+          placeholders?: Json | null
+          seen_count?: number
+          source_hash: string
+          source_text: string
+          updated_at?: string
+        }
+        Update: {
+          context?: string | null
+          created_at?: string
+          do_not_translate?: boolean
+          first_seen_at?: string
+          id?: string
+          is_active?: boolean
+          last_seen_at?: string
+          max_length?: number | null
+          namespace?: string
+          placeholders?: Json | null
+          seen_count?: number
+          source_hash?: string
+          source_text?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       i18n_translations: {
         Row: {
           created_at: string
+          is_admin_edited: boolean
           kb_version: number
           key: string
           locale: string
           machine_translated: boolean
           namespace: string
+          qa_report: Json | null
+          quality_score: number | null
+          source: string
           source_hash: string
+          status: string
           updated_at: string
           value: string
         }
         Insert: {
           created_at?: string
+          is_admin_edited?: boolean
           kb_version?: number
           key: string
           locale: string
           machine_translated?: boolean
           namespace: string
+          qa_report?: Json | null
+          quality_score?: number | null
+          source?: string
           source_hash: string
+          status?: string
           updated_at?: string
           value: string
         }
         Update: {
           created_at?: string
+          is_admin_edited?: boolean
           kb_version?: number
           key?: string
           locale?: string
           machine_translated?: boolean
           namespace?: string
+          qa_report?: Json | null
+          quality_score?: number | null
+          source?: string
           source_hash?: string
+          status?: string
           updated_at?: string
           value?: string
         }
@@ -5600,6 +5895,108 @@ export type Database = {
         }
         Relationships: []
       }
+      ugc_translation_jobs: {
+        Row: {
+          attempts: number
+          column_name: string
+          content_format: string
+          created_at: string
+          entity_id: string
+          entity_table: string
+          id: string
+          last_error: string | null
+          priority: string
+          source_hash: string
+          source_text: string
+          status: string
+          target_locale: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          column_name: string
+          content_format?: string
+          created_at?: string
+          entity_id: string
+          entity_table: string
+          id?: string
+          last_error?: string | null
+          priority?: string
+          source_hash: string
+          source_text: string
+          status?: string
+          target_locale: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          column_name?: string
+          content_format?: string
+          created_at?: string
+          entity_id?: string
+          entity_table?: string
+          id?: string
+          last_error?: string | null
+          priority?: string
+          source_hash?: string
+          source_text?: string
+          status?: string
+          target_locale?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ugc_translations: {
+        Row: {
+          column_name: string
+          content_format: string
+          created_at: string
+          entity_id: string
+          entity_table: string
+          id: string
+          is_admin_edited: boolean
+          qa_report: Json | null
+          source_hash: string
+          source_locale: string
+          status: string
+          target_locale: string
+          translated_text: string | null
+          updated_at: string
+        }
+        Insert: {
+          column_name: string
+          content_format?: string
+          created_at?: string
+          entity_id: string
+          entity_table: string
+          id?: string
+          is_admin_edited?: boolean
+          qa_report?: Json | null
+          source_hash: string
+          source_locale?: string
+          status?: string
+          target_locale: string
+          translated_text?: string | null
+          updated_at?: string
+        }
+        Update: {
+          column_name?: string
+          content_format?: string
+          created_at?: string
+          entity_id?: string
+          entity_table?: string
+          id?: string
+          is_admin_edited?: boolean
+          qa_report?: Json | null
+          source_hash?: string
+          source_locale?: string
+          status?: string
+          target_locale?: string
+          translated_text?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       user_quest_selections: {
         Row: {
           completed_at: string | null
@@ -6470,6 +6867,7 @@ export type Database = {
         Args: { p_content: string; p_title: string; p_url: string }
         Returns: undefined
       }
+      get_active_locales: { Args: never; Returns: string[] }
       get_announcement_view_counts: {
         Args: never
         Returns: {
