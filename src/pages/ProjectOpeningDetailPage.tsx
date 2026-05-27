@@ -22,6 +22,7 @@ import { NavLink } from "@/components/NavLink";
 import { ClientLogo } from "@/components/ClientLogo";
 import { ProjectOpeningHeading } from "@/components/projects/ProjectOpeningHeading";
 import { SafeExternalLink, getSafeLinkHostname } from "@/components/security/SafeExternalLink";
+import { TranslatedContent } from "@/components/i18n/TranslatedContent";
 import {
   PROJECT_TYPES, PROJECT_PHASES, PROJECT_STATUSES,
 } from "@/data/project-constants";
