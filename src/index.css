@@ -510,6 +510,21 @@ body {
     @apply mx-auto w-full max-w-[87.5rem] px-4 sm:px-6 lg:px-8;
   }
 
+  /* Responsive grid cadence: 1 → tablet 2 → desktop 3/4.
+     Use in place of ad-hoc `grid-cols-1 md:grid-cols-2 lg:grid-cols-3`. */
+  .grid-responsive-2 { @apply grid grid-cols-1 gap-4 sm:grid-cols-2; }
+  .grid-responsive-3 { @apply grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3; }
+  .grid-responsive-4 { @apply grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4; }
+
+  /* Wrap any table that may overflow narrow viewports. AG Grid already
+     handles this internally; use this for shadcn <Table> and custom tables. */
+  .table-scroll {
+    @apply w-full overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0;
+  }
+
+  /* Prevent flex children from forcing parent overflow. */
+  .min-w-fix { min-width: 0; }
+
   .card-elevated {
     @apply bg-card text-card-foreground border rounded-md;
   }
