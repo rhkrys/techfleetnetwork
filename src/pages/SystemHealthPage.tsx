@@ -260,6 +260,7 @@ export default function SystemHealthPage() {
         <TabsContent value="login"><LoginHealthTab /></TabsContent>
         <TabsContent value="fleety"><FleetyHealthTab /></TabsContent>
         <TabsContent value="content"><ContentGapsTab /></TabsContent>
+        <TabsContent value="translations"><TranslationsTab /></TabsContent>
         <TabsContent value="privacy"><PrivacyRequestsTab /></TabsContent>
         <TabsContent value="incidents"><IncidentsTab /></TabsContent>
         <TabsContent value="audit"><AuditPressureTab /></TabsContent>
