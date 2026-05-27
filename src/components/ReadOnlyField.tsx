@@ -1,24 +1,48 @@
 import { Badge } from "@/components/ui/badge";
 import { SafeExternalLink } from "@/components/security/SafeExternalLink";
+import { TranslatedContent } from "@/components/i18n/TranslatedContent";
 import type { ReactNode } from "react";
 
 interface ReadOnlyFieldProps {
   label: string;
   value?: string | null;
   children?: ReactNode;
+  /** When supplied with entityId + columnName, the value is translated via the UGC pipeline. */
+  entityTable?: string;
+  entityId?: string | null;
+  columnName?: string;
+  contentFormat?: "plain" | "markdown" | "html" | "rich_text";
 }
 
 /**
  * Standard read-only field display: label is larger/bolder (text-sm font-semibold),
  * value is smaller (text-xs) and indented (pl-3). Always stacks vertically.
+ * If entityTable + entityId + columnName are provided, the value is auto-translated
+ * into the viewer's locale (English passes through unchanged).
  */
-export function ReadOnlyField({ label, value, children }: ReadOnlyFieldProps) {
+export function ReadOnlyField({
+  label, value, children,
+  entityTable, entityId, columnName, contentFormat = "plain",
+}: ReadOnlyFieldProps) {
   if (!children && (!value || !value.trim())) return null;
+  const translatable = !children && entityTable && entityId && columnName;
   return (
     <div className="space-y-1">
       <p className="text-sm font-semibold text-foreground">{label}</p>
       {children ?? (
-        <p className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed pl-3">{value}</p>
+        translatable ? (
+          <TranslatedContent
+            as="p"
+            className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed pl-3"
+            entityTable={entityTable!}
+            entityId={entityId!}
+            columnName={columnName!}
+            sourceText={value ?? ""}
+            contentFormat={contentFormat}
+          />
+        ) : (
+          <p className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed pl-3">{value}</p>
+        )
       )}
     </div>
   );
