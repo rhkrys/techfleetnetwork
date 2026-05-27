@@ -153,13 +153,13 @@ function DesktopHeader({
 
   return (
     <header
-      className="sticky top-0 z-40 flex items-center justify-between border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-12 pt-safe pl-safe pr-safe"
+      className="sticky top-0 z-40 flex items-center justify-between border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 sm:px-6 lg:px-12 pt-safe pl-safe pr-safe"
       role="banner"
       style={{ minHeight: header ? undefined : "3rem" }}
     >
       {/* Left: page context */}
       {header ? (
-        <div className="flex flex-col justify-center py-1.5 pl-9 min-w-0 mr-4">
+        <div className="flex flex-col justify-center py-1.5 pl-2 lg:pl-9 min-w-0 mr-4">
           {header.breadcrumbs && header.breadcrumbs.length > 0 && (
             <Breadcrumb>
               <BreadcrumbList className="text-xs">
@@ -195,7 +195,7 @@ function DesktopHeader({
       )}
 
       {/* Right: controls */}
-      <div className="flex items-center gap-3 shrink-0 px-9 py-3" data-no-card>
+      <div className="flex items-center gap-2 lg:gap-3 shrink-0 px-2 lg:px-9 py-3" data-no-card>
         <UniversalSearch />
         <ThemeToggle />
         <LanguageSwitcher />
