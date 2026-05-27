@@ -299,9 +299,20 @@ export default function ProjectOpeningDetailPage() {
                 className="text-foreground whitespace-pre-wrap leading-relaxed"
               />
             ) : (
-              <p className="text-muted-foreground">
-                {client?.project_summary || `${typeLabel(project.project_type)} project — ${phaseLabel(project.phase)}`}
-              </p>
+              client?.project_summary ? (
+                <TranslatedContent
+                  entityTable="clients"
+                  entityId={client.id}
+                  columnName="project_summary"
+                  sourceText={client.project_summary}
+                  as="p"
+                  className="text-muted-foreground"
+                />
+              ) : (
+                <p className="text-muted-foreground">
+                  {`${typeLabel(project.project_type)} project — ${phaseLabel(project.phase)}`}
+                </p>
+              )
             )}
           </div>
         </div>
