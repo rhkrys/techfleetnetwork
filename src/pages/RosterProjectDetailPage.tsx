@@ -14,6 +14,7 @@ import {
   BreadcrumbPage, BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { PROJECT_TYPES, PROJECT_PHASES, PROJECT_STATUSES } from "@/data/project-constants";
+import { TranslatedContent } from "@/components/i18n/TranslatedContent";
 
 const ProjectAnalysisContent = lazy(() => import("@/components/admin/ProjectAnalysisContent"));
 const ProjectRosterContent = lazy(() => import("@/components/admin/ProjectRosterContent"));
