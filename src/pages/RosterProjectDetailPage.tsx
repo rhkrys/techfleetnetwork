@@ -14,6 +14,7 @@ import {
   BreadcrumbPage, BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { PROJECT_TYPES, PROJECT_PHASES, PROJECT_STATUSES } from "@/data/project-constants";
+import { TranslatedContent } from "@/components/i18n/TranslatedContent";
 
 const ProjectAnalysisContent = lazy(() => import("@/components/admin/ProjectAnalysisContent"));
 const ProjectRosterContent = lazy(() => import("@/components/admin/ProjectRosterContent"));
@@ -133,7 +134,15 @@ export default function RosterProjectDetailPage() {
       <div>
         <h1 className="text-2xl font-bold text-foreground">{clientName}</h1>
         {project?.description?.trim() && (
-          <p className="text-sm text-muted-foreground mt-2 whitespace-pre-wrap leading-relaxed">{project.description}</p>
+          <TranslatedContent
+            as="p"
+            className="text-sm text-muted-foreground mt-2 whitespace-pre-wrap leading-relaxed"
+            entityTable="projects"
+            entityId={project.id}
+            columnName="description"
+            sourceText={project.description}
+            contentFormat="markdown"
+          />
         )}
         <div className="flex items-center gap-2 mt-2 flex-wrap min-h-[24px]">
           {project ? (
