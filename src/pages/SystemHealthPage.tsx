@@ -215,6 +215,7 @@ export default function SystemHealthPage() {
           <TabsTrigger value="login">Login</TabsTrigger>
           <TabsTrigger value="fleety">Fleety</TabsTrigger>
           <TabsTrigger value="content">Content</TabsTrigger>
+          <TabsTrigger value="translations">Translations</TabsTrigger>
           <TabsTrigger value="privacy">Privacy</TabsTrigger>
           <TabsTrigger value="incidents">Incidents</TabsTrigger>
           <TabsTrigger value="audit">Audit</TabsTrigger>
