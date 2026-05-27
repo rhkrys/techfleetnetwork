@@ -26,9 +26,9 @@ export function TranslatedContent({
   as: Tag = "span", className,
 }: Props) {
   const { text, isTranslating } = useUgcTranslation({ entityTable, entityId, columnName, sourceText, contentFormat });
+  const TagAny = Tag as React.ElementType;
   return (
-    // @ts-expect-error generic tag
-    <Tag className={className} data-no-translate>
+    <TagAny className={className} data-no-translate>
       {contentFormat === "html"
         ? <span dangerouslySetInnerHTML={{ __html: text }} />
         : text}
