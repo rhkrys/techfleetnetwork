@@ -34,6 +34,22 @@ function SingleBanner({
 }) {
   const [dismissing, setDismissing] = useState(false);
 
+  const { text: translatedTitle } = useUgcTranslation({
+    entityTable: "admin_banners",
+    entityId: banner.id,
+    columnName: "title",
+    sourceText: banner.title,
+    contentFormat: "plain",
+  });
+
+  const { text: translatedBody } = useUgcTranslation({
+    entityTable: "admin_banners",
+    entityId: banner.id,
+    columnName: "body_html",
+    sourceText: banner.body_html || "",
+    contentFormat: "html",
+  });
+
   const handleDismiss = useCallback(async () => {
     setDismissing(true);
     await onDismiss(banner.id);
@@ -51,12 +67,13 @@ function SingleBanner({
     >
       <div className="mx-auto flex w-full max-w-[1200px] items-start gap-3 px-4 py-3 sm:items-center sm:py-2.5">
         <div className="flex-1 min-w-0 space-y-0.5">
-          <p className="text-sm font-semibold leading-snug break-words">{banner.title}</p>
+          <p className="text-sm font-semibold leading-snug break-words" data-no-translate>{translatedTitle}</p>
           <div
             className="text-xs leading-relaxed opacity-90 prose prose-xs prose-invert max-w-none break-words [overflow-wrap:anywhere] [&_a]:text-blue-300 [&_a]:underline [&_*]:max-w-full"
+            data-no-translate
             dangerouslySetInnerHTML={{
               __html: sanitizeHtml(
-                linkifyHtml(normalizeRichTextHtml(banner.body_html || "")),
+                linkifyHtml(normalizeRichTextHtml(translatedBody || "")),
               ),
             }}
           />
@@ -74,6 +91,7 @@ function SingleBanner({
     </div>
   );
 }
+
 
 export function AnnouncementBanner() {
   const { user } = useAuth();
