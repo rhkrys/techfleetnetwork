@@ -1,61 +1,176 @@
 
-# Tablet Responsiveness Refit
+# Pre-warmed Full-Coverage i18n — Final Plan (+ User-Generated Content)
 
-## Root cause (why tablets look broken today)
+Two distinct content classes, one unified architecture:
 
-1. **`useIsMobile` cliff.** `MOBILE_BREAKPOINT = 768` flips every consumer (`AppLayout`, `ui/sidebar`, `responsive-tabs`, `UniversalSearch`, `GenericCoursePage`) straight into desktop mode at 768px. iPad portrait (810/820/834px) and most Android tablets land in the desktop branch but lack the horizontal room desktop layouts assume.
-2. **Sidebar opens at `md:` (768+).** `ui/sidebar.tsx` shows the persistent rail from 768. With a 256px sidebar, a portrait tablet has ~560px left for content — most pages overflow.
-3. **Page grids jump too early.** Most pages use a single `md:grid-cols-2`/`md:flex-row` flip and assume desktop chrome.
-4. **AG Grid / data tables** overflow horizontally with no `overflow-x-auto` wrapper.
-5. **Toolbars/headers/tabs/dialogs** are designed for ≥1024 and clip or wrap awkwardly between 768–1023.
+| Class | Examples | Strategy |
+|---|---|---|
+| **Static UI strings** | Buttons, labels, nav, toasts, emails | Build-time extract → prewarm all locales → CDN snapshot |
+| **Dynamic UGC** | Client names/descriptions, project briefs, application essays, announcements, course/lesson content, profile bios | Write-time hook → translate-on-demand for active locales → cache → lazy-fill for cold locales |
 
-## Strategy
+---
 
-Introduce a real **tablet tier** (768–1023) instead of treating it as small-desktop. Promote `lg:` (1024) as the "true desktop" breakpoint and reserve `md:` for tablet adaptations. Codify with a new `useBreakpoint()` hook and an audit script, then refit every screen.
+## Database Architecture (additions for UGC)
 
-## Phase 1 — Foundations (ship first)
+### Existing (recap): `i18n_strings`, `i18n_translations`, `i18n_snapshots`, `i18n_prewarm_jobs`, `i18n_qa_failures`, `i18n_coverage_audit`, `i18n_banned_terms`
 
-1. **New `useBreakpoint()` hook** (`src/hooks/use-breakpoint.ts`) returning `'mobile' | 'tablet' | 'desktop'` keyed at 768/1024. Keep `useIsMobile` as a thin shim (now `<768`) for back-compat.
-2. **Sidebar tier change** (`src/components/ui/sidebar.tsx`): switch persistent sidebar from `md:` → `lg:`. On tablet, sidebar becomes the same off-canvas Sheet used on mobile (the Sheet code already exists). Add a header hamburger trigger visible on `<lg`. Net effect: tablets get full content width; nothing changes on desktop.
-3. **AppLayout** (`src/components/AppLayout.tsx`): replace `isMobile` branching with `breakpoint !== 'desktop'` for chrome decisions (header layout, footer condensing, sidebar trigger). Mobile-specific bits stay mobile-only.
-4. **Container tokens** in `src/index.css`:
-   - Add `.container-page` utility: `mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8`.
-   - Add `.grid-responsive-2/3/4` utilities that go `1 → md:2 → lg:3/4` so pages don't reinvent the cadence.
-5. **Global overflow guard**: add `min-w-0` to `<main>` and to AG Grid wrappers; add a `.table-scroll` utility (`w-full overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0`) and wrap every AG Grid / shadcn `<Table>`.
-6. **Tailwind config**: add explicit `screens` block to lock semantics (`sm: 640, md: 768, lg: 1024, xl: 1280, 2xl: 1400`) and add a `tablet` alias (`min: 768px, max: 1023.98px`) for the rare tablet-only rule.
+### New: `i18n_content_registry` — declares every translatable column in every table
+| Column | Type | Purpose |
+|---|---|---|
+| `id` | uuid PK | |
+| `table_name` | text | e.g. `clients`, `projects`, `applications`, `announcements`, `courses`, `lessons` |
+| `column_name` | text | e.g. `description`, `essay_response` |
+| `content_format` | text | `plain` \| `markdown` \| `html` \| `rich_text` |
+| `priority` | text | `hot` (translate on write) \| `warm` (translate on first read) \| `cold` (lazy only) |
+| `max_chars` | int | Skip translation above cap; show "Translate" button instead |
+| `is_pii` | boolean | If true, skip translation (names, emails) |
 
-## Phase 2 — Page-level refit (mass pass)
+Seeds: `clients.description`, `projects.title/description/brief`, `applications.essay_response`, `announcements.title/body`, `courses.title/description`, `lessons.title/body`, `profiles.bio`, etc.
 
-Apply a consistent set of edits to every page under `src/pages/**` and feature components:
+### New: `ugc_translations` — cache for user-generated content (separate from `i18n_translations` to keep static catalog small + queryable)
 
-- **Headers/toolbars**: stack vertically on `<lg`, action buttons become full-width on `<sm`, icon-only on tablet where labels would clip. Use `flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between`.
-- **Card/list grids**: replace ad-hoc `md:grid-cols-2` with `grid-responsive-2/3/4` so cadence is mobile → tablet (2) → desktop (3/4).
-- **Forms**: two-column form rows become single-column under `lg:`. Inputs span full width on `<md`.
-- **Tabs**: continue using `<ResponsiveTabs>` but raise its mobile-dropdown threshold to `<lg` for tab strips with >4 items.
-- **Dialogs/sheets**: cap at `max-w-[calc(100vw-2rem)] sm:max-w-lg lg:max-w-2xl`; switch wide admin dialogs to full-screen Sheet on tablet.
-- **AG Grid pages** (`ApplicationsPage`, `AdminRosterPage`, `SystemHealthPage` tabs, `RecruitingCenter`, etc.): wrap in `.table-scroll`, force `domLayout="autoHeight"` off where it pins width, and hide low-priority columns at `<lg` via the existing AG Grid column `hide` API.
-- **Charts/widgets** (Dashboard, NetworkActivity, MemberWorldMap): set explicit `min-h` and `w-full`, drop fixed pixel widths.
-- **Sticky 3-step forms** (Project application, signup wizards): sticky panel collapses to a top accordion on `<lg`.
-- **Course player popup** (`GenericCoursePage`): already breakpoint-aware — adjust threshold to `lg`.
+| Column | Type | Purpose |
+|---|---|---|
+| `id` | uuid PK | |
+| `entity_table` | text | e.g. `projects` |
+| `entity_id` | uuid | Row PK |
+| `column_name` | text | e.g. `description` |
+| `source_locale` | text | Detected source language (CLD3 at write time) |
+| `target_locale` | text | |
+| `source_hash` | text | SHA-256 of source content — invalidates cache on edit |
+| `translated_text` | text | |
+| `content_format` | text | `plain` \| `markdown` \| `html` |
+| `status` | text | `pending` \| `qa_passed` \| `qa_failed` \| `flagged` |
+| `qa_report` | jsonb | Same 6-gate output |
+| `is_admin_edited` | boolean | Locks vs AI |
+| `created_at` / `updated_at` | | |
 
-Target pages (full list, all touched):
-LandingPage, DashboardPage, TrainingPage, ResourcesPage, EventsPage, MyJourneyPage, QuestDetailPage, ChatPage, ApplicationsPage, MyProjectApplicationsPage, ProjectOpeningsPage, ProjectApplicationPage, ApplicationStatusPage, AdminRosterPage, RosterApplicantDetailPage, RosterProjectDetailPage, RecruitingCenter widgets, SystemHealthPage (all tabs), UserAdminPage, ClientsPage, BannerManagementPage, BrandTokensPage, CurriculumAdminPage, AdminClassesPage, ClassDetailPage, ClassFormPage, CohortFormPage, MyClassesPage, ProfileSetupPage, EditProfilePage, RegisterPage, LoginPage, ForgotPasswordPage, ResetPasswordPage, ConnectDiscordPage, FirstStepsPage, SecondStepsPage, ThirdStepsPage, NotificationsPage, UpdatesPage, FeedbackPage, PrivacyPage, TermsPage, TermsOfUsePage, CookiesPage, AccessibilityPage, DsarSubmitPage, UnsubscribePage, NotFound, AccessDeniedPage, ObserverCoursePage, DiscordCoursePage, VolunteerTeamsPage, ProjectTrainingPage, ProjectAnalysisDetailPage, ApplicationSubmissionDetailPage, AdminEmailDeliverabilityTestPage, AdminIngestPage, ConfirmAdminPage, ConfirmTeacherPage, ActivityLogPage, Index.
+**Unique:** `(entity_table, entity_id, column_name, target_locale, source_hash)`.
+**Indexes:** `(entity_table, entity_id, target_locale)` for read fanout, `(status)` partial, `(updated_at DESC)` for cache eviction.
+**Partitioning:** PARTITION BY LIST (`entity_table`) — keeps `projects` separate from `applications` so hot tables stay small; auto-prune partitions when entity row is deleted via FK cascade trigger.
 
-## Phase 3 — Guardrails
+### New: `ugc_translation_jobs` — async queue (pgmq or table-based)
+Drains via `prewarm-ugc-worker` edge fn. Priority lanes: `realtime` (hot writes), `batch` (warm fills), `backfill` (cold locales).
 
-1. **ESLint rule** `responsive/no-bare-md-flip`: warns on `md:grid-cols-*` or `md:flex-row` without a `lg:` companion, to prevent regressions.
-2. **Playwright responsive sweep** (`e2e/responsive-stability.e2e.ts` extension): visit every top-level route at 768×1024, 820×1180, 1024×768 and assert no horizontal scrollbar on `<body>` and no element with `scrollWidth > clientWidth` above 8px tolerance.
-3. **Smoke test** `src/test/smoke/responsive-tiers.smoke.test.ts` enforcing the breakpoint contract (sidebar gated at `lg:`, container utility present, AG Grid wrappers carry `.table-scroll`).
-4. **BDD scenarios** `RESPONSIVE-TIER-001..010` in `bdd_scenarios` covering: sidebar collapses to sheet on tablet [UI], data tables horizontally scroll instead of clipping [UI], forms stack on tablet [UI], no element overflows viewport at 768/820/1024 [UI], `useBreakpoint` returns correct tier [Code], chrome decisions follow tier not `isMobile` [Code].
+---
 
-## Technical notes
+## Architecture Flow
 
-- **No visual regression on desktop**: every change is additive at the tablet tier or moves an existing `md:` rule to `lg:`. Desktop (≥1024) keeps its current layout pixel-for-pixel.
-- **No new clicks/prompts** — sidebar trigger on tablet uses the existing mobile Sheet pattern users already see on phones.
-- **Brand & a11y**: all new utilities keep tokens (`bg-card`, `border-border`), 4px spacing grid, and pass the existing `css-portability` lint (uses `100dvh`, no `100vh`).
-- **Files created**: `src/hooks/use-breakpoint.ts`, `scripts/lint/eslint-plugin-responsive.mjs`, `src/test/smoke/responsive-tiers.smoke.test.ts`, one migration adding the BDD scenario rows.
-- **Files edited** (high-impact): `src/components/ui/sidebar.tsx`, `src/components/AppLayout.tsx`, `src/components/AppSidebar.tsx`, `src/index.css`, `tailwind.config.ts`, every file in `src/pages/**`, AG Grid wrappers under `src/components/**`, `src/components/ui/responsive-tabs.tsx`, `src/hooks/use-mobile.tsx` (back-compat shim).
+```text
+WRITE PATH (project/announcement/application created or edited)
+─────────────────────────────────────────────────────────────────
+  Insert/Update on registered table
+              │
+              ▼
+   AFTER trigger: detect_source_language + compute source_hash
+              │
+              ▼
+   Enqueue jobs into ugc_translation_jobs:
+     - priority='realtime' for active locales (locales seen in last 7d)
+     - priority='batch' for top-50 locales
+     - cold locales skipped — translated on first read
+              │
+              ▼
+   prewarm-ugc-worker (drains queue, 50 jobs/run, 30s cron)
+     → AI Gateway → 6-gate QA → write to ugc_translations
+     → on QA fail → status='qa_failed', read path falls back to source
 
-## Delivery
+READ PATH (user views a project in their locale)
+─────────────────────────────────────────────────────────────────
+   Component requests project.description in locale='ja-JP'
+              │
+              ▼
+   useUgcTranslation(entity_table, entity_id, column, locale) hook
+              │
+              ▼
+   1. React Query cache (memory, 5min)
+   2. ugc_translations row (qa_passed, matching source_hash)
+              │
+        hit ──┴── miss
+         │          │
+         ▼          ▼
+     return    Show source instantly + enqueue 'realtime' job
+                  → next render (or via realtime subscription) swaps in translation
+                  → optimistic "Translating…" badge
 
-All three phases ship in one go per the standing "ship everything" preference. Verification: build, smoke tests, Playwright responsive sweep at 768/820/1024, manual spot-check on `/dashboard`, `/applications`, `/system-health`, `/training`, `/admin/roster`.
+EDIT PATH (admin/owner updates a project description)
+─────────────────────────────────────────────────────────────────
+   Update row → new source_hash → trigger marks all
+   ugc_translations rows for that (entity, column) STALE
+   → re-enqueue active locales → snapshot UI reflects within seconds
+```
+
+---
+
+## Coverage & Quality for UGC
+
+**Coverage strategy** — Not "100% of all UGC × 75 locales" (would be wasteful and unbounded). Instead:
+- **Active-locale guarantee:** Any locale with ≥1 user in the last 7d gets 100% of UGC translated proactively.
+- **Cold locales:** Translated within 2–8s of first read, cached forever after (until source edited).
+- **Coverage dashboard** shows per-locale UGC coverage: `translated / total registered rows`.
+
+**Quality** — Same 6-gate QA pipeline reused from static (placeholders, language detection, denylist, back-translation cosine ≥ 0.82, native LLM reviewer, brand/glossary lock). Markdown/HTML preserved via format-aware prompts + structural diff check.
+
+**Source-language detection** — CLD3 at write time stores `source_locale` so we never translate English→English or French→French. Mixed-language content (common in essays) flagged for chunked translation.
+
+**Edit safety** — `source_hash` changes invalidate only that entity's translations, never the whole cache.
+
+---
+
+## Scalability & Cost (10,000 users)
+
+### Sizing
+- Active UGC rows × translatable columns ≈ 50,000 strings (projects, applications, announcements, etc.)
+- Active locales (steady state): ~15 (top languages of actual members)
+- **Hot cache:** 50,000 × 15 = **750k `ugc_translations` rows** — comfortable
+- Cold-locale lazy fills: ~5,000 rows/mo
+
+### Cost
+| Component | Cost @ 10k users |
+|---|---|
+| Initial UGC backfill (50k × 15 locales) | one-time **~$8–$15** |
+| Steady-state new content (50 writes/day × 15 locales) | ~$0.30/mo |
+| Cold-locale lazy translations (5k/mo) | ~$0.10/mo |
+| QA gates (back-translation + reviewer) | included above, ~30% overhead |
+| Edge fn compute (worker every 30s) | ~$1/mo |
+| DB storage (~750k rows, avg 500 bytes) | ~400 MB, negligible |
+| **Total UGC i18n cost** | **~$2/mo steady** |
+
+### Performance safeguards
+- **Write amplification cap:** Max 15 jobs enqueued per write (active locales only). Cold locales never blocked at write.
+- **Worker concurrency:** 1 worker, serial batches of 50, ~10s/batch → 300 translations/min sustained, 18k/hour peak.
+- **Circuit breaker** on AI Gateway: trips after 5 consecutive failures, drains queue with exponential backoff, alerts admins.
+- **Cost guard:** Hard cap 10,000 UGC translations/day. Excess deferred to next day with admin alert.
+- **Read fanout:** Single SQL fetch with `(entity_table, entity_ids[], target_locale)` lookup — O(1) hash join.
+- **Partitioning** by `entity_table` keeps hot reads on `projects` partition (small) instead of scanning all UGC.
+- **Realtime subscription** on `ugc_translations` so the UI swaps source → translation without a page refresh.
+
+### Scale ceiling
+At 100k users / 500k UGC rows × 25 active locales = 12.5M rows. Partitioned table handles this with room to spare; storage ~6 GB; cost climbs to ~$15/mo. Linear in writes, not reads.
+
+---
+
+## Implementation Phases (ship in one pass)
+
+1. **Schema** — Add `i18n_content_registry`, `ugc_translations` (partitioned), `ugc_translation_jobs`. Seed registry for all current user-facing tables.
+2. **Write-side triggers** — AFTER INSERT/UPDATE on registered tables: detect source language, compute hash, enqueue jobs for active locales.
+3. **`prewarm-ugc-worker` edge fn** — Drains queue, calls AI Gateway, runs 6-gate QA, writes results. Same QA module as static path.
+4. **`useUgcTranslation` React hook + `<TranslatedText>` component** — Tries cache → DB → enqueues + shows source with "Translating…" badge → realtime swap on completion.
+5. **Backfill job** — One-time admin action: enqueues all existing UGC × top 15 locales.
+6. **Admin UGC Translations tab** — Same review/override UI as static; filter by entity type, source/translation/QA report side-by-side.
+7. **Coverage + cost dashboard** — Per-locale UGC coverage %, cost guard status, queue depth.
+
+---
+
+## Verification
+
+1. Create new project → within 30s, `ugc_translations` rows exist for all 15 active locales, all `status='qa_passed'`.
+2. Edit project description → old translations marked stale, new ones generated within 30s, UI updates via realtime without refresh.
+3. Visit project in a cold locale (e.g. Swahili) → source shown immediately, translation appears within 8s, cached for future visits.
+4. Seeded bad UGC (profanity, broken markdown, wrong-language) → lands in `qa_failed`, source served instead, admin alerted.
+5. Bulk create 200 projects → queue drains, cost guard not tripped, no AI Gateway 429s.
+6. BDD scenarios: `I18N-UGC-001..014` in `bdd_scenarios` with tri-layer assertions.
+
+---
+
+Approve to ship all phases (static + UGC) in one pass.
