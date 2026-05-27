@@ -211,9 +211,9 @@ export default function ApplicationSubmissionDetailPage() {
           <ReadOnlyArrayField label="Experience Areas" items={(profile?.experience_areas as string[]) ?? []} />
           <ReadOnlyArrayField label="Education Background" items={(profile?.education_background as string[]) ?? []} />
           <ReadOnlyArrayField label="Interests" items={(profile?.interests as string[]) ?? []} />
-          <ReadOnlyField label="Professional Background" value={(profile?.professional_background as string) ?? ""} />
-          <ReadOnlyField label="Professional Goals" value={(profile?.professional_goals as string) ?? ""} />
-          <ReadOnlyField label="Bio" value={(profile?.bio as string) ?? ""} />
+          <ReadOnlyField label="Professional Background" value={(profile?.professional_background as string) ?? ""} entityTable="profiles" entityId={(profile as any)?.id} columnName="professional_background" />
+          <ReadOnlyField label="Professional Goals" value={(profile?.professional_goals as string) ?? ""} entityTable="profiles" entityId={(profile as any)?.id} columnName="professional_goals" />
+          <ReadOnlyField label="Bio" value={(profile?.bio as string) ?? ""} entityTable="profiles" entityId={(profile as any)?.id} columnName="bio" />
         </CardContent>
       </Card>
 
@@ -234,23 +234,23 @@ export default function ApplicationSubmissionDetailPage() {
 
             <Separator className="my-2" />
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Engagement History</p>
-            <ReadOnlyField label="Previous engagement with Tech Fleet" value={(genApp.previous_engagement as string) ?? ""} />
+            <ReadOnlyField label="Previous engagement with Tech Fleet" value={(genApp.previous_engagement as string) ?? ""} entityTable="general_applications" entityId={(genApp as any)?.id} columnName="previous_engagement" />
             <ReadOnlyArrayField label="Previous engagement ways" items={(genApp.previous_engagement_ways as string[]) ?? []} />
-            <ReadOnlyField label="What have you learned from teammates?" value={(genApp.teammate_learnings as string) ?? ""} />
+            <ReadOnlyField label="What have you learned from teammates?" value={(genApp.teammate_learnings as string) ?? ""} entityTable="general_applications" entityId={(genApp as any)?.id} columnName="teammate_learnings" />
 
             <Separator className="my-2" />
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Agile Mindset</p>
-            <ReadOnlyField label="Agile vs Waterfall" value={(genApp.agile_vs_waterfall as string) ?? ""} />
-            <ReadOnlyField label="Psychological Safety" value={(genApp.psychological_safety as string) ?? ""} />
-            <ReadOnlyField label="Agile Philosophies" value={(genApp.agile_philosophies as string) ?? ""} />
-            <ReadOnlyField label="Collaboration Challenges" value={(genApp.collaboration_challenges as string) ?? ""} />
+            <ReadOnlyField label="Agile vs Waterfall" value={(genApp.agile_vs_waterfall as string) ?? ""} entityTable="general_applications" entityId={(genApp as any)?.id} columnName="agile_vs_waterfall" />
+            <ReadOnlyField label="Psychological Safety" value={(genApp.psychological_safety as string) ?? ""} entityTable="general_applications" entityId={(genApp as any)?.id} columnName="psychological_safety" />
+            <ReadOnlyField label="Agile Philosophies" value={(genApp.agile_philosophies as string) ?? ""} entityTable="general_applications" entityId={(genApp as any)?.id} columnName="agile_philosophies" />
+            <ReadOnlyField label="Collaboration Challenges" value={(genApp.collaboration_challenges as string) ?? ""} entityTable="general_applications" entityId={(genApp as any)?.id} columnName="collaboration_challenges" />
 
             <Separator className="my-2" />
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Service Leadership</p>
-            <ReadOnlyField label="Service Leadership Definition" value={(genApp.service_leadership_definition as string) ?? ""} />
-            <ReadOnlyField label="Service Leadership Actions" value={(genApp.service_leadership_actions as string) ?? ""} />
-            <ReadOnlyField label="Service Leadership Challenges" value={(genApp.service_leadership_challenges as string) ?? ""} />
-            <ReadOnlyField label="Service Leadership Situation" value={(genApp.service_leadership_situation as string) ?? ""} />
+            <ReadOnlyField label="Service Leadership Definition" value={(genApp.service_leadership_definition as string) ?? ""} entityTable="general_applications" entityId={(genApp as any)?.id} columnName="service_leadership_definition" />
+            <ReadOnlyField label="Service Leadership Actions" value={(genApp.service_leadership_actions as string) ?? ""} entityTable="general_applications" entityId={(genApp as any)?.id} columnName="service_leadership_actions" />
+            <ReadOnlyField label="Service Leadership Challenges" value={(genApp.service_leadership_challenges as string) ?? ""} entityTable="general_applications" entityId={(genApp as any)?.id} columnName="service_leadership_challenges" />
+            <ReadOnlyField label="Service Leadership Situation" value={(genApp.service_leadership_situation as string) ?? ""} entityTable="general_applications" entityId={(genApp as any)?.id} columnName="service_leadership_situation" />
           </CardContent>
         </Card>
       )}
@@ -271,23 +271,24 @@ export default function ApplicationSubmissionDetailPage() {
 
           {participatedPrev ? (
             <>
-              <ReadOnlyField label="What team position did you join in the previous phase?" value={(projApp.previous_phase_position as string) ?? ""} />
-              <ReadOnlyField label="What did you learn in the previous phase?" value={(projApp.previous_phase_learnings as string) ?? ""} />
-              <ReadOnlyField label="How will you help your teammates succeed in this upcoming phase?" value={(projApp.previous_phase_help_teammates as string) ?? ""} />
+              <ReadOnlyField label="What team position did you join in the previous phase?" value={(projApp.previous_phase_position as string) ?? ""} entityTable="project_applications" entityId={(projApp as any)?.id} columnName="previous_phase_position" />
+              <ReadOnlyField label="What did you learn in the previous phase?" value={(projApp.previous_phase_learnings as string) ?? ""} entityTable="project_applications" entityId={(projApp as any)?.id} columnName="previous_phase_learnings" />
+              <ReadOnlyField label="How will you help your teammates succeed in this upcoming phase?" value={(projApp.previous_phase_help_teammates as string) ?? ""} entityTable="project_applications" entityId={(projApp as any)?.id} columnName="previous_phase_help_teammates" />
             </>
           ) : (
             <ReadOnlyField
               label="How has your prior engagement in Tech Fleet prepared you for this team role?"
               value={(projApp.prior_engagement_preparation as string) ?? ""}
+              entityTable="project_applications" entityId={(projApp as any)?.id} columnName="prior_engagement_preparation"
             />
           )}
 
           <Separator className="my-2" />
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Client Questions</p>
-          <ReadOnlyField label="Why are you passionate about being on this project?" value={(projApp.passion_for_project as string) ?? ""} />
-          <ReadOnlyField label="What do you know about the client and the project?" value={(projApp.client_project_knowledge as string) ?? ""} />
-          <ReadOnlyField label="How would you like to contribute to cross-functional teamwork?" value={(projApp.cross_functional_contribution as string) ?? ""} />
-          <ReadOnlyField label="How will you contribute to this project's successful outcomes?" value={(projApp.project_success_contribution as string) ?? ""} />
+          <ReadOnlyField label="Why are you passionate about being on this project?" value={(projApp.passion_for_project as string) ?? ""} entityTable="project_applications" entityId={(projApp as any)?.id} columnName="passion_for_project" />
+          <ReadOnlyField label="What do you know about the client and the project?" value={(projApp.client_project_knowledge as string) ?? ""} entityTable="project_applications" entityId={(projApp as any)?.id} columnName="client_project_knowledge" />
+          <ReadOnlyField label="How would you like to contribute to cross-functional teamwork?" value={(projApp.cross_functional_contribution as string) ?? ""} entityTable="project_applications" entityId={(projApp as any)?.id} columnName="cross_functional_contribution" />
+          <ReadOnlyField label="How will you contribute to this project's successful outcomes?" value={(projApp.project_success_contribution as string) ?? ""} entityTable="project_applications" entityId={(projApp as any)?.id} columnName="project_success_contribution" />
         </CardContent>
       </Card>
 
