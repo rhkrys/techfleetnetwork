@@ -289,7 +289,14 @@ export default function ProjectOpeningDetailPage() {
               as="h1"
             />
             {project.description?.trim() ? (
-              <p className="text-foreground whitespace-pre-wrap leading-relaxed">{project.description}</p>
+              <TranslatedContent
+                entityTable="projects"
+                entityId={project.id}
+                columnName="description"
+                sourceText={project.description}
+                as="p"
+                className="text-foreground whitespace-pre-wrap leading-relaxed"
+              />
             ) : (
               <p className="text-muted-foreground">
                 {client?.project_summary || `${typeLabel(project.project_type)} project — ${phaseLabel(project.phase)}`}
@@ -322,7 +329,19 @@ export default function ProjectOpeningDetailPage() {
             <DetailRow label="Mission" value={<p className="whitespace-pre-wrap leading-relaxed">{client.mission}</p>} />
           )}
           {project.description?.trim() && (
-            <DetailRow label="Project Summary" value={<p className="whitespace-pre-wrap leading-relaxed">{project.description}</p>} />
+            <DetailRow
+              label="Project Summary"
+              value={
+                <TranslatedContent
+                  entityTable="projects"
+                  entityId={project.id}
+                  columnName="description"
+                  sourceText={project.description}
+                  as="p"
+                  className="whitespace-pre-wrap leading-relaxed"
+                />
+              }
+            />
           )}
           {client.website && (
             <DetailRow
