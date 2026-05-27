@@ -38,6 +38,6 @@ export function TranslatedContent({
           <span>Translating…</span>
         </span>
       )}
-    </Tag>
+    </TagAny>
   );
 }
