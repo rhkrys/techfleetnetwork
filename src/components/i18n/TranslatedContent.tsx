@@ -8,6 +8,7 @@
  *     columnName="description" sourceText={project.description}
  *   />
  */
+import type * as React from "react";
 import { useUgcTranslation } from "@/hooks/useUgcTranslation";
 import { Loader2 } from "lucide-react";
 
