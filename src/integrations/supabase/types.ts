@@ -6427,6 +6427,17 @@ export type Database = {
           },
         ]
       }
+      ugc_translation_summary: {
+        Row: {
+          last_qa_failure_at: string | null
+          locale: string | null
+          qa_failed: number | null
+          queue_failed: number | null
+          queue_pending: number | null
+          translated_ok: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       _consume_device_nonce: {
@@ -6453,6 +6464,8 @@ export type Database = {
         Returns: undefined
       }
       archive_old_fix_queue: { Args: never; Returns: number }
+      audit_i18n_coverage: { Args: never; Returns: Json }
+      backfill_ugc_translations: { Args: { p_table?: string }; Returns: Json }
       bump_kb_version: { Args: never; Returns: number }
       cancel_cohort: {
         Args: { p_cohort_id: string; p_reason: string }

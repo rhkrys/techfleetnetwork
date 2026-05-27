@@ -27,6 +27,7 @@ import { EmailDeliverabilityCard } from "@/components/system-health/EmailDeliver
 import { EmailDlqPanel } from "@/components/system-health/EmailDlqPanel";
 import { DiscordRepairTab } from "@/components/system-health/DiscordRepairTab";
 import { LoginHealthTab } from "@/components/system-health/LoginHealthTab";
+import { TranslationsTab } from "@/components/admin/system-health/TranslationsTab";
 import { PageTitle } from "@/components/ui/typography";
 
 const FIVE_MIN = 5 * 60 * 1000;
@@ -214,6 +215,7 @@ export default function SystemHealthPage() {
           <TabsTrigger value="login">Login</TabsTrigger>
           <TabsTrigger value="fleety">Fleety</TabsTrigger>
           <TabsTrigger value="content">Content</TabsTrigger>
+          <TabsTrigger value="translations">Translations</TabsTrigger>
           <TabsTrigger value="privacy">Privacy</TabsTrigger>
           <TabsTrigger value="incidents">Incidents</TabsTrigger>
           <TabsTrigger value="audit">Audit</TabsTrigger>
@@ -258,6 +260,7 @@ export default function SystemHealthPage() {
         <TabsContent value="login"><LoginHealthTab /></TabsContent>
         <TabsContent value="fleety"><FleetyHealthTab /></TabsContent>
         <TabsContent value="content"><ContentGapsTab /></TabsContent>
+        <TabsContent value="translations"><TranslationsTab /></TabsContent>
         <TabsContent value="privacy"><PrivacyRequestsTab /></TabsContent>
         <TabsContent value="incidents"><IncidentsTab /></TabsContent>
         <TabsContent value="audit"><AuditPressureTab /></TabsContent>
