@@ -387,9 +387,10 @@ export default function RosterApplicantDetailPage() {
           <ReadOnlyArrayField label="Experience Areas" items={(profile?.experience_areas as string[]) ?? []} />
           <ReadOnlyArrayField label="Education Background" items={(profile?.education_background as string[]) ?? []} />
           <ReadOnlyArrayField label="Interests" items={(profile?.interests as string[]) ?? []} />
-          <ReadOnlyField label="Professional Background" value={(profile?.professional_background as string) ?? ""} />
-          <ReadOnlyField label="Professional Goals" value={(profile?.professional_goals as string) ?? ""} />
-          <ReadOnlyField label="Bio" value={(profile?.bio as string) ?? ""} />
+          <ReadOnlyField label="Professional Background" value={(profile?.professional_background as string) ?? ""} entityTable="profiles" entityId={profile?.id as string} columnName="professional_background" />
+          <ReadOnlyField label="Professional Goals" value={(profile?.professional_goals as string) ?? ""} entityTable="profiles" entityId={profile?.id as string} columnName="professional_goals" />
+          <ReadOnlyField label="Bio" value={(profile?.bio as string) ?? ""} entityTable="profiles" entityId={profile?.id as string} columnName="bio" />
+
         </CardContent>
       </Card>
 
