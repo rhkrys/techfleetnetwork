@@ -16,12 +16,14 @@ import { useQuery, useQueryClient } from "@/lib/react-query";
 import { sanitizeHtml } from "@/lib/security";
 import { linkifyHtml } from "@/lib/linkify";
 import { normalizeRichTextHtml } from "@/lib/html";
+import { useUgcTranslation } from "@/hooks/useUgcTranslation";
 import {
   fetchPublishedBanners,
   fetchDismissedBannerIds,
   dismissBanner,
   type AdminBanner,
 } from "@/services/banner.service";
+
 
 function SingleBanner({
   banner,
