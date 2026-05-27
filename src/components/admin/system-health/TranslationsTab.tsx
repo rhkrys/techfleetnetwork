@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, RefreshCw, Languages, AlertTriangle } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -45,6 +46,8 @@ export function TranslationsTab() {
   const [failures, setFailures] = useState<QaFailureRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [backfilling, setBackfilling] = useState(false);
+  const [seedLocales, setSeedLocales] = useState("es,fr,de,pt,ja,zh,ar,hi,ko,it,nl,pl,tr,vi,sw");
+  const [seeding, setSeeding] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -86,6 +89,26 @@ export function TranslationsTab() {
     void load();
   }
 
+  async function runSeed() {
+    const locales = seedLocales.split(",").map((s) => s.trim()).filter(Boolean);
+    if (locales.length === 0) {
+      toast({ title: "Pick at least one language", variant: "destructive" });
+      return;
+    }
+    setSeeding(true);
+    const { data, error } = await supabase.rpc("backfill_ugc_translations_for_locales", {
+      p_locales: locales,
+      p_table: null,
+    });
+    setSeeding(false);
+    if (error) {
+      toast({ title: "Seed failed", description: error.message, variant: "destructive" });
+      return;
+    }
+    toast({ title: "Seed enqueued", description: `Queued ${(data as { enqueued?: number })?.enqueued ?? 0} jobs across ${locales.length} languages.` });
+    void load();
+  }
+
   async function runAudit() {
     const { error } = await supabase.rpc("audit_i18n_coverage");
     if (error) {
@@ -107,6 +130,30 @@ export function TranslationsTab() {
   return (
     <div className="space-y-4">
       <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Languages className="h-4 w-4" aria-hidden /> Seed languages
+          </CardTitle>
+          <CardDescription>
+            Pre-translate all existing content into specific languages — useful before any member has chosen a language.
+            Use BCP-47 codes separated by commas (e.g. es, fr, de, ja).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2 sm:flex-row">
+          <Input
+            value={seedLocales}
+            onChange={(e) => setSeedLocales(e.target.value)}
+            aria-label="Languages to seed"
+            placeholder="es, fr, de, ja"
+          />
+          <Button onClick={runSeed} disabled={seeding} aria-label="Seed translations for chosen languages">
+            {seeding ? <Loader2 className="mr-1 h-3 w-3 animate-spin" aria-hidden /> : <Languages className="mr-1 h-3 w-3" aria-hidden />}
+            Seed translations
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div>
             <CardTitle className="flex items-center gap-2">
@@ -126,7 +173,7 @@ export function TranslationsTab() {
         </CardHeader>
         <CardContent>
           {summary.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No active non-English locales yet. Members must select a language for translations to begin.</p>
+            <p className="text-sm text-muted-foreground">No active non-English locales yet. Use the seed box above or wait for members to choose a language.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
