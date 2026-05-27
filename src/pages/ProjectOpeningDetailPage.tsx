@@ -338,7 +338,16 @@ export default function ProjectOpeningDetailPage() {
         <InfoSection icon={Building2} title="About the Client">
           <DetailRow label="Organization" value={client.name} />
           {client.mission && (
-            <DetailRow label="Mission" value={<p className="whitespace-pre-wrap leading-relaxed">{client.mission}</p>} />
+            <DetailRow label="Mission" value={
+              <TranslatedContent
+                entityTable="clients"
+                entityId={client.id}
+                columnName="mission"
+                sourceText={client.mission}
+                as="p"
+                className="whitespace-pre-wrap leading-relaxed"
+              />
+            } />
           )}
           {project.description?.trim() && (
             <DetailRow
