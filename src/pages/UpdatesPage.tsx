@@ -30,6 +30,8 @@ import {
   useRecordAnnouncementView,
 } from "@/hooks/use-announcements";
 import { stripHtml, normalizeRichTextHtml } from "@/lib/html";
+import { TranslatedContent } from "@/components/i18n/TranslatedContent";
+import { useUgcTranslation } from "@/hooks/useUgcTranslation";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import type { Announcement } from "@/services/announcement.service";
 import { AnnouncementViewStats } from "@/components/AnnouncementViewStats";
