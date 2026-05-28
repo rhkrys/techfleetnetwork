@@ -4,9 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "predev": "npx --yes tsx scripts/generate-sitemap.ts",
+    "predev": "tsx scripts/generate-sitemap.ts",
     "dev": "vite",
-    "prebuild": "npx --yes tsx scripts/generate-sitemap.ts",
+    "prebuild": "tsx scripts/generate-sitemap.ts",
     "build": "vite build && node scripts/post-build-smoke.mjs",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
