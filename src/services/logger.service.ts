@@ -10,6 +10,8 @@
  * swapping out the transport without touching callers.
  */
 
+import { normalizeThrownError } from "@/lib/error-normalization";
+
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
 interface LogEntry {
@@ -76,15 +78,13 @@ function shouldLog(level: LogLevel): boolean {
 
 function formatError(err: unknown): LogEntry["error"] | undefined {
   if (!err) return undefined;
-  if (err instanceof Error) {
-    return {
-      name: err.name,
-      message: redactText(err.message),
-      stack: err.stack ? redactText(err.stack) : undefined,
-      code: (err as any).code,
-    };
-  }
-  return { name: "UnknownError", message: redactText(String(err)) };
+  const normalized = normalizeThrownError(err);
+  return {
+    name: normalized.name,
+    message: redactText(normalized.message),
+    stack: normalized.stack ? redactText(normalized.stack) : undefined,
+    code: normalized.code,
+  };
 }
 
 function redactText(value: string): string {
