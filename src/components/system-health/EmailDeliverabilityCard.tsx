@@ -128,6 +128,35 @@ export function EmailDeliverabilityCard() {
         {sLoading && <CardContent><Skeleton className="h-4 w-48" /></CardContent>}
       </Card>
 
+      <Card className={anyCooldown ? "border-warning/40" : undefined}>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <AlertTriangle className={anyCooldown ? "h-5 w-5 text-warning" : "h-5 w-5 text-muted-foreground"} />
+            Rate-limit cooldowns
+            <Badge variant={anyCooldown ? "destructive" : "secondary"}>
+              {anyCooldown ? "Active" : "Clear"}
+            </Badge>
+          </CardTitle>
+          <CardDescription>
+            Per-queue cooldowns triggered by provider 429s. Each queue backs off independently so auth emails keep flowing during transactional bursts.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-1 text-sm">
+          {cooldowns.map((c) => (
+            <div key={c.key} className="flex justify-between border-b last:border-b-0 py-1">
+              <span className="font-medium">{c.label}</span>
+              <span>
+                {c.activeSecs > 0
+                  ? `Cooling down ${c.activeSecs}s (consecutive 429s: ${c.count})`
+                  : c.count > 0
+                  ? `Recovering · consecutive 429s: ${c.count}`
+                  : "Clear"}
+              </span>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
       <Card className={cappedTotal > 0 ? "border-warning/40" : undefined}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
