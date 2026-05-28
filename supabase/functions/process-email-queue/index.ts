@@ -423,23 +423,45 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
             error_message: errorMsg.slice(0, 1000),
           })
 
-          const retryAfterSecs = getRetryAfterSeconds(error)
+          // Exponential backoff per consecutive 429 for this queue: 60s → 120s → 240s …, cap 900s.
+          // Honor provider Retry-After when present; otherwise grow exponentially from a 60s base.
+          const providerSecs = getRetryAfterSeconds(error)
+          const nextCount = (consecutive[queue] ?? 0) + 1
+          const expSecs = Math.min(60 * Math.pow(2, nextCount - 1), 900)
+          const retryAfterSecs = Math.max(providerSecs, expSecs)
+          const until = new Date(Date.now() + retryAfterSecs * 1000).toISOString()
+
           await supabase
             .from('email_send_state')
             .update({
-              retry_after_until: new Date(
-                Date.now() + retryAfterSecs * 1000
-              ).toISOString(),
+              [cooldownCols[queue]]: until,
+              [counterCols[queue]]: nextCount,
               updated_at: new Date().toISOString(),
             })
             .eq('id', 1)
+          cooldownUntil[queue] = until
+          consecutive[queue] = nextCount
 
-          // Stop processing — remaining messages stay in queue (VT expires, retried next cycle)
-          return new Response(
-            JSON.stringify({ processed: totalProcessed, stopped: 'rate_limited' }),
-            { headers: { 'Content-Type': 'application/json' } }
-          )
+          // Admin signal — deduped per hour per queue via agent_fix_queue.
+          // Wrapped because the table is optional and failures here must not break sends.
+          try {
+            const hourBucket = new Date().toISOString().slice(0, 13) // YYYY-MM-DDTHH
+            await supabase.from('agent_fix_queue').insert({
+              fingerprint: `email_queue.rate_limited.${queue}.${hourBucket}`,
+              severity: 'warn',
+              title: `Email queue cooldown (${queue})`,
+              message: `${queue} paused ${retryAfterSecs}s after 429 #${nextCount}. ${errorMsg.slice(0, 200)}`,
+              source: 'process-email-queue',
+            } as any)
+          } catch (signalErr) {
+            console.warn('agent_fix_queue insert failed', { err: String(signalErr) })
+          }
+
+          // Stop THIS queue's batch; outer loop continues to the next queue
+          // (which has its own cooldown). Auth no longer blocked by transactional 429s.
+          break
         }
+
 
         // 403s are permanent configuration or authorization failures for this
         // message, so move straight to DLQ and stop processing the rest of the batch.
