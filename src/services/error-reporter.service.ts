@@ -22,6 +22,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getCurrentTraceId } from "@/lib/trace";
 import { checkNow as checkDeployNow } from "@/lib/deploy-watcher";
 import { isChunkLoadMessage } from "@/lib/lazy-with-retry";
+import { formatThrowable } from "@/lib/error-normalization";
 
 /**
  * Event types that are infrastructure / observability / aggregate notices.
@@ -356,14 +357,6 @@ async function reportToAuditLog(
   });
 }
 
-function formatError(err: unknown): string {
-  if (err instanceof Error) {
-    return `${err.name}: ${err.message}\n${err.stack ?? "(no stack)"}`;
-  }
-  if (typeof err === "string") return err;
-  try { return JSON.stringify(err); } catch { return String(err); }
-}
-
 /**
  * Report a caught error programmatically.
  *
@@ -376,7 +369,7 @@ export function reportError(
   source = "unknown",
   optionsOrUserId: ReportOptions | string = {},
 ) {
-  const msg = formatError(err);
+  const msg = formatThrowable(err);
   if (isSuppressed(msg)) return;
   const options: ReportOptions = typeof optionsOrUserId === "string"
     ? { userId: optionsOrUserId }
@@ -643,7 +636,7 @@ function chunkAwareReport(msg: string, source: string) {
 
 export function installGlobalErrorReporter() {
   window.addEventListener("error", (event) => {
-    const msg = formatError(event.error ?? event.message);
+    const msg = formatThrowable(event.error ?? event.message);
     if (isOpaqueScriptError(event, msg)) return;
     if (isSuppressed(msg)) return;
     // Suppress errors whose source is a browser extension URL.
@@ -655,7 +648,7 @@ export function installGlobalErrorReporter() {
   });
 
   window.addEventListener("unhandledrejection", (event) => {
-    const msg = formatError(event.reason);
+    const msg = formatThrowable(event.reason);
     if (isSuppressed(msg)) return;
     chunkAwareReport(msg, "unhandledrejection");
   });
