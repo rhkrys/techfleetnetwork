@@ -1504,7 +1504,9 @@ export type Database = {
       }
       email_send_state: {
         Row: {
+          auth_consecutive_rate_limits: number
           auth_email_ttl_minutes: number
+          auth_retry_after_until: string | null
           batch_size: number
           bulk_hourly_cap: number
           bulk_paused: boolean
@@ -1514,11 +1516,15 @@ export type Database = {
           per_recipient_bulk_window_hours: number
           retry_after_until: string | null
           send_delay_ms: number
+          transactional_consecutive_rate_limits: number
           transactional_email_ttl_minutes: number
+          transactional_retry_after_until: string | null
           updated_at: string
         }
         Insert: {
+          auth_consecutive_rate_limits?: number
           auth_email_ttl_minutes?: number
+          auth_retry_after_until?: string | null
           batch_size?: number
           bulk_hourly_cap?: number
           bulk_paused?: boolean
@@ -1528,11 +1534,15 @@ export type Database = {
           per_recipient_bulk_window_hours?: number
           retry_after_until?: string | null
           send_delay_ms?: number
+          transactional_consecutive_rate_limits?: number
           transactional_email_ttl_minutes?: number
+          transactional_retry_after_until?: string | null
           updated_at?: string
         }
         Update: {
+          auth_consecutive_rate_limits?: number
           auth_email_ttl_minutes?: number
+          auth_retry_after_until?: string | null
           batch_size?: number
           bulk_hourly_cap?: number
           bulk_paused?: boolean
@@ -1542,7 +1552,9 @@ export type Database = {
           per_recipient_bulk_window_hours?: number
           retry_after_until?: string | null
           send_delay_ms?: number
+          transactional_consecutive_rate_limits?: number
           transactional_email_ttl_minutes?: number
+          transactional_retry_after_until?: string | null
           updated_at?: string
         }
         Relationships: []
