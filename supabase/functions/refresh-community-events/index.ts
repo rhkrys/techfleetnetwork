@@ -398,6 +398,28 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Soft-fail on upstream rate-limit / transient errors: keep serving cached
+    // events instead of throwing (which floods agent_fix_queue every cron tick).
+    // Honors Retry-After so we don't hammer the source.
+    if (res.status === 429 || res.status === 503) {
+      const retryAfterHeader = res.headers.get("retry-after");
+      const retryAfterSec = retryAfterHeader ? Math.max(60, parseInt(retryAfterHeader, 10) || 300) : 300;
+      const nextRetryAt = new Date(Date.now() + retryAfterSec * 1000).toISOString();
+      await supabase
+        .from("community_events_cache")
+        .update({
+          fetched_at: new Date().toISOString(),
+          last_refresh_status: "rate_limited",
+          last_refresh_error: `ICS upstream ${res.status}; backing off until ${nextRetryAt}`,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", 1);
+      console.warn(`refresh-community-events soft-fail: ${res.status}, retry after ${retryAfterSec}s`);
+      return new Response(
+        JSON.stringify({ status: "rate_limited", retryAfterSec, durationMs: Date.now() - t0 }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
     if (!res.ok) {
       throw new Error(`ICS fetch failed ${res.status}`);
     }
