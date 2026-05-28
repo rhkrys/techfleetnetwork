@@ -1,0 +1,72 @@
+name: Auto-rerun on flake
+
+# One-shot re-run for the Regression workflow when it failed on a known
+# transient pattern (ECONNRESET, ETIMEDOUT, "socket hang up", Playwright
+# browser-install network errors). Cap = 1 to prevent rerun loops.
+
+on:
+  workflow_run:
+    workflows: ["Regression"]
+    types: [completed]
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  rerun:
+    if: >
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect failed run logs for flake patterns
+        id: classify
+        # actions/github-script@v7.0.1 — pinned
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const run_id = context.payload.workflow_run.id;
+            const { data: jobs } = await github.rest.actions.listJobsForWorkflowRun({
+              owner, repo, run_id, per_page: 100,
+            });
+            const flakePatterns = [
+              /ECONNRESET/i,
+              /ETIMEDOUT/i,
+              /socket hang up/i,
+              /EAI_AGAIN/i,
+              /getaddrinfo ENOTFOUND/i,
+              /Download failed: server returned code 5\d\d/i,
+              /playwright.*Timeout.*exceeded.*downloading browsers/i,
+              /npm error code E5\d\d/i,
+            ];
+            let isFlake = false;
+            for (const job of jobs.jobs) {
+              if (job.conclusion !== 'failure') continue;
+              try {
+                const { data: logBuf } = await github.rest.actions.downloadJobLogsForWorkflowRun({
+                  owner, repo, job_id: job.id,
+                });
+                const text = typeof logBuf === 'string' ? logBuf : Buffer.from(logBuf).toString('utf8');
+                if (flakePatterns.some(p => p.test(text))) {
+                  isFlake = true;
+                  core.notice(`Job "${job.name}" matched a flake pattern — eligible for one-shot rerun.`);
+                  break;
+                }
+              } catch (e) {
+                core.warning(`Could not fetch logs for job ${job.id}: ${e.message}`);
+              }
+            }
+            core.setOutput('is_flake', String(isFlake));
+
+      - name: Re-run failed jobs (one-shot)
+        if: steps.classify.outputs.is_flake == 'true'
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const run_id = context.payload.workflow_run.id;
+            await github.rest.actions.reRunWorkflowFailedJobs({ owner, repo, run_id });
+            core.notice(`Re-running failed jobs for run ${run_id} (one-shot).`);
