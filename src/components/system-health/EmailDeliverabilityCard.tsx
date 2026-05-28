@@ -21,6 +21,10 @@ interface SendStateRow {
   bulk_hourly_cap: number | null;
   bulk_paused: boolean | null;
   bulk_warmup_started_at: string | null;
+  auth_retry_after_until: string | null;
+  transactional_retry_after_until: string | null;
+  auth_consecutive_rate_limits: number | null;
+  transactional_consecutive_rate_limits: number | null;
   updated_at: string;
 }
 
