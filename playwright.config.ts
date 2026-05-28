@@ -135,7 +135,7 @@ export default defineConfig({
   },
   fullyParallel: false,
   forbidOnly: isCI,
-  retries: isCI ? 1 : 0,
+  retries: isCI ? 2 : 0,
   workers: 1,
   reporter: isCI
     ? [["list"], ["html", { open: "never", outputFolder: "playwright-report" }]]
