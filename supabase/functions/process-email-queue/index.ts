@@ -179,8 +179,16 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
 
   let totalProcessed = 0
 
-  // 2. Process auth_emails first (priority), then transactional_emails
+  // 2. Process auth_emails first (priority), then transactional_emails.
+  // Each queue has its own cooldown so one queue's 429 cannot freeze the other.
   for (const queue of ['auth_emails', 'transactional_emails']) {
+    if (cooldownUntil[queue] && new Date(cooldownUntil[queue] as string) > new Date()) {
+      console.log('Skipping queue (cooldown active)', { queue, until: cooldownUntil[queue] })
+      continue
+    }
+    // Adaptive send delay: if this queue is recovering from 429s, slow down.
+    const sendDelayMs = baseSendDelayMs * Math.pow(2, Math.min(consecutive[queue] ?? 0, 4))
+
     const { data: messages, error: readError } = await supabase.rpc('read_email_batch', {
       queue_name: queue,
       batch_size: batchSize,
