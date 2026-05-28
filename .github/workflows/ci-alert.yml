@@ -1,0 +1,76 @@
+name: CI red-alert
+
+# Watch our hard-gate workflows. If `main` goes red, push a row into
+# agent_fix_queue so the failure shows up in the System Health → Triage
+# tab and the daily digest — and post once to Discord via the existing
+# discord-notify edge function so admins see it within minutes.
+#
+# Reuses existing infrastructure — no new edge function, no new schema.
+
+on:
+  workflow_run:
+    workflows:
+      - "Regression"
+      - "Penetration tests"
+      - "Cross-browser QA"
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  alert:
+    if: >
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Push to agent_fix_queue (Supabase REST)
+        env:
+          SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          WF_NAME: ${{ github.event.workflow_run.name }}
+          WF_URL: ${{ github.event.workflow_run.html_url }}
+          WF_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "::warning::Skipping triage insert — SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not configured."
+            exit 0
+          fi
+          payload=$(jq -n \
+            --arg src "ci" \
+            --arg sev "error" \
+            --arg fp  "ci:$WF_NAME:$WF_SHA" \
+            --arg msg "CI workflow \"$WF_NAME\" failed on main ($WF_URL)" \
+            '{source:$src, severity:$sev, fingerprint:$fp, message:$msg}')
+          curl -sS --fail-with-body -X POST \
+            "$SUPABASE_URL/rest/v1/agent_fix_queue" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: resolution=merge-duplicates,return=minimal" \
+            -d "$payload" || echo "::warning::agent_fix_queue insert failed (non-fatal)."
+
+      - name: Notify Discord (admin channel)
+        env:
+          SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          WF_NAME: ${{ github.event.workflow_run.name }}
+          WF_URL: ${{ github.event.workflow_run.html_url }}
+          WF_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::warning::Skipping Discord notify — vars unset."
+            exit 0
+          fi
+          payload=$(jq -n \
+            --arg ch "admin-alerts" \
+            --arg content "🚨 **$WF_NAME** failed on \`main\` (${WF_SHA:0:7}) — $WF_URL" \
+            '{channel:$ch, content:$content}')
+          curl -sS -X POST \
+            "$SUPABASE_URL/functions/v1/discord-notify" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$payload" || echo "::warning::Discord notify failed (non-fatal)."

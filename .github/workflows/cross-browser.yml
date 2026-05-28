@@ -1,11 +1,13 @@
 name: Cross-browser QA
 
 on:
-  push:
-    branches:
-      - main
-      - master
+  # Visual-regression suite still runs on PR (cheap, fast, blocks pixel drift).
+  # The full desktop+mobile+tablet matrix is nightly + manual only — the
+  # fast Chromium shard in regression.yml covers PRs.
   pull_request:
+    paths:
+      - "e2e/visual/**"
+      - "src/**"
   workflow_dispatch:
   schedule:
     - cron: "0 7 * * *"
@@ -41,11 +43,30 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76
+        with:
+          bun-version: latest
+
+      - name: Cache node_modules
+        id: cache-modules
+        uses: actions/cache@6849a6489940f00c2f30c0fb92c6274307ccb58a
+        with:
+          path: |
+            node_modules
+            ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+
       - name: Install dependencies
-        run: npm ci
+        if: steps.cache-modules.outputs.cache-hit != 'true'
+        run: npm ci --prefer-offline --no-audit --no-fund
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium firefox webkit
+        uses: nick-fields/retry@7152eba30c6575329ac0576536151aca5a72780e
+        with:
+          timeout_minutes: 12
+          max_attempts: 3
+          command: npx playwright install --with-deps chromium firefox webkit
 
       - name: Run desktop, mobile, and tablet browser matrix
         run: npm run test:e2e:full:ci
@@ -89,11 +110,30 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76
+        with:
+          bun-version: latest
+
+      - name: Cache node_modules
+        id: cache-modules-visual
+        uses: actions/cache@6849a6489940f00c2f30c0fb92c6274307ccb58a
+        with:
+          path: |
+            node_modules
+            ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+
       - name: Install dependencies
-        run: npm ci
+        if: steps.cache-modules-visual.outputs.cache-hit != 'true'
+        run: npm ci --prefer-offline --no-audit --no-fund
 
       - name: Install Playwright (chromium only — pixel diff suite)
-        run: npx playwright install --with-deps chromium
+        uses: nick-fields/retry@7152eba30c6575329ac0576536151aca5a72780e
+        with:
+          timeout_minutes: 8
+          max_attempts: 3
+          command: npx playwright install --with-deps chromium
 
       - name: Detect baseline-update label
         id: update-flag

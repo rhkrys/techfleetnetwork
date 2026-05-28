@@ -1,0 +1,14 @@
+# Code ownership for routing review + failure notifications.
+# See https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-security/customizing-your-repository/about-code-owners
+
+# Default owner — Lovable platform admin.
+*                          @lovable-dev
+
+# Backend / database — highest sensitivity.
+/supabase/**               @lovable-dev
+/src/services/**           @lovable-dev
+/src/integrations/**       @lovable-dev
+
+# CI / CD itself — changes here gate every other change.
+/.github/**                @lovable-dev
+/scripts/**                @lovable-dev

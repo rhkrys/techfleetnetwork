@@ -1,0 +1,95 @@
+name: BDD gate
+
+# Enforces the project rule: every feature must have a Gherkin scenario in
+# bdd_scenarios. On PRs that touch src/services, src/pages, or
+# supabase/functions, we diff against main and query bdd_scenarios via the
+# Supabase REST API. If any changed module has zero scenarios referencing
+# it (by feature_area substring OR test_file path), the PR fails.
+
+on:
+  pull_request:
+    paths:
+      - "src/services/**"
+      - "src/pages/**"
+      - "supabase/functions/**"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  bdd-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 0
+
+      - name: Guard — secrets present
+        id: guard
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::warning::Skipping BDD gate — Supabase vars unset."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compute changed feature modules
+        if: steps.guard.outputs.skip != 'true'
+        id: diff
+        run: |
+          git fetch origin "${{ github.base_ref }}" --depth=1
+          mapfile -t files < <(git diff --name-only "origin/${{ github.base_ref }}"...HEAD \
+            | grep -E '^(src/services/|src/pages/|supabase/functions/)' || true)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No feature modules changed."
+            echo "modules=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Extract second path segment (e.g. src/services/<module>/...).
+          mapfile -t modules < <(printf '%s\n' "${files[@]}" \
+            | awk -F/ '{print $1"/"$2"/"$3}' | sort -u)
+          printf 'Changed modules:\n%s\n' "${modules[@]}"
+          { echo "modules<<EOF"; printf '%s\n' "${modules[@]}"; echo "EOF"; } >> "$GITHUB_OUTPUT"
+
+      - name: Verify each module has at least one scenario
+        if: steps.guard.outputs.skip != 'true' && steps.diff.outputs.modules != ''
+        run: |
+          missing=()
+          while IFS= read -r mod; do
+            [ -z "$mod" ] && continue
+            # URL-encode '/' as %2F for PostgREST LIKE filter.
+            enc=$(printf '%s' "$mod" | sed 's|/|%2F|g')
+            count=$(curl -sS -o /dev/null -w '%{http_code} %{header_json}' \
+              "$SUPABASE_URL/rest/v1/bdd_scenarios?select=scenario_id&or=(test_file.ilike.*${enc}*,feature_area.ilike.*${mod##*/}*)&limit=1" \
+              -H "apikey: $SUPABASE_ANON_KEY" \
+              -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+              -H "Prefer: count=exact" \
+              -H "Range: 0-0" || true)
+            # Fallback simpler check: re-query and inspect JSON body.
+            body=$(curl -sS \
+              "$SUPABASE_URL/rest/v1/bdd_scenarios?select=scenario_id&or=(test_file.ilike.*${enc}*,feature_area.ilike.*${mod##*/}*)&limit=1" \
+              -H "apikey: $SUPABASE_ANON_KEY" \
+              -H "Authorization: Bearer $SUPABASE_ANON_KEY")
+            if [ "$body" = "[]" ] || [ -z "$body" ]; then
+              missing+=("$mod")
+            fi
+          done <<< "${{ steps.diff.outputs.modules }}"
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            {
+              echo "## ❌ BDD gate"
+              echo
+              echo "The following changed modules have **no Gherkin scenario** in \`bdd_scenarios\`:"
+              for m in "${missing[@]}"; do echo "- \`$m\`"; done
+              echo
+              echo "Add scenarios (with tri-layer [UI]/[DB]/[Code] Then-clauses) before merging."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "✅ All changed modules have BDD scenarios."
