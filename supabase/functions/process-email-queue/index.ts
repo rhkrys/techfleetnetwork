@@ -114,21 +114,34 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-  // 1. Check rate-limit cooldown and read queue config
+  // 1. Read queue config + per-queue cooldown state.
+  // Per-queue cooldown ensures a 429 on transactional_emails does NOT freeze auth_emails.
   const { data: state } = await supabase
     .from('email_send_state')
-    .select('retry_after_until, batch_size, send_delay_ms, auth_email_ttl_minutes, transactional_email_ttl_minutes, bulk_hourly_cap, bulk_paused, per_recipient_bulk_window_hours, per_recipient_bulk_max')
+    .select('retry_after_until, auth_retry_after_until, transactional_retry_after_until, auth_consecutive_rate_limits, transactional_consecutive_rate_limits, batch_size, send_delay_ms, auth_email_ttl_minutes, transactional_email_ttl_minutes, bulk_hourly_cap, bulk_paused, per_recipient_bulk_window_hours, per_recipient_bulk_max')
     .single()
 
-  if (state?.retry_after_until && new Date(state.retry_after_until) > new Date()) {
-    return new Response(
-      JSON.stringify({ skipped: true, reason: 'rate_limited' }),
-      { headers: { 'Content-Type': 'application/json' } }
-    )
+  const cooldownCols: Record<string, string> = {
+    auth_emails: 'auth_retry_after_until',
+    transactional_emails: 'transactional_retry_after_until',
+  }
+  const counterCols: Record<string, string> = {
+    auth_emails: 'auth_consecutive_rate_limits',
+    transactional_emails: 'transactional_consecutive_rate_limits',
+  }
+  // Legacy global retry_after_until is treated as a floor for backward compatibility.
+  const legacyCooldown = (state as any)?.retry_after_until ?? null
+  const cooldownUntil: Record<string, string | null> = {
+    auth_emails: (state as any)?.auth_retry_after_until ?? legacyCooldown,
+    transactional_emails: (state as any)?.transactional_retry_after_until ?? legacyCooldown,
+  }
+  const consecutive: Record<string, number> = {
+    auth_emails: (state as any)?.auth_consecutive_rate_limits ?? 0,
+    transactional_emails: (state as any)?.transactional_consecutive_rate_limits ?? 0,
   }
 
   const batchSize = state?.batch_size ?? DEFAULT_BATCH_SIZE
-  const sendDelayMs = state?.send_delay_ms ?? DEFAULT_SEND_DELAY_MS
+  const baseSendDelayMs = state?.send_delay_ms ?? DEFAULT_SEND_DELAY_MS
   const bulkHourlyCap = state?.bulk_hourly_cap ?? 50
   const bulkPaused = state?.bulk_paused === true
   const perRecipientWindowHours = state?.per_recipient_bulk_window_hours ?? 24
