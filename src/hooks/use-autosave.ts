@@ -48,6 +48,35 @@ function defaultEquals<T>(a: T, b: T): boolean {
   }
 }
 
+/**
+ * Coerce any thrown value into a real Error with a readable message.
+ * Supabase/PostgrestError throws are plain objects — `String(obj)` would
+ * yield "[object Object]" and break triage. Preserve code/details/hint
+ * when present so the autosave triage entry is actionable.
+ */
+function toError(e: unknown): Error {
+  if (e instanceof Error) return e;
+  if (e && typeof e === "object") {
+    const o = e as Record<string, unknown>;
+    const parts = [
+      typeof o.message === "string" ? o.message : null,
+      typeof o.code === "string" ? `code=${o.code}` : null,
+      typeof o.details === "string" ? `details=${o.details}` : null,
+      typeof o.hint === "string" ? `hint=${o.hint}` : null,
+    ].filter(Boolean);
+    const msg = parts.length > 0 ? parts.join(" | ") : safeJson(o) ?? "Unknown error";
+    const err = new Error(msg);
+    if (typeof o.code === "string") (err as Error & { code?: string }).code = o.code;
+    return err;
+  }
+  return new Error(typeof e === "string" && e.length > 0 ? e : "Unknown error");
+}
+
+function safeJson(o: unknown): string | null {
+  try { return JSON.stringify(o); } catch { return null; }
+}
+
+
 export function useAutosave<T>({
   value,
   enabled,
@@ -106,7 +135,8 @@ export function useAutosave<T>({
       const stillDirty = !equalsRef.current(valueRef.current, lastSavedValueRef.current);
       setStatus(stillDirty ? "dirty" : "saved");
     } catch (e) {
-      const err = e instanceof Error ? e : new Error(String(e));
+      const err = toError(e);
+
       failureCountRef.current += 1;
       setError(err);
       if (failureCountRef.current >= BACKOFFS.length) {
