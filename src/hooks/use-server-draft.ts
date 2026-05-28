@@ -17,6 +17,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { normalizeThrownError } from "@/lib/error-normalization";
 import { reportError } from "@/services/error-reporter.service";
 import type { AutosaveStatus } from "@/hooks/use-autosave";
 
@@ -193,7 +194,7 @@ export function useServerDraft<T>({
       const stillDirty = !equalsRef.current(valueRef.current, lastSavedValueRef.current);
       setStatus(stillDirty ? "dirty" : "saved");
     } catch (e) {
-      const err = e instanceof Error ? e : new Error(String(e));
+      const err = normalizeThrownError(e, "Draft save failed");
       failureCountRef.current += 1;
       setError(err);
       if (failureCountRef.current >= BACKOFFS.length) {
@@ -289,7 +290,7 @@ export function useServerDraft<T>({
       setStatus("idle");
       setLastSavedAt(null);
     } catch (e) {
-      const err = e instanceof Error ? e : new Error(String(e));
+      const err = normalizeThrownError(e, "Draft clear failed");
       reportError(err, `server-draft.clear.${label}`, { severity: "warn" });
     }
   }, [draftKey, label]);
