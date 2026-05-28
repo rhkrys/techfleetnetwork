@@ -53,7 +53,7 @@ export function EmailDeliverabilityCard() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("email_send_state" as any)
-        .select("bulk_hourly_cap, bulk_paused, bulk_warmup_started_at, updated_at")
+        .select("bulk_hourly_cap, bulk_paused, bulk_warmup_started_at, auth_retry_after_until, transactional_retry_after_until, auth_consecutive_rate_limits, transactional_consecutive_rate_limits, updated_at")
         .limit(1)
         .maybeSingle();
       if (error) throw error;
