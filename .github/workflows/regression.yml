@@ -160,6 +160,10 @@ jobs:
         if: env.SUPABASE_URL == '' || env.SUPABASE_ANON_KEY == ''
         run: echo "::notice::Skipping BDD coverage — SUPABASE_URL or SUPABASE_ANON_KEY not configured."
 
+      - name: BDD scenario runner (reporting only)
+        if: env.SUPABASE_URL != '' && env.SUPABASE_ANON_KEY != ''
+        run: node scripts/bdd-scenario-runner.mjs
+
   dependency-review:
     runs-on: ubuntu-latest
     timeout-minutes: 5
