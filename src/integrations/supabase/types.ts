@@ -6542,6 +6542,9 @@ export type Database = {
         Args: { message_id: number; queue_name: string }
         Returns: boolean
       }
+      digest:
+        | { Args: { data: string; type: string }; Returns: string }
+        | { Args: { data: string; type: string }; Returns: string }
       discover_audit_fingerprints: {
         Args: { p_min_occurrences?: number }
         Returns: {
