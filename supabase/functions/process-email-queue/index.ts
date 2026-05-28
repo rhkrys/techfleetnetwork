@@ -446,13 +446,16 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
           // Wrapped because the table is optional and failures here must not break sends.
           try {
             const hourBucket = new Date().toISOString().slice(0, 13) // YYYY-MM-DDTHH
-            await supabase.from('agent_fix_queue').insert({
-              fingerprint: `email_queue.rate_limited.${queue}.${hourBucket}`,
-              severity: 'warn',
-              title: `Email queue cooldown (${queue})`,
-              message: `${queue} paused ${retryAfterSecs}s after 429 #${nextCount}. ${errorMsg.slice(0, 200)}`,
-              source: 'process-email-queue',
-            } as any)
+            await supabase.from('agent_fix_queue').upsert(
+              {
+                fingerprint: `email_queue.rate_limited.${queue}.${hourBucket}`,
+                event_type: 'email_rate_limited',
+                source: 'process-email-queue',
+                severity: 'warn',
+                error_message: `${queue} paused ${retryAfterSecs}s after consecutive 429 #${nextCount}. ${errorMsg.slice(0, 500)}`,
+              } as any,
+              { onConflict: 'fingerprint', ignoreDuplicates: false }
+            )
           } catch (signalErr) {
             console.warn('agent_fix_queue insert failed', { err: String(signalErr) })
           }
