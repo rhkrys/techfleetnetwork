@@ -106,7 +106,8 @@ export function useAutosave<T>({
       const stillDirty = !equalsRef.current(valueRef.current, lastSavedValueRef.current);
       setStatus(stillDirty ? "dirty" : "saved");
     } catch (e) {
-      const err = e instanceof Error ? e : new Error(String(e));
+      const err = toError(e);
+
       failureCountRef.current += 1;
       setError(err);
       if (failureCountRef.current >= BACKOFFS.length) {
