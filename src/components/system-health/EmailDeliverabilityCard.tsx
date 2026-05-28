@@ -89,6 +89,26 @@ export function EmailDeliverabilityCard() {
   const cappedTotal = Object.values(cappedBreakdown ?? {}).reduce((a, b) => a + b, 0);
   const cappedEntries = Object.entries(cappedBreakdown ?? {}).sort((a, b) => b[1] - a[1]);
 
+  const now = Date.now();
+  const cooldowns = [
+    {
+      key: "auth_emails",
+      label: "Auth emails",
+      until: state?.auth_retry_after_until,
+      count: state?.auth_consecutive_rate_limits ?? 0,
+    },
+    {
+      key: "transactional_emails",
+      label: "Transactional emails",
+      until: state?.transactional_retry_after_until,
+      count: state?.transactional_consecutive_rate_limits ?? 0,
+    },
+  ].map((c) => ({
+    ...c,
+    activeSecs: c.until ? Math.max(0, Math.floor((new Date(c.until).getTime() - now) / 1000)) : 0,
+  }));
+  const anyCooldown = cooldowns.some((c) => c.activeSecs > 0);
+
   return (
     <div className="space-y-4">
       <Card className={paused ? "border-destructive/40" : "border-success/40"}>
