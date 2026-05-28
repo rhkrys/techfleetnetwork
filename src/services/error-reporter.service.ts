@@ -636,7 +636,7 @@ function chunkAwareReport(msg: string, source: string) {
 
 export function installGlobalErrorReporter() {
   window.addEventListener("error", (event) => {
-    const msg = formatError(event.error ?? event.message);
+    const msg = formatThrowable(event.error ?? event.message);
     if (isOpaqueScriptError(event, msg)) return;
     if (isSuppressed(msg)) return;
     // Suppress errors whose source is a browser extension URL.
@@ -648,7 +648,7 @@ export function installGlobalErrorReporter() {
   });
 
   window.addEventListener("unhandledrejection", (event) => {
-    const msg = formatError(event.reason);
+    const msg = formatThrowable(event.reason);
     if (isSuppressed(msg)) return;
     chunkAwareReport(msg, "unhandledrejection");
   });
