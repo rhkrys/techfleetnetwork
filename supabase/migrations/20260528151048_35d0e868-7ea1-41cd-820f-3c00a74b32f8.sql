@@ -1,0 +1,1 @@
+GRANT EXECUTE ON FUNCTION public.record_policy_ack(text[], text, text, inet, text, boolean, text) TO anon, authenticated;
