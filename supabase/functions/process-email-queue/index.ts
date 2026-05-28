@@ -394,7 +394,16 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
         }
         if (ALL_BULK_TEMPLATES.has(labelStr)) bulkSentLastHour++
         totalProcessed++
-      } catch (error) {
+
+        // Success-reset: clear this queue's consecutive 429 counter on first
+        // successful send. Only writes when there's something to clear.
+        if ((consecutive[queue] ?? 0) > 0) {
+          await supabase
+            .from('email_send_state')
+            .update({ [counterCols[queue]]: 0, updated_at: new Date().toISOString() })
+            .eq('id', 1)
+          consecutive[queue] = 0
+        }
         const errorMsg = error instanceof Error ? error.message : String(error)
         console.error('Email send failed', {
           queue,
