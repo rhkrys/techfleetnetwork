@@ -114,21 +114,34 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-  // 1. Check rate-limit cooldown and read queue config
+  // 1. Read queue config + per-queue cooldown state.
+  // Per-queue cooldown ensures a 429 on transactional_emails does NOT freeze auth_emails.
   const { data: state } = await supabase
     .from('email_send_state')
-    .select('retry_after_until, batch_size, send_delay_ms, auth_email_ttl_minutes, transactional_email_ttl_minutes, bulk_hourly_cap, bulk_paused, per_recipient_bulk_window_hours, per_recipient_bulk_max')
+    .select('retry_after_until, auth_retry_after_until, transactional_retry_after_until, auth_consecutive_rate_limits, transactional_consecutive_rate_limits, batch_size, send_delay_ms, auth_email_ttl_minutes, transactional_email_ttl_minutes, bulk_hourly_cap, bulk_paused, per_recipient_bulk_window_hours, per_recipient_bulk_max')
     .single()
 
-  if (state?.retry_after_until && new Date(state.retry_after_until) > new Date()) {
-    return new Response(
-      JSON.stringify({ skipped: true, reason: 'rate_limited' }),
-      { headers: { 'Content-Type': 'application/json' } }
-    )
+  const cooldownCols: Record<string, string> = {
+    auth_emails: 'auth_retry_after_until',
+    transactional_emails: 'transactional_retry_after_until',
+  }
+  const counterCols: Record<string, string> = {
+    auth_emails: 'auth_consecutive_rate_limits',
+    transactional_emails: 'transactional_consecutive_rate_limits',
+  }
+  // Legacy global retry_after_until is treated as a floor for backward compatibility.
+  const legacyCooldown = (state as any)?.retry_after_until ?? null
+  const cooldownUntil: Record<string, string | null> = {
+    auth_emails: (state as any)?.auth_retry_after_until ?? legacyCooldown,
+    transactional_emails: (state as any)?.transactional_retry_after_until ?? legacyCooldown,
+  }
+  const consecutive: Record<string, number> = {
+    auth_emails: (state as any)?.auth_consecutive_rate_limits ?? 0,
+    transactional_emails: (state as any)?.transactional_consecutive_rate_limits ?? 0,
   }
 
   const batchSize = state?.batch_size ?? DEFAULT_BATCH_SIZE
-  const sendDelayMs = state?.send_delay_ms ?? DEFAULT_SEND_DELAY_MS
+  const baseSendDelayMs = state?.send_delay_ms ?? DEFAULT_SEND_DELAY_MS
   const bulkHourlyCap = state?.bulk_hourly_cap ?? 50
   const bulkPaused = state?.bulk_paused === true
   const perRecipientWindowHours = state?.per_recipient_bulk_window_hours ?? 24
@@ -166,8 +179,16 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
 
   let totalProcessed = 0
 
-  // 2. Process auth_emails first (priority), then transactional_emails
+  // 2. Process auth_emails first (priority), then transactional_emails.
+  // Each queue has its own cooldown so one queue's 429 cannot freeze the other.
   for (const queue of ['auth_emails', 'transactional_emails']) {
+    if (cooldownUntil[queue] && new Date(cooldownUntil[queue] as string) > new Date()) {
+      console.log('Skipping queue (cooldown active)', { queue, until: cooldownUntil[queue] })
+      continue
+    }
+    // Adaptive send delay: if this queue is recovering from 429s, slow down.
+    const sendDelayMs = baseSendDelayMs * Math.pow(2, Math.min(consecutive[queue] ?? 0, 4))
+
     const { data: messages, error: readError } = await supabase.rpc('read_email_batch', {
       queue_name: queue,
       batch_size: batchSize,
@@ -373,6 +394,16 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
         }
         if (ALL_BULK_TEMPLATES.has(labelStr)) bulkSentLastHour++
         totalProcessed++
+
+        // Success-reset: clear this queue's consecutive 429 counter on first
+        // successful send. Only writes when there's something to clear.
+        if ((consecutive[queue] ?? 0) > 0) {
+          await supabase
+            .from('email_send_state')
+            .update({ [counterCols[queue]]: 0, updated_at: new Date().toISOString() })
+            .eq('id', 1)
+          consecutive[queue] = 0
+        }
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error)
         console.error('Email send failed', {
@@ -392,23 +423,48 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
             error_message: errorMsg.slice(0, 1000),
           })
 
-          const retryAfterSecs = getRetryAfterSeconds(error)
+          // Exponential backoff per consecutive 429 for this queue: 60s → 120s → 240s …, cap 900s.
+          // Honor provider Retry-After when present; otherwise grow exponentially from a 60s base.
+          const providerSecs = getRetryAfterSeconds(error)
+          const nextCount = (consecutive[queue] ?? 0) + 1
+          const expSecs = Math.min(60 * Math.pow(2, nextCount - 1), 900)
+          const retryAfterSecs = Math.max(providerSecs, expSecs)
+          const until = new Date(Date.now() + retryAfterSecs * 1000).toISOString()
+
           await supabase
             .from('email_send_state')
             .update({
-              retry_after_until: new Date(
-                Date.now() + retryAfterSecs * 1000
-              ).toISOString(),
+              [cooldownCols[queue]]: until,
+              [counterCols[queue]]: nextCount,
               updated_at: new Date().toISOString(),
             })
             .eq('id', 1)
+          cooldownUntil[queue] = until
+          consecutive[queue] = nextCount
 
-          // Stop processing — remaining messages stay in queue (VT expires, retried next cycle)
-          return new Response(
-            JSON.stringify({ processed: totalProcessed, stopped: 'rate_limited' }),
-            { headers: { 'Content-Type': 'application/json' } }
-          )
+          // Admin signal — deduped per hour per queue via agent_fix_queue.
+          // Wrapped because the table is optional and failures here must not break sends.
+          try {
+            const hourBucket = new Date().toISOString().slice(0, 13) // YYYY-MM-DDTHH
+            await supabase.from('agent_fix_queue').upsert(
+              {
+                fingerprint: `email_queue.rate_limited.${queue}.${hourBucket}`,
+                event_type: 'email_rate_limited',
+                source: 'process-email-queue',
+                severity: 'warn',
+                error_message: `${queue} paused ${retryAfterSecs}s after consecutive 429 #${nextCount}. ${errorMsg.slice(0, 500)}`,
+              } as any,
+              { onConflict: 'fingerprint', ignoreDuplicates: false }
+            )
+          } catch (signalErr) {
+            console.warn('agent_fix_queue insert failed', { err: String(signalErr) })
+          }
+
+          // Stop THIS queue's batch; outer loop continues to the next queue
+          // (which has its own cooldown). Auth no longer blocked by transactional 429s.
+          break
         }
+
 
         // 403s are permanent configuration or authorization failures for this
         // message, so move straight to DLQ and stop processing the rest of the batch.

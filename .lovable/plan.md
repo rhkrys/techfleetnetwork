@@ -1,176 +1,52 @@
+## Triage finding
 
-# Pre-warmed Full-Coverage i18n — Final Plan (+ User-Generated Content)
+The AI hypothesis ("add retry with exponential backoff") is **already implemented** in `supabase/functions/process-email-queue/index.ts`. On a 429 the dispatcher:
 
-Two distinct content classes, one unified architecture:
+1. Logs `email_send_log.status='rate_limited'`
+2. Reads `Retry-After` (defaults to 60s when missing — Resend's "High demand" payload has no header)
+3. Sets `email_send_state.retry_after_until = now + N seconds`
+4. Stops the batch; pgmq visibility-timeout returns the unsent messages; next cron tick resumes after the cooldown.
 
-| Class | Examples | Strategy |
+So this 429 is **not a bug** — the safety net caught it. But three real weaknesses surfaced:
+
+| # | Weakness | Impact |
 |---|---|---|
-| **Static UI strings** | Buttons, labels, nav, toasts, emails | Build-time extract → prewarm all locales → CDN snapshot |
-| **Dynamic UGC** | Client names/descriptions, project briefs, application essays, announcements, course/lesson content, profile bios | Write-time hook → translate-on-demand for active locales → cache → lazy-fill for cold locales |
+| A | **Single global cooldown** halts both `auth_emails` and `transactional_emails` queues on any 429. An OTP magic-link can sit unsent for 60s because a `project-blast` tripped the limit. Auth emails have a 15-min TTL — repeated hits = DLQ. | High — affects sign-in |
+| B | **Fixed 60s fallback** when Resend omits `Retry-After`. Repeated bursts get the same 60s window and re-trip immediately, producing a flapping pattern. No exponential growth, no reset-on-success. | Medium |
+| C | **No admin signal** when `retry_after_until` fires. System Health Email tab and Triage don't surface "queue paused, cooldown active" so the only way to notice is the user-pasted error. | Medium |
 
----
+## Plan (small, surgical, all in dispatcher + state table)
 
-## Database Architecture (additions for UGC)
+1. **Per-queue cooldown** — extend `email_send_state` with `auth_retry_after_until` + `transactional_retry_after_until` (keep legacy column as fallback). Dispatcher reads the right one per queue inside the `for (const queue of [...])` loop. A 429 on `transactional_emails` no longer freezes `auth_emails`. (Migration adds two timestamp columns + drops one default.)
 
-### Existing (recap): `i18n_strings`, `i18n_translations`, `i18n_snapshots`, `i18n_prewarm_jobs`, `i18n_qa_failures`, `i18n_coverage_audit`, `i18n_banned_terms`
+2. **Exponential backoff with success-reset** — add `consecutive_rate_limits_<queue>` int columns. On 429: `delay = min(60 * 2^n, 900) seconds`. On any successful send in that queue: reset counter to 0. Uses existing `getRetryAfterSeconds()` when Resend sends one; only escalates when it doesn't.
 
-### New: `i18n_content_registry` — declares every translatable column in every table
-| Column | Type | Purpose |
-|---|---|---|
-| `id` | uuid PK | |
-| `table_name` | text | e.g. `clients`, `projects`, `applications`, `announcements`, `courses`, `lessons` |
-| `column_name` | text | e.g. `description`, `essay_response` |
-| `content_format` | text | `plain` \| `markdown` \| `html` \| `rich_text` |
-| `priority` | text | `hot` (translate on write) \| `warm` (translate on first read) \| `cold` (lazy only) |
-| `max_chars` | int | Skip translation above cap; show "Translate" button instead |
-| `is_pii` | boolean | If true, skip translation (names, emails) |
+3. **Adaptive send delay** — when `consecutive_rate_limits > 0` for the active queue, multiply `send_delay_ms` by `2^n` for the current batch only (no DB write). Smooths the next pass instead of slamming back into the limit.
 
-Seeds: `clients.description`, `projects.title/description/brief`, `applications.essay_response`, `announcements.title/body`, `courses.title/description`, `lessons.title/body`, `profiles.bio`, etc.
+4. **Admin visibility** — when a cooldown is set or extended:
+   - Insert a row into `agent_fix_queue` with `severity='warn'`, fingerprint `email_queue.rate_limited.<queue>`, dedupe key on the hour (matches existing Triage Noise Suppression pattern).
+   - Add a "Queue cooldown" pill to the System Health → Email tab (reads `email_send_state.*retry_after_until`).
+   - Daily Triage Digest gets a "Rate-limit cooldowns: N (auth: x, transactional: y)" line.
 
-### New: `ugc_translations` — cache for user-generated content (separate from `i18n_translations` to keep static catalog small + queryable)
+5. **BDD scenarios** in `bdd_scenarios`: `EMAIL-RL-001` (transactional 429 does not pause auth), `EMAIL-RL-002` (consecutive 429s grow exponentially), `EMAIL-RL-003` (success resets counter), `EMAIL-RL-004` (admin sees cooldown in System Health), each with tri-layer [UI]/[DB]/[Code] assertions.
 
-| Column | Type | Purpose |
-|---|---|---|
-| `id` | uuid PK | |
-| `entity_table` | text | e.g. `projects` |
-| `entity_id` | uuid | Row PK |
-| `column_name` | text | e.g. `description` |
-| `source_locale` | text | Detected source language (CLD3 at write time) |
-| `target_locale` | text | |
-| `source_hash` | text | SHA-256 of source content — invalidates cache on edit |
-| `translated_text` | text | |
-| `content_format` | text | `plain` \| `markdown` \| `html` |
-| `status` | text | `pending` \| `qa_passed` \| `qa_failed` \| `flagged` |
-| `qa_report` | jsonb | Same 6-gate output |
-| `is_admin_edited` | boolean | Locks vs AI |
-| `created_at` / `updated_at` | | |
+## Out of scope (do not do)
 
-**Unique:** `(entity_table, entity_id, column_name, target_locale, source_hash)`.
-**Indexes:** `(entity_table, entity_id, target_locale)` for read fanout, `(status)` partial, `(updated_at DESC)` for cache eviction.
-**Partitioning:** PARTITION BY LIST (`entity_table`) — keeps `projects` separate from `applications` so hot tables stay small; auto-prune partitions when entity row is deleted via FK cascade trigger.
-
-### New: `ugc_translation_jobs` — async queue (pgmq or table-based)
-Drains via `prewarm-ugc-worker` edge fn. Priority lanes: `realtime` (hot writes), `batch` (warm fills), `backfill` (cold locales).
-
----
-
-## Architecture Flow
-
-```text
-WRITE PATH (project/announcement/application created or edited)
-─────────────────────────────────────────────────────────────────
-  Insert/Update on registered table
-              │
-              ▼
-   AFTER trigger: detect_source_language + compute source_hash
-              │
-              ▼
-   Enqueue jobs into ugc_translation_jobs:
-     - priority='realtime' for active locales (locales seen in last 7d)
-     - priority='batch' for top-50 locales
-     - cold locales skipped — translated on first read
-              │
-              ▼
-   prewarm-ugc-worker (drains queue, 50 jobs/run, 30s cron)
-     → AI Gateway → 6-gate QA → write to ugc_translations
-     → on QA fail → status='qa_failed', read path falls back to source
-
-READ PATH (user views a project in their locale)
-─────────────────────────────────────────────────────────────────
-   Component requests project.description in locale='ja-JP'
-              │
-              ▼
-   useUgcTranslation(entity_table, entity_id, column, locale) hook
-              │
-              ▼
-   1. React Query cache (memory, 5min)
-   2. ugc_translations row (qa_passed, matching source_hash)
-              │
-        hit ──┴── miss
-         │          │
-         ▼          ▼
-     return    Show source instantly + enqueue 'realtime' job
-                  → next render (or via realtime subscription) swaps in translation
-                  → optimistic "Translating…" badge
-
-EDIT PATH (admin/owner updates a project description)
-─────────────────────────────────────────────────────────────────
-   Update row → new source_hash → trigger marks all
-   ugc_translations rows for that (entity, column) STALE
-   → re-enqueue active locales → snapshot UI reflects within seconds
-```
-
----
-
-## Coverage & Quality for UGC
-
-**Coverage strategy** — Not "100% of all UGC × 75 locales" (would be wasteful and unbounded). Instead:
-- **Active-locale guarantee:** Any locale with ≥1 user in the last 7d gets 100% of UGC translated proactively.
-- **Cold locales:** Translated within 2–8s of first read, cached forever after (until source edited).
-- **Coverage dashboard** shows per-locale UGC coverage: `translated / total registered rows`.
-
-**Quality** — Same 6-gate QA pipeline reused from static (placeholders, language detection, denylist, back-translation cosine ≥ 0.82, native LLM reviewer, brand/glossary lock). Markdown/HTML preserved via format-aware prompts + structural diff check.
-
-**Source-language detection** — CLD3 at write time stores `source_locale` so we never translate English→English or French→French. Mixed-language content (common in essays) flagged for chunked translation.
-
-**Edit safety** — `source_hash` changes invalidate only that entity's translations, never the whole cache.
-
----
-
-## Scalability & Cost (10,000 users)
-
-### Sizing
-- Active UGC rows × translatable columns ≈ 50,000 strings (projects, applications, announcements, etc.)
-- Active locales (steady state): ~15 (top languages of actual members)
-- **Hot cache:** 50,000 × 15 = **750k `ugc_translations` rows** — comfortable
-- Cold-locale lazy fills: ~5,000 rows/mo
-
-### Cost
-| Component | Cost @ 10k users |
-|---|---|
-| Initial UGC backfill (50k × 15 locales) | one-time **~$8–$15** |
-| Steady-state new content (50 writes/day × 15 locales) | ~$0.30/mo |
-| Cold-locale lazy translations (5k/mo) | ~$0.10/mo |
-| QA gates (back-translation + reviewer) | included above, ~30% overhead |
-| Edge fn compute (worker every 30s) | ~$1/mo |
-| DB storage (~750k rows, avg 500 bytes) | ~400 MB, negligible |
-| **Total UGC i18n cost** | **~$2/mo steady** |
-
-### Performance safeguards
-- **Write amplification cap:** Max 15 jobs enqueued per write (active locales only). Cold locales never blocked at write.
-- **Worker concurrency:** 1 worker, serial batches of 50, ~10s/batch → 300 translations/min sustained, 18k/hour peak.
-- **Circuit breaker** on AI Gateway: trips after 5 consecutive failures, drains queue with exponential backoff, alerts admins.
-- **Cost guard:** Hard cap 10,000 UGC translations/day. Excess deferred to next day with admin alert.
-- **Read fanout:** Single SQL fetch with `(entity_table, entity_ids[], target_locale)` lookup — O(1) hash join.
-- **Partitioning** by `entity_table` keeps hot reads on `projects` partition (small) instead of scanning all UGC.
-- **Realtime subscription** on `ugc_translations` so the UI swaps source → translation without a page refresh.
-
-### Scale ceiling
-At 100k users / 500k UGC rows × 25 active locales = 12.5M rows. Partitioned table handles this with room to spare; storage ~6 GB; cost climbs to ~$15/mo. Linear in writes, not reads.
-
----
-
-## Implementation Phases (ship in one pass)
-
-1. **Schema** — Add `i18n_content_registry`, `ugc_translations` (partitioned), `ugc_translation_jobs`. Seed registry for all current user-facing tables.
-2. **Write-side triggers** — AFTER INSERT/UPDATE on registered tables: detect source language, compute hash, enqueue jobs for active locales.
-3. **`prewarm-ugc-worker` edge fn** — Drains queue, calls AI Gateway, runs 6-gate QA, writes results. Same QA module as static path.
-4. **`useUgcTranslation` React hook + `<TranslatedText>` component** — Tries cache → DB → enqueues + shows source with "Translating…" badge → realtime swap on completion.
-5. **Backfill job** — One-time admin action: enqueues all existing UGC × top 15 locales.
-6. **Admin UGC Translations tab** — Same review/override UI as static; filter by entity type, source/translation/QA report side-by-side.
-7. **Coverage + cost dashboard** — Per-locale UGC coverage %, cost guard status, queue depth.
-
----
+- ❌ Adding `sendEmailWithRetry()` inside `send-transactional-email`, `send-project-blast`, `send-announcement-email`, etc. The queue is the single retry point; per-call retries would double-retry and double-log.
+- ❌ Lowering `bulk_hourly_cap` — root cause is burst shape, not volume. The cap already protects sender reputation.
+- ❌ Switching providers / changing throughput defaults.
 
 ## Verification
 
-1. Create new project → within 30s, `ugc_translations` rows exist for all 15 active locales, all `status='qa_passed'`.
-2. Edit project description → old translations marked stale, new ones generated within 30s, UI updates via realtime without refresh.
-3. Visit project in a cold locale (e.g. Swahili) → source shown immediately, translation appears within 8s, cached for future visits.
-4. Seeded bad UGC (profanity, broken markdown, wrong-language) → lands in `qa_failed`, source served instead, admin alerted.
-5. Bulk create 200 projects → queue drains, cost guard not tripped, no AI Gateway 429s.
-6. BDD scenarios: `I18N-UGC-001..014` in `bdd_scenarios` with tri-layer assertions.
+1. Force a 429 via test fixture in `process-email-queue` → only the affected queue's `retry_after_until` is set; the other queue keeps draining (verified via `email_send_log` rows in the cooldown window).
+2. Two consecutive 429s 30s apart → second cooldown is 120s, third is 240s, capped at 900s.
+3. One success after a 429 → counter resets to 0.
+4. `agent_fix_queue` shows a single deduped warn row per hour per queue; System Health Email tab shows the live cooldown badge.
 
----
+## Files touched
 
-Approve to ship all phases (static + UGC) in one pass.
+- `supabase/migrations/<ts>_email_queue_per_lane_backoff.sql` — 4 new columns on `email_send_state`, backfill defaults.
+- `supabase/functions/process-email-queue/index.ts` — split cooldown read/write per queue, exponential math, success-reset, agent_fix_queue insert.
+- `src/pages/admin/SystemHealth/EmailTab.tsx` (or current path) — cooldown badge.
+- `supabase/functions/triage-daily-digest/index.ts` — one-line summary addition.
+- `bdd_scenarios` rows: EMAIL-RL-001..004.

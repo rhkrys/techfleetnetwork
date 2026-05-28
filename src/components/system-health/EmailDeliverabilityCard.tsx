@@ -21,6 +21,10 @@ interface SendStateRow {
   bulk_hourly_cap: number | null;
   bulk_paused: boolean | null;
   bulk_warmup_started_at: string | null;
+  auth_retry_after_until: string | null;
+  transactional_retry_after_until: string | null;
+  auth_consecutive_rate_limits: number | null;
+  transactional_consecutive_rate_limits: number | null;
   updated_at: string;
 }
 
@@ -49,7 +53,7 @@ export function EmailDeliverabilityCard() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("email_send_state" as any)
-        .select("bulk_hourly_cap, bulk_paused, bulk_warmup_started_at, updated_at")
+        .select("bulk_hourly_cap, bulk_paused, bulk_warmup_started_at, auth_retry_after_until, transactional_retry_after_until, auth_consecutive_rate_limits, transactional_consecutive_rate_limits, updated_at")
         .limit(1)
         .maybeSingle();
       if (error) throw error;
@@ -85,6 +89,26 @@ export function EmailDeliverabilityCard() {
   const cappedTotal = Object.values(cappedBreakdown ?? {}).reduce((a, b) => a + b, 0);
   const cappedEntries = Object.entries(cappedBreakdown ?? {}).sort((a, b) => b[1] - a[1]);
 
+  const now = Date.now();
+  const cooldowns = [
+    {
+      key: "auth_emails",
+      label: "Auth emails",
+      until: state?.auth_retry_after_until,
+      count: state?.auth_consecutive_rate_limits ?? 0,
+    },
+    {
+      key: "transactional_emails",
+      label: "Transactional emails",
+      until: state?.transactional_retry_after_until,
+      count: state?.transactional_consecutive_rate_limits ?? 0,
+    },
+  ].map((c) => ({
+    ...c,
+    activeSecs: c.until ? Math.max(0, Math.floor((new Date(c.until).getTime() - now) / 1000)) : 0,
+  }));
+  const anyCooldown = cooldowns.some((c) => c.activeSecs > 0);
+
   return (
     <div className="space-y-4">
       <Card className={paused ? "border-destructive/40" : "border-success/40"}>
@@ -102,6 +126,35 @@ export function EmailDeliverabilityCard() {
           </CardDescription>
         </CardHeader>
         {sLoading && <CardContent><Skeleton className="h-4 w-48" /></CardContent>}
+      </Card>
+
+      <Card className={anyCooldown ? "border-warning/40" : undefined}>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <AlertTriangle className={anyCooldown ? "h-5 w-5 text-warning" : "h-5 w-5 text-muted-foreground"} />
+            Rate-limit cooldowns
+            <Badge variant={anyCooldown ? "destructive" : "secondary"}>
+              {anyCooldown ? "Active" : "Clear"}
+            </Badge>
+          </CardTitle>
+          <CardDescription>
+            Per-queue cooldowns triggered by provider 429s. Each queue backs off independently so auth emails keep flowing during transactional bursts.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-1 text-sm">
+          {cooldowns.map((c) => (
+            <div key={c.key} className="flex justify-between border-b last:border-b-0 py-1">
+              <span className="font-medium">{c.label}</span>
+              <span>
+                {c.activeSecs > 0
+                  ? `Cooling down ${c.activeSecs}s (consecutive 429s: ${c.count})`
+                  : c.count > 0
+                  ? `Recovering · consecutive 429s: ${c.count}`
+                  : "Clear"}
+              </span>
+            </div>
+          ))}
+        </CardContent>
       </Card>
 
       <Card className={cappedTotal > 0 ? "border-warning/40" : undefined}>
