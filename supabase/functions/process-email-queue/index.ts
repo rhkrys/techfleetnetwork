@@ -404,6 +404,7 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
             .eq('id', 1)
           consecutive[queue] = 0
         }
+      } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error)
         console.error('Email send failed', {
           queue,
