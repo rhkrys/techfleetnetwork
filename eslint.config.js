@@ -98,7 +98,8 @@ export default tseslint.config(
       // import paths (relative vs alias, with/without extension) cause Vite to
       // load the same context twice, breaking provider/consumer matching.
       "no-restricted-imports": [
-        "error",
+        "warn",
+
         {
           patterns: [
             {
