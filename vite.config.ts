@@ -102,6 +102,7 @@ export default defineConfig(({ mode }) => ({
     mode === "development" && componentTagger(),
     allowPreviewEvalInDev(),
     emitVersionManifest(),
+    supportWidgetBuildGuard(),
   ].filter(Boolean),
   resolve: {
     alias: {
