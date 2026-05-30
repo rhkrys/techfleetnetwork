@@ -88,7 +88,13 @@ export default tseslint.config(
       "triage-permanent/no-raw-functions-invoke": "warn",
       "triage-permanent/no-supabase-single": "warn",
       // Typed-error hierarchy — bare `throw "string"` is a bug.
-      "@typescript-eslint/only-throw-error": "warn",
+      // Typed-error hierarchy — bare `throw "string"` is a bug. Uses the
+      // non-typed variant (no-throw-literal) here so the rule works without
+      // typescript-eslint's projectService (which would slow CI considerably
+      // on the e2e/ + scripts/ surface). Typed throws are still validated by
+      // tsc in build.
+      "no-throw-literal": "warn",
+
       // Static browser-compat: block JS APIs that don't exist in the oldest
       // supported browser per `browserslist`. Tighten to "error" — the
       // matrix is conservative so violations are rare and always fixable.
