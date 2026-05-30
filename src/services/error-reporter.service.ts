@@ -475,11 +475,6 @@ const SUPPRESSED_PATTERNS = [
   "signal is aborted without reason",
   // (Removed earlier blanket "ZodError" suppression — it was masking real
   // false-positive validator rejections. Surface them so triage can see them.)
-  // --- Dead client sources (removed features still firing from stale bundles) ---
-  // Mirrored at the DB layer by `dead_client_sources` + audit_log BEFORE INSERT
-  // trigger, but suppressing here saves a network round-trip on live bundles.
-  "SupportWidget.token",
-  "SupportWidget",
   // --- Third-party consent banner (CookieYes) noise ---
   // CookieYes script (loaded by published-site wrapper, not our code) logs a
   // loud Error when the registered site URL on its dashboard doesn't match the
@@ -573,7 +568,7 @@ function isSuppressed(msg: string): boolean {
       // a high-confidence stale-tab signal. Trigger an out-of-band version
       // check so a stuck tab reloads on the next idle window instead of
       // firing dozens of retries. Throttled inside checkDeployNow.
-      if (p === "FunctionsFetchError" || p.startsWith("SupportWidget")) {
+      if (p === "FunctionsFetchError") {
         try { checkDeployNow(); } catch { /* never throw from telemetry */ }
       }
       return true;
