@@ -191,12 +191,19 @@ function ActiveProjectDetail({
     queryFn: async () => {
       const { data, error } = await supabase
         .rpc("get_project_internal_links", { p_project_id: project.id });
-      if (error) throw error;
+      if (error) {
+        // 42501 = roster-gated RPC denied this caller. Operational links are
+        // optional UX; swallow silently so React Query's onError doesn't pipe
+        // an expected RLS denial into the triage queue.
+        if ((error as { code?: string }).code === "42501") return null;
+        throw error;
+      }
       return (data?.[0] ?? null) as {
         client_intake_url: string | null;
         notion_repository_url: string | null;
       } | null;
     },
+    retry: false,
     staleTime: 5 * 60 * 1000,
   });
   const clientIntakeUrl = links?.client_intake_url ?? "";
