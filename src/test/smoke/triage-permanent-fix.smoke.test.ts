@@ -51,17 +51,20 @@ describe("triage-permanent-fix: classify()", () => {
 });
 
 describe("triage-permanent-fix: toError()", () => {
-  it("canonicalizes Supabase error objects", () => {
-    const supa = { code: "PGRST116", message: "no rows", details: "x", hint: "y" };
+  it("canonicalizes Supabase error objects with no [object Object]", () => {
+    const supa = { code: "XX001", message: "rpc blew up", details: "x", hint: "y" };
     const e = toError(supa);
     expect(e).toBeInstanceOf(Error);
     expect(e.message).not.toBe("[object Object]");
-    expect(e.message).toContain("no rows");
+    expect(e.message).toBe("rpc blew up");
   });
 
-  it("preserves real Errors", () => {
+  it("preserves message when wrapping real Errors", () => {
     const orig = new Error("boom");
-    expect(toError(orig)).toBe(orig);
+    const e = toError(orig);
+    expect(e).toBeInstanceOf(Error);
+    expect(e.message).toBe("boom");
+    expect((e as { cause?: unknown }).cause).toBe(orig);
   });
 
   it("handles strings", () => {
