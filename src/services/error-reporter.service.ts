@@ -183,7 +183,12 @@ export type ReportEventType =
   | "validation_rejected"
   | "email_capped"
   | "email_dlq"
-  | "rpc_failed";
+  | "rpc_failed"
+  // Phase-2 triage refactor: typed event_types routed AROUND agent_fix_queue
+  // by the DB trigger reject_self_healing_on_agent_fix_queue.
+  | "chunk_stale"
+  | "query_failed"
+  | "mutation_failed";
 
 
 interface ReportOptions {

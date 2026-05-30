@@ -1,5 +1,5 @@
 import { lazy, type ComponentType } from "react";
-import { reportError } from "@/services/error-reporter.service";
+import { report } from "@/lib/observability/report";
 
 /**
  * Wraps React.lazy with multi-stage recovery from stale-chunk errors that occur
@@ -76,9 +76,13 @@ export function lazyWithRetry<T extends ComponentType<unknown>>(
     }
 
     // All retries exhausted — fall back to a one-time hard reload.
-    reportError(lastError ?? new Error("ChunkLoadError"), "lazy-with-retry", {
-      eventType: "ui_chunk_load_failed",
-      severity: "warn",
+    // Stale-chunk errors are routed to a dedicated `chunk_stale` event_type
+    // that the DB trigger keeps OUT of agent_fix_queue (defense-in-depth).
+    // We still report once so System Health can graph deploy churn.
+    report(lastError ?? new Error("ChunkLoadError"), {
+      source: "lazy-with-retry",
+      eventType: "chunk_stale",
+      severity: "info",
     });
     if (typeof window !== "undefined") {
       const alreadyReloaded = window.sessionStorage.getItem(RELOAD_FLAG);
