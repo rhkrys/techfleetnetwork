@@ -89,13 +89,12 @@ describe("TRIAGE-FIX permanent root-cause fixes", () => {
       '"Script error."',
     ];
     for (const needle of banned) {
-      // Must not appear as a literal SUPPRESSED_PATTERNS entry. Comments are
-      // allowed (e.g. the "Removed 2026-05-30" note) but we exclude any string
-      // literal of these patterns outside the comment block.
+      // Allowed: at most 2 references in comments / the isOpaqueScriptError
+      // classifier. Banned: keeping the string as a SUPPRESSED_PATTERNS entry.
       const occurrences = src.split(needle).length - 1;
-      // Allow at most 1 (in the removal-history comment).
-      expect(occurrences, `pattern ${needle} should not be a SUPPRESSED_PATTERNS entry`).toBeLessThanOrEqual(1);
+      expect(occurrences, `pattern ${needle} should not be a SUPPRESSED_PATTERNS entry`).toBeLessThanOrEqual(2);
     }
+
     // email_capped / email_dlq must be in the non-actionable allow-list.
     expect(src).toMatch(/"email_capped"/);
     expect(src).toMatch(/"email_dlq"/);
