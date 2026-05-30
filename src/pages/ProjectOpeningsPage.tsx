@@ -417,11 +417,12 @@ function OpeningsTabContent({ tab, content, emptyCopy, projLoading, view, setVie
 
   if (content.projects.length === 0) {
     return (
-      <div className="rounded-lg border bg-card p-8 text-center">
-        <Handshake className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-        <h2 className="text-lg font-semibold text-foreground mb-2">{emptyCopy.title}</h2>
-        <p className="text-muted-foreground max-w-md mx-auto mb-4">{emptyCopy.body}</p>
-        <a href={emptyCopy.url} target="_blank" rel="noopener noreferrer"><Button variant="outline"><ExternalLink className="h-4 w-4 mr-1.5" />View on Guide</Button></a>
+      <div className="rounded-lg border bg-card p-8">
+        <h2 className="text-xl font-bold text-foreground mb-2">{emptyCopy.title}</h2>
+        <p className="text-base text-muted-foreground max-w-md mb-4">{emptyCopy.body}</p>
+        <a href={emptyCopy.url} target="_blank" rel="noopener noreferrer">
+          <Button variant="outline">View on Guide</Button>
+        </a>
       </div>
     );
   }
@@ -448,14 +449,15 @@ function OpeningsTabContent({ tab, content, emptyCopy, projLoading, view, setVie
         />
       ) : (
         <div className="space-y-10">
-          <div><h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Open Applications</h3><ProjectSection icon={Handshake} items={content.openApplications} emptyText="No projects are currently accepting applications." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} /></div>
-          <div><h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Opening Soon</h3><ProjectSection icon={Clock} items={content.comingSoon} emptyText="No projects are opening soon." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} /></div>
-          <div><h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Starting Soon</h3><ProjectSection icon={Rocket} items={content.startingSoon} emptyText="No projects are starting soon." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} /></div>
-          <div><h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Live Projects</h3><ProjectSection icon={PlayCircle} items={content.liveProjects} emptyText="No projects are currently in progress." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} /></div>
+          <div><h3 className="text-xl font-bold text-foreground mb-4">Open Applications</h3><ProjectSection items={content.openApplications} emptyText="No projects are currently accepting applications." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} /></div>
+          <div><h3 className="text-xl font-bold text-foreground mb-4">Opening Soon</h3><ProjectSection items={content.comingSoon} emptyText="No projects are opening soon." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} /></div>
+          <div><h3 className="text-xl font-bold text-foreground mb-4">Starting Soon</h3><ProjectSection items={content.startingSoon} emptyText="No projects are starting soon." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} /></div>
+          <div><h3 className="text-xl font-bold text-foreground mb-4">Live Projects</h3><ProjectSection items={content.liveProjects} emptyText="No projects are currently in progress." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} /></div>
         </div>
       )}
     </>
   );
+
 }
 
 function ProjectOpeningsTabs(props: OpeningsTabsProps) {
