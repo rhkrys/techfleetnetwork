@@ -30,11 +30,13 @@ const files = execSync(
 // Strip SQL string literals and line/block comments so we don't lint inside
 // `RAISE EXCEPTION 'function digest(text, ...)'` messages or comments.
 function stripNoise(src) {
+  // Replace each char with space EXCEPT newlines so line counts stay accurate.
+  const blank = (m) => m.replace(/[^\n]/g, " ");
   return src
-    .replace(/--[^\n]*/g, "")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/\$\$[\s\S]*?\$\$/g, (m) => " ".repeat(m.length)) // dollar-quoted bodies: keep length, drop content
-    .replace(/'(?:''|[^'])*'/g, "''");
+    .replace(/--[^\n]*/g, blank)
+    .replace(/\/\*[\s\S]*?\*\//g, blank)
+    .replace(/\$\$[\s\S]*?\$\$/g, blank)
+    .replace(/'(?:''|[^'])*'/g, blank);
 }
 
 // Reject newlines in the captured expression so a multi-statement block
