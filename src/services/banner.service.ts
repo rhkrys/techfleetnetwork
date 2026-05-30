@@ -66,6 +66,7 @@ export async function createBanner(banner: BannerInsert): Promise<AdminBanner> {
     .from("admin_banners")
     .insert(sanitizeBanner(banner))
     .select()
+    // single-required: insert returns exactly one row
     .single();
   if (error) throw error;
   return data as AdminBanner;
@@ -77,6 +78,7 @@ export async function updateBanner(id: string, updates: BannerUpdate): Promise<A
     .update(sanitizeBanner(updates))
     .eq("id", id)
     .select()
+    // single-required: update by primary key returns exactly one row
     .single();
   if (error) throw error;
   return data as AdminBanner;

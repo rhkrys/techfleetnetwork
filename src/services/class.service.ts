@@ -87,6 +87,7 @@ export const ClassService = {
         slug: "", // server trigger will populate
       } as never)
       .select("id")
+      // single-required: insert returns exactly one row
       .single();
     if (error) throw error;
     return (data as { id: string }).id;

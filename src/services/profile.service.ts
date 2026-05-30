@@ -43,7 +43,7 @@ export const ProfileService = {
         .from("profiles")
         .select("first_name, last_name, email, country, timezone, discord_username, discord_user_id, display_name, avatar_url, profile_completed, interests, portfolio_url, linkedin_url, scheduling_url, experience_areas, professional_goals, notify_training_opportunities, notify_announcements, education_background, has_discord_account, discord_invite_url, membership_tier, is_founding_member, membership_billing_period, membership_sku, membership_gumroad_sale_id, membership_updated_at, preferred_language")
         .eq("user_id", userId)
-        .single();
+        .maybeSingle();
       if (error) {
         log.warn("fetch", `Profile not found or query failed for user ${userId}: ${error.message}`, {
           userId,

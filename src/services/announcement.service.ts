@@ -77,6 +77,7 @@ export const AnnouncementService = {
       .from("announcements")
       .insert(row as any)
       .select()
+      // single-required: insert returns exactly one row
       .single();
     handleServiceError(error, { logger: log, action: "create", message: `Failed to create announcement: ${error?.message ?? "Unknown error"}`, throwMessage: "We couldn't post that announcement. Please try again." });
     return data as unknown as Announcement;

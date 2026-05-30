@@ -98,7 +98,7 @@ async function getProfileEmail(userId: string): Promise<string> {
     .from("profiles")
     .select("email")
     .eq("user_id", userId)
-    .single();
+    .maybeSingle();
   return data?.email ?? "";
 }
 
@@ -143,12 +143,12 @@ export const GeneralApplicationService = {
         .from("general_applications")
         .select("id, user_id, email, status, title, about_yourself, hours_commitment, portfolio_url, linkedin_url, previous_engagement, previous_engagement_ways, teammate_learnings, agile_vs_waterfall, psychological_safety, agile_philosophies, collaboration_challenges, service_leadership_definition, service_leadership_actions, service_leadership_challenges, service_leadership_situation, current_section, created_at, updated_at, completed_at")
         .eq("id", id)
-        .single();
+        .maybeSingle();
       if (error) {
-        log.warn("fetch", `General app not found: ${error.message}`, { id }, error);
+        log.warn("fetch", `General app query failed: ${error.message}`, { id }, error);
         return null;
       }
-      return data as unknown as GeneralApplication;
+      return (data ?? null) as unknown as GeneralApplication | null;
     });
   },
 
@@ -166,6 +166,7 @@ export const GeneralApplicationService = {
         .from("general_applications")
         .insert(sanitizeFields(insertData) as any)
         .select()
+        // single-required: insert returns exactly one row
         .single();
       if (error) {
         log.error("create", `Failed to create general app: ${error.message}`, { userId }, error);
