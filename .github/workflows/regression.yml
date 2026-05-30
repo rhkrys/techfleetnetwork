@@ -59,8 +59,8 @@ jobs:
 
       - name: Cache node_modules + npm tarballs
         id: cache-modules
-        # actions/cache@v4.1.2 — pinned to commit SHA
-        uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9
+        # actions/cache@v4.2.0 — pinned to commit SHA
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57
         with:
           path: |
             node_modules
@@ -228,7 +228,7 @@ jobs:
 
       - name: Cache Playwright browsers
         id: pw-cache
-        uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ steps.pw-version.outputs.version }}-chromium
