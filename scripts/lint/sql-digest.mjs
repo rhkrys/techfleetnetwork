@@ -45,6 +45,12 @@ const VIOLATION_RE = /\bdigest\s*\(\s*([^,)\n]+?)\s*,/gi;
 const OK_CAST_RE = /::\s*(text|bytea)\s*$/i;
 const ALLOWLIST_RE = /digest-cast-ok:/;
 
+// Baseline allowlist: already-applied migrations are immutable in Supabase
+// (Lovable Cloud rejects edits). New migrations going forward MUST cast.
+const BASELINE_ALLOWLIST = new Set([
+  "supabase/migrations/20260418032018_604a49df-47b7-4768-8cff-4442e8703b76.sql:59",
+]);
+
 let violations = 0;
 for (const file of files) {
   const raw = readFileSync(file, "utf8");
@@ -64,6 +70,7 @@ for (const file of files) {
     const lineNum = upTo.split("\n").length;
     const prevLine = lines[lineNum - 2] ?? "";
     if (ALLOWLIST_RE.test(prevLine)) continue;
+    if (BASELINE_ALLOWLIST.has(`${file}:${lineNum}`)) continue;
     console.error(
       `${file}:${lineNum} digest() first argument is missing an explicit ::text cast → '${expr}'`,
     );
