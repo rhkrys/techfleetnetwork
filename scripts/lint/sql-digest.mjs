@@ -47,6 +47,9 @@ for (const file of files) {
   let m;
   while ((m = VIOLATION_RE.exec(content)) !== null) {
     const expr = m[1].trim();
+    // Skip GRANT/REVOKE ON FUNCTION public.digest(text, text) signatures
+    // where the "arg" is literally a bare type name.
+    if (/^(text|bytea)$/i.test(expr)) continue;
     if (OK_CAST_RE.test(expr)) continue;
     // Compute line for context + allowlist check.
     const upTo = content.slice(0, m.index);
