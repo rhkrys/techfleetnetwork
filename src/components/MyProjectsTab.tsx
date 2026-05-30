@@ -184,20 +184,17 @@ function ActiveProjectDetail({
     staleTime: 5 * 60 * 1000,
   });
 
-  // Operational links (notion repo, client intake) require a roster-gated RPC
-  // because column SELECT was revoked from authenticated for security.
+  // Operational links require a roster-gated RPC because column SELECT was
+  // revoked from authenticated for security. As of the 2026-05-30 refactor,
+  // get_project_internal_links returns an empty rowset (instead of raising
+  // 42501) when the caller isn't on the roster, so the client no longer needs
+  // to swallow a permission-denied error.
   const { data: links } = useQuery({
     queryKey: ["project-internal-links", project.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .rpc("get_project_internal_links", { p_project_id: project.id });
-      if (error) {
-        // 42501 = roster-gated RPC denied this caller. Operational links are
-        // optional UX; swallow silently so React Query's onError doesn't pipe
-        // an expected RLS denial into the triage queue.
-        if ((error as { code?: string }).code === "42501") return null;
-        throw error;
-      }
+      if (error) throw error;
       return (data?.[0] ?? null) as {
         client_intake_url: string | null;
         notion_repository_url: string | null;
@@ -206,6 +203,7 @@ function ActiveProjectDetail({
     retry: false,
     staleTime: 5 * 60 * 1000,
   });
+
   const clientIntakeUrl = links?.client_intake_url ?? "";
   const notionRepoUrl = links?.notion_repository_url ?? "";
 
