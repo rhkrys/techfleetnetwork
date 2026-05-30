@@ -330,7 +330,7 @@ export default function SubmittedApplicationsTab() {
           return (
             <Button
               variant="outline"
-              size="md"
+              size="sm"
               className="gap-1 text-xs h-7"
               onClick={(e) => { e.stopPropagation(); navigate(`/admin/applications/${params.data!.id}`); }}
             >
