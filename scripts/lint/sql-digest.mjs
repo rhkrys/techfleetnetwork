@@ -18,8 +18,10 @@ import { readFileSync } from "node:fs";
 import { globSync } from "node:fs";
 import { execSync } from "node:child_process";
 
+// Scope: only Postgres SQL migrations. TS edge functions use Web Crypto's
+// crypto.subtle.digest(), which is a different API.
 const files = execSync(
-  "git ls-files 'supabase/migrations/*.sql' 'supabase/functions/**/index.ts'",
+  "git ls-files 'supabase/migrations/*.sql'",
   { encoding: "utf8" },
 )
   .split("\n")
@@ -47,9 +49,11 @@ for (const file of files) {
   let m;
   while ((m = VIOLATION_RE.exec(content)) !== null) {
     const expr = m[1].trim();
-    // Skip GRANT/REVOKE ON FUNCTION public.digest(text, text) signatures
-    // where the "arg" is literally a bare type name.
+    // Skip GRANT/CREATE FUNCTION signatures: bare type-name args
+    // (`digest(text, text)`) and parameter declarations
+    // (`digest(data text, hash text)`).
     if (/^(text|bytea)$/i.test(expr)) continue;
+    if (/^[a-z_][a-z0-9_]*\s+(text|bytea)$/i.test(expr)) continue;
     if (OK_CAST_RE.test(expr)) continue;
     // Compute line for context + allowlist check.
     const upTo = content.slice(0, m.index);
