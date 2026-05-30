@@ -3767,27 +3767,51 @@ export type Database = {
       }
       policy_versions: {
         Row: {
+          body_html: string | null
+          body_md: string
           checksum: string
           created_at: string
           effective_at: string
+          id: string
           is_current: boolean
+          language: string
           policy_key: string
+          published_at: string | null
+          published_by: string | null
+          summary: string | null
+          title: string
           version: string
         }
         Insert: {
+          body_html?: string | null
+          body_md?: string
           checksum: string
           created_at?: string
           effective_at?: string
+          id?: string
           is_current?: boolean
+          language?: string
           policy_key: string
+          published_at?: string | null
+          published_by?: string | null
+          summary?: string | null
+          title?: string
           version: string
         }
         Update: {
+          body_html?: string | null
+          body_md?: string
           checksum?: string
           created_at?: string
           effective_at?: string
+          id?: string
           is_current?: boolean
+          language?: string
           policy_key?: string
+          published_at?: string | null
+          published_by?: string | null
+          summary?: string | null
+          title?: string
           version?: string
         }
         Relationships: []
@@ -4665,6 +4689,39 @@ export type Database = {
           source?: string
           source_row_id?: string | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      reference_data_sources: {
+        Row: {
+          checksum: string
+          id: string
+          ingested_at: string
+          ingested_by: string | null
+          notes: string | null
+          row_count: number
+          source_filename: string
+          table_name: string
+        }
+        Insert: {
+          checksum: string
+          id?: string
+          ingested_at?: string
+          ingested_by?: string | null
+          notes?: string | null
+          row_count?: number
+          source_filename: string
+          table_name: string
+        }
+        Update: {
+          checksum?: string
+          id?: string
+          ingested_at?: string
+          ingested_by?: string | null
+          notes?: string | null
+          row_count?: number
+          source_filename?: string
+          table_name?: string
         }
         Relationships: []
       }
@@ -7004,11 +7061,34 @@ export type Database = {
           course_key: string
         }[]
       }
+      get_current_policy: {
+        Args: { p_key: string; p_language?: string }
+        Returns: {
+          body_html: string
+          body_md: string
+          checksum: string
+          effective_at: string
+          id: string
+          language: string
+          policy_key: string
+          summary: string
+          title: string
+          version: string
+        }[]
+      }
       get_dashboard_overview: { Args: { p_user_id: string }; Returns: Json }
       get_deliverable_context: { Args: { p_id: string }; Returns: Json }
       get_email_pipeline_health: {
         Args: { p_hours?: number; p_limit?: number }
         Returns: Json
+      }
+      get_i18n_bundle: {
+        Args: { p_locale: string; p_namespace?: string }
+        Returns: {
+          key: string
+          source_hash: string
+          value: string
+        }[]
       }
       get_login_health: { Args: { p_window_minutes?: number }; Returns: Json }
       get_member_country_distribution: { Args: never; Returns: Json }
@@ -7189,6 +7269,18 @@ export type Database = {
       prune_expired_form_drafts: { Args: never; Returns: number }
       prune_login_attempts: { Args: never; Returns: number }
       prune_stale_rate_limits: { Args: never; Returns: number }
+      publish_policy_version: {
+        Args: {
+          p_body_html: string
+          p_body_md: string
+          p_key: string
+          p_language: string
+          p_summary: string
+          p_title: string
+          p_version: string
+        }
+        Returns: string
+      }
       purge_old_audit_logs: {
         Args: { retention_days?: number }
         Returns: number
