@@ -25,14 +25,25 @@ const files = execSync(
   .split("\n")
   .filter(Boolean);
 
+// Strip SQL string literals and line/block comments so we don't lint inside
+// `RAISE EXCEPTION 'function digest(text, ...)'` messages or comments.
+function stripNoise(src) {
+  return src
+    .replace(/--[^\n]*/g, "")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\$\$[\s\S]*?\$\$/g, (m) => " ".repeat(m.length)) // dollar-quoted bodies: keep length, drop content
+    .replace(/'(?:''|[^'])*'/g, "''");
+}
+
 const VIOLATION_RE = /\bdigest\s*\(\s*([^,)]+?)\s*,/gi;
 const OK_CAST_RE = /::\s*(text|bytea)\s*$/i;
 const ALLOWLIST_RE = /digest-cast-ok:/;
 
 let violations = 0;
 for (const file of files) {
-  const content = readFileSync(file, "utf8");
-  const lines = content.split("\n");
+  const raw = readFileSync(file, "utf8");
+  const content = stripNoise(raw);
+  const lines = raw.split("\n");
   let m;
   while ((m = VIOLATION_RE.exec(content)) !== null) {
     const expr = m[1].trim();
