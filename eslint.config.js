@@ -93,6 +93,10 @@ export default tseslint.config(
       "no-useless-escape": "warn",
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       "@typescript-eslint/no-unused-vars": "off",
+      "@typescript-eslint/no-empty-object-type": "warn",
+      "prefer-const": "warn",
+      "no-control-regex": "warn",
+
 
       // Force a single canonical import path for context modules. Multiple
       // import paths (relative vs alias, with/without extension) cause Vite to
