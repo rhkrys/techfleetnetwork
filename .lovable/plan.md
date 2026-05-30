@@ -1,119 +1,177 @@
-# CI/CD hardening: make Regression green, fast, and a real gate
+# Card Redesign: Project Openings + Platform-Wide Icon Purge
 
-Combines the Regression failure investigation + cache/install optimization + CI/CD audit into one shipped change. Goal: stop relying on humans to catch regressions, make every PR safe to merge, and stop wasting runner minutes.
+## Goals
 
-**Scope note:** `a11y-audit.yml` and `browserstack-weekly.yml` are explicitly **deferred to a later release** and not touched by this plan.
-
-## What's there today (6 workflows in scope, 2 deferred)
-
-| Workflow | Purpose | Triggers | Status |
-|---|---|---|---|
-| `regression.yml` | Lint → typecheck → build → Vitest → Playwright fast → BDD coverage → SBOM | push, PR, nightly, manual | **Failing every run (~28s)** |
-| `cross-browser.yml` | Full Playwright matrix (desktop/mobile/tablet) | push, PR, nightly, manual | Overlaps with regression; likely failing |
-| `lighthouse.yml` | Perf/SEO/a11y vs published preview | PR, manual | Soft-fail (uses `\|\| true`) |
-| `pentest.yml` | 4 pen-test suites against deployed app | push to main, PR (security paths), nightly, manual | Hard-fails if any suite fails |
-| `npm-audit.yml` | High/critical dep vulns | PR, weekly, manual | Report-only |
-| `secret-scan.yml` | Blocks committed `.env`/private keys | push, PR, manual | OK |
-| ~~`a11y-audit.yml`~~ | Deferred — later release | — | Untouched |
-| ~~`browserstack-weekly.yml`~~ | Deferred — later release | — | Untouched |
-
-Strengths already in place: SHA-pinned actions, concurrency cancellation on regression, CycloneDX SBOM artifact, Playwright report artifact, `scripts/bdd-coverage.ts` wired in.
-
-## Why Regression has been red every single run
-
-1. **`npm run test` shells out to `bun`** — workflow installs Node only, so it dies with `bun: command not found`. Primary cause of every red run.
-2. **`cache: npm` only caches `~/.npm` download tarballs**, not `node_modules` — every one of the 4 jobs re-runs `npm ci` from scratch. ~3–5 min wasted per run, not a failure cause.
-3. **Required `vars`/`secrets` not always set** for `bdd-coverage`/`pentest` — cryptic auth failures instead of clean skips.
-4. **`regression` and `cross-browser` overlap** — same Playwright work duplicated on every push.
-5. **No retries** on network-flaky steps (`npm ci`, browser install, Playwright).
-6. **No `timeout-minutes`** on `regression` jobs → can hang for 6h on a bad runner.
-
-## What's missing for real CI/CD
-
-- No **branch protection** requiring green CI before merge → "green CI" is advisory today.
-- No **CD step** — Lovable handles publish, but no PR preview-URL comment or post-deploy smoke.
-- No **BDD execution gate** — coverage script runs but never asserts a threshold or fails when scenarios lack tests.
-- No **failure alerting** — red `main` is invisible until someone looks.
-- No **CODEOWNERS** to route failures.
-- No **Playwright sharding** → E2E wall time 3× longer than needed.
+1. Rebuild project opening cards (Client + Volunteer tabs) using NN/g information-hierarchy principles: scannable, left-aligned, single-column, clear visual rhythm.
+2. Remove all decorative icons from cards across the entire system — no Lucide glyph inside a `Card` body or header.
+3. Enforce a **1rem (16px) minimum font size** on every text element inside a card — no `text-xs`, no `text-[13px]`, no sub-16px values, anywhere in card surfaces. WCAG-compliant for body text and small-caps labels alike.
 
 ---
 
-## Phased plan (ship all phases in one go)
+## 1. Accessibility floor (applies to every card change below)
 
-### Phase 1 — Stop the bleeding (get Regression green)
+- **Minimum font size = 1rem (16px)** on all card text, including section labels, badge text, hat chips, counts, and footer affordances.
+- Tailwind classes allowed inside cards: `text-base` (16px), `text-lg` (18px), `text-xl` (20px), `text-2xl` (24px). **Banned in cards**: `text-xs`, `text-sm`, `text-[Npx]` where N<16.
+- Status badge: `text-base font-semibold uppercase tracking-wide` (was `text-xs` — bumped to meet the floor).
+- Section labels keep the small-caps treatment via `uppercase tracking-wider` but render at `text-base font-semibold` — visual hierarchy comes from weight + color + letter-spacing, not from shrinking the type.
+- Color contrast: muted-foreground tier verified ≥ 4.5:1 against `bg-card` (token-level guarantee).
 
-1. `package.json`: change `"test": "vitest run"` and `"test:watch": "vitest"` (drop the `bun run` indirection). Keep `test:unit` as a local alias so Bun users keep working.
-2. Add SHA-pinned `oven-sh/setup-bun@v2` step before `npm ci` in `regression.yml`, `cross-browser.yml`, and any job whose scripts shell out to Bun (`scripts/playwright-sandbox.sh`). Belt-and-suspenders.
-3. Add `timeout-minutes: 15` (vitest), `25` (playwright), `10` (others) to every job in every in-scope workflow.
-4. Re-run Regression and fix the *real* next-failing step in order (lint / typecheck / build / Vitest / Playwright). Whatever errors have piled up since CI went red get cleared in this same change.
+---
 
-### Phase 2 — Stop wasting time (5–8× faster runs)
+## 2. New project opening card spec
 
-5. **Two-tier install caching** in every Node job:
-   - `actions/cache@v4` keyed on `runner.os + hashFiles('**/package-lock.json')` covering `node_modules` AND `~/.npm`.
-   - On cache hit → skip `npm ci` entirely.
-   - On cache miss → `npm ci --prefer-offline --no-audit --no-fund` (30–50% faster than plain `npm ci`).
-6. **Share node_modules across dependent jobs** in `regression.yml`:
-   - New `setup` job: checkout → cache restore → `npm ci` if miss → `actions/upload-artifact` `node_modules.tar.zst` (tarball is ~5× faster to round-trip than uploading raw `node_modules`).
-   - `vitest`, `sbom`, `bdd-coverage`, `playwright` all `needs: setup` and `download-artifact` + untar instead of `npm ci`.
-7. **Cache Playwright browsers** at `~/.cache/ms-playwright` keyed on the resolved Playwright version. Skip `npx playwright install` on hit.
-8. **Collapse `vitest + sbom + bdd-coverage`** into a single sequential job (same deps, no browser needed). Keep `playwright` separate (needs browsers).
-9. **Playwright sharding** in `regression.yml` (`--shard=1/3`, `2/3`, `3/3` via job matrix) — cuts E2E wall time to a third.
+Applied to both **Client Projects** and **Volunteer Projects** tabs on `/project-openings`, and to matching detail card variants in admin/recruiting views.
 
-### Phase 3 — Make failures rare and loud
+### Layout (single column, left-aligned, stacked)
 
-10. **Graceful secret guards** at the top of `pentest` and `bdd-coverage`: if required `vars`/`secrets` are unset, log a clear "skipped — missing X" line and exit 0. Same pattern already used in the deferred workflows.
-11. **Retry flaky steps** with SHA-pinned `nick-fields/retry@v3` wrapping `npm ci`, `npx playwright install`, and any HTTP-touching step. Playwright config: `retries: 2` on CI only.
-12. **CI red-alert workflow** (`ci-alert.yml`): `workflow_run` trigger on `regression` + `pentest` + `cross-browser` completion. If `conclusion = failure` and `branch = main`, call the existing `discord-notify` edge function and insert into `agent_fix_queue` with `source = 'ci'` so failures surface in System Health → Triage and the daily digest. Reuses existing infrastructure.
-13. **Deduplicate matrices**: `regression.yml` runs Chromium-only on every push/PR; `cross-browser.yml` runs the full matrix only nightly + manual.
-14. **Soft-fail soft signals, hard-fail real gates**: keep `lighthouse` + `npm-audit` report-only, but make `regression`, `secret-scan`, and `pentest` (when its paths change) hard failures.
+```text
+┌──────────────────────────────────────────────┐
+│  [STATUS BADGE]                              │  ← status pill, top-left
+│                                              │
+│  Client Name                                 │  ← H3, 24px, bold
+│  Project Friendly Name                       │  ← 20px, medium, muted-foreground
+│  Project Type                                │  ← 16px, semibold, uppercase, muted
+│                                              │
+│  ──────────────────────────────────────────  │  ← divider
+│                                              │
+│  PHASE                                       │  ← 16px, semibold, uppercase, muted
+│  Discovery & Definition                      │  ← 16px, foreground
+│                                              │
+│  TEAM HATS                                   │
+│  [hat] [hat] [hat]                           │  ← chips at 16px
+│                                              │
+│  YOUR STATUS                                 │
+│  Applied   /   Not yet applied               │
+│                                              │
+│  APPLICATIONS                                │
+│  12 total                                    │
+│  • 4 — UX Researcher                         │
+│  • 3 — Product Designer                      │
+│  • …                                         │
+│                                              │
+│  ──────────────────────────────────────────  │
+│  View opening →                              │  ← 16px text affordance, left-aligned
+└──────────────────────────────────────────────┘
+```
 
-### Phase 4 — Turn it into a real CI/CD gate
+### Typography & hierarchy (4-tier, all ≥ 1rem)
 
-15. **Branch protection on `main`** (documented here; user toggles in GitHub Settings → Branches): require `regression / vitest`, `regression / playwright (shard 1-3)`, `secret-scan`, `pentest` (if applicable paths). Dismiss stale reviews on push. No force-push to main.
-16. **CODEOWNERS** at `.github/CODEOWNERS` routing failures: `/supabase/** @<admin>`, `/src/services/** @<admin>`, `/.github/workflows/** @<admin>`.
-17. **PR preview-URL comment** (`preview-comment.yml`): on PR open/sync, post the Lovable preview URL via `actions/github-script`.
-18. **Auto-rerun-on-flake** (one-shot): `workflow_run` trigger that re-runs a failed `regression` once if the failure step matches a known-flake pattern (e.g. ECONNRESET in `npm ci`). Cap at one auto-rerun to avoid loops.
+| Tier | Element | Class |
+|------|---------|-------|
+| 1 | Status badge | `text-base font-semibold uppercase tracking-wide` |
+| 2 | Client name (H3) | `text-2xl font-bold text-foreground leading-tight` |
+| 3 | Project friendly name | `text-xl font-medium text-muted-foreground` |
+| 4 | Project type | `text-base font-semibold uppercase tracking-wider text-muted-foreground` |
+| Section label | "Phase", "Team Hats", etc. | `text-base font-semibold uppercase tracking-wider text-muted-foreground` |
+| Section value | hat chips, counts, list items | `text-base text-foreground` |
+| Footer affordance | "View opening →" | `text-base font-semibold text-primary` |
 
-### Phase 5 — BDD scenarios as enforced gates (not docs)
+### Spacing (NN/g proximity)
 
-19. Wire `scripts/bdd-coverage.ts` to **fail the job** when coverage < 80% (configurable threshold). Write report to `$GITHUB_STEP_SUMMARY` and upload as artifact.
-20. New `bdd-gate.yml` (PR-blocking): on every PR, diff against `main` for new feature code under `src/services/`, `src/pages/`, `supabase/functions/`. For each new feature, query `bdd_scenarios` via Supabase REST and **fail the PR if no scenario references the changed module**. Enforces the "every feature requires Gherkin scenarios" core memory rule mechanically.
-21. Add a **scenario-runner** stub that picks BDD rows from `bdd_scenarios`, locates matching Vitest/Playwright tests via tag (`@BDD:CI-REG-001`), and reports pass/fail per scenario in the PR comment. Phased rollout — start by reporting, escalate to gating once coverage is healthy.
-22. BDD scenarios for every CI change in this plan (tri-layer Then-clauses per memory rule):
-    - `CI-REG-001` no bun on Node-only runner
-    - `CI-CACHE-001` node_modules cache hit skips npm ci
-    - `CI-SHARE-001` setup job uploads artifact, downstream jobs reuse
-    - `CI-SHARD-001` Playwright sharding distributes work across 3 jobs
-    - `CI-RETRY-001` transient ECONNRESET in npm ci recovers on retry
-    - `CI-GUARD-001` missing pentest secrets → clean skip, not red
-    - `CI-ALERT-001` red main pushes to agent_fix_queue + Discord
-    - `BDD-GATE-001` PR adding a feature without a scenario fails
-    - `BDD-COV-001` coverage below threshold fails the job
-    - `CD-PREVIEW-001` PR receives Lovable preview URL comment
+- Card padding `p-6`
+- Status → identity block: `mt-3`
+- Identity block → divider: `mt-5`
+- Between labeled sections: `space-y-5`
+- Inside a section (label → value): `space-y-1.5`
+- Divider before footer: `mt-5 pt-5 border-t`
+- Outer grid stays `grid-cols-12 xl:col-span-6`; **inside** the card is single column.
 
-## Non-negotiables (baked in per project memory)
+### Removed from the card
 
-- Every new action SHA-pinned (OWASP CI/CD).
-- Job-level `permissions: { contents: read }` unless a step needs more.
-- New secrets requested via Lovable's `add_secret` tool, never committed.
-- No edge function added without JWT/service-role check (the new ci-alert call reuses existing `discord-notify`, no new function needed).
-- BDD rows inserted in the same migration that ships each phase.
+- Client logo image + Handshake fallback icon
+- `CheckCircle2`, `Eye`, `ExternalLink` inside the body/footer
+- Right-side two-column header (`flex items-start justify-between`)
+- Outline footer button → replaced with left-aligned text affordance ("View opening →"); the whole card remains clickable.
 
-## What this delivers
+### Status badge colors
 
-- Regression: 100% red, 28s, useless → **>95% green, ~3–5 min, blocking on `main`**.
-- Runner minutes: 4× `npm ci` per run → **1× shared install**.
-- Red `main` goes from invisible → **auto-posted to Discord + Triage queue**.
-- PRs without BDD scenarios → **blocked at merge, not discovered in prod**.
-- Every CI fix gets its own BDD scenario → **future regressions of the CI itself are caught**.
+Reuse existing tokens (`success`, `warning`, `primary`, `info`). Filled, larger (`px-3 py-1.5 text-base font-semibold uppercase tracking-wide`).
 
-## Out of scope (explicit)
+---
 
-- `a11y-audit.yml` — deferred to later release.
-- `browserstack-weekly.yml` — deferred to later release.
-- Migrating off Bun for local dev.
-- Moving Lovable Publish into GitHub Actions.
-- Self-hosted or paid GitHub runners.
-- Rewriting any existing Vitest/Playwright test bodies (we only change how/when they run).
+## 3. Icon policy (system-wide)
+
+Apply to **every component rendered inside a `<Card>`**.
+
+**Remove (decorative chrome):**
+- Lucide icons in `CardHeader` next to titles
+- Icons prefixed to section labels
+- Circular icon tiles (`h-10 w-10 rounded-lg bg-X/10` wrapping a glyph) on KPI/stat cards — replace with a 4px colored left bar + larger number
+- Avatar fallback icons inside cards (use initials text only)
+- Empty-state hero icons inside `Card` — replaced with bold text headline
+
+**Keep (functional controls, not card chrome):**
+- Icons inside `<Button>` action controls (edit, delete, close)
+- Icons inside form inputs (search, calendar pickers)
+- Sidebar / nav icons
+- Toast / alert severity icons
+- Loading spinners
+
+---
+
+## 4. Files to change
+
+### Primary (project openings)
+
+- `src/pages/ProjectOpeningsPage.tsx` — rewrite `ProjectSection` card markup; drop logo block; restructure header; remove `Handshake`/`CheckCircle2`/`Eye`/`ExternalLink` from cards (keep `Loader2`); bump every text class to ≥ `text-base`. Replace the 5 KPI stat tiles with iconless variants (colored accent bar + 24px number + 16px label).
+- `src/components/projects/ProjectOpeningHeading.tsx` — add an `xl-stacked` variant rendering the 3-tier identity block (client / friendly name / type) at the new ≥16px sizes.
+
+### Secondary cards aligned in the same pass
+
+- `src/components/clients/ProjectsTab.tsx` — admin project cards (drop header logo, drop description/footer icons; Pencil/Trash kept only inside icon buttons with `aria-label`)
+- `src/pages/AdminRosterPage.tsx` — recruiting tiles (remove `BarChart3`/`Users`/`FolderKanban`/`ArrowRight` from card body)
+- `src/pages/RosterProjectDetailPage.tsx` — applicant cards
+- `src/pages/MyProjectApplicationsPage.tsx` — application status cards
+- `src/pages/MyJourneyPage.tsx` + `src/components/quest/*` cards
+- `src/pages/ResourcesPage.tsx` cards
+- `src/pages/EventsPage.tsx` event cards
+- `src/components/JourneyStepCard.tsx`
+- `src/components/GettingStartedChecklist.tsx`
+- `src/pages/AdminClassesPage.tsx` class/cohort cards
+- Dashboard widget cards under `src/components/`
+- Empty-state blocks inside cards across the above pages
+
+Each gets: status/title/meta stacked left-aligned, decorative icons removed, ≥16px type throughout, `space-y-5` chunking with `border-t` dividers where multiple semantic groups coexist.
+
+### Out of scope
+
+Sidebar, top nav, toasts, modals, forms, buttons, fleety widget, AG Grid tables, landing-page illustrations.
+
+---
+
+## 5. NN/g heuristics applied
+
+- **#4 Consistency & standards** — one card pattern repeats everywhere.
+- **#6 Recognition over recall** — explicit small-caps section labels above each value; no reliance on iconography.
+- **#8 Aesthetic & minimalist** — decorative icons, logo tiles, and duplicate column headers stripped.
+- **Information hierarchy** — 4 type tiers (status / client / project / type) differentiated by size, weight, color, and letter-spacing — never by going below 16px.
+- **Scanability (F-pattern)** — everything left-aligned, single column, predictable label-then-value rhythm.
+
+---
+
+## 6. Accessibility & quality
+
+- Client name renders as `<h3>` inside listing cards (page owns `<h1>`/`<h2>`).
+- Whole-card click target preserved; `role="link"` + keyboard handler on the card root.
+- No nested interactives — "View opening →" is visual text, not a button.
+- New ESLint rule `card-min-font-size` (custom local plugin) flags any `text-xs`, `text-sm`, or `text-[<16px]` used inside files matching `**/components/**/Card*.tsx` or inside JSX with a `tf-card` ancestor — CI fails the build if violated. Backstop: a smoke test asserts computed font-size ≥ 16px for every text node within `[data-card]`.
+- Companion smoke test asserts `[data-card] svg[data-lucide]` count is `0` outside `<button>` descendants.
+- BDD scenarios added to `bdd_scenarios` covering: status above title; no Lucide icon inside card body; 4-tier hierarchy present; computed font-size ≥ 16px for every card text node; keyboard activation navigates to detail.
+
+---
+
+## 7. Technical notes
+
+- New utility class `tf-card-section-label` in `src/index.css` standardizes the small-caps muted label at 16px.
+- Lucide imports removed file-by-file (ESLint catches orphans).
+- Status `Badge` tokens unchanged; only size/position/text-size classes change.
+- No DB or edge-function changes; pure presentation work.
+
+---
+
+## 8. Rollout
+
+1. Ship `ProjectOpeningsPage` + `ProjectOpeningHeading` (canonical reference) with the 16px floor.
+2. Sweep secondary card files in the same change using the same primitives + ESLint rule.
+3. Land the lint rule + smoke tests so future cards stay compliant.
+4. Add `mem://design/card-iconless-pattern` memory entry capturing both the iconless rule and the ≥1rem font floor.

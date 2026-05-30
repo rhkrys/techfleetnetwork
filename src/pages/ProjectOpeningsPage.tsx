@@ -5,14 +5,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdmin } from "@/hooks/use-admin";
 import { SEO } from "@/components/SEO";
-import {
-  Handshake, ExternalLink, LayoutGrid, List, Loader2, Eye, CheckCircle2,
-  Rocket, PlayCircle, Clock, Briefcase,
-} from "lucide-react";
+import { LayoutGrid, List, Loader2 } from "lucide-react";
 import { ResponsiveTabs, ResponsiveTabsList, ResponsiveTabsContent, type TabItem } from "@/components/ui/responsive-tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import {
   PROJECT_TYPES, PROJECT_PHASES, PROJECT_STATUSES, TEAM_HATS,
 } from "@/data/project-constants";
@@ -231,54 +228,25 @@ export default function ProjectOpeningsPage() {
         </p>
       </div>
 
-      {/* Stats Cards (per active tab) */}
+      {/* Stats Cards (per active tab) — iconless, colored accent bar, ≥16px text */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-8">
-        <div className="card-elevated p-4 flex items-center gap-3">
-          <div className="h-10 w-10 rounded-lg bg-success/10 flex items-center justify-center flex-shrink-0">
-            <Briefcase className="h-5 w-5 text-success" aria-hidden="true" />
+        {[
+          { value: tabStats.projects_open_applications, label: "Open Applications", bar: "bg-success" },
+          { value: tabStats.projects_coming_soon, label: "Opening Soon", bar: "bg-warning" },
+          { value: startingSoon.length, label: "Starting Soon", bar: "bg-info" },
+          { value: tabStats.projects_live, label: "Live", bar: "bg-primary" },
+          { value: tabStats.projects_previously_completed, label: "Previously Completed", bar: "bg-muted-foreground" },
+        ].map((s) => (
+          <div key={s.label} className="card-elevated p-4 flex items-stretch gap-3">
+            <div className={`w-1 rounded-full flex-shrink-0 ${s.bar}`} aria-hidden="true" />
+            <div className="space-y-1">
+              <p className="text-2xl font-bold text-foreground leading-tight">{s.value}</p>
+              <p className="text-base text-muted-foreground">{s.label}</p>
+            </div>
           </div>
-          <div>
-            <p className="text-2xl font-bold text-foreground leading-tight">{tabStats.projects_open_applications}</p>
-            <p className="text-xs text-muted-foreground">Open Applications</p>
-          </div>
-        </div>
-        <div className="card-elevated p-4 flex items-center gap-3">
-          <div className="h-10 w-10 rounded-lg bg-warning/10 flex items-center justify-center flex-shrink-0">
-            <Clock className="h-5 w-5 text-warning" aria-hidden="true" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-foreground leading-tight">{tabStats.projects_coming_soon}</p>
-            <p className="text-xs text-muted-foreground">Opening Soon</p>
-          </div>
-        </div>
-        <div className="card-elevated p-4 flex items-center gap-3">
-          <div className="h-10 w-10 rounded-lg bg-info/10 flex items-center justify-center flex-shrink-0">
-            <Rocket className="h-5 w-5 text-info" aria-hidden="true" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-foreground leading-tight">{startingSoon.length}</p>
-            <p className="text-xs text-muted-foreground">Starting Soon</p>
-          </div>
-        </div>
-        <div className="card-elevated p-4 flex items-center gap-3">
-          <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-            <PlayCircle className="h-5 w-5 text-primary" aria-hidden="true" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-foreground leading-tight">{tabStats.projects_live}</p>
-            <p className="text-xs text-muted-foreground">Live</p>
-          </div>
-        </div>
-        <div className="card-elevated p-4 flex items-center gap-3">
-          <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
-            <CheckCircle2 className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-foreground leading-tight">{tabStats.projects_previously_completed}</p>
-            <p className="text-xs text-muted-foreground">Previously Completed</p>
-          </div>
-        </div>
+        ))}
       </div>
+
 
 
       <ProjectOpeningsTabs
@@ -305,91 +273,101 @@ export default function ProjectOpeningsPage() {
   );
 }
 
-function ProjectSection({ icon: Icon, items, emptyText, navigate, typeLabel, phaseLabel, statusLabel, statusClass }: { icon: React.ElementType; items: EnrichedProject[]; emptyText: string; navigate: (path: string) => void; typeLabel: (v: string) => string; phaseLabel: (v: string) => string; statusLabel: (v: string) => string; statusClass: (v: string) => string }) {
+function ProjectSection({ items, emptyText, navigate, typeLabel, phaseLabel, statusLabel, statusClass }: { items: EnrichedProject[]; emptyText: string; navigate: (path: string) => void; typeLabel: (v: string) => string; phaseLabel: (v: string) => string; statusLabel: (v: string) => string; statusClass: (v: string) => string }) {
   if (items.length === 0) return (
-    <div className="rounded-lg border bg-card p-6 text-center">
-      <Icon className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-      <p className="text-sm text-muted-foreground">{emptyText}</p>
+    <div className="rounded-lg border bg-card p-6">
+      <p className="text-base text-muted-foreground">{emptyText}</p>
     </div>
   );
+
+  const sectionLabel = "text-base font-semibold uppercase tracking-wider text-muted-foreground";
+
   return (
     <div className="grid grid-cols-12 gap-4">
-      {items.map((p) => (
-        <div key={p.id} className="col-span-12 xl:col-span-6">
-          <Card className="flex flex-col h-full cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate(`/project-openings/${p.id}${p.clientKind === "internal" ? "?from=volunteer" : ""}`)}>
-            <CardHeader className="pb-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-3 min-w-0">
-                  {p.clientLogoUrl ? (
-                    <img src={p.clientLogoUrl} alt={`${p.clientName} logo`} width={40} height={40} loading="lazy" decoding="async" className="h-10 w-10 rounded-lg object-cover border border-border flex-shrink-0" />
-                  ) : (
-                    <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
-                      <Handshake className="h-5 w-5 text-muted-foreground" />
+      {items.map((p) => {
+        const href = `/project-openings/${p.id}${p.clientKind === "internal" ? "?from=volunteer" : ""}`;
+        return (
+          <div key={p.id} className="col-span-12 xl:col-span-6">
+            <Card
+              data-card="project-opening"
+              role="link"
+              tabIndex={0}
+              className="flex flex-col h-full cursor-pointer hover:shadow-md transition-shadow p-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => navigate(href)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate(href); }
+              }}
+            >
+              {/* Identity block — status, client, project, type */}
+              <div className="space-y-3">
+                <Badge className={`${statusClass(p.project_status)} px-3 py-1.5 text-base font-semibold uppercase tracking-wide`}>
+                  {statusLabel(p.project_status)}
+                </Badge>
+                <ProjectOpeningHeading
+                  clientName={p.clientName}
+                  friendlyName={p.friendly_name}
+                  size="xl-stacked"
+                  as="h3"
+                />
+                <p className="text-base font-semibold uppercase tracking-wider text-muted-foreground">
+                  {typeLabel(p.project_type)}
+                </p>
+              </div>
+
+              {/* Meta sections */}
+              <div className="mt-5 pt-5 border-t space-y-5">
+                <div className="space-y-1.5">
+                  <p className={sectionLabel}>Phase</p>
+                  <p className="text-base text-foreground">{phaseLabel(p.phase)}</p>
+                </div>
+
+                {p.team_hats.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className={sectionLabel}>Team Hats</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {p.team_hats.map((h) => (
+                        <Badge key={h} variant="outline" className="text-base font-normal px-2.5 py-0.5">{h}</Badge>
+                      ))}
                     </div>
-                  )}
-                  <div className="min-w-0">
-                    <ProjectOpeningHeading
-                      clientName={p.clientName}
-                      friendlyName={p.friendly_name}
-                      size="lg"
-                      as="h3"
-                      truncate
-                    />
-                    <p className="text-sm text-muted-foreground mt-1">{typeLabel(p.project_type)}</p>
                   </div>
-                </div>
-                <Badge className={`${statusClass(p.project_status)} shrink-0`}>{statusLabel(p.project_status)}</Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="flex-1 space-y-3 text-sm">
-              <div>
-                <p className="text-sm font-semibold text-muted-foreground mb-1">Your Status</p>
-                {p.userApplied ? (
-                  <Badge className="bg-primary/10 text-primary border-primary/20 text-xs gap-1">
-                    <CheckCircle2 className="h-3 w-3" /> Applied
-                  </Badge>
-                ) : (
-                  <Badge variant="outline" className="text-xs">Not Applied</Badge>
                 )}
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-muted-foreground mb-1">Phase</p>
-                <Badge variant="secondary" className="text-xs">{phaseLabel(p.phase)}</Badge>
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-muted-foreground mb-1">Team Hats</p>
-                <div className="flex flex-wrap gap-1">
-                  {p.team_hats.map((h) => <Badge key={h} variant="outline" className="text-xs">{h}</Badge>)}
+
+                <div className="space-y-1.5">
+                  <p className={sectionLabel}>Your Status</p>
+                  <p className={`text-base ${p.userApplied ? "text-primary font-semibold" : "text-foreground"}`}>
+                    {p.userApplied ? "Applied" : "Not yet applied"}
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <p className={sectionLabel}>Applications</p>
+                  <p className="text-base text-foreground">
+                    <span className="font-semibold">{p.totalApps}</span> total
+                  </p>
+                  {p.team_hats.length > 0 && (
+                    <ul className="mt-2 space-y-1">
+                      {p.team_hats.map((hat) => (
+                        <li key={hat} className="text-base text-muted-foreground">
+                          <span className="text-foreground font-semibold">{p.hatCounts[hat] ?? 0}</span> — {hat}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               </div>
-              <div>
-                <p className="text-sm font-semibold text-muted-foreground mb-1">Total Applications</p>
-                <p className="text-xs text-foreground pl-3 font-medium">{p.totalApps}</p>
+
+              {/* Footer affordance — left-aligned text, no icon, whole card stays clickable */}
+              <div className="mt-5 pt-5 border-t">
+                <p className="text-base font-semibold text-primary">View opening →</p>
               </div>
-              {p.team_hats.length > 0 && (
-                <div>
-                  <p className="text-sm font-semibold text-muted-foreground mb-1">Applications by Team Hat</p>
-                  <div className="space-y-0.5 pl-3">
-                    {p.team_hats.map((hat) => (
-                      <p key={hat} className="text-xs text-muted-foreground">
-                        <span className="text-foreground font-medium">{p.hatCounts[hat] ?? 0}</span> — {hat}
-                      </p>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </CardContent>
-            <CardFooter className="pt-3 border-t">
-              <Button variant="outline" className="w-full gap-2" onClick={(e) => { e.stopPropagation(); navigate(`/project-openings/${p.id}${p.clientKind === "internal" ? "?from=volunteer" : ""}`); }}>
-                <Eye className="h-4 w-4" /> View
-              </Button>
-            </CardFooter>
-          </Card>
-        </div>
-      ))}
+            </Card>
+          </div>
+        );
+      })}
     </div>
   );
 }
+
 
 interface OpeningsTabsProps {
   activeTab: "client" | "volunteer";
@@ -439,11 +417,12 @@ function OpeningsTabContent({ tab, content, emptyCopy, projLoading, view, setVie
 
   if (content.projects.length === 0) {
     return (
-      <div className="rounded-lg border bg-card p-8 text-center">
-        <Handshake className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-        <h2 className="text-lg font-semibold text-foreground mb-2">{emptyCopy.title}</h2>
-        <p className="text-muted-foreground max-w-md mx-auto mb-4">{emptyCopy.body}</p>
-        <a href={emptyCopy.url} target="_blank" rel="noopener noreferrer"><Button variant="outline"><ExternalLink className="h-4 w-4 mr-1.5" />View on Guide</Button></a>
+      <div className="rounded-lg border bg-card p-8">
+        <h2 className="text-xl font-bold text-foreground mb-2">{emptyCopy.title}</h2>
+        <p className="text-base text-muted-foreground max-w-md mb-4">{emptyCopy.body}</p>
+        <a href={emptyCopy.url} target="_blank" rel="noopener noreferrer">
+          <Button variant="outline">View on Guide</Button>
+        </a>
       </div>
     );
   }
@@ -470,14 +449,15 @@ function OpeningsTabContent({ tab, content, emptyCopy, projLoading, view, setVie
         />
       ) : (
         <div className="space-y-10">
-          <div><h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Open Applications</h3><ProjectSection icon={Handshake} items={content.openApplications} emptyText="No projects are currently accepting applications." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} /></div>
-          <div><h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Opening Soon</h3><ProjectSection icon={Clock} items={content.comingSoon} emptyText="No projects are opening soon." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} /></div>
-          <div><h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Starting Soon</h3><ProjectSection icon={Rocket} items={content.startingSoon} emptyText="No projects are starting soon." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} /></div>
-          <div><h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">Live Projects</h3><ProjectSection icon={PlayCircle} items={content.liveProjects} emptyText="No projects are currently in progress." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} /></div>
+          <div><h3 className="text-xl font-bold text-foreground mb-4">Open Applications</h3><ProjectSection items={content.openApplications} emptyText="No projects are currently accepting applications." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} /></div>
+          <div><h3 className="text-xl font-bold text-foreground mb-4">Opening Soon</h3><ProjectSection items={content.comingSoon} emptyText="No projects are opening soon." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} /></div>
+          <div><h3 className="text-xl font-bold text-foreground mb-4">Starting Soon</h3><ProjectSection items={content.startingSoon} emptyText="No projects are starting soon." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} /></div>
+          <div><h3 className="text-xl font-bold text-foreground mb-4">Live Projects</h3><ProjectSection items={content.liveProjects} emptyText="No projects are currently in progress." navigate={navigate} typeLabel={typeLabel} phaseLabel={phaseLabel} statusLabel={statusLabel} statusClass={statusClass} /></div>
         </div>
       )}
     </>
   );
+
 }
 
 function ProjectOpeningsTabs(props: OpeningsTabsProps) {
