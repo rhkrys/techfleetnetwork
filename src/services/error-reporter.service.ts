@@ -473,6 +473,15 @@ const SUPPRESSED_PATTERNS = [
   "cdn-cookieyes.com",
   "cookieyes.com/support",
   "Looks like your website URL has changed",
+  // --- Expected RLS denials (not bugs) -----------------------------------
+  // Roster-gated RPCs raise 42501 when called by a non-member; UI callers
+  // already handle the empty-state. Surfacing as "error" floods triage.
+  "Not authorized for project",
+  "code=42501",
+  // Push notifications: service workers are intentionally disabled
+  // (see public/sw.js no-op). Any "SW unavailable" surface is by design.
+  "Push notifications are not ready",
+  "service worker is unavailable",
 ] as const;
 
 // Suppress empty unhandledrejection payloads ("{}") — almost always extension noise
