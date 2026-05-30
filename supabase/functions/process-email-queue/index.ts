@@ -54,11 +54,19 @@ function parseJwtClaims(token: string): Record<string, unknown> | null {
 }
 
 // Move a message to the dead letter queue and log the reason.
+//
+// `eventType` controls the audit_log routing:
+//   - 'email_dlq' (default for TTL / max-retry / 403): healthy guardrail event,
+//     blocked from agent_fix_queue by block_non_actionable_fix_queue_inserts.
+//   - 'edge_invoke_failed': use for unexpected send failures that should be
+//     triaged. Currently unused here because we only reach the DLQ via the
+//     three guardrail branches above.
 async function moveToDlq(
   supabase: ReturnType<typeof createClient>,
   queue: string,
   msg: { msg_id: number; message: Record<string, unknown> },
-  reason: string
+  reason: string,
+  eventType: 'email_dlq' | 'edge_invoke_failed' = 'email_dlq'
 ): Promise<void> {
   const payload = msg.message
   await supabase.from('email_send_log').insert({
@@ -67,6 +75,16 @@ async function moveToDlq(
     recipient_email: payload.to,
     status: 'dlq',
     error_message: reason,
+  })
+  // Audit trail for admins (System Health > Email tab). Service-role context
+  // means auth.uid() is null, which write_audit_log accepts.
+  await supabase.rpc('write_audit_log', {
+    p_event_type: eventType,
+    p_table_name: 'email_queue',
+    p_record_id: String(payload.message_id ?? msg.msg_id),
+    p_user_id: null,
+    p_error_message: reason,
+    p_changed_fields: [`queue:${queue}`, `template:${String(payload.label ?? queue)}`],
   })
   const { error } = await supabase.rpc('move_to_dlq', {
     source_queue: queue,
@@ -78,6 +96,7 @@ async function moveToDlq(
     console.error('Failed to move message to DLQ', { queue, msg_id: msg.msg_id, reason, error })
   }
 }
+
 
 Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
   const apiKey = Deno.env.get('LOVABLE_API_KEY')
@@ -329,16 +348,28 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
             .eq('status', 'sent')
             .gte('created_at', windowAgoIso)
           if ((recentToRecipient ?? 0) >= perRecipientMax) {
+            const capReason = `Recipient already received ${perRecipientMax} ${labelStr} email(s) in the last ${perRecipientWindowHours}h`
             await supabase.from('email_send_log').insert({
               message_id: payload.message_id,
               template_name: labelStr || queue,
               recipient_email: payload.to,
               status: 'frequency_capped',
-              error_message: `Recipient already received ${perRecipientMax} ${labelStr} email(s) in the last ${perRecipientWindowHours}h`,
+              error_message: capReason,
             })
-            // Intentionally NOT surfacing to agent_fix_queue: the cap is a
-            // healthy guardrail, audited via email_send_log.status='frequency_capped'
-            // and counted in System Health → Email. See mem://features/triage-noise-suppression.
+            // Audit trail for admins (event_type=email_capped is in the
+            // non-actionable allow-list, so this lands in audit_log + System
+            // Health > Email but is blocked from agent_fix_queue by trigger
+            // and discover_audit_fingerprints exclusion). Refactored
+            // 2026-05-30: replaces the previous substring suppression on
+            // "Recipient already received".
+            await supabase.rpc('write_audit_log', {
+              p_event_type: 'email_capped',
+              p_table_name: 'email_send_log',
+              p_record_id: String(payload.message_id ?? msg.msg_id),
+              p_user_id: null,
+              p_error_message: capReason,
+              p_changed_fields: [`template:${labelStr || queue}`, `cap:${perRecipientMax}`, `window_hours:${perRecipientWindowHours}`],
+            })
 
             const { error: capDelErr } = await supabase.rpc('delete_email', {
               queue_name: queue,
@@ -349,6 +380,7 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
             }
             continue
           }
+
         }
       }
 

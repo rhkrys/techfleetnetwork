@@ -81,6 +81,15 @@ function stringifyPushContext(context: Record<string, unknown>): string {
     .join(" | ");
 }
 
+/**
+ * Build the user-facing copy for SubscribeResult.message.
+ *
+ * IMPORTANT: this string is intended ONLY for `SubscribeResult.message` so the
+ * UI can render it inline (toast / inline alert). It MUST NEVER be wrapped in
+ * `throw new Error(...)` — doing so would surface user-facing copy into
+ * audit_log as a `client_error` and pollute the Triage queue. Callers must
+ * branch on `SubscribeResult.status` and render the message directly.
+ */
 function getSubscriptionFailureMessage(err: unknown): string {
   const message = getErrorMessage(err);
   const lower = message.toLowerCase();
@@ -99,6 +108,7 @@ function getSubscriptionFailureMessage(err: unknown): string {
 
   return "We couldn't finish enabling push notifications on this device.";
 }
+
 
 function isPushAbortError(err: unknown): boolean {
   const message = getErrorMessage(err).toLowerCase();

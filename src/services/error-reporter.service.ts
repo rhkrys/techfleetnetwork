@@ -43,7 +43,14 @@ const NON_ACTIONABLE_EVENT_TYPES: ReadonlySet<string> = new Set([
   // never actionable code bugs — bad URL/short password is the user's input,
   // not a regression. Stays in audit_log; blocked from triage queue.
   "validation_rejected",
+  // Email queue guardrails (frequency cap + TTL/DLQ): healthy deliverability
+  // protections, audited via audit_log + email_send_log + System Health, but
+  // never an actionable code defect. Mirrors v_non_actionable in the DB
+  // trigger and v_excluded_events in discover_audit_fingerprints.
+  "email_capped",
+  "email_dlq",
 ]);
+
 
 const MAX_MSG_LENGTH = 2000;
 const DEFAULT_CAP_PER_MINUTE = 10;
@@ -174,7 +181,10 @@ export type ReportEventType =
   | "client_error_deduped"
   | "external_api_recovered"
   | "validation_rejected"
+  | "email_capped"
+  | "email_dlq"
   | "rpc_failed";
+
 
 interface ReportOptions {
   severity?: ReportSeverity;
@@ -473,16 +483,13 @@ const SUPPRESSED_PATTERNS = [
   "cdn-cookieyes.com",
   "cookieyes.com/support",
   "Looks like your website URL has changed",
-  // --- Expected RLS denials (not bugs) -----------------------------------
-  // Roster-gated RPCs raise 42501 when called by a non-member; UI callers
-  // already handle the empty-state. Surfacing as "error" floods triage.
-  "Not authorized for project",
-  "code=42501",
-  // Push notifications: service workers are intentionally disabled
-  // (see public/sw.js no-op). Any "SW unavailable" surface is by design.
-  "Push notifications are not ready",
-  "service worker is unavailable",
+  // (Removed 2026-05-30: "Not authorized for project", "code=42501",
+  // "Push notifications are not ready", "service worker is unavailable",
+  // "Recipient already received", "TTL exceeded", "use-autosave", "Script error."
+  // — these were band-aid substring filters; root causes are now refactored.
+  // See mem://features/triage-noise-suppression and TRIAGE-FIX-00{1..7}.)
 ] as const;
+
 
 // Suppress empty unhandledrejection payloads ("{}") — almost always extension noise
 // or aborted fetches with no actionable content.

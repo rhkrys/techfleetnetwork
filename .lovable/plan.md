@@ -1,177 +1,70 @@
-# Card Redesign: Project Openings + Platform-Wide Icon Purge
+# Refactor — permanently fix the triages instead of suppressing them
 
-## Goals
+The previous turn closed the triage queue by adding substring suppressions to `known_issue_catalog` + reporter regexes. That hid symptoms. This plan removes every suppression added on 2026-05-30 and refactors each source so the error never fires in the first place (or fires with the right severity/event_type that routes around triage by design). New BDD scenarios are added to the regression suite so future regressions fail CI.
 
-1. Rebuild project opening cards (Client + Volunteer tabs) using NN/g information-hierarchy principles: scannable, left-aligned, single-column, clear visual rhythm.
-2. Remove all decorative icons from cards across the entire system — no Lucide glyph inside a `Card` body or header.
-3. Enforce a **1rem (16px) minimum font size** on every text element inside a card — no `text-xs`, no `text-[13px]`, no sub-16px values, anywhere in card surfaces. WCAG-compliant for body text and small-caps labels alike.
+## What we suppressed → what we'll do instead
 
----
+| # | Suppression added | Root cause | Permanent refactor |
+|---|---|---|---|
+| 1 | `Not authorized for project` + `code=42501` | `get_project_internal_links` RPC `RAISE EXCEPTION ... 42501` when caller isn't on roster | Change RPC: **return 0 rows** for non-authorized callers instead of raising. Drop the client-side 42501 swallow in `MyProjectsTab.tsx`. UI already handles `links === null`. |
+| 2 | `Push notifications are not ready` | String only appears in a user-facing `SubscribeResult.message`. Was reaching audit because callers wrapped the returned message into a thrown `Error`. | Add invariant: callers must branch on `SubscribeResult.status` and never throw `.message`. Inline guard + test. |
+| 3 | `service worker is unavailable` | Same `getSubscriptionFailureMessage` branch as #2. | Same refactor as #2. |
+| 4 | `Recipient already received` | `process-email-queue` writes literal into `email_send_log.error_message` on frequency cap. | Cap path already `continue`s without throwing. Emit `reportActivity('email_capped', severity:'info')` and add `email_capped` to `NON_ACTIONABLE_EVENT_TYPES` (TS) + `v_non_actionable` (PL/pgSQL trigger) + `v_excluded_events` (discover_audit_fingerprints). |
+| 5 | `TTL exceeded` | `moveToDlq` from `process-email-queue` on expiry. | Refactor `moveToDlq` to take an `event_type` arg; TTL path passes `email_dlq`; real send-failure keeps `edge_invoke_failed`. With `email_dlq` non-actionable, expiries never reach triage. |
+| 6 | `use-autosave` | Legacy bundles emitted `"[object Object]"`. Fixed by `normalizeThrownError`. | No code change — remove catalog row. Stale tabs heal on reload. |
+| 7 | `Script error.` | Cross-origin script with no CORS attribute. | Add `crossorigin="anonymous"` to script tags in `index.html`; `Access-Control-Allow-Origin` already in `public/_headers`. Reporter keeps structural guard (`event.error===null && !filename && lineno===0`); drop the catalog row. |
+| 8 | (none new) `Failed to count progress` | Already throws structured error with `code`/`status`. | Verify `src/lib/react-query.ts` QueryCache.onError calls `isTransientError` and skips reporting; wire if missing. |
 
-## 1. Accessibility floor (applies to every card change below)
+## Files to edit
 
-- **Minimum font size = 1rem (16px)** on all card text, including section labels, badge text, hat chips, counts, and footer affordances.
-- Tailwind classes allowed inside cards: `text-base` (16px), `text-lg` (18px), `text-xl` (20px), `text-2xl` (24px). **Banned in cards**: `text-xs`, `text-sm`, `text-[Npx]` where N<16.
-- Status badge: `text-base font-semibold uppercase tracking-wide` (was `text-xs` — bumped to meet the floor).
-- Section labels keep the small-caps treatment via `uppercase tracking-wider` but render at `text-base font-semibold` — visual hierarchy comes from weight + color + letter-spacing, not from shrinking the type.
-- Color contrast: muted-foreground tier verified ≥ 4.5:1 against `bg-card` (token-level guarantee).
+**Backend / DB (one migration)**
+- `CREATE OR REPLACE FUNCTION public.get_project_internal_links` — drop `RAISE EXCEPTION '... 42501'`; replace with `IF NOT authorized THEN RETURN; END IF;` (returns empty rowset).
+- Update `block_non_actionable_fix_queue_inserts` trigger: append `'email_capped'`, `'email_dlq'` to `v_non_actionable`.
+- Update `discover_audit_fingerprints`: append same two event_types to `v_excluded_events`.
+- `DELETE FROM known_issue_catalog WHERE pattern IN ('Not authorized for project','code=42501','Recipient already received','TTL exceeded','Push notifications are not ready','service worker is unavailable','use-autosave','Script error.')`.
+- Seed new BDD scenarios into `bdd_scenarios` (see BDD section).
 
----
+**Edge functions**
+- `supabase/functions/process-email-queue/index.ts` — `moveToDlq(supabase, queue, msg, reason, eventType='edge_invoke_failed')`; TTL branch passes `'email_dlq'`. On frequency cap: insert `audit_log` row via `write_audit_log` with `p_event_type='email_capped'` severity info.
 
-## 2. New project opening card spec
+**Frontend**
+- `src/services/error-reporter.service.ts` — add `'email_capped'`, `'email_dlq'` to `NON_ACTIONABLE_EVENT_TYPES` and `ReportEventType`. Remove the 8 substring entries added today; keep structural classifiers (chunk-load, opaque `Script error.`, AbortError DOMException).
+- `src/components/MyProjectsTab.tsx` — remove `if (error.code === '42501') return null` branch.
+- `src/services/push-subscription.service.ts` — inline comment + guard that `SubscribeResult.message` is never thrown.
 
-Applied to both **Client Projects** and **Volunteer Projects** tabs on `/project-openings`, and to matching detail card variants in admin/recruiting views.
+**Memory**
+- Update `mem://features/triage-noise-suppression.md` — add `email_capped` + `email_dlq` to canonical list.
 
-### Layout (single column, left-aligned, stacked)
+## BDD scenarios → regression suite
 
-```text
-┌──────────────────────────────────────────────┐
-│  [STATUS BADGE]                              │  ← status pill, top-left
-│                                              │
-│  Client Name                                 │  ← H3, 24px, bold
-│  Project Friendly Name                       │  ← 20px, medium, muted-foreground
-│  Project Type                                │  ← 16px, semibold, uppercase, muted
-│                                              │
-│  ──────────────────────────────────────────  │  ← divider
-│                                              │
-│  PHASE                                       │  ← 16px, semibold, uppercase, muted
-│  Discovery & Definition                      │  ← 16px, foreground
-│                                              │
-│  TEAM HATS                                   │
-│  [hat] [hat] [hat]                           │  ← chips at 16px
-│                                              │
-│  YOUR STATUS                                 │
-│  Applied   /   Not yet applied               │
-│                                              │
-│  APPLICATIONS                                │
-│  12 total                                    │
-│  • 4 — UX Researcher                         │
-│  • 3 — Product Designer                      │
-│  • …                                         │
-│                                              │
-│  ──────────────────────────────────────────  │
-│  View opening →                              │  ← 16px text affordance, left-aligned
-└──────────────────────────────────────────────┘
-```
+All seven scenarios go into `bdd_scenarios` (feature_area_number 1114 — Error Triage Queue) with tri-layer Then-clauses ([UI]/[DB]/[Code]) per `mem://constraints/bdd-expected-results`. Each links to a real Vitest spec under `src/test/smoke/triage-permanent-fixes.smoke.test.ts` so `scripts/bdd-coverage.ts` keeps the ratchet at 0 unlinked. Specs run inside the `quality` job of `.github/workflows/regression.yml` via `npm run test`, gating every PR.
 
-### Typography & hierarchy (4-tier, all ≥ 1rem)
+| ID | Title | Assertion |
+|---|---|---|
+| TRIAGE-FIX-001 | Roster-gated internal links return empty rows, never 42501 | DB call to `get_project_internal_links` as non-roster returns 0 rows with no exception; `agent_fix_queue` unchanged. |
+| TRIAGE-FIX-002 | Push subscribe never throws user-facing copy | Static check: no `throw new Error(getSubscriptionFailureMessage(...))` anywhere; runtime test: subscribe on env without SW returns `{status:'unsupported'}`. |
+| TRIAGE-FIX-003 | Frequency-capped emails emit `email_capped`, not `client_error` | After cap fires, `audit_log` has `event_type='email_capped'` severity `info`; `agent_fix_queue` row count unchanged. |
+| TRIAGE-FIX-004 | DLQ TTL expiry emits `email_dlq`, not `client_error` | Synthetic TTL expiry → `audit_log` row with `event_type='email_dlq'`; trigger blocks any direct `agent_fix_queue` insert with that event_type. |
+| TRIAGE-FIX-005 | `Script error.` opaque events stay out of triage | Simulated `ErrorEvent` with empty filename/lineno is classified, dropped before `writeAudit`. |
+| TRIAGE-FIX-006 | `known_issue_catalog` carries zero suppressions for refactored sources | DB query asserts no rows match the 8 removed patterns. |
+| TRIAGE-FIX-007 | React Query transient errors don't reach `reportError` | `QueryCache.onError` short-circuits when `isTransientError(err)` is true. |
 
-| Tier | Element | Class |
-|------|---------|-------|
-| 1 | Status badge | `text-base font-semibold uppercase tracking-wide` |
-| 2 | Client name (H3) | `text-2xl font-bold text-foreground leading-tight` |
-| 3 | Project friendly name | `text-xl font-medium text-muted-foreground` |
-| 4 | Project type | `text-base font-semibold uppercase tracking-wider text-muted-foreground` |
-| Section label | "Phase", "Team Hats", etc. | `text-base font-semibold uppercase tracking-wider text-muted-foreground` |
-| Section value | hat chips, counts, list items | `text-base text-foreground` |
-| Footer affordance | "View opening →" | `text-base font-semibold text-primary` |
+Spec file: `src/test/smoke/triage-permanent-fixes.smoke.test.ts` (Vitest). Plus one Playwright check added to `e2e/smoke/critical-paths.e2e.ts` asserting non-roster project-detail load produces no console errors.
 
-### Spacing (NN/g proximity)
+CI wiring (no workflow edits needed):
+- `quality` job already runs `npm run test` → Vitest picks up the new smoke spec automatically (`src/**/*.{test,spec}.{ts,tsx}` glob in `vitest.config.ts`).
+- `playwright` job (3-shard Chromium gate) already runs all of `e2e/` → picks up the new critical-path assertion.
+- `quality` job already runs `npx tsx scripts/bdd-coverage.ts` → the seeded scenarios link to the new spec file, keeping `IMPLEMENTED_UNLINKED_MAX = 0`.
 
-- Card padding `p-6`
-- Status → identity block: `mt-3`
-- Identity block → divider: `mt-5`
-- Between labeled sections: `space-y-5`
-- Inside a section (label → value): `space-y-1.5`
-- Divider before footer: `mt-5 pt-5 border-t`
-- Outer grid stays `grid-cols-12 xl:col-span-6`; **inside** the card is single column.
+## Verification (run after build mode)
 
-### Removed from the card
+1. Non-roster user opens roster-gated project → no console error, no audit row.
+2. Trip cap in dev → `email_send_log.status='frequency_capped'` + `audit_log.event_type='email_capped'`, no `agent_fix_queue` row.
+3. Force TTL on queued bulk email → DLQ row with `event_type='email_dlq'`, no triage row.
+4. `SELECT count(*) FROM agent_fix_queue WHERE status='pending'` → 0.
+5. `SELECT count(*) FROM known_issue_catalog WHERE created_at > '2026-05-30'` → 0.
+6. `npm run test -- triage-permanent-fixes` → all 7 scenarios pass.
+7. BDD coverage ratchet green.
 
-- Client logo image + Handshake fallback icon
-- `CheckCircle2`, `Eye`, `ExternalLink` inside the body/footer
-- Right-side two-column header (`flex items-start justify-between`)
-- Outline footer button → replaced with left-aligned text affordance ("View opening →"); the whole card remains clickable.
-
-### Status badge colors
-
-Reuse existing tokens (`success`, `warning`, `primary`, `info`). Filled, larger (`px-3 py-1.5 text-base font-semibold uppercase tracking-wide`).
-
----
-
-## 3. Icon policy (system-wide)
-
-Apply to **every component rendered inside a `<Card>`**.
-
-**Remove (decorative chrome):**
-- Lucide icons in `CardHeader` next to titles
-- Icons prefixed to section labels
-- Circular icon tiles (`h-10 w-10 rounded-lg bg-X/10` wrapping a glyph) on KPI/stat cards — replace with a 4px colored left bar + larger number
-- Avatar fallback icons inside cards (use initials text only)
-- Empty-state hero icons inside `Card` — replaced with bold text headline
-
-**Keep (functional controls, not card chrome):**
-- Icons inside `<Button>` action controls (edit, delete, close)
-- Icons inside form inputs (search, calendar pickers)
-- Sidebar / nav icons
-- Toast / alert severity icons
-- Loading spinners
-
----
-
-## 4. Files to change
-
-### Primary (project openings)
-
-- `src/pages/ProjectOpeningsPage.tsx` — rewrite `ProjectSection` card markup; drop logo block; restructure header; remove `Handshake`/`CheckCircle2`/`Eye`/`ExternalLink` from cards (keep `Loader2`); bump every text class to ≥ `text-base`. Replace the 5 KPI stat tiles with iconless variants (colored accent bar + 24px number + 16px label).
-- `src/components/projects/ProjectOpeningHeading.tsx` — add an `xl-stacked` variant rendering the 3-tier identity block (client / friendly name / type) at the new ≥16px sizes.
-
-### Secondary cards aligned in the same pass
-
-- `src/components/clients/ProjectsTab.tsx` — admin project cards (drop header logo, drop description/footer icons; Pencil/Trash kept only inside icon buttons with `aria-label`)
-- `src/pages/AdminRosterPage.tsx` — recruiting tiles (remove `BarChart3`/`Users`/`FolderKanban`/`ArrowRight` from card body)
-- `src/pages/RosterProjectDetailPage.tsx` — applicant cards
-- `src/pages/MyProjectApplicationsPage.tsx` — application status cards
-- `src/pages/MyJourneyPage.tsx` + `src/components/quest/*` cards
-- `src/pages/ResourcesPage.tsx` cards
-- `src/pages/EventsPage.tsx` event cards
-- `src/components/JourneyStepCard.tsx`
-- `src/components/GettingStartedChecklist.tsx`
-- `src/pages/AdminClassesPage.tsx` class/cohort cards
-- Dashboard widget cards under `src/components/`
-- Empty-state blocks inside cards across the above pages
-
-Each gets: status/title/meta stacked left-aligned, decorative icons removed, ≥16px type throughout, `space-y-5` chunking with `border-t` dividers where multiple semantic groups coexist.
-
-### Out of scope
-
-Sidebar, top nav, toasts, modals, forms, buttons, fleety widget, AG Grid tables, landing-page illustrations.
-
----
-
-## 5. NN/g heuristics applied
-
-- **#4 Consistency & standards** — one card pattern repeats everywhere.
-- **#6 Recognition over recall** — explicit small-caps section labels above each value; no reliance on iconography.
-- **#8 Aesthetic & minimalist** — decorative icons, logo tiles, and duplicate column headers stripped.
-- **Information hierarchy** — 4 type tiers (status / client / project / type) differentiated by size, weight, color, and letter-spacing — never by going below 16px.
-- **Scanability (F-pattern)** — everything left-aligned, single column, predictable label-then-value rhythm.
-
----
-
-## 6. Accessibility & quality
-
-- Client name renders as `<h3>` inside listing cards (page owns `<h1>`/`<h2>`).
-- Whole-card click target preserved; `role="link"` + keyboard handler on the card root.
-- No nested interactives — "View opening →" is visual text, not a button.
-- New ESLint rule `card-min-font-size` (custom local plugin) flags any `text-xs`, `text-sm`, or `text-[<16px]` used inside files matching `**/components/**/Card*.tsx` or inside JSX with a `tf-card` ancestor — CI fails the build if violated. Backstop: a smoke test asserts computed font-size ≥ 16px for every text node within `[data-card]`.
-- Companion smoke test asserts `[data-card] svg[data-lucide]` count is `0` outside `<button>` descendants.
-- BDD scenarios added to `bdd_scenarios` covering: status above title; no Lucide icon inside card body; 4-tier hierarchy present; computed font-size ≥ 16px for every card text node; keyboard activation navigates to detail.
-
----
-
-## 7. Technical notes
-
-- New utility class `tf-card-section-label` in `src/index.css` standardizes the small-caps muted label at 16px.
-- Lucide imports removed file-by-file (ESLint catches orphans).
-- Status `Badge` tokens unchanged; only size/position/text-size classes change.
-- No DB or edge-function changes; pure presentation work.
-
----
-
-## 8. Rollout
-
-1. Ship `ProjectOpeningsPage` + `ProjectOpeningHeading` (canonical reference) with the 16px floor.
-2. Sweep secondary card files in the same change using the same primitives + ESLint rule.
-3. Land the lint rule + smoke tests so future cards stay compliant.
-4. Add `mem://design/card-iconless-pattern` memory entry capturing both the iconless rule and the ≥1rem font floor.
+## Out of scope
+Pre-existing structural patterns (AbortError, FunctionsFetchError, ResizeObserver, browser-extension noise) stay — they are correctly classified per `mem://constraints/firefox-stale-chunk-loop` and `mem://tech/graceful-degradation`.
