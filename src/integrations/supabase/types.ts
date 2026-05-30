@@ -547,6 +547,36 @@ export type Database = {
           },
         ]
       }
+      chunk_stale_log: {
+        Row: {
+          build_id_client: string | null
+          build_id_server: string | null
+          id: number
+          occurred_at: string
+          recovered: boolean
+          url: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          build_id_client?: string | null
+          build_id_server?: string | null
+          id?: number
+          occurred_at?: string
+          recovered?: boolean
+          url?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          build_id_client?: string | null
+          build_id_server?: string | null
+          id?: number
+          occurred_at?: string
+          recovered?: boolean
+          url?: string | null
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
       class_audit: {
         Row: {
           action: string
@@ -2425,6 +2455,36 @@ export type Database = {
           src_id?: string
           src_type?: Database["public"]["Enums"]["framework_entity_type"]
           weight?: number
+        }
+        Relationships: []
+      }
+      function_grant_audit: {
+        Row: {
+          function_name: string
+          function_signature: string
+          granted_to_anon: boolean
+          granted_to_authenticated: boolean
+          granted_to_service_role: boolean
+          last_checked_at: string
+          schema_name: string
+        }
+        Insert: {
+          function_name: string
+          function_signature: string
+          granted_to_anon?: boolean
+          granted_to_authenticated?: boolean
+          granted_to_service_role?: boolean
+          last_checked_at?: string
+          schema_name: string
+        }
+        Update: {
+          function_name?: string
+          function_signature?: string
+          granted_to_anon?: boolean
+          granted_to_authenticated?: boolean
+          granted_to_service_role?: boolean
+          last_checked_at?: string
+          schema_name?: string
         }
         Relationships: []
       }
@@ -7210,6 +7270,7 @@ export type Database = {
       redact_sensitive_text: { Args: { input: string }; Returns: string }
       refresh_email_health_snapshot: { Args: never; Returns: undefined }
       refresh_framework_overview: { Args: never; Returns: undefined }
+      refresh_function_grant_audit: { Args: never; Returns: number }
       register_for_cohort_click: {
         Args: { p_cohort_id: string; p_referrer?: string }
         Returns: string
