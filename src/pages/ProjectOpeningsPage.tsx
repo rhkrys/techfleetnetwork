@@ -5,14 +5,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdmin } from "@/hooks/use-admin";
 import { SEO } from "@/components/SEO";
-import {
-  Handshake, ExternalLink, LayoutGrid, List, Loader2, Eye, CheckCircle2,
-  Rocket, PlayCircle, Clock, Briefcase,
-} from "lucide-react";
+import { LayoutGrid, List, Loader2 } from "lucide-react";
 import { ResponsiveTabs, ResponsiveTabsList, ResponsiveTabsContent, type TabItem } from "@/components/ui/responsive-tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import {
   PROJECT_TYPES, PROJECT_PHASES, PROJECT_STATUSES, TEAM_HATS,
 } from "@/data/project-constants";
