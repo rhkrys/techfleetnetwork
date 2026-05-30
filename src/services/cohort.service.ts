@@ -57,6 +57,7 @@ export const CohortService = {
         capacity: values.capacity ?? null,
       } as never)
       .select("id")
+      // single-required: insert returns exactly one row
       .single();
     if (error) throw error;
     return (data as { id: string }).id;
