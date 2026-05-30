@@ -37,7 +37,9 @@ function stripNoise(src) {
     .replace(/'(?:''|[^'])*'/g, "''");
 }
 
-const VIOLATION_RE = /\bdigest\s*\(\s*([^,)]+?)\s*,/gi;
+// Reject newlines in the captured expression so a multi-statement block
+// can't trick the regex into reporting the wrong line number.
+const VIOLATION_RE = /\bdigest\s*\(\s*([^,)\n]+?)\s*,/gi;
 const OK_CAST_RE = /::\s*(text|bytea)\s*$/i;
 const ALLOWLIST_RE = /digest-cast-ok:/;
 
