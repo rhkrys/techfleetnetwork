@@ -34,11 +34,11 @@ beforeEach(() => {
   checkNowMock.mockClear();
 });
 
-describe("error-reporter — dead-source / stale-bundle suppression", () => {
-  it("never writes audit_log for SupportWidget.token sources (closed bypass)", async () => {
+describe("error-reporter — stale-bundle transport suppression", () => {
+  it("never writes audit_log for stale transport failures", async () => {
     reportError(
       new Error("FunctionsFetchError: Failed to send a request to the Edge Function"),
-      "SupportWidget.token",
+      "legacy-client.token",
       { severity: "warn" },
     );
     await new Promise((r) => setTimeout(r, 0));
@@ -49,7 +49,7 @@ describe("error-reporter — dead-source / stale-bundle suppression", () => {
   it("triggers a deploy-watcher check on FunctionsFetchError so stuck tabs reload", async () => {
     reportError(
       new Error("FunctionsFetchError: Failed to send a request to the Edge Function"),
-      "SupportWidget.token",
+      "legacy-client.token",
     );
     await new Promise((r) => setTimeout(r, 0));
     expect(checkNowMock).toHaveBeenCalled();
