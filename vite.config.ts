@@ -71,14 +71,20 @@ function supportWidgetBuildGuard(): Plugin {
     apply: "build",
     transform(code, id) {
       if (!id.includes("/src/")) return null;
-      if (/\bSupportWidget\b/.test(code)) {
+      // Match real import/dynamic-import sites only — not string literals in
+      // suppression lists, comments, or logging payloads (see
+      // error-reporter.service.ts SUPPRESSED_PATTERNS).
+      const importRe =
+        /(?:from\s+['"][^'"]*SupportWidget[^'"]*['"]|import\(\s*['"][^'"]*SupportWidget[^'"]*['"]\s*\))/;
+      if (importRe.test(code)) {
         this.error(
-          `[support-widget-build-guard] '${id}' references the removed SupportWidget symbol. ` +
+          `[support-widget-build-guard] '${id}' imports the removed SupportWidget module. ` +
             `Delete the import — the chunk URL must not be shipped. (see plan PART B-14)`,
         );
       }
       return null;
     },
+
   };
 }
 

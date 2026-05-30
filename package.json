@@ -153,10 +153,15 @@
     "glob": "^13.0.6",
     "@remix-run/router": "1.23.2",
     "picomatch": "4.0.4",
-    "minimatch": "10.2.5",
+    "minimatch": {
+      ".": "10.2.5"
+    },
     "js-yaml": "4.1.1",
     "yaml": "2.8.3",
-    "@tootallnate/once": "3.0.1"
+    "@tootallnate/once": "3.0.1",
+    "eslint-plugin-jsx-a11y": {
+      "minimatch": "^3.1.2"
+    }
   },
   "browserslist": [
     ">0.5%",
