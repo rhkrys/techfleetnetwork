@@ -330,7 +330,7 @@ export default function SubmittedApplicationsTab() {
           return (
             <Button
               variant="outline"
-              size="sm"
+              size="md"
               className="gap-1 text-xs h-7"
               onClick={(e) => { e.stopPropagation(); navigate(`/admin/applications/${params.data!.id}`); }}
             >
@@ -424,7 +424,7 @@ export default function SubmittedApplicationsTab() {
                     <ProjectOpeningHeading
                       clientName={app.client?.name ?? "Unknown Client"}
                       friendlyName={app.project?.friendly_name}
-                      size="sm"
+                      size="md"
                       as="p"
                       truncate
                       className="flex-1"
