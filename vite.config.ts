@@ -57,6 +57,31 @@ function allowPreviewEvalInDev(): Plugin {
   };
 }
 
+/**
+ * Phase-2 triage refactor — PART B-14.
+ *
+ * SupportWidget was removed but its dynamic-import URL kept reappearing in
+ * the wild, producing "Failed to fetch dynamically imported module" reports.
+ * This guard fails the build if any `src/` file still references the symbol
+ * by name, ensuring the dead chunk URL stops being shipped.
+ */
+function supportWidgetBuildGuard(): Plugin {
+  return {
+    name: "support-widget-build-guard",
+    apply: "build",
+    transform(code, id) {
+      if (!id.includes("/src/")) return null;
+      if (/\bSupportWidget\b/.test(code)) {
+        this.error(
+          `[support-widget-build-guard] '${id}' references the removed SupportWidget symbol. ` +
+            `Delete the import — the chunk URL must not be shipped. (see plan PART B-14)`,
+        );
+      }
+      return null;
+    },
+  };
+}
+
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   server: {
@@ -77,6 +102,7 @@ export default defineConfig(({ mode }) => ({
     mode === "development" && componentTagger(),
     allowPreviewEvalInDev(),
     emitVersionManifest(),
+    supportWidgetBuildGuard(),
   ].filter(Boolean),
   resolve: {
     alias: {
