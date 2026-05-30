@@ -53,7 +53,6 @@ export function report(error: unknown, ctx: ReportContext): void {
     eventType: ctx.eventType,
     severity: ctx.severity,
     traceId: ctx.traceId,
-    extra: ctx.extra,
   });
 }
 
