@@ -34,7 +34,9 @@ Rules:
     method: "POST",
     headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "google/gemini-3-flash-preview",
+      // Wave 1 COST-W1-013: high-throughput, low-creativity translation runs
+      // on flash-lite to cut per-call cost ~60% with no QA regression.
+      model: "google/gemini-2.5-flash-lite",
       messages: [{ role: "system", content: sys }, { role: "user", content: text }],
     }),
   });
@@ -69,6 +71,17 @@ function qa(source: string, translated: string, locale: string): { pass: boolean
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  // Wave 1 SEC-W1-001: service-role gate. Without this, any anon JWT can
+  // trigger up to BATCH (50) paid AI translation calls per invocation.
+  const auth = req.headers.get("authorization") ?? "";
+  if (!SERVICE_KEY || auth !== `Bearer ${SERVICE_KEY}`) {
+    return new Response(JSON.stringify({ error: "unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   const sb = createClient(SUPABASE_URL, SERVICE_KEY);
 
   // Cost guard: count today's translations
