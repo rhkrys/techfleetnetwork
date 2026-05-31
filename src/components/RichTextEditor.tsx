@@ -1,7 +1,14 @@
-import ReactQuill from "react-quill-new";
-import "react-quill-new/dist/quill.snow.css";
+import { lazy, Suspense, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { useMemo } from "react";
+
+// Dynamic-import ReactQuill so react-quill-new (~208 KB) only enters the
+// chunk graph for routes that actually mount a RichTextEditor.
+const ReactQuill = lazy(() =>
+  Promise.all([
+    import("react-quill-new"),
+    import("react-quill-new/dist/quill.snow.css"),
+  ]).then(([m]) => ({ default: m.default })),
+);
 
 interface RichTextEditorProps {
   content: string;
@@ -31,19 +38,28 @@ const formats = [
 ];
 
 export function RichTextEditor({ content, onChange, placeholder, className }: RichTextEditorProps) {
-  // Memoize modules to prevent re-renders
   const quillModules = useMemo(() => modules, []);
 
   return (
     <div className={cn("rich-text-editor", className)}>
-      <ReactQuill
-        theme="snow"
-        value={content}
-        onChange={onChange}
-        modules={quillModules}
-        formats={formats}
-        placeholder={placeholder}
-      />
+      <Suspense
+        fallback={
+          <div
+            className="min-h-[180px] rounded-md border border-input bg-muted/30 animate-pulse"
+            aria-label="Loading editor"
+            role="status"
+          />
+        }
+      >
+        <ReactQuill
+          theme="snow"
+          value={content}
+          onChange={onChange}
+          modules={quillModules}
+          formats={formats}
+          placeholder={placeholder}
+        />
+      </Suspense>
     </div>
   );
 }
