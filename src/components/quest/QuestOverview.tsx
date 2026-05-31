@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Compass, Rocket, Search } from "lucide-react";
 import { useQuestPaths, useUserQuestSelections } from "@/hooks/use-quest";
+import { useQuestPathMaps } from "@/lib/quest/path-maps";
 import { QuestPickerDialog } from "./QuestPickerDialog";
 import { QuestPreviewDialog } from "./QuestPreviewDialog";
 import { QuestCongratulationsDialog } from "./QuestCongratulationsDialog";
@@ -12,6 +13,7 @@ export function QuestOverview() {
   const navigate = useNavigate();
   const { data: paths, isLoading: pathsLoading } = useQuestPaths();
   const { data: selections, isLoading: selectionsLoading } = useUserQuestSelections();
+  const { byId: pathById } = useQuestPathMaps(paths);
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [previewPathId, setPreviewPathId] = useState<string | null>(null);
