@@ -1,4 +1,4 @@
-import { test, expect } from "../playwright-fixture";
+import { test, expect } from "@playwright/test";
 
 /**
  * BDD OBS-EDGE-ANON-001 — Anonymous hitting the observer opt-in lesson is

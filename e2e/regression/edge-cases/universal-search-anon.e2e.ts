@@ -1,4 +1,4 @@
-import { test, expect } from "../../playwright-fixture";
+import { test, expect } from "@playwright/test";
 
 /**
  * BDD US-EDGE-ANON-001 — Anonymous users cannot open ⌘K universal search.

@@ -1,4 +1,4 @@
-import { test, expect, type BrowserContext } from "./playwright-fixture";
+import { test, expect, type BrowserContext } from "@playwright/test";
 import { SCANNABLE_ROUTES, type RouteSpec } from "./a11y/routes";
 import {
   collectRuntimeIssues,
@@ -73,7 +73,7 @@ async function bootstrapAuth(browserContextFactory: () => Promise<BrowserContext
   }
 }
 
-async function seedAuthForRoute(page: import("./playwright-fixture").Page, route: RouteSpec) {
+async function seedAuthForRoute(page: import("@playwright/test").Page, route: RouteSpec) {
   if (route.kind === "public") return;
   if (!authedLocalStorage) test.skip(true, authBootstrapError || "Authenticated storage unavailable.");
 
