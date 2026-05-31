@@ -126,7 +126,7 @@ serve(withAuditWrapper("fleety-embed", async (req) => {
     const isBackfill = body?.mode === "backfill";
 
     let isAdmin = false;
-    let needsAuth = !(isService || isCron && isBackfill);
+    const needsAuth = !(isService || isCron && isBackfill);
 
     if (needsAuth) {
       if (!auth.startsWith("Bearer ")) {
