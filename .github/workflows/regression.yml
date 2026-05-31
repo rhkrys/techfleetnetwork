@@ -52,15 +52,15 @@ jobs:
           node-version-file: .nvmrc
 
       - name: Setup Bun (for any predev/prebuild fallback scripts)
-        # oven-sh/setup-bun@v2.0.1 — pinned to commit SHA
-        uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76
+        # oven-sh/setup-bun@v2.2.0 — pinned to commit SHA
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: latest
 
       - name: Cache node_modules + npm tarballs
         id: cache-modules
-        # actions/cache@v4.2.0 — pinned to commit SHA
-        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57
+        # actions/cache@v5.0.2 — pinned to commit SHA
+        uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7
         with:
           path: |
             node_modules
@@ -77,8 +77,8 @@ jobs:
         run: tar --use-compress-program=zstd -cf /tmp/node_modules.tar.zst node_modules
 
       - name: Upload node_modules artifact
-        # actions/upload-artifact@v5.0.0 — pinned
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        # actions/upload-artifact@v7.0.1 — pinned
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: node-modules-${{ github.sha }}
           path: /tmp/node_modules.tar.zst
@@ -111,13 +111,13 @@ jobs:
           node-version-file: .nvmrc
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: latest
 
       - name: Restore node_modules
-        # actions/download-artifact@v4.1.8 — pinned
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
+        # actions/download-artifact@v8.0.1 — pinned
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: node-modules-${{ github.sha }}
           path: /tmp
@@ -146,7 +146,7 @@ jobs:
         run: npm run sbom
 
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: cyclonedx-sbom
           path: sbom.json
@@ -209,12 +209,12 @@ jobs:
           node-version-file: .nvmrc
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: latest
 
       - name: Restore node_modules
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: node-modules-${{ github.sha }}
           path: /tmp
@@ -228,15 +228,15 @@ jobs:
 
       - name: Cache Playwright browsers
         id: pw-cache
-        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57
+        uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ steps.pw-version.outputs.version }}-chromium
 
       - name: Install Playwright browser (cache miss)
         if: steps.pw-cache.outputs.cache-hit != 'true'
-        # nick-fields/retry@v3.0.2 — pinned
-        uses: nick-fields/retry@7152eba30c6575329ac0576536151aca5a72780e
+        # nick-fields/retry@v4.0.0 — pinned
+        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60
         with:
           timeout_minutes: 8
           max_attempts: 3
@@ -251,7 +251,7 @@ jobs:
 
       - name: Upload Playwright artifacts
         if: always()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: playwright-fast-report-shard-${{ matrix.shard }}
           path: |
