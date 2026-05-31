@@ -50,6 +50,11 @@ export default tseslint.config(
       // initially so the existing baseline doesn't break CI; tighten to
       // "error" once the warning queue is at zero.
       "jsx-a11y": jsxA11y,
+      // OWASP A05/A02 — surfaces eval, unsafe regex, child_process, buffer
+      // noassert, possible timing attacks, pseudoRandomBytes, etc. Warn-only
+      // initially so baseline noise doesn't brick CI; promote per-rule after
+      // the queue is at zero.
+      security,
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
