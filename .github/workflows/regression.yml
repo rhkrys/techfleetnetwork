@@ -247,8 +247,17 @@ jobs:
         if: steps.pw-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
 
-      - name: Run fast Playwright gate (Chromium, shard ${{ matrix.shard }}/3)
-        run: npx playwright test --shard=${{ matrix.shard }}/3
+      - name: Run Playwright shard ${{ matrix.shard }}/6
+        run: npx playwright test --shard=${{ matrix.shard }}/6
+
+      - name: Upload blob report (for cross-shard merge)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: playwright-blob-shard-${{ matrix.shard }}
+          path: blob-report
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Upload Playwright artifacts
         if: always()
@@ -259,3 +268,50 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  # merge-reports — combine all 6 shard blob reports into one HTML report.
+  # Runs even if some shards failed so we always get a single report to open.
+  # ---------------------------------------------------------------------------
+  merge-reports:
+    if: ${{ !cancelled() }}
+    needs: playwright
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version-file: .nvmrc
+
+      - name: Restore node_modules
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: node-modules-${{ github.sha }}
+          path: /tmp
+      - run: tar --use-compress-program="zstd -d" -xf /tmp/node_modules.tar.zst
+
+      - name: Download all shard blob reports
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          pattern: playwright-blob-shard-*
+          path: all-blob-reports
+          merge-multiple: true
+
+      - name: Merge blob reports into HTML
+        run: npx playwright merge-reports --reporter html ./all-blob-reports || true
+
+      - name: Upload merged HTML report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: playwright-merged-html-report
+          path: playwright-report
+          retention-days: 30
+          if-no-files-found: ignore
+
