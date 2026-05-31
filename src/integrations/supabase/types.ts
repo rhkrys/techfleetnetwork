@@ -1538,8 +1538,13 @@ export type Database = {
           auth_email_ttl_minutes: number
           auth_retry_after_until: string | null
           batch_size: number
+          bulk_batch_size: number
+          bulk_consecutive_rate_limits: number
+          bulk_email_ttl_minutes: number
           bulk_hourly_cap: number
           bulk_paused: boolean
+          bulk_retry_after_until: string | null
+          bulk_send_delay_ms: number
           bulk_warmup_started_at: string
           id: number
           per_recipient_bulk_max: number
@@ -1556,8 +1561,13 @@ export type Database = {
           auth_email_ttl_minutes?: number
           auth_retry_after_until?: string | null
           batch_size?: number
+          bulk_batch_size?: number
+          bulk_consecutive_rate_limits?: number
+          bulk_email_ttl_minutes?: number
           bulk_hourly_cap?: number
           bulk_paused?: boolean
+          bulk_retry_after_until?: string | null
+          bulk_send_delay_ms?: number
           bulk_warmup_started_at?: string
           id?: number
           per_recipient_bulk_max?: number
@@ -1574,8 +1584,13 @@ export type Database = {
           auth_email_ttl_minutes?: number
           auth_retry_after_until?: string | null
           batch_size?: number
+          bulk_batch_size?: number
+          bulk_consecutive_rate_limits?: number
+          bulk_email_ttl_minutes?: number
           bulk_hourly_cap?: number
           bulk_paused?: boolean
+          bulk_retry_after_until?: string | null
+          bulk_send_delay_ms?: number
           bulk_warmup_started_at?: string
           id?: number
           per_recipient_bulk_max?: number
