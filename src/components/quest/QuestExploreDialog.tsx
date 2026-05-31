@@ -6,6 +6,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import { useQuestPaths, useAddQuestPath } from "@/hooks/use-quest";
+import { useQuestPathMaps } from "@/lib/quest/path-maps";
 import { cn } from "@/lib/utils";
 
 interface QuestExploreDialogProps {
@@ -22,6 +23,7 @@ export function QuestExploreDialog({
   completedPathSlugs,
 }: QuestExploreDialogProps) {
   const { data: paths } = useQuestPaths();
+  const { bySlug: pathBySlug } = useQuestPathMaps(paths);
   const addPath = useAddQuestPath();
   const [search, setSearch] = useState("");
 
@@ -70,7 +72,7 @@ export function QuestExploreDialog({
             const prereqsMet = path.prerequisites.every((slug) => completedPathSlugs.has(slug));
             const missingPrereqs = path.prerequisites
               .filter((slug) => !completedPathSlugs.has(slug))
-              .map((slug) => paths?.find((p) => p.slug === slug)?.title ?? slug);
+              .map((slug) => pathBySlug.get(slug)?.title ?? slug);
 
             return (
               <div key={path.id} className="card-elevated p-4">

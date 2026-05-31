@@ -221,8 +221,13 @@ const RecommendedPathCard = memo(function RecommendedPathCard({
   allPaths: QuestPath[];
 }) {
   const prereqsMet = path.prerequisites.length === 0;
+  const pathBySlug = useMemo(() => {
+    const m = new Map<string, QuestPath>();
+    for (const p of allPaths) m.set(p.slug, p);
+    return m;
+  }, [allPaths]);
   const prereqNames = path.prerequisites
-    .map((slug) => allPaths.find((p) => p.slug === slug)?.title ?? slug)
+    .map((slug) => pathBySlug.get(slug)?.title ?? slug)
     .join(", ");
 
   return (
