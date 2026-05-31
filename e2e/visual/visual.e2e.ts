@@ -61,14 +61,14 @@ async function stabilize(page) {
 }
 
 test.describe("visual regression", () => {
-  // Only run under the dedicated visual-regression projects (PLAYWRIGHT_VISUAL=1).
-  // The default matrix projects (chromium-desktop, etc.) don't ship baseline
-  // PNGs for these routes, so skip to keep the fast PR gate green.
-  test.skip(
-    ({}, testInfo) => !testInfo.project.name.startsWith("visual-"),
-    "Visual regression runs only under visual-* projects (PLAYWRIGHT_VISUAL=1).",
-  );
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page }, testInfo) => {
+    // Only run under the dedicated visual-regression projects (PLAYWRIGHT_VISUAL=1).
+    // The default matrix projects (chromium-desktop, etc.) don't ship baseline
+    // PNGs for these routes, so skip to keep the fast PR gate green.
+    test.skip(
+      !testInfo.project.name.startsWith("visual-"),
+      "Visual regression runs only under visual-* projects (PLAYWRIGHT_VISUAL=1).",
+    );
     // Freeze Date and Math.random so any timestamp/animation in the DOM is stable.
     await page.addInitScript(() => {
       const FIXED = 1737936000000; // 2025-01-27T00:00:00Z
@@ -85,6 +85,7 @@ test.describe("visual regression", () => {
       Math.random = () => 0.4242;
     });
   });
+
 
   for (const { path, name } of ROUTES) {
     test(`route ${name} matches snapshot`, async ({ page }) => {
