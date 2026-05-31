@@ -59,7 +59,7 @@ export function handleServiceError(error: ServiceErrorLike | null | undefined, o
   // Lazy-import so this module stays usable in non-browser test contexts.
   void (async () => {
     try {
-      const { reportError } = await import("@/services/error-reporter.service");
+      const { reportError } = errorReporterModule;
       const detail = error.code
         ? `${error.message} (code:${error.code})`
         : error.message;
