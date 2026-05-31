@@ -7102,6 +7102,22 @@ export type Database = {
         Returns: Json
       }
       get_nodes_neighbors_batch: { Args: { p_nodes: Json }; Returns: Json }
+      get_nudgeable_quest_users: {
+        Args: { p_inactivity_days?: number; p_nudge_interval_days?: number }
+        Returns: {
+          completed_count: number
+          display_name: string
+          email: string
+          first_name: string
+          notify_announcements: boolean
+          path_id: string
+          path_slug: string
+          path_title: string
+          selection_id: string
+          total_steps: number
+          user_id: string
+        }[]
+      }
       get_own_promotions: {
         Args: { p_user_id: string }
         Returns: {
@@ -7304,6 +7320,7 @@ export type Database = {
         }[]
       }
       recompute_all_stats: { Args: never; Returns: Json }
+      recompute_all_stats_lock_key: { Args: never; Returns: number }
       reconcile_account_orphans: { Args: never; Returns: Json }
       reconcile_course_badge_parity: { Args: never; Returns: Json }
       record_failed_login: {
