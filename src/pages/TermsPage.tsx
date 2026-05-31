@@ -13,7 +13,7 @@ export default function TermsPage() {
       title="Terms & Conditions"
       effective="May 7, 2026"
       contactEmail="info@techfleet.network"
-      markdownUrl="/policies/Terms-and-Conditions.md"
+      policyKey="terms-and-conditions"
     />
     </>
   );

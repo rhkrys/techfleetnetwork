@@ -13,7 +13,7 @@ export default function TermsOfUsePage() {
       title="Terms of Use"
       effective="May 7, 2026"
       contactEmail="info@techfleet.network"
-      markdownUrl="/policies/Terms-of-Use.md"
+      policyKey="terms-of-use"
     />
     </>
   );

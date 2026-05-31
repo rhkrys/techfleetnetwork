@@ -13,7 +13,7 @@ export default function CodeOfConductPage() {
       title="Code of Conduct & Anti-Harassment Policy"
       effective="October 15, 2023"
       contactEmail="safespace@techfleet.org"
-      markdownUrl="/policies/Code-of-Conduct.md"
+      policyKey="code-of-conduct"
     />
     </>
   );
