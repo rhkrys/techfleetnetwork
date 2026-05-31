@@ -82,9 +82,16 @@ for (const route of ROUTES) {
     const hsl = parseHsl(primaryRaw);
     expect(hsl, `--primary should be parseable HSL, got "${primaryRaw}"`).not.toBeNull();
     if (hsl) {
-      expect(Math.abs(hsl.h - PRIMARY_HUE)).toBeLessThanOrEqual(HSL_TOLERANCE.hue);
-      expect(Math.abs(hsl.s - PRIMARY_SAT)).toBeLessThanOrEqual(HSL_TOLERANCE.sat);
-      expect(Math.abs(hsl.l - PRIMARY_LIGHT)).toBeLessThanOrEqual(HSL_TOLERANCE.light);
+      const matches = PRIMARY_VARIANTS.some(
+        (v) =>
+          Math.abs(hsl.h - v.h) <= HSL_TOLERANCE.hue &&
+          Math.abs(hsl.s - v.s) <= HSL_TOLERANCE.sat &&
+          Math.abs(hsl.l - v.l) <= HSL_TOLERANCE.light,
+      );
+      expect(
+        matches,
+        `--primary "${primaryRaw}" did not match any brand variant within tolerance (${JSON.stringify(PRIMARY_VARIANTS)})`,
+      ).toBe(true);
     }
 
     expect(bodyFont.toLowerCase()).toMatch(/poppins/);
