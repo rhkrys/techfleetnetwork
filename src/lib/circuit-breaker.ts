@@ -12,6 +12,7 @@
  */
 
 import { createLogger } from "@/services/logger.service";
+import { reportRecovery } from "@/services/error-reporter.service";
 
 const log = createLogger("CircuitBreaker");
 
