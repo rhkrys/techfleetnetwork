@@ -1748,6 +1748,21 @@ export type Database = {
         }
         Relationships: []
       }
+      fill_content_gaps_counter: {
+        Row: {
+          count: number
+          day: string
+        }
+        Insert: {
+          count?: number
+          day?: string
+        }
+        Update: {
+          count?: number
+          day?: string
+        }
+        Relationships: []
+      }
       fleety_action_events: {
         Row: {
           action_label: string | null
@@ -2203,6 +2218,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      fleety_query_embedding_cache: {
+        Row: {
+          created_at: string
+          embedding: Json
+          text_hash: string
+        }
+        Insert: {
+          created_at?: string
+          embedding: Json
+          text_hash: string
+        }
+        Update: {
+          created_at?: string
+          embedding?: Json
+          text_hash?: string
+        }
+        Relationships: []
       }
       fleety_response_cache: {
         Row: {
@@ -6719,6 +6752,10 @@ export type Database = {
         }
       }
       export_my_data: { Args: never; Returns: Json }
+      fill_content_gaps_check_and_inc: {
+        Args: { p_cap?: number }
+        Returns: boolean
+      }
       fleety_approve_relationship: {
         Args: { p_id: string }
         Returns: undefined
