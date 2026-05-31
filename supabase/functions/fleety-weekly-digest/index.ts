@@ -13,9 +13,19 @@ const corsHeaders = {
 Deno.serve(withAuditWrapper("fleety-weekly-digest", async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  // Service-role gate (cron uses anon key, but this fn needs elevated DB reads)
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
   const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+  // Wave 1 SEC-W1-002: enforce the service-role gate the comment already
+  // promised. Without it any anon JWT could trigger a fan-out of admin emails.
+  const auth = req.headers.get("authorization") ?? "";
+  if (!SERVICE_ROLE || auth !== `Bearer ${SERVICE_ROLE}`) {
+    return new Response(JSON.stringify({ error: "unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();

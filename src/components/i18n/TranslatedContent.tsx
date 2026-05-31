@@ -8,8 +8,9 @@
  *     columnName="description" sourceText={project.description}
  *   />
  */
-import type * as React from "react";
+import { useMemo, type ElementType } from "react";
 import { useUgcTranslation } from "@/hooks/useUgcTranslation";
+import { sanitizeHtml } from "@/lib/security";
 import { Loader2 } from "lucide-react";
 
 interface Props {
@@ -27,11 +28,17 @@ export function TranslatedContent({
   as: Tag = "span", className,
 }: Props) {
   const { text, isTranslating } = useUgcTranslation({ entityTable, entityId, columnName, sourceText, contentFormat });
-  const TagAny = Tag as React.ElementType;
+  const TagAny = Tag as ElementType;
+  // Wave 1 SEC-W1-004: sanitize before innerHTML to close the only DOM-insertion
+  // site that bypassed DOMPurify.
+  const safeHtml = useMemo(
+    () => (contentFormat === "html" ? sanitizeHtml(text ?? "") : ""),
+    [contentFormat, text],
+  );
   return (
     <TagAny className={className} data-no-translate>
       {contentFormat === "html"
-        ? <span dangerouslySetInnerHTML={{ __html: text }} />
+        ? <span dangerouslySetInnerHTML={{ __html: safeHtml }} />
         : text}
       {isTranslating && (
         <span className="ml-2 inline-flex items-center gap-1 text-xs text-muted-foreground align-middle">

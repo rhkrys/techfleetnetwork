@@ -1,3 +1,7 @@
+// Wave 1 PERF-W1-010: static import eliminates the Vite static/dynamic
+// collision warning and ensures a single error-reporter singleton.
+import { reportError } from "@/services/error-reporter.service";
+
 type ServiceLogLevel = "warn" | "error";
 
 type ServiceLogger = Record<ServiceLogLevel, (action: string, message: string, metadata?: Record<string, unknown>, error?: unknown) => void>;
@@ -59,7 +63,6 @@ export function handleServiceError(error: ServiceErrorLike | null | undefined, o
   // Lazy-import so this module stays usable in non-browser test contexts.
   void (async () => {
     try {
-      const { reportError } = await import("@/services/error-reporter.service");
       const detail = error.code
         ? `${error.message} (code:${error.code})`
         : error.message;

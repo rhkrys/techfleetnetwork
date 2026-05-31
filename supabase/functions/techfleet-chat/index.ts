@@ -1127,6 +1127,26 @@ serve(withAuditWrapper("techfleet-chat", async (req) => {
       if (top && top.similarity >= 0.45) {
         cannedAnswerId = top.id;
         cannedContext = `\n\nCURATED ANSWER (admin-approved — start from this exact content; you may lightly tailor wording but must preserve every fact and link):\n${top.answer_md}\n`;
+        // Wave 1 COST-W1-014: high-confidence canned hit short-circuits the
+        // LLM call — stream the curated answer directly via the cache SSE
+        // builder, same shape as an L3 cache hit.
+        if (top.similarity >= 0.75) {
+          supabase.rpc("fleety_record_cost", {
+            _model: "canned", _tier: "B",
+            _tokens_in: 0, _tokens_out: 0,
+            _est_usd: 0.00005, _cache_hit: false, _canned_hit: true,
+          }).then(() => {}, () => {});
+          const headers: Record<string, string> = {
+            ...corsHeaders,
+            "Access-Control-Expose-Headers": "X-Fleety-Turn-Id, X-Fleety-Cache, X-Fleety-Intent, X-Fleety-Canned",
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+            "X-Fleety-Canned": "hit",
+            "X-Fleety-Intent": routerDecision?.intent ?? "definition",
+          };
+          return new Response(buildCacheSSEStream(top.answer_md), { headers });
+        }
       }
     } catch (e) {
       log.warn("canned", `canned answer lookup failed [${requestId}]: ${e instanceof Error ? e.message : "unknown"}`, { requestId });
@@ -1341,7 +1361,7 @@ serve(withAuditWrapper("techfleet-chat", async (req) => {
       + webResult.context;
     log.info("ai", `Sending request to AI gateway [${requestId}]`, {
       requestId,
-      model: "google/gemini-3-flash-preview",
+      model: "google/gemini-2.5-flash",
       systemPromptLength: fullSystemPrompt.length,
       webSourceCount: webResult.sources.length,
       frameworkContextLength: frameworkContext.length,
@@ -1405,11 +1425,11 @@ serve(withAuditWrapper("techfleet-chat", async (req) => {
     // Output tokens are accounted as max_tokens budget — refined in Phase 3.
     const estTokensIn = Math.ceil(fullSystemPrompt.length / 4)
       + Math.ceil(sanitizedMessages.reduce((n: number, m: { content: string }) => n + (m.content?.length || 0), 0) / 4);
-    const PRICE_FLASH_IN = 0.30 / 1_000_000;  // $/token, gemini-3-flash-preview
+    const PRICE_FLASH_IN = 0.30 / 1_000_000;  // $/token, gemini-2.5-flash
     const PRICE_FLASH_OUT = 2.50 / 1_000_000;
     const estUsd = estTokensIn * PRICE_FLASH_IN + 4096 * PRICE_FLASH_OUT * 0.4; // assume 40% of cap
     supabase.rpc("fleety_record_cost", {
-      _model: "google/gemini-3-flash-preview",
+      _model: "google/gemini-2.5-flash",
       _tier: "B",
       _tokens_in: estTokensIn,
       _tokens_out: Math.round(4096 * 0.4),
@@ -1440,7 +1460,7 @@ serve(withAuditWrapper("techfleet-chat", async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "google/gemini-2.5-flash",
         messages: [{ role: "system", content: fullSystemPrompt }, ...sanitizedMessages],
         stream: true,
         max_tokens: maxTokensCap, // LLM10 + Cost Plan v2 §7

@@ -175,7 +175,7 @@ export function FleetyChatWidget() {
     if (open) inputRef.current?.focus();
   }, [open]);
 
-  // Load conversations on mount
+  // Wave 1 UX-W1-015: defer history fetch until the widget actually opens.
   const loadConversations = useCallback(async () => {
     if (!user) return;
     const { data } = await supabase
@@ -185,7 +185,12 @@ export function FleetyChatWidget() {
     if (data) setConversations(data);
   }, [user]);
 
-  useEffect(() => { loadConversations(); }, [loadConversations]);
+  const conversationsLoadedRef = useRef(false);
+  useEffect(() => {
+    if (!open || conversationsLoadedRef.current) return;
+    conversationsLoadedRef.current = true;
+    void loadConversations();
+  }, [open, loadConversations]);
 
   // Load messages when conversation changes
   useEffect(() => {

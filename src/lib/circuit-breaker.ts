@@ -12,6 +12,7 @@
  */
 
 import { createLogger } from "@/services/logger.service";
+import { reportRecovery } from "@/services/error-reporter.service";
 
 const log = createLogger("CircuitBreaker");
 
@@ -86,14 +87,11 @@ export class CircuitBreaker {
   private onSuccess() {
     if (this.state === "HALF_OPEN") {
       log.info("execute", `Circuit "${this.name}" probe succeeded — closing circuit`);
-      // Lane 2 self-heal: emit external_api_recovered to audit_log so the
-      // triage digest can show "Discord flaked Nx, all auto-recovered".
-      // Lazy import to keep this module dependency-free at boot time.
-      void import("@/services/error-reporter.service")
-        .then(({ reportRecovery }) =>
-          reportRecovery(this.name, { attempts: this.recoveryAttempts || this.failureCount }),
-        )
-        .catch(() => undefined);
+      // Wave 1 PERF-W1-010: static import keeps a single error-reporter
+      // singleton and removes the Vite static/dynamic collision warning.
+      try {
+        reportRecovery(this.name, { attempts: this.recoveryAttempts || this.failureCount });
+      } catch { /* never throw from telemetry */ }
     }
     this.state = "CLOSED";
     this.failureCount = 0;

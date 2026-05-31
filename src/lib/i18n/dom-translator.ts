@@ -137,18 +137,17 @@ function rememberOriginal(node: Text): string {
 
 function applyTranslation(node: Text, source: string, lang: string) {
   if (lang === "en") {
-    if (node.nodeValue !== source) node.nodeValue = source;
+    if (node.nodeValue !== source) setNodeValue(node, source);
     return;
   }
   const cache = loadCacheFor(lang);
   const trimmed = source.trim();
   const hit = cache.get(trimmed);
   if (hit !== undefined) {
-    // Preserve original leading/trailing whitespace.
     const lead = source.match(/^\s*/)?.[0] ?? "";
     const trail = source.match(/\s*$/)?.[0] ?? "";
     const next = `${lead}${hit}${trail}`;
-    if (node.nodeValue !== next) node.nodeValue = next;
+    if (node.nodeValue !== next) setNodeValue(node, next);
   } else {
     queueForTranslation(trimmed);
   }
@@ -252,6 +251,16 @@ function walkAndTranslate(root: Node, lang: string) {
   }
 }
 
+// Wave 1 PERF-W1-008: self-write guard set — every time we mutate a Text node
+// ourselves we stamp it here so the MutationObserver callback can short-circuit.
+const ownWrites = new WeakSet<Text>();
+
+function setNodeValue(node: Text, value: string) {
+  if (node.nodeValue === value) return;
+  ownWrites.add(node);
+  node.nodeValue = value;
+}
+
 function attachObserver() {
   if (state.observer) return;
   const obs = new MutationObserver((mutations) => {
@@ -259,21 +268,11 @@ function attachObserver() {
     for (const m of mutations) {
       if (m.type === "characterData") {
         const tn = m.target as Text;
+        if (ownWrites.has(tn)) { ownWrites.delete(tn); continue; }
         if (shouldSkipElement(tn.parentElement)) continue;
         const next = tn.nodeValue ?? "";
-        const prev = state.records.get(tn);
-        // If this change came from our translation (matches cached translation),
-        // ignore. Otherwise treat as new English source.
-        if (prev !== undefined) {
-          const cache = loadCacheFor(state.lang);
-          const cached = cache.get(prev.trim());
-          if (cached !== undefined) {
-            const lead = prev.match(/^\s*/)?.[0] ?? "";
-            const trail = prev.match(/\s*$/)?.[0] ?? "";
-            if (next === `${lead}${cached}${trail}`) continue;
-          }
-        }
         state.records.set(tn, next);
+        state.tracked.add(tn);
         if (next.trim() && !SKIP_RE.test(next.trim())) {
           applyTranslation(tn, next, state.lang);
         }
@@ -282,11 +281,7 @@ function attachObserver() {
       }
     }
   });
-  obs.observe(document.body, {
-    subtree: true,
-    childList: true,
-    characterData: true,
-  });
+  obs.observe(document.body, { subtree: true, childList: true, characterData: true });
   state.observer = obs;
 }
 
@@ -299,7 +294,7 @@ function restoreAllToEnglish() {
   for (const node of state.tracked) {
     const original = state.records.get(node);
     if (original !== undefined && node.nodeValue !== original) {
-      node.nodeValue = original;
+      setNodeValue(node, original);
     }
   }
 }
@@ -310,10 +305,12 @@ function setActiveLanguage(lang: string) {
   if (normalized.toLowerCase() === "en") {
     detachObserver();
     restoreAllToEnglish();
+    // Wave 1 PERF-W1-008: drop tracked refs on en so we don't pin nodes for
+    // the rest of the session. Re-walks will repopulate on next non-en switch.
+    state.tracked = new Set();
     state.pending.clear();
     return;
   }
-  // Pre-warm cache from localStorage and translate everything visible right now.
   loadCacheFor(normalized);
   attachObserver();
   walkAndTranslate(document.body, normalized);
