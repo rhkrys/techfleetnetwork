@@ -356,9 +356,15 @@ function ProjectSection({ items, emptyText, navigate, typeLabel, phaseLabel, sta
                 </div>
               </div>
 
-              {/* Footer affordance — left-aligned text, no icon, whole card stays clickable */}
+              {/* Footer CTA — full-width primary button, stops card click to avoid double-nav */}
               <div className="mt-5 pt-5 border-t">
-                <p className="text-base font-semibold text-primary">View opening →</p>
+                <Button
+                  type="button"
+                  className="w-full"
+                  onClick={(e) => { e.stopPropagation(); navigate(href); }}
+                >
+                  View opening
+                </Button>
               </div>
             </Card>
           </div>
