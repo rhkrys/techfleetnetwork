@@ -124,7 +124,9 @@ jobs:
           path: |
             node_modules
             ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          key: ${{ runner.os }}-node-v2-${{ hashFiles('package.json', 'package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-v2-
 
       - name: Install dependencies
         if: steps.cache-modules-visual.outputs.cache-hit != 'true'
