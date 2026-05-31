@@ -107,3 +107,21 @@ async function anonGet(table: string, query = "select=*&limit=5") {
     }
   },
 );
+
+/**
+ * `ugc_translations` is intentionally readable by anon (translation cache
+ * for public pages). The regression we lock here is that the public-read
+ * policy is *still wired* — accidentally dropping it would break i18n for
+ * unauthenticated visitors. Scenarios: I18N-UGC-EDGE-001, I18N-UGC-EDGE-008.
+ */
+(enabled ? describe : describe.skip)(
+  "intentional public read: ugc_translations",
+  () => {
+    it("anon GET returns 2xx (policy wired, never 5xx)", async () => {
+      const res = await anonGet("ugc_translations", "select=id&limit=1");
+      await res.text();
+      expect(res.status).toBeLessThan(500);
+      expect([200, 206]).toContain(res.status);
+    }, 15_000);
+  },
+);
