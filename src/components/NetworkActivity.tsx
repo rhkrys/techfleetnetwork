@@ -157,7 +157,7 @@ export const NetworkActivity = memo(function NetworkActivity({ showMap = true, s
     queryFn: () => StatsService.getNetworkStats(),
     staleTime: 60 * 1000, // 1 min — keep numbers fresh on the landing page
     refetchInterval: 2 * 60 * 1000, // refresh every 2 min while mounted
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
     refetchOnReconnect: true,
   });
 

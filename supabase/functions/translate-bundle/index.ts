@@ -79,7 +79,7 @@ Deno.serve(withAuditWrapper("translate-bundle", async (req) => {
         method: "POST",
         headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: "google/gemini-2.5-flash-lite",
           messages: [
             { role: "system", content: `Translate every JSON string value to BCP-47 locale "${locale}". Preserve keys and {{var}} placeholders. Return ONLY valid JSON.` },
             { role: "user", content: JSON.stringify(source) },
