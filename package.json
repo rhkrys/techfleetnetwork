@@ -28,7 +28,11 @@
     "validate:edge-functions": "node scripts/validate-edge-functions.mjs",
     "sbom": "cyclonedx-npm --output-format JSON --output-file sbom.json --omit dev",
     "audit:signatures": "npm audit signatures",
-    "scan:secrets": "node scripts/secret-scan.mjs"
+    "scan:secrets": "node scripts/secret-scan.mjs",
+    "prepare": "husky || true",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "size": "size-limit"
   },
   "dependencies": {
     "@axe-core/playwright": "4.10.2",
@@ -181,5 +185,26 @@
     "not and_qq > 0",
     "not and_uc > 0",
     "not baidu > 0"
+  ],
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,mjs}": [
+      "eslint --fix --max-warnings=99999",
+      "prettier --write"
+    ],
+    "*.{json,css,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  },
+  "size-limit": [
+    {
+      "name": "Main entry (gz)",
+      "path": "dist/assets/index-*.js",
+      "limit": "350 KB"
+    },
+    {
+      "name": "Total initial JS (gz)",
+      "path": "dist/assets/*.js",
+      "limit": "1500 KB"
+    }
   ]
 }
