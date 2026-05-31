@@ -36,7 +36,8 @@ const COVERAGE: Row[] = [
   { table: "audit_log", scenarios: ["AUD-LOG-EDGE-001", "AUD-LOG-EDGE-008"] },
   { table: "cca_signatures", scenarios: ["CCA-EDGE-001", "CCA-EDGE-008"] },
   { table: "email_send_log", scenarios: ["EMAIL-DEL-EDGE-001", "EMAIL-DEL-EDGE-008"] },
-  { table: "ugc_translations", scenarios: ["I18N-UGC-EDGE-001", "I18N-UGC-EDGE-008"] },
+  // ugc_translations has an intentional `public read passed` policy
+  // (translation cache for anonymous visitors). Covered separately below.
   { table: "i18n_content_registry", scenarios: ["I18N-UGC-EDGE-001"] },
   { table: "notifications", scenarios: ["NOTIF-EDGE-001", "NOTIF-EDGE-008"] },
   { table: "observer_role_grants", scenarios: ["OBS-EDGE-001", "OBS-EDGE-008"] },
