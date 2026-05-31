@@ -7631,6 +7631,7 @@ export type Database = {
             }
             Returns: undefined
           }
+      write_audit_log_batch: { Args: { p_events: Json }; Returns: number }
     }
     Enums: {
       app_role: "admin" | "member" | "teacher"
