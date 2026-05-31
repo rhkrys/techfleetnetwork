@@ -137,18 +137,17 @@ function rememberOriginal(node: Text): string {
 
 function applyTranslation(node: Text, source: string, lang: string) {
   if (lang === "en") {
-    if (node.nodeValue !== source) node.nodeValue = source;
+    if (node.nodeValue !== source) setNodeValue(node, source);
     return;
   }
   const cache = loadCacheFor(lang);
   const trimmed = source.trim();
   const hit = cache.get(trimmed);
   if (hit !== undefined) {
-    // Preserve original leading/trailing whitespace.
     const lead = source.match(/^\s*/)?.[0] ?? "";
     const trail = source.match(/\s*$/)?.[0] ?? "";
     const next = `${lead}${hit}${trail}`;
-    if (node.nodeValue !== next) node.nodeValue = next;
+    if (node.nodeValue !== next) setNodeValue(node, next);
   } else {
     queueForTranslation(trimmed);
   }
