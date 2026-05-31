@@ -1,0 +1,15 @@
+dist
+build
+node_modules
+coverage
+playwright-report
+test-results
+e2e/visual/__screenshots__
+src/integrations/supabase/types.ts
+supabase/.branches
+supabase/.temp
+*.lock
+bun.lockb
+package-lock.json
+sbom.json
+npm-audit.json
