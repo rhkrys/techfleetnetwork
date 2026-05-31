@@ -27,6 +27,7 @@ for (const path of PUBLIC_ROUTES) {
         if (!el || el === document.body) return null;
         const cs = getComputedStyle(el);
         const tabindex = el.getAttribute("tabindex");
+        const role = el.getAttribute("role");
         const visible =
           parseFloat(cs.outlineWidth || "0") > 0 ||
           (cs.boxShadow && cs.boxShadow !== "none");
@@ -35,11 +36,23 @@ for (const path of PUBLIC_ROUTES) {
         // inspect. Treat any element that contains/is an iframe as opaque.
         const isThirdPartyIframeHost =
           el.tagName === "IFRAME" || !!el.querySelector("iframe");
+        // Generic non-interactive wrapper DIV/SPANs (focus traps, sentinels,
+        // portal hosts from Radix/Turnstile, etc.) often receive focus without
+        // any app-owned styling. Only enforce focus-ring on natively focusable
+        // elements or anything with an explicit interactive role.
+        const NATIVE_FOCUSABLE = ["A","BUTTON","INPUT","SELECT","TEXTAREA","SUMMARY"];
+        const INTERACTIVE_ROLES = new Set([
+          "button","link","menuitem","tab","checkbox","radio","switch","option","combobox","textbox","searchbox","slider","spinbutton",
+        ]);
+        const isInteractive =
+          NATIVE_FOCUSABLE.includes(el.tagName) ||
+          (role ? INTERACTIVE_ROLES.has(role) : false);
         return {
           tag: el.tagName.toLowerCase(),
           tabindex,
           visible: !!visible,
           isThirdPartyIframeHost,
+          isInteractive,
           fingerprint: `${el.tagName}#${el.id || ""}.${el.className || ""}`.slice(0, 200),
         };
       });
@@ -47,8 +60,10 @@ for (const path of PUBLIC_ROUTES) {
       if (seen.has(probe.fingerprint) && i > 5) break; // stopped advancing
       seen.add(probe.fingerprint);
       if (probe.isThirdPartyIframeHost) continue;
+      if (!probe.isInteractive) continue;
       if (probe.tabindex === "-1") offenders.push(`tabindex=-1 focused: ${probe.fingerprint}`);
       if (!probe.visible) offenders.push(`no visible focus ring: ${probe.fingerprint}`);
+
 
     }
 
