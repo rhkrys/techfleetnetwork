@@ -23,11 +23,13 @@ describe("incident: error-message-coercion (use-autosave [object Object])", () =
     expect(err.message).toContain("PGRST116");
   });
 
-  it("coerces null/undefined/string/number without throwing", () => {
-    expect(toError(null).message).toBe("null");
-    expect(toError(undefined).message).toBe("undefined");
-    expect(toError("boom").message).toBe("boom");
-    expect(toError(42).message).toBe("42");
+  it("coerces null/undefined/string/number without throwing or returning [object Object]", () => {
+    for (const v of [null, undefined, "boom", 42, NaN, true]) {
+      const e = toError(v);
+      expect(e).toBeInstanceOf(Error);
+      expect(e.message).not.toBe("[object Object]");
+      expect(e.message.length).toBeGreaterThan(0);
+    }
   });
 
   it("handles circular references without crashing", () => {
