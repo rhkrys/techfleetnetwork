@@ -9,12 +9,14 @@ vi.mock("@/services/auth.service", () => ({
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     auth: {
+      getSession: vi.fn(() => Promise.resolve({ data: { session: null }, error: null })),
       onAuthStateChange: vi.fn(() => ({
         data: { subscription: { unsubscribe: vi.fn() } },
       })),
     },
   },
 }));
+
 
 describe("ResetPasswordPage UI (BDD 20.1)", () => {
   it("20.1: shows invalid/expired link message when no recovery session", () => {
