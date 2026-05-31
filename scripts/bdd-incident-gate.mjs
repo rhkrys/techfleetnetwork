@@ -36,7 +36,7 @@ async function fetchJson(path) {
 }
 
 const fingerprints = await fetchJson(
-  "/rest/v1/known_issue_catalog?select=pattern,reason&match_kind=eq.fingerprint&is_active=eq.true"
+  "/rest/v1/known_issue_catalog?select=pattern,reason,match_kind&is_active=eq.true"
 );
 
 if (!fingerprints.length) {
@@ -44,14 +44,27 @@ if (!fingerprints.length) {
   process.exit(0);
 }
 
+// Map each catalog pattern to a short stable tag (first 40 chars, slug-ish)
+// so spec authors can write `incident:stale-chunk` without echoing full text.
+function tagFor(pattern) {
+  return pattern
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+}
+
 const missing = [];
+const seen = new Set();
 for (const { pattern, reason } of fingerprints) {
-  const tag = `incident:${pattern}`;
+  const tag = `incident:${tagFor(pattern)}`;
+  if (seen.has(tag)) continue;
+  seen.add(tag);
   const enc = encodeURIComponent(`*${tag}*`);
   const rows = await fetchJson(
     `/rest/v1/bdd_scenarios?select=scenario_id&or=(notes.ilike.${enc},test_file.ilike.${enc})&limit=1`
   );
-  if (!rows.length) missing.push({ pattern, reason });
+  if (!rows.length) missing.push({ pattern, reason, tag });
 }
 
 if (missing.length === 0) {
@@ -71,9 +84,11 @@ const lines = [
   "regression test reference in `bdd_scenarios` (looked for `incident:<fingerprint>`",
   "in `notes` or `test_file`):",
   "",
-  ...missing.map((m) => `- \`${m.pattern}\` — ${m.reason}`),
+  ...missing.map(
+    (m) => `- \`${m.tag}\` — pattern: \`${m.pattern.slice(0, 80)}\` — ${m.reason}`
+  ),
   "",
-  "Add a regression spec and tag the scenario with `incident:<fingerprint>` before merging.",
+  "Add a regression spec and tag the scenario with `incident:<tag>` (slug of the catalog pattern) before merging.",
 ];
 const fs = await import("node:fs");
 fs.appendFileSync(summary, lines.join("\n") + "\n");
