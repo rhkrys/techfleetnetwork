@@ -208,7 +208,7 @@ Deno.serve(withAuditWrapper("sync-airtable-roster", async (req) => {
 
     // --- Upsert into project_roster ---
     let created = 0;
-    let updated = 0;
+    const updated = 0;
     const errors: string[] = [];
 
     // Process in batches of 50

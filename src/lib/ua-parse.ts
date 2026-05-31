@@ -84,7 +84,7 @@ interface UAData {
  */
 export async function detectUserAgent(uaString?: string): Promise<UaSummary> {
   const ua = uaString ?? (typeof navigator !== "undefined" ? navigator.userAgent ?? "" : "");
-  let summary = parseUaString(ua);
+  const summary = parseUaString(ua);
 
   try {
     const uaData = (typeof navigator !== "undefined"
