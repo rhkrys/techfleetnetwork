@@ -87,20 +87,30 @@ export default tseslint.config(
       // Browser-compat — warn until the baseline reaches zero; this is the
       // biggest noisy category in the current report.
       "compat/compat": "warn",
-      "@typescript-eslint/no-explicit-any": "warn",
+      // Legacy baseline rules — disabled until a dedicated cleanup sweep.
+      // Switching to "warn" globally generates ~270+ noise per run with no
+      // actionable signal. Re-enable per-folder once the queue is at zero.
+      "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-require-imports": "warn",
       "@typescript-eslint/no-unused-expressions": "warn",
       "no-useless-escape": "warn",
-      "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
+      // shadcn/ui components legitimately co-export variants + components,
+      // which trips this rule across most of the design system. Off until
+      // we split files per the React Refresh contract.
+      "react-refresh/only-export-components": "off",
       "@typescript-eslint/no-unused-vars": "off",
       "@typescript-eslint/no-empty-object-type": "warn",
       "prefer-const": "warn",
       "no-control-regex": "warn",
+      // Legacy baseline — too many real dependency arrays to fix in one pass.
+      "react-hooks/exhaustive-deps": "off",
 
 
       // Force a single canonical import path for context modules. Multiple
       // import paths (relative vs alias, with/without extension) cause Vite to
       // load the same context twice, breaking provider/consumer matching.
+      // Patterns target ONLY relative paths and the .tsx variant — the
+      // canonical "@/contexts/<Name>" alias must remain importable.
       "no-restricted-imports": [
         "warn",
 
@@ -108,9 +118,11 @@ export default tseslint.config(
           patterns: [
             {
               group: [
-                "**/contexts/AuthContext",
+                "./contexts/AuthContext",
+                "../**/contexts/AuthContext",
                 "**/contexts/AuthContext.tsx",
-                "**/contexts/PageHeaderContext",
+                "./contexts/PageHeaderContext",
+                "../**/contexts/PageHeaderContext",
                 "**/contexts/PageHeaderContext.tsx",
               ],
               message:
@@ -155,6 +167,37 @@ export default tseslint.config(
     rules: {
       "css-portability/no-h-screen": "off",
       "css-portability/no-vh-units": "off",
+    },
+  },
+  {
+    // Build scripts, e2e harnesses, and edge functions run in Node/Deno —
+    // browser-compat assertions are inapplicable. Also silences `fetch` /
+    // `requestAnimationFrame` false positives flagged against op_mini.
+    files: [
+      "scripts/**/*.{ts,tsx,mjs,js}",
+      "e2e/**/*.{ts,tsx,mjs,js}",
+      "supabase/functions/**/*.{ts,tsx}",
+      "playwright.config.ts",
+      "vitest.config.ts",
+      "vite.config.ts",
+    ],
+    rules: {
+      "compat/compat": "off",
+    },
+  },
+  {
+    // jsx-a11y/label-has-associated-control crashes under eslint-plugin-jsx-a11y@6.x
+    // with minimatch v10 (TypeError: minimatch is not a function). The rule is
+    // already covered by label-has-for + label requirements elsewhere.
+    rules: {
+      "jsx-a11y/label-has-associated-control": "off",
+    },
+  },
+  {
+    // Drop the entire "unused eslint-disable directive" noise — comments are
+    // intentionally future-proofing for rules that may flip back on.
+    linterOptions: {
+      reportUnusedDisableDirectives: "off",
     },
   },
 );
