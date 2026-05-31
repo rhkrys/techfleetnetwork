@@ -5,6 +5,7 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import jsxA11y from "eslint-plugin-jsx-a11y";
 import tseslint from "typescript-eslint";
 import compat from "eslint-plugin-compat";
+import security from "eslint-plugin-security";
 import brandTerms from "./scripts/lint/eslint-plugin-brand-terms.mjs";
 import cssPortability from "./scripts/lint/eslint-plugin-css-portability.mjs";
 import noRawDiscordInput from "./scripts/lint/eslint-plugin-no-raw-discord-input.mjs";
@@ -49,6 +50,11 @@ export default tseslint.config(
       // initially so the existing baseline doesn't break CI; tighten to
       // "error" once the warning queue is at zero.
       "jsx-a11y": jsxA11y,
+      // OWASP A05/A02 — surfaces eval, unsafe regex, child_process, buffer
+      // noassert, possible timing attacks, pseudoRandomBytes, etc. Warn-only
+      // initially so baseline noise doesn't brick CI; promote per-rule after
+      // the queue is at zero.
+      security,
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
@@ -87,6 +93,20 @@ export default tseslint.config(
       // Browser-compat — warn until the baseline reaches zero; this is the
       // biggest noisy category in the current report.
       "compat/compat": "warn",
+      // eslint-plugin-security — warn-only baseline (OWASP A05/A02).
+      "security/detect-eval-with-expression": "warn",
+      "security/detect-non-literal-require": "warn",
+      "security/detect-child-process": "warn",
+      "security/detect-buffer-noassert": "warn",
+      "security/detect-disable-mustache-escape": "warn",
+      "security/detect-no-csrf-before-method-override": "warn",
+      "security/detect-pseudoRandomBytes": "warn",
+      "security/detect-unsafe-regex": "warn",
+      "security/detect-new-buffer": "warn",
+      // These two are too noisy on a typed codebase (object/array index
+      // access patterns) — leave off until a dedicated sweep.
+      "security/detect-object-injection": "off",
+      "security/detect-non-literal-fs-filename": "off",
       // Legacy baseline rules — disabled until a dedicated cleanup sweep.
       // Switching to "warn" globally generates ~270+ noise per run with no
       // actionable signal. Re-enable per-folder once the queue is at zero.

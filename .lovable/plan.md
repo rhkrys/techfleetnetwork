@@ -1,111 +1,98 @@
-# Regression coverage audit + BDD backfill + workflow hardening
 
-## Current state (measured)
+# Audit vs Technical Architecture Report
 
-**Playwright (regression.yml `playwright` job, 3 shards × 25 min):**
-- 13 spec files, 1,449 LOC, chromium-desktop only
-- Cancellations seen on shards 1 & 2 are GitHub job-level cancels, not test failures — they hit the 25 min ceiling because `wcag-audit.e2e.ts` (487 LOC) + `responsive-stability` + `profile-setup` dominate one shard, while `auth.e2e.ts` retries 3× per failing test (3 attempts × 60 s = 3 min/test) starve neighbors. No per-shard balancing, no per-test timeout cap, no global hard cap below the job's 25 min.
+## What's already covered (no work needed)
 
-**BDD scenarios (`bdd_scenarios` table):**
-- 1,980 total across 421 feature areas
-- Implemented: 1,449 (73%) — but only **92 are `e2e`**, 809 unit, 608 manual
-- **Not built: 529** + **test_type=`none`: 452** = ~981 scenarios with zero automated coverage
-- Top gap areas: Triage Permanent Refactor (30), General Application (27), Application Analysis (24), Security (22), Accessibility (21), Project Blast (20), Email Deliverability (20), Observer Role Opt-In (19), Email Queue Resilience (18), Notifications (15), CCA (15), i18n-ugc (14), Teacher Role & Classes (14), Form Drafts (13), Privacy & Cookies (12), Brand Voice (12), Network Activity (12), Membership Tiers (12), Step Progress Bar (12), Project Interview Toggle (12)
+| Report area | Status | Evidence |
+|---|---|---|
+| CI/CD automation | ✅ | 12 GitHub workflows: `regression`, `bdd-gate`, `lighthouse`, `cross-browser`, `browserstack-weekly`, `a11y-audit`, `npm-audit`, `pentest`, `secret-scan`, `preview-comment`, `auto-rerun-flake`, `ci-alert` |
+| Unit + integration tests | ✅ | Vitest + React Testing Library, `src/test/{smoke,regression,services,hooks,validators,ui}` |
+| E2E tests | ✅ | Playwright suite across 20+ folders (`e2e/`) |
+| OWASP coverage | ✅ | RLS on all tables, defense-in-depth memory, hash-chain audit log, pentest workflow, npm-audit workflow, secret-scan workflow, edge-fn JWT/service-role gate |
+| XSS / `dangerouslySetInnerHTML` | ✅ | `dompurify@3.4.2` used; server-pre-sanitized `body_html` for policies |
+| Code splitting / lazy loading | ✅ | 89 `lazy()` call sites + `src/lib/lazy-with-retry.ts` |
+| Error boundary | ✅ | `src/components/ErrorBoundary.tsx` + `error-reporter.service.ts` + agent_fix_queue triage |
+| Web Vitals RUM | ✅ | `src/lib/web-vitals.ts` + `record-web-vital` edge fn + admin Performance tab |
+| Feature-based architecture | ✅ | Service/repository layers, `src/services/*`, React Query everywhere |
+| State management discipline | ✅ | React Query for server state, contexts for global, `useState` local — no duplicated state |
+| Routing + design system | ✅ | React Router + tf-card design tokens + Brand Visual Guide v1 |
+| API service layer | ✅ | UI → hooks → service → Supabase; circuit breaker for external APIs |
+| Cross-browser + a11y | ✅ | BrowserStack weekly + axe a11y workflow + WCAG 2/3 in Core memory |
+| DB-first content (supply chain) | ✅ | DBC-001..007, no public/data CSVs, sanitized policy HTML |
+| Auth failures (A07) | ✅ | TOTP for admins, login rate limit fairness, session revocation, password reset race fix |
 
-## Reality check — scope
+## Gaps to close — 10 fixes shipped in one pass
 
-Building automated coverage for ~981 missing scenarios across 421 feature areas is **not a single-loop task**. A responsible plan ships it in waves so each PR stays reviewable and the regression action stays green. I'll execute every wave back-to-back unless you stop me, but each wave is a discrete shippable unit.
+### 1. Pre-commit hygiene (report §5.2)
+- Add **Husky** + **lint-staged** + **Prettier** (config matching existing eslint style).
+- Pre-commit runs: `eslint --fix` + `prettier --write` on staged files.
+- New `package.json` script `prepare` for Husky install.
 
-## Wave 0 — workflow hardening (ship first, ~30 min)
+### 2. ESLint security hardening (report §2.2)
+- Add `eslint-plugin-security` + `eslint-plugin-react` (security rules: `no-danger-with-children`, `no-unsafe`, `no-find-dom-node`).
+- Wire into `eslint.config.js` as warn-on-violation so it surfaces without breaking the build immediately.
 
-Goal: no shard ever hits the 25 min wall again, regardless of how many specs we add later.
+### 3. Dependency auto-update (report §2.1 A03 supply chain)
+- Add `.github/dependabot.yml` — weekly grouped PRs for npm + GitHub Actions, security updates daily.
+- Complements existing `npm-audit.yml`.
 
-1. **`playwright.config.ts`**
-   - `timeout: 45_000` per test (default 30 s is too tight for auth flows; cap at 45 to prevent runaway)
-   - `expect.timeout: 7_000`
-   - `retries: process.env.CI ? 1 : 0` (drop from 2 → 1; cuts worst-case test time by 33%)
-   - `workers: process.env.CI ? 2 : undefined` (2 workers/shard on ubuntu-latest 4-core)
-   - `globalTimeout: 20 * 60 * 1000` (hard 20 min cap inside the 25 min job ceiling so we get a report instead of a cancel)
-   - `reporter: [['html'], ['github'], ['blob']]` — blob reporter enables merged HTML across shards
-2. **`regression.yml` `playwright` job**
-   - Increase shards from 3 → **6** (still cheap, halves per-shard wall time)
-   - `timeout-minutes: 22` (under playwright globalTimeout so artifacts upload)
-   - Add `--reporter=blob` and a final `merge-reports` job that downloads all 6 blob artifacts and publishes one HTML report
-   - Add `PLAYWRIGHT_JSON_OUTPUT_NAME` and upload `results.json` for downstream agent_fix_queue ingestion
-   - Add `if: !cancelled()` to upload step (already has `always()`, fine)
-3. **Auth tests** — replace per-test 3× retry with a single `test.describe.configure({ retries: 1 })` block; helpers/`waitForSelector` calls audited for default 30 s timeouts that exceed the new 45 s test cap
+### 4. SBOM artifact (report §2.1 A03/A08)
+- Extend `npm-audit.yml` to emit a CycloneDX SBOM (`@cyclonedx/cyclonedx-npm`) and upload as a workflow artifact, retained 90 days. Satisfies SOC 2 SBOM line in `mem://compliance/technical-controls`.
 
-## Wave 1 — BDD authoring (no code yet, DB-only)
+### 5. List virtualization (report §3.1)
+- Add `@tanstack/react-virtual` (already standard alongside our stack).
+- Apply to the three known long-scroll card grids that are NOT AG Grid:
+  - Recruiting Center applicants card view
+  - Members directory grid
+  - Announcements feed
+- Threshold: virtualize when item count > 50.
 
-For each of the **top 20 gap feature areas** above I'll:
-1. Read the relevant feature memory + source files
-2. Write Gherkin scenarios with tri-layer Then clauses ([UI]/[DB]/[Code]) per project rule
-3. Insert into `bdd_scenarios` with `status='not_built'`, `test_type` planned ('e2e'|'unit'|'both'), member + admin paths both covered
-4. Target: ~400 new/updated scenario rows; remaining 581 gap rows get pulled forward as wave 2/3 backlog
+### 6. Image optimization helper (report §3.1)
+- Add `vite-plugin-image-optimizer` for build-time PNG/JPG → optimized + sibling WebP.
+- New `<OptimizedImage>` wrapper (drop-in `<img>` replacement) emitting `<picture>` with `image/webp` source, `loading="lazy"`, `decoding="async"`, explicit `width`/`height`.
+- Migrate the obvious hero/brand images (landing, course covers, client logos) — leave generated-content images alone.
 
-Coverage matrix per area: happy path (member), happy path (admin), permission denied (anon), permission denied (wrong role), RLS DB assertion, edge-fn auth gate assertion, error recovery, a11y keyboard reach, mobile viewport.
+### 7. Bundle-size budget (report §3.1)
+- Add `size-limit` with `@size-limit/preset-app`.
+- Budgets: main entry ≤ 250 KB gz, total initial ≤ 500 KB gz.
+- New CI step in `regression.yml` — fails PR if budget exceeded.
 
-## Wave 2 — e2e implementation (member journeys)
+### 8. Visual regression baseline (report §1.2)
+- Existing `e2e/visual/` is small. Promote to a proper Playwright `toHaveScreenshot()` baseline covering: landing, sign-in, dashboard empty state, /terms, /privacy, /accessibility, project openings list, lesson player.
+- New workflow `visual-regression.yml` running on PR with screenshot diff threshold 0.2%; baseline stored under `e2e/visual/__screenshots__/`.
 
-New spec files, one per top area, sharded across the 6 playwright shards:
-- `e2e/applications/general-application.e2e.ts`
-- `e2e/applications/project-blast-recipient.e2e.ts`
-- `e2e/notifications/push-and-inapp.e2e.ts`
-- `e2e/i18n/ugc-translation.e2e.ts`
-- `e2e/forms/drafts-and-autosave.e2e.ts`
-- `e2e/privacy/cookies-and-dsar.e2e.ts`
-- `e2e/membership/tiers.e2e.ts`
-- `e2e/profile/cca-signing.e2e.ts`
-- `e2e/community/observer-role-optin.e2e.ts`
-- `e2e/events/week-view.e2e.ts`
-- `e2e/classes/teacher-class-lifecycle.e2e.ts`
-- `e2e/network/activity-feed.e2e.ts`
-- `e2e/projects/interview-toggle.e2e.ts`
+### 9. Static prerender for SEO-critical public routes (report §4.2)
+- Add `vite-plugin-prerender-spa` (or `vite-plugin-prerender`) — pre-renders `/`, `/terms`, `/terms-of-use`, `/privacy`, `/cookies`, `/accessibility`, `/code-of-conduct`, `/sign-in`.
+- HTML is served instantly; React hydrates after. Improves LCP + SEO without abandoning SPA model.
+- Content still comes from DB at runtime; prerender uses the bundled offline fallback strings + `<noscript>` policy text fetched at build via `get_current_policy` RPC.
 
-Each spec uses the existing `e2e/helpers/` login fixtures, asserts UI + makes a `supabase.from(...).select()` round-trip for the DB-layer Then clause.
+### 10. Security headers smoke test (report §2.1 A02 misconfig)
+- New `src/test/smoke/security-headers.smoke.test.ts` that asserts production-host responses for `/` include: `Strict-Transport-Security`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `Content-Security-Policy` (or `Content-Security-Policy-Report-Only`).
+- Runs in `regression.yml`. Tells us immediately if the platform CDN drops a header.
 
-## Wave 3 — e2e implementation (admin journeys)
+## Out of scope (intentionally rejected)
 
-- `e2e/admin/recruiting-center.e2e.ts`
-- `e2e/admin/application-analysis.e2e.ts`
-- `e2e/admin/project-blast-author.e2e.ts`
-- `e2e/admin/triage-queue.e2e.ts`
-- `e2e/admin/error-monitoring.e2e.ts`
-- `e2e/admin/class-approval.e2e.ts`
-- `e2e/admin/announcements-author.e2e.ts`
-- `e2e/admin/system-health-tabs.e2e.ts` (Email, Translations, Fleety, Performance, Content, Triage)
-- `e2e/admin/promotion-workflow.e2e.ts`
-- `e2e/admin/knowledge-ingest.e2e.ts`
-
-Each admin spec asserts at least one negative-auth case (non-admin gets blocked) to keep RLS honest.
-
-## Wave 4 — backend/API/DB-only coverage
-
-Where browser e2e is wrong tool, add Vitest specs that hit Supabase directly:
-- `src/test/edge/*.test.ts` for every edge fn lacking JWT/service-role gate test
-- `src/test/db/*.test.ts` for RLS matrix per role × table for new tables (i18n_content_registry, ugc_translations, agent_fix_queue, web_vital_samples, cookie_consents, dsar_requests, class_*, project_blasts, observer_role_grants, etc.)
-- `src/test/api/circuit-breaker.test.ts`, `src/test/api/rate-limit-fairness.test.ts`
-
-These run inside the existing `quality` job's `npm run test`, no new GH job needed.
-
-## Wave 5 — wire status + verify
-
-1. Run `npx tsx scripts/bdd-coverage.ts` locally, confirm % implemented climbs
-2. For every scenario whose test file now exists, flip `bdd_scenarios.status = 'implemented'` + populate `test_file`
-3. Push, watch all 6 shards green inside 22 min, merged HTML report attached
+- **Sentry / LogRocket**: superseded by internal triage queue + web vitals RUM + agent_fix_queue.
+- **Zustand / Jotai**: React Query + contexts already cover state needs; adding another store harms simplicity.
+- **Monorepo / micro-frontends**: single app, single team — overhead > value.
+- **SSR / ISR**: Vite SPA + prerender for static routes is sufficient; full SSR would require rebuilding the host model.
+- **React Compiler (React 19)**: project on React 18; upgrade is its own dedicated wave.
+- **Edge / API gateway**: Supabase Edge Functions already provide this; no extra gateway needed.
 
 ## Technical details
 
-- All new specs use `test.describe.configure({ mode: 'parallel' })` so workers fan out
-- New specs annotated with `@member` / `@admin` / `@critical` tags so we can filter via `--grep`
-- `merge-reports` job uses `npx playwright merge-reports --reporter html ./all-blob-reports` + uploads single artifact
-- Shard balance: rely on Playwright's built-in test-id sharding (each test is hashed); no manual partition
-- BDD inserts go through the existing migration tool as a single migration per wave (so reviewers can diff scenarios)
-- No memory/`mem://` changes needed except a one-line bump to the BDD index after wave 5
+- All new tooling added as **devDependencies** — zero runtime weight.
+- BDD scenarios added under `bdd_scenarios` tag `@arch-report-2026`, one per fix (10 total), tri-layer Then-clauses per Core memory.
+- Memory: new `mem://tech/arch-report-coverage-2026` indexing what's done; update `mem://compliance/technical-controls` with SBOM artifact path; update `mem://features/web-vitals-rum` with bundle budget pointer.
+- Rollback: every fix is a separate commit; Husky/lint-staged opt-in via `prepare` script (devs without it just don't get pre-commit), all CI additions are new jobs so they can be disabled individually.
 
-## Open decisions before I start
+## Verification gates after shipping
 
-1. **Scope ceiling per loop** — wave 0 + wave 1 in this loop, then I'll continue waves 2–5 in subsequent loops? Or do you want me to attempt all 5 in one go (it will be a very large diff and may exceed practical reviewability)?
-2. **Are the 13 admin spec files + 13 member spec files the right cut**, or should I collapse to fewer mega-specs?
-3. **Test accounts**: e2e admin journeys need an admin test account. Memory note says "Non-shared testing account guidance; no plaintext credentials." Confirm I should read creds from `E2E_ADMIN_EMAIL` / `E2E_ADMIN_PASSWORD` GitHub secrets (and I'll add them to `regression.yml` env block).
-4. **Anything to explicitly exclude** (e.g., Fleety chatbot e2e — flaky against live LLM)?
+- `bun run test` green, `bun run lint` green (existing + new security rules as warn).
+- `size-limit` report ≤ budgets.
+- `playwright test --grep visual` produces 8 baseline screenshots.
+- `dependabot.yml` validated by GitHub UI.
+- `npm-audit.yml` artifact list now includes `bom.json`.
+- Prerendered HTML for `/terms` contains visible policy heading on `curl -s` (no JS execution).
+- Security-headers smoke test green against the published URL.
+- All 10 BDD scenarios `@arch-report-2026` pass tri-layer assertions.

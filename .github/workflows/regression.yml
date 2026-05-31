@@ -142,6 +142,13 @@ jobs:
       - name: Run Vitest regression suite
         run: npm run test
 
+      - name: Security headers smoke (OWASP A02 — non-blocking)
+        continue-on-error: true
+        env:
+          RUN_SECURITY_HEADERS_SMOKE: "1"
+          SECURITY_HEADERS_HOST: "https://techfleet.network"
+        run: npx vitest run src/test/smoke/security-headers.smoke.test.ts
+
       - name: Generate CycloneDX SBOM
         run: npm run sbom
 

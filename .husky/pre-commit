@@ -1,0 +1,4 @@
+# Husky pre-commit
+# Runs lint-staged: eslint --fix + prettier on staged files only.
+# Bypass with `git commit --no-verify` if absolutely needed.
+npx lint-staged

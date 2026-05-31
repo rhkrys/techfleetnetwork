@@ -28,7 +28,11 @@
     "validate:edge-functions": "node scripts/validate-edge-functions.mjs",
     "sbom": "cyclonedx-npm --output-format JSON --output-file sbom.json --omit dev",
     "audit:signatures": "npm audit signatures",
-    "scan:secrets": "node scripts/secret-scan.mjs"
+    "scan:secrets": "node scripts/secret-scan.mjs",
+    "prepare": "husky || true",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "size": "size-limit"
   },
   "dependencies": {
     "@axe-core/playwright": "4.10.2",
@@ -117,6 +121,7 @@
   "devDependencies": {
     "@eslint/js": "9.32.0",
     "@playwright/test": "1.57.0",
+    "@size-limit/preset-app": "^12.1.0",
     "@tailwindcss/typography": "0.5.16",
     "@testing-library/jest-dom": "6.6.0",
     "@testing-library/react": "16.0.0",
@@ -130,11 +135,16 @@
     "eslint-plugin-jsx-a11y": "^6.10.2",
     "eslint-plugin-react-hooks": "5.2.0",
     "eslint-plugin-react-refresh": "0.4.20",
+    "eslint-plugin-security": "^4.0.0",
     "globals": "15.15.0",
+    "husky": "^9.1.7",
     "jsdom": "^29.1.1",
+    "lint-staged": "^17.0.6",
     "lovable-tagger": "1.1.13",
     "postcss": "8.5.6",
+    "prettier": "^3.8.3",
     "sharp": "^0.34.5",
+    "size-limit": "^12.1.0",
     "stylelint": "^17.11.1",
     "stylelint-config-standard": "^40.0.0",
     "stylelint-no-unsupported-browser-features": "^8.1.1",
@@ -175,5 +185,26 @@
     "not and_qq > 0",
     "not and_uc > 0",
     "not baidu > 0"
+  ],
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,mjs}": [
+      "eslint --fix --max-warnings=99999",
+      "prettier --write"
+    ],
+    "*.{json,css,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  },
+  "size-limit": [
+    {
+      "name": "Main entry (gz)",
+      "path": "dist/assets/index-*.js",
+      "limit": "350 KB"
+    },
+    {
+      "name": "Total initial JS (gz)",
+      "path": "dist/assets/*.js",
+      "limit": "1500 KB"
+    }
   ]
 }

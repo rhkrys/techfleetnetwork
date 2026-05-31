@@ -1,0 +1,53 @@
+# Bundle-size budget — fails the build if main entry or total initial JS
+# grows past the budgets in package.json["size-limit"]. Non-blocking on
+# first rollout: marked `continue-on-error: true` so the baseline can be
+# inspected before tightening.
+#
+# Report-only mode lets us tune budgets to the actual current size before
+# making this a required check.
+name: Bundle Size
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "package.json"
+      - "bun.lockb"
+      - "vite.config.ts"
+      - ".github/workflows/bundle-size.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: bundle-size-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  size:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Build
+        run: npm run build
+        env:
+          CI: "true"
+      - name: Run size-limit
+        id: size
+        continue-on-error: true
+        run: npx size-limit --json | tee size-report.json
+      - name: Upload size report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: size-limit-report
+          path: size-report.json
+          retention-days: 30
