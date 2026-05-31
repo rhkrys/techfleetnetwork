@@ -501,6 +501,23 @@ serve(withAuditWrapper("ingest-reference-csv", async (req) => {
     // KB cache carries verbatim wording on the next chat turn.
     try { await admin.rpc("fw_sync_relationships_to_kb"); } catch { /* non-fatal */ }
 
+    // Log provenance into reference_data_sources so System Health → Content
+    // can show when each table was last refreshed and from which file checksum.
+    const sourceFilename = (body as any)?.source_filename as string | undefined;
+    const sourceChecksum = (body as any)?.source_checksum as string | undefined;
+    if (sourceFilename && sourceChecksum) {
+      try {
+        await admin.from("reference_data_sources").insert({
+          table_name: cfg.table,
+          source_filename: sourceFilename,
+          checksum: sourceChecksum,
+          row_count: upserted,
+          ingested_by: userId ?? null,
+          notes: dataset_name,
+        });
+      } catch { /* non-fatal */ }
+    }
+
     return new Response(JSON.stringify({
       table: cfg.table,
       dataset_name,
@@ -514,6 +531,7 @@ serve(withAuditWrapper("ingest-reference-csv", async (req) => {
       staging_remaining: stagingRemaining,
       staging_breakdown: stagingBreakdown,
       kept_existing_description: keptExistingDescription,
+      source_logged: !!(sourceFilename && sourceChecksum),
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
