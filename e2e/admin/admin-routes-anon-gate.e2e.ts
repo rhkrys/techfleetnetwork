@@ -1,4 +1,4 @@
-import { test, expect } from "../../playwright-fixture";
+import { test, expect } from "../playwright-fixture";
 
 /**
  * BDD ADMIN-EDGE-ANON-001 — Every admin route redirects an anonymous

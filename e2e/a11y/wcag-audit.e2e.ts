@@ -32,7 +32,7 @@
  * of captions, helpfulness of error messages, etc. Those go into the
  * Phase 2 manual checklist.
  */
-import { test, expect } from "../../playwright-fixture";
+import { test, expect } from "../playwright-fixture";
 import AxeBuilder from "@axe-core/playwright";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
