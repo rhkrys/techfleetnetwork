@@ -1,4 +1,4 @@
-import { test, expect } from "../../../playwright-fixture";
+import { test, expect } from "../../playwright-fixture";
 
 /**
  * BDD SEC-EDGE-CSP-001 — Global CSP smoke. The published bundle must not

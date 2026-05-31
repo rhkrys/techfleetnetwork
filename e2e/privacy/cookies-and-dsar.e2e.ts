@@ -1,4 +1,4 @@
-import { test, expect } from "../../../playwright-fixture";
+import { test, expect } from "../../playwright-fixture";
 
 /**
  * BDD W1-PCC-002 — DSAR submission page is reachable to authenticated members.
