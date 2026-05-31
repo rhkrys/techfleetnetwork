@@ -134,7 +134,7 @@ const queryClient = new QueryClient({
       // Component-level UI continues to show normal error states from useQuery.
       if (isTransientError(error)) return;
       const key = Array.isArray(query.queryKey) ? query.queryKey.map(String).join(".") : "query";
-      reportError(error, `query.${key}`, { severity: "error" });
+      report(error, { source: `query.${key}`, severity: "error" });
     },
   }),
   mutationCache: new MutationCache({
