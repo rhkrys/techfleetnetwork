@@ -21,11 +21,12 @@ function walkSrc(dir: string, acc: string[] = []): string[] {
 }
 
 describe("SEC-EDGE: bundle hardening", () => {
-  it("005 src/ does not reference SUPABASE_SERVICE_ROLE_KEY", () => {
-    const files = walkSrc(resolve(ROOT, "src"));
-    const offenders = files.filter((f) =>
-      readFileSync(f, "utf8").includes("SUPABASE_SERVICE_ROLE_KEY")
+  it("005 shipped src/ (excluding tests) does not reference SUPABASE_SERVICE_ROLE_KEY", () => {
+    const files = walkSrc(resolve(ROOT, "src")).filter(
+      (f) => !/[/\\]test[/\\]/.test(f) && !/\.test\.[tj]sx?$/.test(f)
     );
+    const needle = ["SUPABASE", "SERVICE", "ROLE", "KEY"].join("_");
+    const offenders = files.filter((f) => readFileSync(f, "utf8").includes(needle));
     expect(offenders).toEqual([]);
   });
 
