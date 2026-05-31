@@ -36,10 +36,17 @@ interface Scenario {
   test_type: string;
   status: string;
   test_file: string | null;
+  notes: string | null;
+}
+
+interface CatalogEntry {
+  id: string;
+  pattern: string;
+  reason: string | null;
 }
 
 async function fetchScenarios(): Promise<Scenario[]> {
-  const url = `${SUPABASE_URL}/rest/v1/bdd_scenarios?select=scenario_id,feature_area,title,test_type,status,test_file&order=feature_area,scenario_id`;
+  const url = `${SUPABASE_URL}/rest/v1/bdd_scenarios?select=scenario_id,feature_area,title,test_type,status,test_file,notes&order=feature_area,scenario_id`;
   const res = await fetch(url, {
     headers: {
       apikey: SUPABASE_KEY,
@@ -184,6 +191,42 @@ async function main() {
       `\n⚠️  ${implementedUnlinked.length} scenario(s) marked "implemented" have no test_file ` +
         `(under the current ceiling of ${IMPLEMENTED_UNLINKED_MAX} — please ratchet down).`
     );
+  }
+
+  // Gate 4 (bdd-gate): every active known_issue_catalog entry must have at
+  // least one bdd_scenarios row whose notes contain `incident:<id>` (or
+  // `incident:ALL` for a sweep scenario). This guarantees every permanent
+  // fix lands with a regression scenario.
+  try {
+    const catRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/known_issue_catalog?select=id,pattern,reason&is_active=eq.true`,
+      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } },
+    );
+    if (catRes.ok) {
+      const catalog = (await catRes.json()) as CatalogEntry[];
+      const covered = new Set<string>();
+      for (const s of scenarios) {
+        const notes = s.notes ?? "";
+        const matches = notes.match(/incident:([0-9a-f-]{36}|[A-Z0-9-]+)/gi) ?? [];
+        for (const m of matches) covered.add(m.replace(/^incident:/i, ""));
+      }
+      const sweep = covered.has("ALL");
+      const uncovered = sweep ? [] : catalog.filter((c) => !covered.has(c.id));
+      if (uncovered.length > 0) {
+        console.error(
+          `\n❌ bdd-gate: ${uncovered.length} known_issue_catalog entry(ies) without a regression BDD scenario.`,
+        );
+        for (const c of uncovered.slice(0, 20)) {
+          console.error(`   - ${c.id}  pattern="${c.pattern.slice(0, 60)}"`);
+        }
+        if (uncovered.length > 20) console.error(`   …and ${uncovered.length - 20} more`);
+        failed = true;
+      }
+    } else {
+      console.warn(`\n⚠️  bdd-gate skipped — known_issue_catalog read returned ${catRes.status}`);
+    }
+  } catch (e) {
+    console.warn(`\n⚠️  bdd-gate skipped — ${(e as Error).message}`);
   }
 
   if (failed) process.exit(1);
