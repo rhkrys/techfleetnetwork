@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { QuestPathDetail } from "./QuestPathDetail";
 import { QuestExploreDialog } from "./QuestExploreDialog";
 import type { QuestPath, QuestPathStep, SystemVerificationData } from "@/services/quest.service";
+import { useQuestPathMaps } from "@/lib/quest/path-maps";
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   rocket: Rocket, map: MapIcon, eye: Eye, "book-open": BookOpen,
@@ -42,6 +43,7 @@ export function QuestRoadmap({ onNeedIntake }: QuestRoadmapProps) {
   const { data: allJourneyMap } = useAllJourneyProgress();
   // System verification data for steps referencing other DB tables
   const { data: sysVerification } = useSystemVerificationData();
+  const { byId: pathById, bySlug: pathBySlug } = useQuestPathMaps(paths);
 
   // Derive phase completion stats from the single batch query
   const allProgress = useMemo(() => {
@@ -236,7 +238,7 @@ const PathCard = memo(function PathCard({
 
             {isLocked ? (
               <p className="text-sm text-muted-foreground">
-                Requires: {path.prerequisites.map((slug) => allPaths.find((p) => p.slug === slug)?.title ?? slug).join(", ")}
+                Requires: {path.prerequisites.map((slug) => pathBySlug.get(slug)?.title ?? slug).join(", ")}
               </p>
             ) : isCompleted ? (
               <p className="text-sm text-muted-foreground">All steps complete</p>
