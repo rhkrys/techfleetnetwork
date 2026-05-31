@@ -69,6 +69,7 @@ const ResourcesPage = lazy(() => import("./pages/ResourcesPage"));
 const ChatPage = lazy(() => import("./pages/ChatPage"));
 const EventsPage = lazy(() => import("./pages/EventsPage"));
 const AdminIngestPage = lazy(() => import("./pages/AdminIngestPage"));
+const AdminPoliciesPage = lazy(() => import("./pages/admin/AdminPoliciesPage"));
 const ApplicationsPage = lazy(() => import("./pages/ApplicationsPage"));
 const GeneralApplicationPage = lazy(() => import("./pages/GeneralApplicationPage"));
 const MyProjectApplicationsPage = lazy(() => import("./pages/MyProjectApplicationsPage"));
@@ -244,6 +245,7 @@ const App = () => (
                     <Route path="/project-openings/:projectId/apply" element={<ProtectedRoute><ProjectApplicationPage /></ProtectedRoute>} />
                     <Route path="/admin/ingest" element={<AdminRoute><AdminIngestPage /></AdminRoute>} />
                     <Route path="/admin/curriculum" element={<AdminRoute><CurriculumAdminPage /></AdminRoute>} />
+                    <Route path="/admin/policies" element={<AdminRoute><AdminPoliciesPage /></AdminRoute>} />
                     <Route path="/admin/users" element={<AdminRoute><UserAdminPage /></AdminRoute>} />
                     <Route path="/admin/activity-log" element={<AdminRoute><ActivityLogPage /></AdminRoute>} />
                     <Route path="/admin/applications/analysis/:projectId" element={<AdminRoute><ProjectAnalysisDetailPage /></AdminRoute>} />
