@@ -1,0 +1,48 @@
+name: visual-regression
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: visual-regression-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  visual:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PLAYWRIGHT_VISUAL: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
+
+      - name: Run visual regression suite
+        run: bunx playwright test e2e/visual --project=visual-desktop --project=visual-mobile
+        continue-on-error: false
+
+      - name: Upload diff report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-regression-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+
+      - name: Update baseline (label-gated)
+        if: contains(github.event.pull_request.labels.*.name, 'visual-baseline-update')
+        run: bunx playwright test e2e/visual --update-snapshots --project=visual-desktop --project=visual-mobile
