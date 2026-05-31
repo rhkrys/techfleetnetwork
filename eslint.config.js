@@ -93,6 +93,20 @@ export default tseslint.config(
       // Browser-compat — warn until the baseline reaches zero; this is the
       // biggest noisy category in the current report.
       "compat/compat": "warn",
+      // eslint-plugin-security — warn-only baseline (OWASP A05/A02).
+      "security/detect-eval-with-expression": "warn",
+      "security/detect-non-literal-require": "warn",
+      "security/detect-child-process": "warn",
+      "security/detect-buffer-noassert": "warn",
+      "security/detect-disable-mustache-escape": "warn",
+      "security/detect-no-csrf-before-method-override": "warn",
+      "security/detect-pseudoRandomBytes": "warn",
+      "security/detect-unsafe-regex": "warn",
+      "security/detect-new-buffer": "warn",
+      // These two are too noisy on a typed codebase (object/array index
+      // access patterns) — leave off until a dedicated sweep.
+      "security/detect-object-injection": "off",
+      "security/detect-non-literal-fs-filename": "off",
       // Legacy baseline rules — disabled until a dedicated cleanup sweep.
       // Switching to "warn" globally generates ~270+ noise per run with no
       // actionable signal. Re-enable per-folder once the queue is at zero.
