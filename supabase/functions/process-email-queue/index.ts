@@ -134,33 +134,50 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
   const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
   // 1. Read queue config + per-queue cooldown state.
-  // Per-queue cooldown ensures a 429 on transactional_emails does NOT freeze auth_emails.
+  // Per-queue cooldown ensures a 429 on one lane does NOT freeze the others.
+  // Three lanes (priority order): auth_emails → transactional_emails → bulk_emails.
   const { data: state } = await supabase
     .from('email_send_state')
-    .select('retry_after_until, auth_retry_after_until, transactional_retry_after_until, auth_consecutive_rate_limits, transactional_consecutive_rate_limits, batch_size, send_delay_ms, auth_email_ttl_minutes, transactional_email_ttl_minutes, bulk_hourly_cap, bulk_paused, per_recipient_bulk_window_hours, per_recipient_bulk_max')
+    .select('retry_after_until, auth_retry_after_until, transactional_retry_after_until, bulk_retry_after_until, auth_consecutive_rate_limits, transactional_consecutive_rate_limits, bulk_consecutive_rate_limits, batch_size, send_delay_ms, bulk_batch_size, bulk_send_delay_ms, auth_email_ttl_minutes, transactional_email_ttl_minutes, bulk_email_ttl_minutes, bulk_hourly_cap, bulk_paused, per_recipient_bulk_window_hours, per_recipient_bulk_max')
     .single()
 
   const cooldownCols: Record<string, string> = {
     auth_emails: 'auth_retry_after_until',
     transactional_emails: 'transactional_retry_after_until',
+    bulk_emails: 'bulk_retry_after_until',
   }
   const counterCols: Record<string, string> = {
     auth_emails: 'auth_consecutive_rate_limits',
     transactional_emails: 'transactional_consecutive_rate_limits',
+    bulk_emails: 'bulk_consecutive_rate_limits',
   }
   // Legacy global retry_after_until is treated as a floor for backward compatibility.
   const legacyCooldown = (state as any)?.retry_after_until ?? null
   const cooldownUntil: Record<string, string | null> = {
     auth_emails: (state as any)?.auth_retry_after_until ?? legacyCooldown,
     transactional_emails: (state as any)?.transactional_retry_after_until ?? legacyCooldown,
+    bulk_emails: (state as any)?.bulk_retry_after_until ?? null,
   }
   const consecutive: Record<string, number> = {
     auth_emails: (state as any)?.auth_consecutive_rate_limits ?? 0,
     transactional_emails: (state as any)?.transactional_consecutive_rate_limits ?? 0,
+    bulk_emails: (state as any)?.bulk_consecutive_rate_limits ?? 0,
   }
 
-  const batchSize = state?.batch_size ?? DEFAULT_BATCH_SIZE
-  const baseSendDelayMs = state?.send_delay_ms ?? DEFAULT_SEND_DELAY_MS
+  const txBatchSize = state?.batch_size ?? DEFAULT_BATCH_SIZE
+  const txBaseDelayMs = state?.send_delay_ms ?? DEFAULT_SEND_DELAY_MS
+  const bulkBatchSize = (state as any)?.bulk_batch_size ?? 3
+  const bulkBaseDelayMs = (state as any)?.bulk_send_delay_ms ?? 1000
+  const batchSizeByQueue: Record<string, number> = {
+    auth_emails: txBatchSize,
+    transactional_emails: txBatchSize,
+    bulk_emails: bulkBatchSize,
+  }
+  const baseDelayByQueue: Record<string, number> = {
+    auth_emails: txBaseDelayMs,
+    transactional_emails: txBaseDelayMs,
+    bulk_emails: bulkBaseDelayMs,
+  }
   const bulkHourlyCap = state?.bulk_hourly_cap ?? 50
   const bulkPaused = state?.bulk_paused === true
   const perRecipientWindowHours = state?.per_recipient_bulk_window_hours ?? 24
@@ -168,9 +185,11 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
   const ttlMinutes: Record<string, number> = {
     auth_emails: state?.auth_email_ttl_minutes ?? DEFAULT_AUTH_TTL_MINUTES,
     transactional_emails: state?.transactional_email_ttl_minutes ?? DEFAULT_TRANSACTIONAL_TTL_MINUTES,
+    bulk_emails: (state as any)?.bulk_email_ttl_minutes ?? 240,
   }
 
-  // Two distinct categories:
+  // Two distinct bulk categories — both live on the dedicated `bulk_emails`
+  // lane so a 429 there can never block auth or 1:1 transactional sends:
   // - BULK_DELIVERABILITY_TEMPLATES: solicited but promotional digests/blasts.
   //   Subject to per-recipient frequency cap to protect sender reputation.
   // - BROADCAST_TEMPLATES: explicit opt-in 1:N broadcasts (announcements).
@@ -198,15 +217,23 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
 
   let totalProcessed = 0
 
-  // 2. Process auth_emails first (priority), then transactional_emails.
-  // Each queue has its own cooldown so one queue's 429 cannot freeze the other.
-  for (const queue of ['auth_emails', 'transactional_emails']) {
+  // 2. Process queues in fixed priority order.
+  // Each queue has its own cooldown so one queue's 429 cannot freeze another.
+  // Auth confirmations always drain first; bulk is strictly last so it can
+  // never starve user-critical mail.
+  for (const queue of ['auth_emails', 'transactional_emails', 'bulk_emails']) {
     if (cooldownUntil[queue] && new Date(cooldownUntil[queue] as string) > new Date()) {
       console.log('Skipping queue (cooldown active)', { queue, until: cooldownUntil[queue] })
       continue
     }
+    // Bulk lane respects the global pause switch.
+    if (queue === 'bulk_emails' && bulkPaused) {
+      console.log('Bulk lane paused via email_send_state.bulk_paused')
+      continue
+    }
     // Adaptive send delay: if this queue is recovering from 429s, slow down.
-    const sendDelayMs = baseSendDelayMs * Math.pow(2, Math.min(consecutive[queue] ?? 0, 4))
+    const sendDelayMs = baseDelayByQueue[queue] * Math.pow(2, Math.min(consecutive[queue] ?? 0, 4))
+    const batchSize = batchSizeByQueue[queue]
 
     const { data: messages, error: readError } = await supabase.rpc('read_email_batch', {
       queue_name: queue,

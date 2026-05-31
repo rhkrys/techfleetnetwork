@@ -234,7 +234,7 @@ Deno.serve(withAuditWrapper("send-announcement-email", async (req) => {
         });
 
         await adminClient.rpc("enqueue_email", {
-          queue_name: "transactional_emails",
+          queue_name: "bulk_emails",
           payload: {
             to: normalizedEmail,
             subject: `[Tech Fleet] ${announcement.title}`,
