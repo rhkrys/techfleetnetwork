@@ -86,10 +86,14 @@ export default function AdminIngestPage() {
   const syncReferenceOne = async (file: string, name: string) => {
     setRefStatuses((prev) => ({ ...prev, [name]: { status: "loading" } }));
     try {
-      const res = await fetch(file);
-      const csvText = await res.text();
+      const { csv_text, checksum } = await fetchCsvFromBucket(file);
       const { data, error } = await supabase.functions.invoke("ingest-reference-csv", {
-        body: { csv_text: csvText, dataset_name: name },
+        body: {
+          csv_text,
+          dataset_name: name,
+          source_filename: file,
+          source_checksum: checksum,
+        },
       });
       if (error) throw new Error(error.message);
       const parts = [`${data.upserted} rows → ${data.table}`];
