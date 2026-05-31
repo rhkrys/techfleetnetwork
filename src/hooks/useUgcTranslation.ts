@@ -94,21 +94,21 @@ export function useUgcTranslation({
         priority: "realtime",
       });
 
-      // 3. Subscribe for arrival
+      // 3. Subscribe for arrival via per-entity Broadcast topic.
+      //    This replaces table-level postgres_changes (which leaked every
+      //    qa_passed/approved row to all subscribers). The DB trigger
+      //    `ugc_translations_broadcast_trg` sends a minimal payload to topic
+      //    `ugc:{entityTable}:{entityId}` so each subscriber receives only
+      //    translations for the entity they are viewing.
       const channel = supabase
-        .channel(`ugc-${entityTable}-${entityId}-${columnName}-${locale}`)
-        .on("postgres_changes", {
-          event: "INSERT",
-          schema: "public",
-          table: "ugc_translations",
-          filter: `entity_id=eq.${entityId}`,
-        }, (payload: any) => {
-          const row = payload.new;
+        .channel(`ugc:${entityTable}:${entityId}`)
+        .on("broadcast", { event: "ugc_translation" }, (msg: any) => {
+          const row = msg?.payload ?? {};
           if (
             row.column_name === columnName &&
             row.target_locale === locale &&
             row.source_hash === hash &&
-            (row.status === "qa_passed" || row.status === "approved")
+            typeof row.translated_text === "string"
           ) {
             if (!cancelled) {
               setTranslated(row.translated_text);
@@ -118,6 +118,7 @@ export function useUgcTranslation({
           }
         })
         .subscribe();
+
 
       // Cleanup on unmount
       return () => { supabase.removeChannel(channel); };
