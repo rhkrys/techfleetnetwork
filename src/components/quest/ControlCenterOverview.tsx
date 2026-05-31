@@ -333,7 +333,7 @@ function QuestDetailScreen({
   const { data: steps, isLoading: stepsLoading } = useQuestSteps(pathId);
   const addPath = useAddQuestPath();
 
-  const path = paths?.find((p) => p.id === pathId);
+  const path = useMemo(() => paths?.find((p) => p.id === pathId), [paths, pathId]);
 
   const handleSubscribe = async () => {
     try {
