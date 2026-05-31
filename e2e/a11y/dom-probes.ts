@@ -139,7 +139,7 @@ export const DOM_PROBES: Record<string, () => ProbeResult> = {
     // are no elements with explicit `onkeydown` blocking Tab.
     const blockers = Array.from(document.querySelectorAll("[onkeydown]")).filter((el) => {
       const handler = (el.getAttribute("onkeydown") || "").toLowerCase();
-      return /\bkey\s*===?\s*['\"]tab['\"]|keycode\s*===?\s*9/.test(handler) && /preventdefault|return false/.test(handler);
+      return /\bkey\s*===?\s*['"]tab['"]|keycode\s*===?\s*9/.test(handler) && /preventdefault|return false/.test(handler);
     });
     return blockers.length
       ? { status: "needs_review", details: `${blockers.length} inline handler(s) appear to intercept Tab — verify focus can leave the widget.` }
