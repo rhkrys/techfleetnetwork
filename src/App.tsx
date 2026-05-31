@@ -141,7 +141,7 @@ const queryClient = new QueryClient({
     onError: (error, _vars, _ctx, mutation) => {
       if (isTransientError(error)) return;
       const key = mutation.options.mutationKey?.map(String).join(".") ?? "anonymous";
-      reportError(error, `mutation.${key}`, { severity: "error" });
+      report(error, { source: `mutation.${key}`, severity: "error" });
     },
   }),
   defaultOptions: {
