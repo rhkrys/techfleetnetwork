@@ -106,14 +106,15 @@ export function QuestRoadmap({ onNeedIntake }: QuestRoadmapProps) {
     return null;
   }
 
+  const selectedPathIdSet = new Set(selections.map((s) => s.path_id));
   const selectedPaths = paths
-    ?.filter((p) => selections.some((s) => s.path_id === p.id))
+    ?.filter((p) => selectedPathIdSet.has(p.id))
     .sort((a, b) => a.sort_order - b.sort_order) ?? [];
 
   const unselectedCount = (paths?.length ?? 0) - selectedPaths.length;
 
   if (selectedPathId) {
-    const path = paths?.find((p) => p.id === selectedPathId);
+    const path = pathById.get(selectedPathId);
     if (path) {
       return (
         <QuestPathDetail
