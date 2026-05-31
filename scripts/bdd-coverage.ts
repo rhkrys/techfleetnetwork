@@ -121,8 +121,28 @@ async function main() {
     `| ❌ Not built | ${notBuilt} |`,
     `| 📋 Manual only | ${manual} |`,
     `| **Coverage** | **${coveragePct}%** |`,
+    `| 🛡 Edge-case ratio | ${overallEdgeRatio} |`,
     "",
   ];
+
+  if (underTarget.length > 0) {
+    lines.push(
+      `## 🛡 Feature areas below ${Math.round(EDGE_TARGET * 100)}% edge-case coverage`,
+      "",
+      "| Area | Total | Edge | Edge impl | Ratio |",
+      "|------|------:|-----:|----------:|------:|",
+      ...underTarget
+        .slice(0, 30)
+        .map(
+          ([area, v]) =>
+            `| ${area} | ${v.total} | ${v.edge} | ${v.edgeImpl} | ${(
+              v.edge / v.total
+            ).toFixed(2)} |`,
+        ),
+      "",
+    );
+  }
+
 
   if (filesMissing.length > 0) {
     lines.push(
