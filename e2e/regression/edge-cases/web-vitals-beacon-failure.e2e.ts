@@ -1,4 +1,4 @@
-import { test, expect } from "../../../playwright-fixture";
+import { test, expect } from "../../playwright-fixture";
 
 /**
  * BDD PERF-EDGE-VITALS-001 — When the /record-web-vital edge fn is down,

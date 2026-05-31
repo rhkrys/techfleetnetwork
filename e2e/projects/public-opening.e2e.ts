@@ -1,4 +1,4 @@
-import { test, expect } from "../../../playwright-fixture";
+import { test, expect } from "../../playwright-fixture";
 
 /**
  * BDD W1-POD-001 — Anonymous can view a public project opening.

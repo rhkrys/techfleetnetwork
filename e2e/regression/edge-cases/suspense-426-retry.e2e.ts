@@ -1,4 +1,4 @@
-import { test, expect } from "../../../playwright-fixture";
+import { test, expect } from "../../playwright-fixture";
 
 /**
  * BDD UI-EDGE-426-001 — Minified React error #426 (Suspense hydration race
