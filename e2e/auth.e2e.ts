@@ -12,7 +12,12 @@ import { test, expect } from "../playwright-fixture";
 test.describe("Registration Page (BDD 2.1, 2.3, 2.5)", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/register");
-    await page.waitForLoadState("networkidle");
+    // Avoid `networkidle` — the embedded Cloudflare Turnstile iframe keeps
+    // the network busy and never goes idle, causing every test to hang
+    // until Playwright's timeout (60s × 3 retries) and the job to be cancelled.
+    await page.waitForLoadState("domcontentloaded");
+    await page.getByLabel(/first name/i).waitFor({ state: "visible", timeout: 15_000 });
+
   });
 
   test("displays registration form with required fields", async ({ page }) => {
@@ -63,7 +68,9 @@ test.describe("Registration Page (BDD 2.1, 2.3, 2.5)", () => {
 test.describe("Login Page (BDD 2.4, 15.3)", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/login");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
+    await page.getByLabel(/email/i).first().waitFor({ state: "visible", timeout: 15_000 });
+
   });
 
   test("displays login form", async ({ page }) => {
