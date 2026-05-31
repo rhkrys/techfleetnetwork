@@ -60,11 +60,15 @@ async function embedText(text: string): Promise<number[]> {
       const body = await r.text();
       lastErr = `${r.status} ${body.slice(0, 200)}`;
       // Retry on rate limit / transient
+      // Wave 3 W3-JITTER-006: exponential backoff with jitter (cap 8s)
       if (r.status === 429 || r.status >= 500) {
-        await new Promise((res) => setTimeout(res, 1500 * (attempt + 1)));
+        const base = 500;
+        const delay = Math.min(8000, base * Math.pow(2, attempt)) + Math.floor(Math.random() * 500);
+        await new Promise((res) => setTimeout(res, delay));
         continue;
       }
       break;
+
     }
     throw new Error(`Gemini embed failed: ${lastErr}`);
   }
