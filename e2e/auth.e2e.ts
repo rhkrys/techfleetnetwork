@@ -10,15 +10,16 @@ import { test, expect } from "../playwright-fixture";
  */
 
 test.describe("Registration Page (BDD 2.1, 2.3, 2.5)", () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto("/register");
-    // Avoid `networkidle` — the embedded Cloudflare Turnstile iframe keeps
-    // the network busy and never goes idle, causing every test to hang
-    // until Playwright's timeout (60s × 3 retries) and the job to be cancelled.
-    await page.waitForLoadState("domcontentloaded");
-    await page.getByLabel(/first name/i).waitFor({ state: "visible", timeout: 15_000 });
+  // Auth flow specs are flaky against live Turnstile; allow exactly one retry
+  // so a transient widget bootstrap doesn't tank the shard. Combined with
+  // playwright.config retries=1 this still caps at a single retry max.
+  test.describe.configure({ retries: 1, mode: "parallel" });
 
+  test.beforeEach(async ({ page }) => {
+    await page.goto("/register", { waitUntil: "domcontentloaded" });
+    await page.getByLabel(/first name/i).waitFor({ state: "visible", timeout: 10_000 });
   });
+
 
   test("displays registration form with required fields", async ({ page }) => {
     await expect(page.getByLabel(/first name/i)).toBeVisible();
@@ -66,12 +67,13 @@ test.describe("Registration Page (BDD 2.1, 2.3, 2.5)", () => {
 });
 
 test.describe("Login Page (BDD 2.4, 15.3)", () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto("/login");
-    await page.waitForLoadState("domcontentloaded");
-    await page.getByLabel(/email/i).first().waitFor({ state: "visible", timeout: 15_000 });
+  test.describe.configure({ retries: 1, mode: "parallel" });
 
+  test.beforeEach(async ({ page }) => {
+    await page.goto("/login", { waitUntil: "domcontentloaded" });
+    await page.getByLabel(/email/i).first().waitFor({ state: "visible", timeout: 10_000 });
   });
+
 
   test("displays login form", async ({ page }) => {
     await expect(page.getByLabel(/email/i)).toBeVisible();

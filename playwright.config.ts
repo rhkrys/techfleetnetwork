@@ -124,27 +124,45 @@ function selectProjects() {
 export default defineConfig({
   testDir: ".",
   testMatch: ["e2e/**/*.e2e.ts"],
-  timeout: 60_000,
+  // Per-test ceiling. 45s is high enough for auth+turnstile bootstraps but
+  // low enough to prevent any single hung test from eating a shard.
+  timeout: 45_000,
   expect: {
-    timeout: 10_000,
+    timeout: 7_000,
     toHaveScreenshot: {
       maxDiffPixelRatio: 0.01,
       animations: "disabled",
       caret: "hide",
     },
   },
-  fullyParallel: false,
+  // Hard cap on the whole run inside a shard. Must stay UNDER the GitHub
+  // job's timeout-minutes (22) so artifacts + blob report still upload
+  // instead of the runner cancelling us mid-flight.
+  globalTimeout: 20 * 60 * 1000,
+  fullyParallel: true,
   forbidOnly: isCI,
-  retries: isCI ? 2 : 0,
-  workers: 1,
+  // Drop CI retries from 2 → 1. With timeout=45s, 2 retries = 135s/test
+  // worst-case, which is what blew shard 1 past 25 min last week.
+  retries: isCI ? 1 : 0,
+  // 2 workers per shard on ubuntu-latest (4 vCPU). With 6 shards × 2
+  // workers = 12-way parallelism across the run.
+  workers: isCI ? 2 : undefined,
   reporter: isCI
-    ? [["list"], ["html", { open: "never", outputFolder: "playwright-report" }]]
+    ? [
+        ["list"],
+        ["github"],
+        ["html", { open: "never", outputFolder: "playwright-report" }],
+        ["blob", { outputDir: "blob-report" }],
+        ["json", { outputFile: "test-results/results.json" }],
+      ]
     : "list",
   use: {
     baseURL: BASE_URL,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
+    actionTimeout: 10_000,
+    navigationTimeout: 20_000,
   },
   projects: selectProjects(),
   webServer:
@@ -159,3 +177,4 @@ export default defineConfig({
         }
       : undefined,
 });
+
