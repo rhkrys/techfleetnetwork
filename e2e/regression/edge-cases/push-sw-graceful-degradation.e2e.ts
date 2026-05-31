@@ -1,4 +1,4 @@
-import { test, expect } from "../../playwright-fixture";
+import { test, expect } from "../../../playwright-fixture";
 
 /**
  * BDD NOTIF-EDGE-PUSH-001 — When the browser has no service worker (or it is

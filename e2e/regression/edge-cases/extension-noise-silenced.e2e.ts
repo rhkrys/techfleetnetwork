@@ -1,4 +1,4 @@
-import { test, expect } from "../../playwright-fixture";
+import { test, expect } from "../../../playwright-fixture";
 
 /**
  * BDD TRIAGE-EDGE-NOISE-001 — Extension/runtime noise (MetaMask,

@@ -1,4 +1,4 @@
-import { test, expect } from "../../playwright-fixture";
+import { test, expect } from "../../../playwright-fixture";
 
 /**
  * BDD W1-EWV-001 — Events page renders without surfacing stale events.
