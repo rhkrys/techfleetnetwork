@@ -36,10 +36,17 @@ interface Scenario {
   test_type: string;
   status: string;
   test_file: string | null;
+  notes: string | null;
+}
+
+interface CatalogEntry {
+  id: string;
+  pattern: string;
+  reason: string | null;
 }
 
 async function fetchScenarios(): Promise<Scenario[]> {
-  const url = `${SUPABASE_URL}/rest/v1/bdd_scenarios?select=scenario_id,feature_area,title,test_type,status,test_file&order=feature_area,scenario_id`;
+  const url = `${SUPABASE_URL}/rest/v1/bdd_scenarios?select=scenario_id,feature_area,title,test_type,status,test_file,notes&order=feature_area,scenario_id`;
   const res = await fetch(url, {
     headers: {
       apikey: SUPABASE_KEY,
