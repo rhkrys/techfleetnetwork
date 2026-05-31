@@ -19,11 +19,15 @@ const REPLY_TO = 'onboarding@techfleet.org'
 // Templates that target many recipients per send batch. Project-blast subjects
 // are coordinator-authored and need sanitization (strip emoji/!/all-caps) to
 // keep them out of Gmail's Promotions tab.
-const BULK_TEMPLATES = new Set<string>([
+export const BULK_TEMPLATES = new Set<string>([
   'project-blast',
   'fleety-coach-digest',
   'announcement',
 ])
+
+export function resolveEmailQueue(templateName: string): 'bulk_emails' | 'transactional_emails' {
+  return BULK_TEMPLATES.has(templateName) ? 'bulk_emails' : 'transactional_emails'
+}
 
 // Strip spam-trigger characters from coordinator-supplied subjects.
 function sanitizeBulkSubject(raw: string): string {
