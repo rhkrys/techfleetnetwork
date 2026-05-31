@@ -24,13 +24,13 @@ test.describe("Registration Page (BDD 2.1, 2.3, 2.5)", () => {
   test("displays registration form with required fields", async ({ page }) => {
     await expect(page.getByLabel(/first name/i)).toBeVisible();
     await expect(page.getByLabel(/last name/i)).toBeVisible();
-    await expect(page.getByLabel(/email/i)).toBeVisible();
-    await expect(page.getByLabel(/^password$/i)).toBeVisible();
+    await expect(page.getByRole("textbox", { name: /email/i })).toBeVisible();
+    await expect(page.getByLabel(/^password\*?$/i)).toBeVisible();
     await expect(page.getByLabel(/confirm password/i)).toBeVisible();
   });
 
   test("shows password requirements checklist", async ({ page }) => {
-    await page.getByLabel(/password/i).fill("a");
+    await page.getByLabel(/^password\*?$/i).fill("a");
     await expect(page.getByText(/at least 8 characters/i)).toBeVisible();
     await expect(page.getByText(/one uppercase letter/i)).toBeVisible();
     await expect(page.getByText(/one number/i)).toBeVisible();
@@ -40,8 +40,8 @@ test.describe("Registration Page (BDD 2.1, 2.3, 2.5)", () => {
   test("BDD 2.3: shows inline errors for weak password", async ({ page }) => {
     await page.getByLabel(/first name/i).fill("Test");
     await page.getByLabel(/last name/i).fill("User");
-    await page.getByLabel(/email/i).fill("test@example.com");
-    await page.getByLabel(/password/i).fill("weak");
+    await page.getByRole("textbox", { name: /email/i }).fill("test@example.com");
+    await page.getByLabel(/^password\*?$/i).fill("weak");
     // Try to submit
     await page.getByRole("button", { name: /sign up|create account|register/i }).click();
     // Should show password-related errors
@@ -51,8 +51,8 @@ test.describe("Registration Page (BDD 2.1, 2.3, 2.5)", () => {
   test("BDD 2.5: shows error for invalid email format", async ({ page }) => {
     await page.getByLabel(/first name/i).fill("Test");
     await page.getByLabel(/last name/i).fill("User");
-    await page.getByLabel(/email/i).fill("not-an-email");
-    await page.getByLabel(/password/i).fill("Str0ng!Pass");
+    await page.getByRole("textbox", { name: /email/i }).fill("not-an-email");
+    await page.getByLabel(/^password\*?$/i).fill("Str0ng!Pass");
     await page.getByRole("button", { name: /sign up|create account|register/i }).click();
     await expect(page.getByText(/invalid email/i)).toBeVisible();
   });
