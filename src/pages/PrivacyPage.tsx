@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { usePolicy } from "@/hooks/usePolicy";
 import ReactMarkdown from "react-markdown";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -24,15 +24,9 @@ const RIGHTS: Array<{
 ];
 
 export default function PrivacyPage() {
-  const [md, setMd] = useState("");
+  const { data: policy } = usePolicy("privacy");
+  const md = policy?.body_md ?? "";
   const { user } = useAuth();
-
-  useEffect(() => {
-    fetch("/policies/Privacy-Policy.md")
-      .then((r) => (r.ok ? r.text() : ""))
-      .then(setMd)
-      .catch(() => setMd(""));
-  }, []);
 
   return (
     <div className="container-app py-8 space-y-8">
