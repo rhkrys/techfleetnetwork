@@ -454,8 +454,15 @@ export async function queueTransactionalEmail({
     customHeaders['Auto-Submitted'] = 'auto-generated'
   }
 
+  // Route bulk templates (announcements, project blasts, digests) to the
+  // dedicated `bulk_emails` lane so a bulk 429 can NEVER freeze auth
+  // confirmations or 1:1 transactional sends. See process-email-queue.
+  const targetQueue = BULK_TEMPLATES.has(templateName)
+    ? 'bulk_emails'
+    : 'transactional_emails'
+
   const { error: enqueueError } = await supabase.rpc('enqueue_email', {
-    queue_name: 'transactional_emails',
+    queue_name: targetQueue,
     payload: {
       message_id: messageId,
       to: effectiveRecipient,
