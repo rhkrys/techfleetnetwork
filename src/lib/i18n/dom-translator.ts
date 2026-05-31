@@ -216,6 +216,15 @@ async function flush() {
   }
 }
 
+// Wave 3 W3-DOM-007: chunk the walk via requestIdleCallback so language
+// switches don't block the main thread (was 100–400ms long task on big pages).
+const IDLE_CHUNK = 50;
+type IdleHandle = number;
+const ric: (cb: (deadline: { timeRemaining: () => number }) => void) => IdleHandle =
+  (typeof window !== "undefined" && (window as any).requestIdleCallback)
+    ? (window as any).requestIdleCallback.bind(window)
+    : ((cb) => setTimeout(() => cb({ timeRemaining: () => 8 }), 1) as unknown as IdleHandle);
+
 function walkAndTranslate(root: Node, lang: string) {
   if (root.nodeType === Node.TEXT_NODE) {
     const tn = root as Text;
@@ -245,11 +254,28 @@ function walkAndTranslate(root: Node, lang: string) {
     collected.push(cur as Text);
     cur = walker.nextNode();
   }
-  for (const tn of collected) {
-    const original = rememberOriginal(tn);
-    applyTranslation(tn, original, lang);
+  // Bail out of chunking for tiny walks — no scheduler overhead.
+  if (collected.length <= IDLE_CHUNK) {
+    for (const tn of collected) {
+      const original = rememberOriginal(tn);
+      applyTranslation(tn, original, lang);
+    }
+    return;
   }
+  let i = 0;
+  const drain = () => {
+    if (state.lang !== lang) return; // language changed mid-walk; abort
+    const end = Math.min(i + IDLE_CHUNK, collected.length);
+    for (; i < end; i++) {
+      const tn = collected[i];
+      const original = rememberOriginal(tn);
+      applyTranslation(tn, original, lang);
+    }
+    if (i < collected.length) ric(drain);
+  };
+  ric(drain);
 }
+
 
 // Wave 1 PERF-W1-008: self-write guard set — every time we mutate a Text node
 // ourselves we stamp it here so the MutationObserver callback can short-circuit.
