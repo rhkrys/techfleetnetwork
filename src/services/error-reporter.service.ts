@@ -556,7 +556,7 @@ function recordDedup(fp: string) {
   scheduleSuppressionFlush();
 }
 
-function isSuppressed(msg: string): boolean {
+export function isSuppressed(msg: string): boolean {
   if (isEmptyRejection(msg)) {
     recordSuppression("__empty_rejection__");
     return true;

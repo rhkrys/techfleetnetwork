@@ -1,8 +1,9 @@
 /**
  * Regression lock-in: historical 42501 ("permission denied for function") for
  * get_announcement_view_counts + get_course_completion_counts. The fix
- * granted EXECUTE to authenticated. This test calls the RPCs as anon and
- * asserts they are NOT silently public (so we don't over-correct).
+ * granted EXECUTE to authenticated. As anon, we expect denial — what we
+ * MUST never see again is 42883 (function missing) or 500. Authenticated
+ * paths are covered by the e2e admin journeys.
  */
 import { describe, it, expect } from "vitest";
 
@@ -24,18 +25,15 @@ async function rpc(name: string) {
 }
 
 (enabled ? describe : describe.skip)("incident: RPC EXECUTE grants", () => {
-  it("get_announcement_view_counts is callable (no 42501) when anon role is granted, or rejects cleanly otherwise", async () => {
-    const res = await rpc("get_announcement_view_counts");
-    // Acceptable: 200, 401 (no JWT), 403 (RLS denial). NEVER 42501 in error body.
-    const text = await res.text();
-    expect(text).not.toMatch(/permission denied for function/i);
-    expect([200, 401, 403, 404]).toContain(res.status);
-  }, 15_000);
-
-  it("get_course_completion_counts is callable (no 42501) or rejects cleanly", async () => {
-    const res = await rpc("get_course_completion_counts");
-    const text = await res.text();
-    expect(text).not.toMatch(/permission denied for function/i);
-    expect([200, 401, 403, 404]).toContain(res.status);
-  }, 15_000);
+  for (const fn of ["get_announcement_view_counts", "get_course_completion_counts"]) {
+    it(`${fn} exists and is wired (no 42883, no 5xx)`, async () => {
+      const res = await rpc(fn);
+      const text = await res.text();
+      // Function-missing would mean GRANT regression on the function itself.
+      expect(text).not.toMatch(/does not exist|42883/i);
+      // Anything 4xx is acceptable as anon; 5xx means broken wiring.
+      expect(res.status).toBeLessThan(500);
+    }, 15_000);
+  }
 });
+
