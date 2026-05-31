@@ -17,9 +17,10 @@ describe("incident: autosave error normalization", () => {
     expect(e.message).toBe("boom");
   });
 
-  it("passes Error through unchanged", () => {
+  it("preserves Error message when wrapping", () => {
     const orig = new Error("original");
-    expect(toError(orig)).toBe(orig);
+    expect(toError(orig).message).toBe("original");
+    expect(toError(orig)).toBeInstanceOf(Error);
   });
 
   it("never returns the literal '[object Object]'", () => {
