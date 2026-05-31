@@ -119,7 +119,7 @@ export const ROUTES: readonly RouteSpec[] = [
 
   // ---- Admin only ----
   { path: "/admin/ingest", label: "Admin: ingest", kind: "admin" },
-  { path: "/admin/users", label: "Admin: users", kind: "admin" },
+  { path: "/admin/users", label: "Admin: members", kind: "admin" },
   { path: "/admin/activity-log", label: "Admin: activity log", kind: "admin" },
   { path: "/admin/clients", label: "Admin: clients", kind: "admin" },
   { path: "/admin/clients/projects/new", label: "Admin: new project", kind: "admin" },
