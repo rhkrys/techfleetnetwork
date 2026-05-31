@@ -505,12 +505,17 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
           // Wrapped because the table is optional and failures here must not break sends.
           try {
             const hourBucket = new Date().toISOString().slice(0, 13) // YYYY-MM-DDTHH
+            // Auth + transactional freezes are user-critical (signup confirmation,
+            // password reset, 1:1 receipts) — surface as 'error' so System Health
+            // Triage pages admins. Bulk lane freezes stay at 'warn' since they
+            // only delay digests/blasts and are isolated by design.
+            const laneSeverity = queue === 'bulk_emails' ? 'warn' : 'error'
             await supabase.from('agent_fix_queue').upsert(
               {
                 fingerprint: `email_queue.rate_limited.${queue}.${hourBucket}`,
                 event_type: 'email_rate_limited',
                 source: 'process-email-queue',
-                severity: 'warn',
+                severity: laneSeverity,
                 error_message: `${queue} paused ${retryAfterSecs}s after consecutive 429 #${nextCount}. ${errorMsg.slice(0, 500)}`,
               } as any,
               { onConflict: 'fingerprint', ignoreDuplicates: false }
@@ -518,6 +523,7 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
           } catch (signalErr) {
             console.warn('agent_fix_queue insert failed', { err: String(signalErr) })
           }
+
 
           // Stop THIS queue's batch; outer loop continues to the next queue
           // (which has its own cooldown). Auth no longer blocked by transactional 429s.
