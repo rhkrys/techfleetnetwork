@@ -5,25 +5,38 @@ import { toast } from "sonner";
 import { Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { WorkshopDocsUploader } from "@/components/admin/WorkshopDocsUploader";
 
+// CSVs now live in the private `framework-source-csv` storage bucket. The
+// admin browser never fetches /data/*.csv directly — the `framework-csv-fetch`
+// edge function validates JWT + admin role, downloads via service role, and
+// returns the text + SHA-256 checksum for provenance logging.
 const CSV_DATASETS = [
-  { file: "/data/job-industries.csv", name: "Job Industries" },
-  { file: "/data/company-types.csv", name: "Company Types" },
-  { file: "/data/tools.csv", name: "Tools" },
-  { file: "/data/agile-methods.csv", name: "Agile Methods" },
-  { file: "/data/job-specializations.csv", name: "Job Specializations" },
-  { file: "/data/milestones.csv", name: "Milestones" },
-  { file: "/data/deliverables.csv", name: "Deliverables" },
-  { file: "/data/deliverables-2.csv", name: "Deliverables (Extended)" },
-  { file: "/data/skills-framework.csv", name: "Skills Framework Data Types" },
-  { file: "/data/tech-job-categories.csv", name: "Tech Job Categories" },
-  { file: "/data/team-functions.csv", name: "Team Functions" },
-  { file: "/data/duties.csv", name: "Duties" },
-  { file: "/data/activities.csv", name: "Activities" },
-  { file: "/data/practices.csv", name: "Practices" },
-  { file: "/data/skills.csv", name: "Skills" },
-  { file: "/data/workshops-detailed.csv", name: "Workshops (Detailed)" },
-  { file: "/data/handbooks-detailed.csv", name: "Handbooks (Detailed)" },
+  { file: "job-industries.csv", name: "Job Industries" },
+  { file: "company-types.csv", name: "Company Types" },
+  { file: "tools.csv", name: "Tools" },
+  { file: "agile-methods.csv", name: "Agile Methods" },
+  { file: "job-specializations.csv", name: "Job Specializations" },
+  { file: "milestones.csv", name: "Milestones" },
+  { file: "deliverables.csv", name: "Deliverables" },
+  { file: "deliverables-2.csv", name: "Deliverables (Extended)" },
+  { file: "skills-framework.csv", name: "Skills Framework Data Types" },
+  { file: "tech-job-categories.csv", name: "Tech Job Categories" },
+  { file: "team-functions.csv", name: "Team Functions" },
+  { file: "duties.csv", name: "Duties" },
+  { file: "activities.csv", name: "Activities" },
+  { file: "practices.csv", name: "Practices" },
+  { file: "skills.csv", name: "Skills" },
+  { file: "workshops-detailed.csv", name: "Workshops (Detailed)" },
+  { file: "handbooks-detailed.csv", name: "Handbooks (Detailed)" },
 ];
+
+async function fetchCsvFromBucket(filename: string): Promise<{ csv_text: string; checksum: string }> {
+  const { data, error } = await supabase.functions.invoke("framework-csv-fetch", {
+    body: { filename },
+  });
+  if (error) throw new Error(error.message);
+  if (!data?.csv_text) throw new Error("Empty CSV payload");
+  return { csv_text: data.csv_text as string, checksum: data.checksum as string };
+}
 
 type Status = "idle" | "loading" | "done" | "error";
 
@@ -36,11 +49,10 @@ export default function AdminIngestPage() {
   const ingestOne = async (file: string, name: string) => {
     setStatuses((prev) => ({ ...prev, [name]: { status: "loading" } }));
     try {
-      const res = await fetch(file);
-      const csvText = await res.text();
+      const { csv_text } = await fetchCsvFromBucket(file);
 
       const { data, error } = await supabase.functions.invoke("ingest-csv-knowledge", {
-        body: { csv_text: csvText, dataset_name: name },
+        body: { csv_text, dataset_name: name },
       });
 
       if (error) throw new Error(error.message);
@@ -74,10 +86,14 @@ export default function AdminIngestPage() {
   const syncReferenceOne = async (file: string, name: string) => {
     setRefStatuses((prev) => ({ ...prev, [name]: { status: "loading" } }));
     try {
-      const res = await fetch(file);
-      const csvText = await res.text();
+      const { csv_text, checksum } = await fetchCsvFromBucket(file);
       const { data, error } = await supabase.functions.invoke("ingest-reference-csv", {
-        body: { csv_text: csvText, dataset_name: name },
+        body: {
+          csv_text,
+          dataset_name: name,
+          source_filename: file,
+          source_checksum: checksum,
+        },
       });
       if (error) throw new Error(error.message);
       const parts = [`${data.upserted} rows → ${data.table}`];
