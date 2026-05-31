@@ -4,6 +4,9 @@ const IGNORED_CONSOLE_PATTERNS = [
   /favicon/i,
   /ResizeObserver loop completed/i,
   /Download the React DevTools/i,
+  // Third-party CookieYes preview-domain notice — out of our control in CI
+  /cookieyes/i,
+  /website URL has changed/i,
 ];
 
 const FATAL_CONSOLE_PATTERNS = [
