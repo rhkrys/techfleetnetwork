@@ -5,6 +5,7 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import jsxA11y from "eslint-plugin-jsx-a11y";
 import tseslint from "typescript-eslint";
 import compat from "eslint-plugin-compat";
+import security from "eslint-plugin-security";
 import brandTerms from "./scripts/lint/eslint-plugin-brand-terms.mjs";
 import cssPortability from "./scripts/lint/eslint-plugin-css-portability.mjs";
 import noRawDiscordInput from "./scripts/lint/eslint-plugin-no-raw-discord-input.mjs";
