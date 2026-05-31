@@ -416,11 +416,16 @@ export function FleetyChatWidget() {
     setOpen(true);
   }, []);
 
-  // Expose globally for search to call
+  // Wave 3 W3-EVENT-008: listen for CustomEvent instead of mounting a window global.
   useEffect(() => {
-    (window as any).__openFleetyWidget = openWithQuery;
-    return () => { delete (window as any).__openFleetyWidget; };
+    const handler = (e: Event) => {
+      const q = (e as CustomEvent<{ query?: string }>).detail?.query ?? "";
+      openWithQuery(q);
+    };
+    window.addEventListener("fleety:open", handler as EventListener);
+    return () => window.removeEventListener("fleety:open", handler as EventListener);
   }, [openWithQuery]);
+
 
   if (!user) return null;
 
