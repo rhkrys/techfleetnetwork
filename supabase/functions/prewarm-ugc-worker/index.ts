@@ -112,6 +112,8 @@ Deno.serve(async (req) => {
   await sb.from("ugc_translation_jobs").update({ status: "processing", updated_at: new Date().toISOString() }).in("id", ids);
 
   let ok = 0, failed = 0;
+  const doneIds: string[] = [];
+  const failedRows: { id: string; attempts: number; last_error: string }[] = [];
   for (const job of jobs as Job[]) {
     try {
       const tr = await translate(job.source_text, job.target_locale, job.content_format);
@@ -144,18 +146,35 @@ Deno.serve(async (req) => {
           qa_report: q.report,
         });
       }
-      await sb.from("ugc_translation_jobs").update({ status: "done", updated_at: new Date().toISOString() }).eq("id", job.id);
+      doneIds.push(job.id);
       ok++;
     } catch (e) {
       failed++;
-      await sb.from("ugc_translation_jobs").update({
-        status: "failed",
+      failedRows.push({
+        id: job.id,
         attempts: (job as any).attempts ? (job as any).attempts + 1 : 1,
         last_error: String(e),
-        updated_at: new Date().toISOString(),
-      }).eq("id", job.id);
+      });
     }
   }
+
+  // Wave 3 PERF-W3-005: batch terminal status updates (was N individual UPDATEs).
+  const nowIso = new Date().toISOString();
+  if (doneIds.length) {
+    await sb.from("ugc_translation_jobs")
+      .update({ status: "done", updated_at: nowIso })
+      .in("id", doneIds);
+  }
+  // Failed rows still need per-row attempts/last_error, so keep them individual.
+  for (const f of failedRows) {
+    await sb.from("ugc_translation_jobs").update({
+      status: "failed",
+      attempts: f.attempts,
+      last_error: f.last_error,
+      updated_at: nowIso,
+    }).eq("id", f.id);
+  }
+
 
   return new Response(JSON.stringify({ processed: jobs.length, ok, failed }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
