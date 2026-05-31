@@ -67,12 +67,13 @@ test.describe("Registration Page (BDD 2.1, 2.3, 2.5)", () => {
 });
 
 test.describe("Login Page (BDD 2.4, 15.3)", () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto("/login");
-    await page.waitForLoadState("domcontentloaded");
-    await page.getByLabel(/email/i).first().waitFor({ state: "visible", timeout: 15_000 });
+  test.describe.configure({ retries: 1, mode: "parallel" });
 
+  test.beforeEach(async ({ page }) => {
+    await page.goto("/login", { waitUntil: "domcontentloaded" });
+    await page.getByLabel(/email/i).first().waitFor({ state: "visible", timeout: 10_000 });
   });
+
 
   test("displays login form", async ({ page }) => {
     await expect(page.getByLabel(/email/i)).toBeVisible();
