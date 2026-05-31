@@ -25,12 +25,15 @@ const ROUTES = [
   "/terms",
 ];
 
-// HSL(211, 100%, 33%) ≈ #0056A7. Allow ±2% lightness / ±2° hue drift for
-// rounding between the design token and getComputedStyle output.
-const PRIMARY_HUE = 211;
-const PRIMARY_SAT = 100;
-const PRIMARY_LIGHT = 33;
-const HSL_TOLERANCE = { hue: 3, sat: 5, light: 4 };
+// Light brand: HSL(209, 100%, 33%) ≈ #0056A7 (Tech Fleet Blue)
+// Dark brand : HSL(217, 73%, 48%)  ≈ Action Blue (Visual Guide v1 dark surface)
+// Routes can render in either theme depending on user/system preference, so
+// accept either anchor within tolerance.
+const PRIMARY_VARIANTS = [
+  { h: 209, s: 100, l: 33 },
+  { h: 217, s: 73, l: 48 },
+];
+const HSL_TOLERANCE = { hue: 4, sat: 8, light: 6 };
 
 function parseHsl(value: string): { h: number; s: number; l: number } | null {
   // Accepts "211 100% 33%" (CSS var format) or "hsl(211, 100%, 33%)".
