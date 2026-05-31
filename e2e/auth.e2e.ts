@@ -68,7 +68,9 @@ test.describe("Registration Page (BDD 2.1, 2.3, 2.5)", () => {
 test.describe("Login Page (BDD 2.4, 15.3)", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/login");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
+    await page.getByLabel(/email/i).first().waitFor({ state: "visible", timeout: 15_000 });
+
   });
 
   test("displays login form", async ({ page }) => {
