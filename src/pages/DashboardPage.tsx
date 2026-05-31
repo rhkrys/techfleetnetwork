@@ -188,7 +188,7 @@ export default function DashboardPage() {
     queryFn: () => StatsService.getNetworkStats(),
     staleTime: 60 * 1000,
     refetchInterval: 60 * 1000,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
   });
 
   // General application status — sourced from overview RPC

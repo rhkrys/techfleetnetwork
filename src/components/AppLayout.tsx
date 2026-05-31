@@ -476,7 +476,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         <CookieConsentBanner />
         <AdminTwoFactorGraceDialog />
         <ShortcutCheatsheet />
-        <FleetyChatWidget />
+        <Suspense fallback={null}><FleetyChatWidget /></Suspense>
       </div>
     ) : (
       <SidebarProvider defaultOpen={true}>
@@ -508,7 +508,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         <LiveAnnouncer />
         <CookieConsentBanner />
         <AdminTwoFactorGraceDialog />
-        <FleetyChatWidget />
+        <Suspense fallback={null}><FleetyChatWidget /></Suspense>
         <ShortcutCheatsheet />
       </SidebarProvider>
     );
