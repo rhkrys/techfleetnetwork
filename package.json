@@ -169,6 +169,11 @@
     "Firefox ESR",
     "not dead",
     "iOS >= 14.5",
-    "Safari >= 14.1"
+    "Safari >= 14.1",
+    "not op_mini all",
+    "not kaios > 0",
+    "not and_qq > 0",
+    "not and_uc > 0",
+    "not baidu > 0"
   ]
 }
