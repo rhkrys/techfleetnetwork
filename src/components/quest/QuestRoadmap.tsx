@@ -187,6 +187,11 @@ const PathCard = memo(function PathCard({
   const isCompleted = progress && progress.completed >= progress.total && progress.total > 0;
   const isLocked = !prereqsMet;
   const Icon = ICON_MAP[path.icon] ?? Circle;
+  const pathBySlug = useMemo(() => {
+    const m = new Map<string, QuestPath>();
+    for (const p of allPaths) m.set(p.slug, p);
+    return m;
+  }, [allPaths]);
 
   return (
     <div role="listitem">
