@@ -1,4 +1,4 @@
-import { test, expect } from "../../playwright-fixture";
+import { test, expect } from "@playwright/test";
 
 /**
  * BDD CSS-COMPAT-EDGE-DVH-001 — The app's full-viewport surfaces must

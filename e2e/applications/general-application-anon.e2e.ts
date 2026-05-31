@@ -1,4 +1,4 @@
-import { test, expect } from "../playwright-fixture";
+import { test, expect } from "@playwright/test";
 
 /**
  * BDD GA-EDGE-ANON-001 — Anonymous visitor hitting the general application
