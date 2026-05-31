@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { openCookieSettings } from "@/components/CookieConsentBanner";
 import { loadConsent } from "@/lib/consent/manager";
 import { SEO } from "@/components/SEO";
+import { usePolicy } from "@/hooks/usePolicy";
 
 interface InspectorRow {
   name: string;
@@ -83,15 +84,12 @@ function inspect(): InspectorRow[] {
 }
 
 export default function CookiesPage() {
-  const [md, setMd] = useState("");
+  const { data: policy } = usePolicy("cookies");
+  const md = policy?.body_md ?? "";
   const [rows, setRows] = useState<InspectorRow[]>([]);
   const consent = useMemo(() => loadConsent(), []);
 
   useEffect(() => {
-    fetch("/policies/Cookie-Policy.md")
-      .then((r) => (r.ok ? r.text() : ""))
-      .then(setMd)
-      .catch(() => setMd(""));
     setRows(inspect());
   }, []);
 

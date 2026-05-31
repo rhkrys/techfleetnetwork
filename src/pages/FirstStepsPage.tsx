@@ -123,32 +123,32 @@ const baseTasks: Omit<Task, "completed">[] = [
   },
 ];
 
-const LEGAL_PANELS: Record<string, { title: string; description: string; markdownUrl: string; downloadUrl: string; acceptLabel: string }> = {
+const LEGAL_PANELS: Record<string, { title: string; description: string; policyKey: string; downloadUrl: string; acceptLabel: string }> = {
   "terms-conditions": {
     title: "Tech Fleet Terms & Conditions",
     description: "Master agreement governing your membership and use of Tech Fleet services.",
-    markdownUrl: "/policies/Terms-and-Conditions.md",
+    policyKey: "terms-and-conditions",
     downloadUrl: "/terms",
     acceptLabel: "Tech Fleet Terms & Conditions",
   },
   "terms-of-use": {
     title: "Tech Fleet Terms of Use",
     description: "Acceptable-use rules for the Tech Fleet Network platform.",
-    markdownUrl: "/policies/Terms-of-Use.md",
+    policyKey: "terms-of-use",
     downloadUrl: "/terms-of-use",
     acceptLabel: "Tech Fleet Terms of Use",
   },
   "privacy-policy": {
     title: "Tech Fleet Privacy Policy",
     description: "How we collect, use, share, and protect your personal information.",
-    markdownUrl: "/policies/Privacy-Policy.md",
+    policyKey: "privacy",
     downloadUrl: "/privacy",
     acceptLabel: "Tech Fleet Privacy Policy",
   },
   "cookie-policy": {
     title: "Tech Fleet Cookie Policy",
     description: "Cookies and similar technologies used on Tech Fleet sites.",
-    markdownUrl: "/policies/Cookie-Policy.md",
+    policyKey: "cookies",
     downloadUrl: "/cookies",
     acceptLabel: "Tech Fleet Cookie Policy",
   },
@@ -435,7 +435,7 @@ export default function FirstStepsPage() {
           panelKey={legalPanelId}
           title={LEGAL_PANELS[legalPanelId].title}
           description={LEGAL_PANELS[legalPanelId].description}
-          markdownUrl={LEGAL_PANELS[legalPanelId].markdownUrl}
+          policyKey={LEGAL_PANELS[legalPanelId].policyKey}
           downloadUrl={LEGAL_PANELS[legalPanelId].downloadUrl}
           acceptLabel={LEGAL_PANELS[legalPanelId].acceptLabel}
         />

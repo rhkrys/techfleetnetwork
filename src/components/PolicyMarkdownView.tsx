@@ -1,35 +1,44 @@
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { Skeleton } from "@/components/ui/skeleton";
+import { usePolicy } from "@/hooks/usePolicy";
 
 interface Props {
   title: string;
   effective?: string;
   contactEmail?: string;
-  markdownUrl: string;
+  /** Preferred: policy key in the database (e.g. "terms-and-conditions"). */
+  policyKey?: string;
+  /** Legacy fallback for callers not yet migrated; fetches markdown from a public URL. */
+  markdownUrl?: string;
 }
 
-const cache = new Map<string, string>();
+const urlCache = new Map<string, string>();
 
 /**
- * Renders a public policy markdown page. Used for Terms & Conditions,
- * Terms of Use, and as the body of richer Privacy/Cookies/Accessibility
- * pages. Accessible to logged-out visitors (no auth gating).
+ * Renders a public policy markdown page. Prefer passing `policyKey` so the
+ * content is sourced from `policy_versions` (DB-first, versioned, no redeploy
+ * needed to publish updates). `markdownUrl` is a legacy fallback path.
  */
-export function PolicyMarkdownView({ title, effective, contactEmail, markdownUrl }: Props) {
-  const [md, setMd] = useState<string>(() => cache.get(markdownUrl) ?? "");
-  const [loading, setLoading] = useState(!cache.has(markdownUrl));
-  const [error, setError] = useState(false);
+export function PolicyMarkdownView({ title, effective, contactEmail, policyKey, markdownUrl }: Props) {
+  const policyQuery = usePolicy(policyKey ?? "__none__");
+  const usingDb = Boolean(policyKey);
+
+  // Legacy URL fetch path (kept for any remaining callers).
+  const [urlMd, setUrlMd] = useState<string>(() => (markdownUrl ? urlCache.get(markdownUrl) ?? "" : ""));
+  const [urlLoading, setUrlLoading] = useState<boolean>(() => !!markdownUrl && !urlCache.has(markdownUrl));
+  const [urlError, setUrlError] = useState(false);
 
   useEffect(() => {
-    if (cache.has(markdownUrl)) {
-      setMd(cache.get(markdownUrl) || "");
-      setLoading(false);
+    if (usingDb || !markdownUrl) return;
+    if (urlCache.has(markdownUrl)) {
+      setUrlMd(urlCache.get(markdownUrl) || "");
+      setUrlLoading(false);
       return;
     }
     let aborted = false;
-    setLoading(true);
-    setError(false);
+    setUrlLoading(true);
+    setUrlError(false);
     fetch(markdownUrl, { credentials: "omit" })
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -37,19 +46,23 @@ export function PolicyMarkdownView({ title, effective, contactEmail, markdownUrl
       })
       .then((text) => {
         if (aborted) return;
-        cache.set(markdownUrl, text);
-        setMd(text);
+        urlCache.set(markdownUrl, text);
+        setUrlMd(text);
       })
       .catch(() => {
-        if (!aborted) setError(true);
+        if (!aborted) setUrlError(true);
       })
       .finally(() => {
-        if (!aborted) setLoading(false);
+        if (!aborted) setUrlLoading(false);
       });
     return () => {
       aborted = true;
     };
-  }, [markdownUrl]);
+  }, [markdownUrl, usingDb]);
+
+  const md = usingDb ? policyQuery.data?.body_md ?? "" : urlMd;
+  const loading = usingDb ? policyQuery.isLoading : urlLoading;
+  const error = usingDb ? !!policyQuery.error : urlError;
 
   return (
     <div className="container-app py-8 space-y-6">

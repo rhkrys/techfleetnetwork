@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { FeedbackService } from "@/services/feedback.service";
 import { SEO } from "@/components/SEO";
 import { toast } from "sonner";
+import { usePolicy } from "@/hooks/usePolicy";
 
 export default function AccessibilityPage() {
   const { t } = useTranslation();
@@ -20,14 +21,8 @@ export default function AccessibilityPage() {
   const [tech, setTech] = useState("");
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
-  const [policyMd, setPolicyMd] = useState("");
-
-  useEffect(() => {
-    fetch("/policies/Accessibility-Policy.md")
-      .then((r) => (r.ok ? r.text() : ""))
-      .then(setPolicyMd)
-      .catch(() => setPolicyMd(""));
-  }, []);
+  const { data: policy } = usePolicy("accessibility");
+  const policyMd = policy?.body_md ?? "";
 
   useEffect(() => {
     setPage(typeof window !== "undefined" ? window.location.href : pathname);

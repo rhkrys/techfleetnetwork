@@ -6,6 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { recordPolicyAcknowledgment } from "@/lib/policies";
+import { usePolicy } from "@/hooks/usePolicy";
 
 interface LegalPolicyPanelProps {
   open: boolean;
@@ -16,8 +17,10 @@ interface LegalPolicyPanelProps {
   title: string;
   /** Short description shown beneath the title */
   description: string;
-  /** Public URL of the markdown source, e.g. "/policies/Privacy-Policy.md" */
-  markdownUrl: string;
+  /** Preferred: policy key in the database (e.g. "privacy"). */
+  policyKey?: string;
+  /** Legacy fallback URL for callers not yet migrated. */
+  markdownUrl?: string;
   /** In-app route for the full policy page, e.g. "/privacy" */
   downloadUrl: string;
   /** Used for resize key + checkbox id (e.g. "privacy-policy") */
@@ -26,7 +29,7 @@ interface LegalPolicyPanelProps {
   acceptLabel: string;
 }
 
-const cache = new Map<string, string>();
+const urlCache = new Map<string, string>();
 
 export function LegalPolicyPanel({
   open,
@@ -35,25 +38,31 @@ export function LegalPolicyPanel({
   loading,
   title,
   description,
+  policyKey,
   markdownUrl,
   downloadUrl,
   panelKey,
   acceptLabel,
 }: LegalPolicyPanelProps) {
   const [agreed, setAgreed] = useState(false);
-  const [content, setContent] = useState<string>(() => cache.get(markdownUrl) ?? "");
-  const [loadError, setLoadError] = useState(false);
-  const [fetching, setFetching] = useState(false);
+  const usingDb = Boolean(policyKey);
+  const policyQuery = usePolicy(policyKey ?? "__none__");
+
+  const [urlContent, setUrlContent] = useState<string>(() =>
+    markdownUrl ? urlCache.get(markdownUrl) ?? "" : ""
+  );
+  const [urlError, setUrlError] = useState(false);
+  const [urlFetching, setUrlFetching] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
-    if (cache.has(markdownUrl)) {
-      setContent(cache.get(markdownUrl) || "");
+    if (usingDb || !open || !markdownUrl) return;
+    if (urlCache.has(markdownUrl)) {
+      setUrlContent(urlCache.get(markdownUrl) || "");
       return;
     }
     let aborted = false;
-    setFetching(true);
-    setLoadError(false);
+    setUrlFetching(true);
+    setUrlError(false);
     fetch(markdownUrl, { credentials: "omit" })
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -61,19 +70,24 @@ export function LegalPolicyPanel({
       })
       .then((text) => {
         if (aborted) return;
-        cache.set(markdownUrl, text);
-        setContent(text);
+        urlCache.set(markdownUrl, text);
+        setUrlContent(text);
       })
       .catch(() => {
-        if (!aborted) setLoadError(true);
+        if (!aborted) setUrlError(true);
       })
       .finally(() => {
-        if (!aborted) setFetching(false);
+        if (!aborted) setUrlFetching(false);
       });
     return () => {
       aborted = true;
     };
-  }, [open, markdownUrl]);
+  }, [open, markdownUrl, usingDb]);
+
+  const content = usingDb ? policyQuery.data?.body_md ?? "" : urlContent;
+  const fetching = usingDb ? policyQuery.isLoading : urlFetching;
+  const loadError = usingDb ? !!policyQuery.error : urlError;
+
 
   const handleAccept = () => {
     if (!agreed) return;
