@@ -203,12 +203,14 @@ serve(withAuditWrapper("ingest-reference-csv", async (req) => {
   const token = authHeader.slice("Bearer ".length).trim();
   const isServiceRole = token === SERVICE;
 
+  let userId: string | null = null;
   if (!isServiceRole) {
     const anonClient = createClient(SUPABASE_URL, ANON, { global: { headers: { Authorization: authHeader } } });
     const { data: userData, error: userErr } = await anonClient.auth.getUser();
     if (userErr || !userData?.user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
+    userId = userData.user.id;
     const adminCheck = createClient(SUPABASE_URL, SERVICE);
     const { data: roleRow } = await adminCheck
       .from("user_roles").select("role")
