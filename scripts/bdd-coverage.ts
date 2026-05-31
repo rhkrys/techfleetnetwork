@@ -86,6 +86,30 @@ async function main() {
 
   const coveragePct = total > 0 ? ((implemented / total) * 100).toFixed(1) : "0";
 
+  // Edge-case ratio per feature area — a scenario is "edge" if its id
+  // contains -EDGE- or its title matches one of the negative/recovery
+  // keywords. Target ratio per area: ≥ 0.40.
+  const EDGE_RX = /(EDGE|edge|denies|blocks|recovers|429|5xx|duplicate|retry|abort|stale|revoke|offline|rate.?limit|timeout|reduced.?motion|empty|missing|cap|backoff|conflict)/;
+  const byArea: Record<string, { total: number; edge: number; edgeImpl: number }> = {};
+  for (const s of scenarios) {
+    const a = (byArea[s.feature_area] ??= { total: 0, edge: 0, edgeImpl: 0 });
+    a.total++;
+    if (EDGE_RX.test(s.scenario_id) || EDGE_RX.test(s.title)) {
+      a.edge++;
+      if (s.status === "implemented") a.edgeImpl++;
+    }
+  }
+  const EDGE_TARGET = 0.4;
+  const underTarget = Object.entries(byArea)
+    .filter(([, v]) => v.total >= 10 && v.edge / v.total < EDGE_TARGET)
+    .sort(([, a], [, b]) => a.edge / a.total - b.edge / b.total);
+  const overallEdgeRatio =
+    total > 0
+      ? (
+          Object.values(byArea).reduce((n, v) => n + v.edge, 0) / total
+        ).toFixed(2)
+      : "0";
+
   const lines: string[] = [
     "# 🧪 BDD Coverage Report",
     "",
@@ -97,8 +121,28 @@ async function main() {
     `| ❌ Not built | ${notBuilt} |`,
     `| 📋 Manual only | ${manual} |`,
     `| **Coverage** | **${coveragePct}%** |`,
+    `| 🛡 Edge-case ratio | ${overallEdgeRatio} |`,
     "",
   ];
+
+  if (underTarget.length > 0) {
+    lines.push(
+      `## 🛡 Feature areas below ${Math.round(EDGE_TARGET * 100)}% edge-case coverage`,
+      "",
+      "| Area | Total | Edge | Edge impl | Ratio |",
+      "|------|------:|-----:|----------:|------:|",
+      ...underTarget
+        .slice(0, 30)
+        .map(
+          ([area, v]) =>
+            `| ${area} | ${v.total} | ${v.edge} | ${v.edgeImpl} | ${(
+              v.edge / v.total
+            ).toFixed(2)} |`,
+        ),
+      "",
+    );
+  }
+
 
   if (filesMissing.length > 0) {
     lines.push(
