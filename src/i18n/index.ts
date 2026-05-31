@@ -49,16 +49,35 @@ void i18n
       caches: ["localStorage"],
     },
     backend: {
+      // DB-first: load curated strings from the public `get-i18n-bundle` edge
+      // function (joined to i18n_translations). Falls back through to the
+      // bundled `enCommon` resource below if the edge call fails so the app
+      // never bricks on a cold network. See mem://tech/data/db-first-content.
       loadPath: (lngs: string[], namespaces: string[]) => {
         const lng = lngs[0];
         const ns = namespaces[0];
-        // Static bundles served from /public/locales/. If absent, the HTTP
-        // backend will 404 and i18next falls back to the bundled English
-        // resources we register below — meanwhile the language switcher
-        // optimistically requests the AI fallback (see ensureLocale()).
+        const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+        if (projectId) {
+          return `https://${projectId}.supabase.co/functions/v1/get-i18n-bundle?locale=${encodeURIComponent(lng)}&namespace=${encodeURIComponent(ns)}`;
+        }
+        // Last-resort static fallback (kept only as a safety net).
         return `/locales/${lng}/${ns}.json`;
       },
+      parse: (raw: string) => {
+        // Edge fn returns { locale, namespace, version, strings }.
+        // Static .json bundles are raw {key: value} maps.
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object' && parsed.strings && typeof parsed.strings === 'object') {
+            return parsed.strings as Record<string, unknown>;
+          }
+          return parsed;
+        } catch {
+          return {};
+        }
+      },
     },
+
     resources: {
       en: { common: enCommon },
     },
