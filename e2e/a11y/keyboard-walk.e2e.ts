@@ -30,18 +30,26 @@ for (const path of PUBLIC_ROUTES) {
         const visible =
           parseFloat(cs.outlineWidth || "0") > 0 ||
           (cs.boxShadow && cs.boxShadow !== "none");
+        // Third-party iframe widgets (e.g. Cloudflare Turnstile) host their own
+        // focus styling inside the iframe document, which the parent cannot
+        // inspect. Treat any element that contains/is an iframe as opaque.
+        const isThirdPartyIframeHost =
+          el.tagName === "IFRAME" || !!el.querySelector("iframe");
         return {
           tag: el.tagName.toLowerCase(),
           tabindex,
           visible: !!visible,
+          isThirdPartyIframeHost,
           fingerprint: `${el.tagName}#${el.id || ""}.${el.className || ""}`.slice(0, 200),
         };
       });
       if (!probe) break;
       if (seen.has(probe.fingerprint) && i > 5) break; // stopped advancing
       seen.add(probe.fingerprint);
+      if (probe.isThirdPartyIframeHost) continue;
       if (probe.tabindex === "-1") offenders.push(`tabindex=-1 focused: ${probe.fingerprint}`);
       if (!probe.visible) offenders.push(`no visible focus ring: ${probe.fingerprint}`);
+
     }
 
     expect(offenders, offenders.join("\n")).toEqual([]);
