@@ -49,11 +49,10 @@ export default function AdminIngestPage() {
   const ingestOne = async (file: string, name: string) => {
     setStatuses((prev) => ({ ...prev, [name]: { status: "loading" } }));
     try {
-      const res = await fetch(file);
-      const csvText = await res.text();
+      const { csv_text } = await fetchCsvFromBucket(file);
 
       const { data, error } = await supabase.functions.invoke("ingest-csv-knowledge", {
-        body: { csv_text: csvText, dataset_name: name },
+        body: { csv_text, dataset_name: name },
       });
 
       if (error) throw new Error(error.message);
