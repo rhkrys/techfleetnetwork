@@ -76,4 +76,9 @@ project_id = "iqsjhrhsjlgjiaedzmtz"
     # Public — surfaces cached Discord community member count on the
     # logged-out landing page. Refreshes from Discord at most once per 24h.
     verify_jwt = false
+  [functions.get-i18n-bundle]
+    # Public — serves curated i18n translation strings (no PII) with
+    # ETag + SWR caching so the bundle is a CDN hit after first load.
+    verify_jwt = false
+
 
