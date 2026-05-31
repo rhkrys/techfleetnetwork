@@ -93,3 +93,22 @@ jobs:
             exit 1
           fi
           echo "✅ All changed modules have BDD scenarios."
+
+  # ---------------------------------------------------------------------------
+  # incident-gate — every resolved fingerprint in known_issue_catalog must
+  # be locked in by a regression scenario tagged `incident:<fingerprint>`.
+  # ---------------------------------------------------------------------------
+  incident-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version-file: .nvmrc
+      - name: Run incident gate
+        run: node scripts/bdd-incident-gate.mjs
