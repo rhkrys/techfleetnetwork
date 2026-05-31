@@ -402,13 +402,15 @@ export function UniversalSearch() {
               onSelect={() => {
                 setOpen(false);
                 setQuery("");
-                const openFleety = (window as any).__openFleetyWidget;
-                if (openFleety && query.trim()) {
-                  openFleety(query.trim());
+                const q = query.trim();
+                // Wave 3 W3-EVENT-008: CustomEvent dispatch instead of window global.
+                if (q) {
+                  window.dispatchEvent(new CustomEvent("fleety:open", { detail: { query: q } }));
                 } else {
-                  navigate("/resources?tab=guidance" + (query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""));
+                  navigate("/resources?tab=guidance");
                 }
               }}
+
               className="flex items-start gap-3 py-2.5"
             >
               <img
