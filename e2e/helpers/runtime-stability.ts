@@ -1,4 +1,4 @@
-import { expect, type ConsoleMessage, type Page, type Request } from "../../playwright-fixture";
+import { expect, type ConsoleMessage, type Page, type Request } from "../../../playwright-fixture";
 
 const IGNORED_CONSOLE_PATTERNS = [
   /favicon/i,

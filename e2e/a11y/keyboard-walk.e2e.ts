@@ -8,7 +8,7 @@
  *   2. Focus never lands on a `[tabindex="-1"]` non-interactive node.
  *   3. Esc dismisses any opened role=dialog or role=tooltip without trapping.
  */
-import { test, expect } from "../../playwright-fixture";
+import { test, expect } from "../../../playwright-fixture";
 
 const PUBLIC_ROUTES = ["/", "/login", "/register", "/forgot-password", "/accessibility"];
 

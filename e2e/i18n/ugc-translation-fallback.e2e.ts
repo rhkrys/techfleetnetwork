@@ -1,4 +1,4 @@
-import { test, expect } from "../../playwright-fixture";
+import { test, expect } from "../../../playwright-fixture";
 
 /**
  * BDD I18N-UGC-EDGE-001 — When a UGC translation is missing for the active
