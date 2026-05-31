@@ -1,4 +1,6 @@
-import { jsPDF } from "jspdf";
+// Wave 1 PERF-W1-009: jspdf (~200KB) is dynamic-imported on first call so it
+// never appears in the MyJourneyPage initial parse waterfall.
+
 
 /**
  * Loads the Lato font into the canvas context by preloading via FontFace API.
@@ -105,6 +107,7 @@ export async function generateCertificatePdf(fullName: string, certificateTitle?
 
   const imgDataUrl = canvas.toDataURL("image/jpeg", 0.95);
 
+  const { jsPDF } = await import("jspdf");
   const pdf = new jsPDF({
     orientation: "landscape",
     unit: "mm",
