@@ -60,7 +60,7 @@ export function QuestOverview() {
       {hasActiveQuest ? (
         <div className="space-y-3">
           {selections?.map((sel) => {
-            const path = paths?.find((p) => p.id === sel.path_id);
+            const path = pathById.get(sel.path_id);
             if (!path) return null;
             return (
               <button
@@ -129,7 +129,7 @@ export function QuestOverview() {
       {congratsPathId && (
         <QuestCongratulationsDialog
           open={!!congratsPathId}
-          pathTitle={paths?.find((p) => p.id === congratsPathId)?.title ?? ""}
+          pathTitle={pathById.get(congratsPathId)?.title ?? ""}
           onClose={handleCongratsClose}
         />
       )}
