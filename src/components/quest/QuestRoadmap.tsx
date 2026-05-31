@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { QuestPathDetail } from "./QuestPathDetail";
 import { QuestExploreDialog } from "./QuestExploreDialog";
 import type { QuestPath, QuestPathStep, SystemVerificationData } from "@/services/quest.service";
+import { useQuestPathMaps } from "@/lib/quest/path-maps";
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   rocket: Rocket, map: MapIcon, eye: Eye, "book-open": BookOpen,
@@ -42,6 +43,7 @@ export function QuestRoadmap({ onNeedIntake }: QuestRoadmapProps) {
   const { data: allJourneyMap } = useAllJourneyProgress();
   // System verification data for steps referencing other DB tables
   const { data: sysVerification } = useSystemVerificationData();
+  const { byId: pathById, bySlug: pathBySlug } = useQuestPathMaps(paths);
 
   // Derive phase completion stats from the single batch query
   const allProgress = useMemo(() => {
@@ -106,14 +108,15 @@ export function QuestRoadmap({ onNeedIntake }: QuestRoadmapProps) {
     return null;
   }
 
+  const selectedPathIdSet = new Set(selections.map((s) => s.path_id));
   const selectedPaths = paths
-    ?.filter((p) => selections.some((s) => s.path_id === p.id))
+    ?.filter((p) => selectedPathIdSet.has(p.id))
     .sort((a, b) => a.sort_order - b.sort_order) ?? [];
 
   const unselectedCount = (paths?.length ?? 0) - selectedPaths.length;
 
   if (selectedPathId) {
-    const path = paths?.find((p) => p.id === selectedPathId);
+    const path = pathById.get(selectedPathId);
     if (path) {
       return (
         <QuestPathDetail
@@ -184,6 +187,11 @@ const PathCard = memo(function PathCard({
   const isCompleted = progress && progress.completed >= progress.total && progress.total > 0;
   const isLocked = !prereqsMet;
   const Icon = ICON_MAP[path.icon] ?? Circle;
+  const pathBySlug = useMemo(() => {
+    const m = new Map<string, QuestPath>();
+    for (const p of allPaths) m.set(p.slug, p);
+    return m;
+  }, [allPaths]);
 
   return (
     <div role="listitem">
@@ -235,7 +243,7 @@ const PathCard = memo(function PathCard({
 
             {isLocked ? (
               <p className="text-sm text-muted-foreground">
-                Requires: {path.prerequisites.map((slug) => allPaths.find((p) => p.slug === slug)?.title ?? slug).join(", ")}
+                Requires: {path.prerequisites.map((slug) => pathBySlug.get(slug)?.title ?? slug).join(", ")}
               </p>
             ) : isCompleted ? (
               <p className="text-sm text-muted-foreground">All steps complete</p>

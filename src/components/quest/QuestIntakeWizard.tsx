@@ -4,6 +4,7 @@ import { Check, Sparkles, ArrowRight } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useBatchAddQuestPaths, useQuestPaths } from "@/hooks/use-quest";
+import { useQuestPathMaps } from "@/lib/quest/path-maps";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import type { QuestPath } from "@/services/quest.service";
@@ -33,6 +34,7 @@ interface QuestIntakeWizardProps {
 export function QuestIntakeWizard({ onComplete }: QuestIntakeWizardProps) {
   const { user, profile, refreshProfile } = useAuth();
   const { data: paths } = useQuestPaths();
+  const { bySlug: pathBySlug } = useQuestPathMaps(paths);
   const batchAddPaths = useBatchAddQuestPaths();
   const [step, setStep] = useState<"interests" | "recommendations">("interests");
   const [selectedInterests, setSelectedInterests] = useState<string[]>(profile?.interests ?? []);
@@ -85,7 +87,7 @@ export function QuestIntakeWizard({ onComplete }: QuestIntakeWizardProps) {
       const slugsToAdd = new Set(recommendedSlugs);
       slugsToAdd.add("onboard");
       const pathIds = Array.from(slugsToAdd)
-        .map((slug) => paths.find((p) => p.slug === slug)?.id)
+        .map((slug) => pathBySlug.get(slug)?.id)
         .filter((id): id is string => !!id);
 
       // Single batch insert instead of N sequential mutations
@@ -97,7 +99,7 @@ export function QuestIntakeWizard({ onComplete }: QuestIntakeWizardProps) {
     } finally {
       setSaving(false);
     }
-  }, [paths, recommendedSlugs, batchAddPaths, onComplete]);
+  }, [paths, recommendedSlugs, batchAddPaths, onComplete, pathBySlug]);
 
   if (step === "interests") {
     return (
@@ -219,8 +221,13 @@ const RecommendedPathCard = memo(function RecommendedPathCard({
   allPaths: QuestPath[];
 }) {
   const prereqsMet = path.prerequisites.length === 0;
+  const pathBySlug = useMemo(() => {
+    const m = new Map<string, QuestPath>();
+    for (const p of allPaths) m.set(p.slug, p);
+    return m;
+  }, [allPaths]);
   const prereqNames = path.prerequisites
-    .map((slug) => allPaths.find((p) => p.slug === slug)?.title ?? slug)
+    .map((slug) => pathBySlug.get(slug)?.title ?? slug)
     .join(", ");
 
   return (

@@ -35,15 +35,20 @@ export function QuestPreviewDialog({
   const { data: steps, isLoading: stepsLoading } = useQuestSteps(pathId);
   const addPath = useAddQuestPath();
 
-  const path = paths?.find((p) => p.id === pathId);
+  const pathBySlug = useMemo(() => {
+    const m = new Map<string, NonNullable<typeof paths>[number]>();
+    if (paths) for (const p of paths) m.set(p.slug, p);
+    return m;
+  }, [paths]);
+  const path = useMemo(() => paths?.find((p) => p.id === pathId), [paths, pathId]);
 
 
   const missingPrereqs = useMemo(() => {
-    if (!path || !paths) return [];
+    if (!path) return [];
     return path.prerequisites
       .filter((slug) => !completedPathSlugs.has(slug))
-      .map((slug) => paths.find((p) => p.slug === slug)?.title ?? slug);
-  }, [path, paths, completedPathSlugs]);
+      .map((slug) => pathBySlug.get(slug)?.title ?? slug);
+  }, [path, pathBySlug, completedPathSlugs]);
 
   const handleSelectQuest = async () => {
     try {
