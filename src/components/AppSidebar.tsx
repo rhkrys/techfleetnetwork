@@ -17,6 +17,7 @@ import {
   
   Flag,
   HeartPulse,
+  LifeBuoy,
   School,
 } from "lucide-react";
 import {
@@ -60,6 +61,7 @@ const communityNav = [
   { label: "Announcements", href: "/updates", icon: Megaphone },
   { label: "Events", href: "/events", icon: CalendarDays },
   { label: "Feedback", href: "/feedback", icon: MessageSquarePlus },
+  { label: "Get Help", href: "/community/get-help", icon: LifeBuoy },
   { label: "Resources", href: "/resources", icon: BookOpen },
 ];
 

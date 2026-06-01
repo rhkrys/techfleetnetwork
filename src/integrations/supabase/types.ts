@@ -3885,6 +3885,8 @@ export type Database = {
           email: string
           experience_areas: string[]
           first_name: string
+          freescout_customer_id: string | null
+          freescout_user_id: string | null
           guardian_consent_at: string | null
           guardian_consent_token: string | null
           guardian_email: string | null
@@ -3932,6 +3934,8 @@ export type Database = {
           email?: string
           experience_areas?: string[]
           first_name?: string
+          freescout_customer_id?: string | null
+          freescout_user_id?: string | null
           guardian_consent_at?: string | null
           guardian_consent_token?: string | null
           guardian_email?: string | null
@@ -3979,6 +3983,8 @@ export type Database = {
           email?: string
           experience_areas?: string[]
           first_name?: string
+          freescout_customer_id?: string | null
+          freescout_user_id?: string | null
           guardian_consent_at?: string | null
           guardian_consent_token?: string | null
           guardian_email?: string | null
@@ -5784,6 +5790,158 @@ export type Database = {
         }
         Relationships: []
       }
+      support_provisioning_log: {
+        Row: {
+          attempts: number
+          created_at: string
+          freescout_id: string | null
+          id: number
+          kind: string
+          last_error: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          freescout_id?: string | null
+          id?: number
+          kind: string
+          last_error?: string | null
+          status: string
+          user_id: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          freescout_id?: string | null
+          id?: number
+          kind?: string
+          last_error?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      support_rate_limits: {
+        Row: {
+          action: string
+          count: number
+          subject_user_id: string
+          window_start: string
+        }
+        Insert: {
+          action: string
+          count?: number
+          subject_user_id: string
+          window_start: string
+        }
+        Update: {
+          action?: string
+          count?: number
+          subject_user_id?: string
+          window_start?: string
+        }
+        Relationships: []
+      }
+      support_ticket_events: {
+        Row: {
+          actor_email: string | null
+          actor_kind: string | null
+          conversation_id: number
+          created_at: string
+          customer_user_id: string | null
+          event_type: string
+          id: number
+          payload: Json
+        }
+        Insert: {
+          actor_email?: string | null
+          actor_kind?: string | null
+          conversation_id: number
+          created_at?: string
+          customer_user_id?: string | null
+          event_type: string
+          id?: number
+          payload?: Json
+        }
+        Update: {
+          actor_email?: string | null
+          actor_kind?: string | null
+          conversation_id?: number
+          created_at?: string
+          customer_user_id?: string | null
+          event_type?: string
+          id?: number
+          payload?: Json
+        }
+        Relationships: []
+      }
+      support_ticket_pointers: {
+        Row: {
+          assignee_user_id: string | null
+          conversation_id: number
+          created_at: string
+          customer_user_id: string | null
+          freescout_customer_id: string | null
+          is_private: boolean
+          last_status: string | null
+          last_synced_at: string
+          mailbox_id: number | null
+          subject: string | null
+        }
+        Insert: {
+          assignee_user_id?: string | null
+          conversation_id: number
+          created_at?: string
+          customer_user_id?: string | null
+          freescout_customer_id?: string | null
+          is_private?: boolean
+          last_status?: string | null
+          last_synced_at?: string
+          mailbox_id?: number | null
+          subject?: string | null
+        }
+        Update: {
+          assignee_user_id?: string | null
+          conversation_id?: number
+          created_at?: string
+          customer_user_id?: string | null
+          freescout_customer_id?: string | null
+          is_private?: boolean
+          last_status?: string | null
+          last_synced_at?: string
+          mailbox_id?: number | null
+          subject?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_ticket_pointers_customer_user_id_fkey"
+            columns: ["customer_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      support_webhook_events: {
+        Row: {
+          event_id: string
+          event_type: string | null
+          received_at: string
+        }
+        Insert: {
+          event_id: string
+          event_type?: string | null
+          received_at?: string
+        }
+        Update: {
+          event_id?: string
+          event_type?: string | null
+          received_at?: string
+        }
+        Relationships: []
+      }
       suppressed_emails: {
         Row: {
           created_at: string
@@ -7531,6 +7689,16 @@ export type Database = {
           _type: Database["public"]["Enums"]["dsar_type"]
         }
         Returns: string
+      }
+      support_backfill_provisioning: {
+        Args: { _mode: string }
+        Returns: {
+          queued: number
+        }[]
+      }
+      support_check_rate_limit: {
+        Args: { _action: string; _max_per_hour: number }
+        Returns: undefined
       }
       try_write_audit_log: {
         Args: {

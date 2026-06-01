@@ -47,6 +47,7 @@ import NotFound from "./pages/NotFound";
 // Lazily loaded — Index/Register only needed on their own routes
 const Index = lazy(() => import("./pages/Index"));
 const RegisterPage = lazy(() => import("./pages/RegisterPage"));
+const GetHelpPage = lazy(() => import("./pages/community/GetHelpPage"));
 
 // Heavy non-critical widgets — defer until after first paint to free up the
 // initial JS budget on slow networks.
@@ -235,6 +236,7 @@ const App = () => (
                     <Route path="/courses/observer" element={<ProtectedRoute><ObserverCoursePage /></ProtectedRoute>} />
                     <Route path="/events" element={<ProtectedRoute><EventsPage /></ProtectedRoute>} />
                     <Route path="/resources" element={<ProtectedRoute><ResourcesPage /></ProtectedRoute>} />
+                    <Route path="/community/get-help" element={<ProtectedRoute><GetHelpPage /></ProtectedRoute>} />
                     <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
                     <Route path="/applications" element={<ProtectedRoute><ApplicationsPage /></ProtectedRoute>} />
                     <Route path="/applications/general" element={<ProtectedRoute><GeneralApplicationPage /></ProtectedRoute>} />
