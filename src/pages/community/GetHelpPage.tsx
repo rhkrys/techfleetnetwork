@@ -206,9 +206,7 @@ function TicketDetail({ conversationId, onClose }: { conversationId: number; onC
 
   const closeMut = useMutation({
     mutationFn: async (action: "close" | "reopen") => {
-      const { error } = await supabase.functions.invoke("freescout-proxy", {
-        body: { action, conversationId },
-      });
+      const { error } = await invokeFreescout({ action, conversationId });
       if (error) throw error;
     },
     onSuccess: () => {
