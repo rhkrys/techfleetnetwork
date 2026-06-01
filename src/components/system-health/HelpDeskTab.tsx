@@ -1,0 +1,191 @@
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@/lib/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
+
+interface ProvRow {
+  id: number;
+  user_id: string;
+  kind: string;
+  freescout_id: string | null;
+  status: string;
+  attempts: number;
+  last_error: string | null;
+  created_at: string;
+}
+
+interface MonthlyRow { month: string; status: string; ticket_count: number }
+
+export function HelpDeskTab() {
+  const qc = useQueryClient();
+  const [running, setRunning] = useState<"admins" | "members" | null>(null);
+
+  const provLog = useQuery({
+    queryKey: ["help-desk", "prov-log"] as const,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("support_provisioning_log")
+        .select("id,user_id,kind,freescout_id,status,attempts,last_error,created_at")
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      return (data ?? []) as ProvRow[];
+    },
+    staleTime: 30_000,
+  });
+
+  const monthly = useQuery({
+    queryKey: ["help-desk", "monthly"] as const,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("get_support_monthly_report");
+      if (error) throw error;
+      return (data ?? []) as MonthlyRow[];
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const backfill = useMutation({
+    mutationFn: async (mode: "admins" | "members") => {
+      setRunning(mode);
+      const { data, error } = await supabase.rpc("support_backfill_provisioning", { _mode: mode });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (_d, mode) => {
+      toast.success(`Backfill (${mode}) queued.`);
+      qc.invalidateQueries({ queryKey: ["help-desk"] as const });
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Backfill failed."),
+    onSettled: () => setRunning(null),
+  });
+
+  const tone = (s: string) =>
+    s === "success" ? "default" : s === "failed" ? "destructive" : s === "retry" ? "secondary" : "outline";
+
+  const failuresCsv = () => {
+    const rows = (provLog.data ?? []).filter((r) => r.status === "failed");
+    if (rows.length === 0) {
+      toast.info("No failed provisioning rows to export.");
+      return;
+    }
+    const header = "user_id,kind,freescout_id,attempts,last_error,created_at\n";
+    const body = rows
+      .map((r) =>
+        [r.user_id, r.kind, r.freescout_id ?? "", r.attempts, JSON.stringify(r.last_error ?? ""), r.created_at].join(","),
+      )
+      .join("\n");
+    const blob = new Blob([header + body], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `help-desk-provisioning-failures-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Help Desk — Freescout provisioning</CardTitle>
+          <CardDescription>
+            Members are provisioned on their first ticket. Admins are provisioned when they confirm their promotion. Use the buttons below to backfill existing people.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          <Button
+            onClick={() => backfill.mutate("admins")}
+            disabled={running !== null}
+          >
+            {running === "admins" ? "Running backfill…" : "Backfill admins"}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => backfill.mutate("members")}
+            disabled={running !== null}
+          >
+            {running === "members" ? "Resolving members…" : "Resolve existing members"}
+          </Button>
+          <Button variant="outline" onClick={failuresCsv}>Export failures (CSV)</Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent provisioning activity</CardTitle>
+          <CardDescription>Last 50 attempts across customers and admin users.</CardDescription>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          {provLog.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+          {!provLog.isLoading && (provLog.data ?? []).length === 0 && (
+            <p className="text-sm text-muted-foreground">No provisioning activity yet.</p>
+          )}
+          {(provLog.data ?? []).length > 0 && (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-muted-foreground border-b">
+                  <th className="py-2 pr-2">When</th>
+                  <th className="py-2 pr-2">Kind</th>
+                  <th className="py-2 pr-2">Status</th>
+                  <th className="py-2 pr-2">Attempts</th>
+                  <th className="py-2 pr-2">Freescout id</th>
+                  <th className="py-2 pr-2">Error</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(provLog.data ?? []).map((r) => (
+                  <tr key={r.id} className="border-b last:border-b-0">
+                    <td className="py-2 pr-2 whitespace-nowrap">{new Date(r.created_at).toLocaleString()}</td>
+                    <td className="py-2 pr-2">{r.kind}</td>
+                    <td className="py-2 pr-2"><Badge variant={tone(r.status) as any}>{r.status}</Badge></td>
+                    <td className="py-2 pr-2">{r.attempts}</td>
+                    <td className="py-2 pr-2 font-mono text-xs">{r.freescout_id ?? "—"}</td>
+                    <td className="py-2 pr-2 text-muted-foreground text-xs max-w-[24rem] truncate" title={r.last_error ?? ""}>
+                      {r.last_error ?? "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Monthly tickets</CardTitle>
+          <CardDescription>Counts grouped by month and status. Updated every 4 hours.</CardDescription>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          {monthly.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+          {!monthly.isLoading && (monthly.data ?? []).length === 0 && (
+            <p className="text-sm text-muted-foreground">No tickets yet.</p>
+          )}
+          {(monthly.data ?? []).length > 0 && (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-muted-foreground border-b">
+                  <th className="py-2 pr-2">Month</th>
+                  <th className="py-2 pr-2">Status</th>
+                  <th className="py-2 pr-2">Tickets</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(monthly.data ?? []).map((r, i) => (
+                  <tr key={`${r.month}-${r.status}-${i}`} className="border-b last:border-b-0">
+                    <td className="py-2 pr-2">{new Date(r.month).toLocaleDateString(undefined, { month: "long", year: "numeric" })}</td>
+                    <td className="py-2 pr-2 capitalize">{r.status}</td>
+                    <td className="py-2 pr-2 font-medium">{Number(r.ticket_count).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
