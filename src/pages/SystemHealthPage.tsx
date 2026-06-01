@@ -28,6 +28,7 @@ import { EmailDlqPanel } from "@/components/system-health/EmailDlqPanel";
 import { DiscordRepairTab } from "@/components/system-health/DiscordRepairTab";
 import { LoginHealthTab } from "@/components/system-health/LoginHealthTab";
 import { TranslationsTab } from "@/components/admin/system-health/TranslationsTab";
+import { HelpDeskTab } from "@/components/system-health/HelpDeskTab";
 import { PageTitle } from "@/components/ui/typography";
 
 const FIVE_MIN = 5 * 60 * 1000;
