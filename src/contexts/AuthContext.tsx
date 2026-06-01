@@ -252,6 +252,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     );
 
+    // Fingerprint check FIRST — if the publishable key or URL changed since
+    // last visit, every persisted session is garbage. Purge before
+    // getSession() so we don't burn a round-trip on a guaranteed failure.
+    ensureClientFingerprint();
+
     AuthService.getSession()
       .then(async (initialSession) => {
         sessionRestoreSettledRef.current = true;
@@ -267,8 +272,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (resolvedSession?.access_token) {
           try {
             const { error } = await supabase.auth.getUser();
-            if (error && isInvalidRefreshTokenAuthError(error)) {
-              AuthService.clearLocalAuthState();
+            if (error && isUnrecoverableAuthError(error)) {
+              purgeLocalAuthState({ reason: "jwt_corrupt", source: "bootstrap" });
               await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
               setSession(null);
               setUser(null);
@@ -292,8 +297,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .catch((error) => {
         sessionRestoreSettledRef.current = true;
-        if (isInvalidRefreshTokenAuthError(error)) {
-          AuthService.clearLocalAuthState();
+        if (isUnrecoverableAuthError(error)) {
+          purgeLocalAuthState({ reason: "jwt_corrupt", source: "bootstrap" });
         }
         setSession(null);
         setUser(null);
@@ -301,6 +306,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfileLoaded(true);
       })
       .finally(() => setLoading(false));
+
 
     return () => subscription.unsubscribe();
   }, [fetchProfile, syncOAuthProfile]);
