@@ -158,28 +158,31 @@ function b64Decode(s: string): Uint8Array | null {
 }
 
 export async function verifyFreescoutWebhook(req: Request, rawBody: string): Promise<boolean> {
-  if (!WEBHOOK_SECRET) return false;
+  // Dual-secret window: accept current OR previous secret for 24h rotations.
+  const secrets = [WEBHOOK_SECRET, Deno.env.get("FREESCOUT_WEBHOOK_SECRET_PREVIOUS") ?? ""].filter(Boolean);
+  if (secrets.length === 0) return false;
   const sig =
     req.headers.get("x-freescout-signature") ??
     req.headers.get("x-signature") ??
     req.headers.get("signature");
   if (!sig) return false;
-
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(WEBHOOK_SECRET),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const macBuf = new Uint8Array(
-    await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(rawBody)),
-  );
-
-  // Accept either hex or base64
   const provided = hexDecode(sig) ?? b64Decode(sig);
   if (!provided) return false;
-  return timingSafeEqual(macBuf, provided);
+
+  for (const secret of secrets) {
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    const macBuf = new Uint8Array(
+      await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(rawBody)),
+    );
+    if (timingSafeEqual(macBuf, provided)) return true;
+  }
+  return false;
 }
 
 export interface FreescoutCustomer { id: number; emails?: { value: string }[]; firstName?: string; lastName?: string }

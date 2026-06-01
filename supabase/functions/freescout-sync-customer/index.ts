@@ -1,0 +1,84 @@
+// freescout-sync-customer — syncs profile changes to the corresponding Freescout customer.
+// Service-role only. Triggered by profile email change / soft-delete flows.
+// OWASP A01 (service-role gated), A03 (Zod), A07 (no client trust), A09 (audited).
+import { z } from "https://deno.land/x/zod@v3.23.8/mod.ts";
+import { getAdminClient } from "../_shared/admin-client.ts";
+import { handleCors, jsonResponse, parseJsonBody } from "../_shared/http.ts";
+import { freescoutFetch, FreescoutError } from "../_shared/freescout.ts";
+
+const Body = z.object({
+  userId: z.string().uuid(),
+  action: z.enum(["sync", "anonymize"]).default("sync"),
+});
+
+function isServiceRole(req: Request): boolean {
+  const auth = req.headers.get("authorization") ?? "";
+  const token = auth.replace(/^Bearer\s+/i, "");
+  const secret = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  return token.length > 0 && secret.length > 0 && token === secret;
+}
+
+Deno.serve(async (req) => {
+  const cors = handleCors(req);
+  if (cors) return cors;
+  if (req.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
+  if (!isServiceRole(req)) return jsonResponse({ error: "Unauthorized" }, 401);
+
+  let parsed;
+  try {
+    parsed = Body.safeParse(await parseJsonBody(req, 8 * 1024));
+  } catch (e) {
+    if (e instanceof Response) return e;
+    return jsonResponse({ error: "Invalid body" }, 400);
+  }
+  if (!parsed.success) return jsonResponse({ error: "Invalid input" }, 400);
+
+  const admin = getAdminClient();
+  const { data: prof } = await admin
+    .from("profiles")
+    .select("id, email, first_name, last_name, freescout_customer_id")
+    .eq("id", parsed.data.userId)
+    .maybeSingle();
+
+  if (!prof) return jsonResponse({ error: "Profile not found" }, 404);
+  if (!prof.freescout_customer_id) return jsonResponse({ ok: true, skipped: "no_customer" });
+
+  try {
+    if (parsed.data.action === "anonymize") {
+      // Mark customer as deleted-by-user in Freescout (PUT with anonymized fields).
+      await freescoutFetch({
+        method: "PUT",
+        path: `/api/customers/${encodeURIComponent(prof.freescout_customer_id)}`,
+        body: {
+          firstName: "Deleted",
+          lastName: "Member",
+          emails: [{ value: `deleted+${prof.id}@techfleet.invalid`, type: "work" }],
+        },
+      });
+      await admin.from("support_provisioning_log").insert({
+        user_id: prof.id, kind: "customer", freescout_id: prof.freescout_customer_id,
+        status: "success", attempts: 1, last_error: "anonymized",
+      });
+      return jsonResponse({ ok: true });
+    }
+
+    // Sync (email/name change)
+    await freescoutFetch({
+      method: "PUT",
+      path: `/api/customers/${encodeURIComponent(prof.freescout_customer_id)}`,
+      body: {
+        firstName: prof.first_name ?? undefined,
+        lastName: prof.last_name ?? undefined,
+        emails: prof.email ? [{ value: prof.email, type: "work" }] : undefined,
+      },
+    });
+    return jsonResponse({ ok: true });
+  } catch (e) {
+    const msg = e instanceof FreescoutError ? e.message : "Sync failed";
+    await admin.from("support_provisioning_log").insert({
+      user_id: prof.id, kind: "customer", freescout_id: prof.freescout_customer_id,
+      status: "retry", attempts: 1, last_error: msg,
+    });
+    return jsonResponse({ error: msg }, 502);
+  }
+});

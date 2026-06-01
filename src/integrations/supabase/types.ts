@@ -6762,6 +6762,14 @@ export type Database = {
           },
         ]
       }
+      support_categories_monthly_mv: {
+        Row: {
+          month: string | null
+          status: string | null
+          ticket_count: number | null
+        }
+        Relationships: []
+      }
       ugc_translation_summary: {
         Row: {
           last_qa_failure_at: string | null
@@ -7356,6 +7364,14 @@ export type Database = {
         Returns: Json
       }
       get_stakeholder_context: { Args: { p_id: string }; Returns: Json }
+      get_support_monthly_report: {
+        Args: { _from?: string }
+        Returns: {
+          month: string
+          status: string
+          ticket_count: number
+        }[]
+      }
       get_top_error_fingerprints: {
         Args: { p_hours?: number; p_limit?: number }
         Returns: {
@@ -7590,6 +7606,7 @@ export type Database = {
       refresh_email_health_snapshot: { Args: never; Returns: undefined }
       refresh_framework_overview: { Args: never; Returns: undefined }
       refresh_function_grant_audit: { Args: never; Returns: number }
+      refresh_support_monthly_report: { Args: never; Returns: undefined }
       register_for_cohort_click: {
         Args: { p_cohort_id: string; p_referrer?: string }
         Returns: string
@@ -7700,6 +7717,15 @@ export type Database = {
         Args: { _action: string; _max_per_hour: number }
         Returns: undefined
       }
+      support_pending_provisioning: {
+        Args: { _limit?: number }
+        Returns: {
+          attempts: number
+          kind: string
+          user_id: string
+        }[]
+      }
+      support_prune_webhook_events: { Args: never; Returns: number }
       try_write_audit_log: {
         Args: {
           p_changed_fields?: string[]
