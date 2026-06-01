@@ -13,6 +13,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { sanitizeHtml } from "@/lib/security";
 import { toast } from "sonner";
+import AdminAllTicketsGrid from "./AdminAllTicketsGrid";
+import MonthlyReportPanel from "./MonthlyReportPanel";
 
 interface Conversation {
   id: number;
