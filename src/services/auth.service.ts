@@ -7,6 +7,8 @@ import { emailInputSchema, passwordSchema } from "@/lib/validators/auth";
 import { createAuthThrottleCaptchaError, isAuthThrottleCaptchaError } from "@/lib/auth-throttle-captcha";
 import { validateEmailDomainExists } from "@/lib/email-domain-validation";
 import { getLastActivityAt } from "@/lib/session-activity";
+import { classifyAuthError, isLikelyJwt, purgeLocalAuthState } from "@/lib/auth/session-health";
+
 
 const log = createLogger("AuthService");
 // Per product policy: users should only be signed out after 1 hour of inactivity.
