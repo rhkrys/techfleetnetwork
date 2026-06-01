@@ -197,9 +197,7 @@ function TicketDetail({ conversationId, onClose }: { conversationId: number; onC
   const { data: conv, isLoading } = useQuery({
     queryKey: ["support", "ticket", conversationId] as const,
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("freescout-proxy", {
-        body: { action: "get", conversationId },
-      });
+      const { data, error } = await invokeFreescout({ action: "get", conversationId });
       if (error) throw error;
       return data?.conversation as Conversation;
     },
