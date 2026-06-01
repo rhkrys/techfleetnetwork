@@ -24,6 +24,13 @@ export function HelpDeskTab() {
   const qc = useQueryClient();
   const [running, setRunning] = useState<"admins" | "members" | null>(null);
 
+  const health = useQuery<FreescoutHealth>({
+    queryKey: ["help-desk", "health"] as const,
+    queryFn: () => SystemHealthService.getFreescoutHealth(),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+
   const provLog = useQuery({
     queryKey: ["help-desk", "prov-log"] as const,
     queryFn: async () => {
