@@ -177,9 +177,18 @@ export async function freescoutFetch<T = unknown>(opts: FreescoutFetchOpts): Pro
   let res: Response;
   try {
     res = await fetch(u.toString(), init);
-  } catch (_e) {
+  } catch (e) {
     clearTimeout(timer);
     recordFailure();
+    console.error(JSON.stringify({
+      level: "error",
+      fn: "freescout-client",
+      code: "upstream_unreachable",
+      method: init.method,
+      path: opts.path,
+      attempt,
+      err: e instanceof Error ? e.message : String(e),
+    }));
     if (attempt < maxAttempts) {
       await new Promise((r) => setTimeout(r, 250 * attempt));
       return freescoutFetch<T>({ ...opts, attempt: attempt + 1 });
@@ -190,19 +199,39 @@ export async function freescoutFetch<T = unknown>(opts: FreescoutFetchOpts): Pro
 
   if (res.status >= 500) {
     recordFailure();
+    let body: unknown = undefined;
+    try { body = await res.clone().json(); } catch { try { body = await res.text(); } catch { /* ignore */ } }
+    console.error(JSON.stringify({
+      level: "error",
+      fn: "freescout-client",
+      code: "upstream_5xx",
+      method: init.method,
+      path: opts.path,
+      status: res.status,
+      attempt,
+      body: typeof body === "string" ? body.slice(0, 1000) : body,
+    }));
     if (attempt < maxAttempts) {
       await new Promise((r) => setTimeout(r, 400 * attempt));
       return freescoutFetch<T>({ ...opts, attempt: attempt + 1 });
     }
-    let body: unknown = undefined;
-    try { body = await res.json(); } catch { /* ignore */ }
     throw new FreescoutError(res.status, "Upstream error", body);
   }
 
   if (!res.ok) {
     let body: unknown = undefined;
-    try { body = await res.json(); } catch { /* ignore */ }
-    throw new FreescoutError(res.status, res.statusText, body);
+    try { body = await res.clone().json(); } catch { try { body = await res.text(); } catch { /* ignore */ } }
+    console.error(JSON.stringify({
+      level: "error",
+      fn: "freescout-client",
+      code: "upstream_4xx",
+      method: init.method,
+      path: opts.path,
+      status: res.status,
+      statusText: res.statusText,
+      body: typeof body === "string" ? body.slice(0, 1000) : body,
+    }));
+    throw new FreescoutError(res.status, res.statusText || `HTTP ${res.status}`, body);
   }
 
   recordSuccess();
