@@ -38,10 +38,10 @@ let _cachedConfig: FreescoutConfig | null = null;
 export function getFreescoutConfig(): FreescoutConfig {
   if (_cachedConfig) return _cachedConfig;
 
-  const rawBase = (Deno.env.get("FREESCOUT_API_URL") ?? "").trim().replace(/\/+$/, "");
+  let raw = (Deno.env.get("FREESCOUT_API_URL") ?? "").trim();
   const key = Deno.env.get("FREESCOUT_API_KEY") ?? "";
 
-  if (!rawBase) {
+  if (!raw) {
     _cachedConfig = { ok: false, reason: "missing_url", detail: "FREESCOUT_API_URL is empty" };
     return _cachedConfig;
   }
@@ -50,14 +50,23 @@ export function getFreescoutConfig(): FreescoutConfig {
     return _cachedConfig;
   }
 
+  // Self-healing normalization: accept the server root in any form the user
+  // might paste — with/without scheme, trailing slashes, or a trailing
+  // /api[/v1] suffix. The client always appends `/api/...` itself, so the
+  // stored base must be JUST the origin (e.g. https://host.tld).
+  if (!/^https?:\/\//i.test(raw)) raw = `https://${raw}`;
+  raw = raw.replace(/\/+$/, "");
+  raw = raw.replace(/\/api(?:\/v\d+)?$/i, "");
+  raw = raw.replace(/\/+$/, "");
+
   let parsed: URL;
   try {
-    parsed = new URL(rawBase);
+    parsed = new URL(raw);
   } catch {
     _cachedConfig = {
       ok: false,
       reason: "url_malformed",
-      detail: `FREESCOUT_API_URL is not a valid URL (got: ${rawBase.slice(0, 24)}…)`,
+      detail: `FREESCOUT_API_URL is not a valid URL (got: ${raw.slice(0, 64)})`,
     };
     return _cachedConfig;
   }
@@ -70,7 +79,9 @@ export function getFreescoutConfig(): FreescoutConfig {
     return _cachedConfig;
   }
 
-  _cachedConfig = { ok: true, base: rawBase, key, host: parsed.host };
+  // Reduce to bare origin — drops any path/query/hash the user may have included.
+  const base = parsed.origin;
+  _cachedConfig = { ok: true, base, key, host: parsed.host };
   return _cachedConfig;
 }
 
