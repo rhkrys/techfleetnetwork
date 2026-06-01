@@ -6,6 +6,7 @@ import { DiscordNotifyService } from "@/services/discord-notify.service";
 import { clearOAuthUiMarker, hasFreshOAuthUiMarker, isRootOAuthCallback, stripRootOAuthCallbackUrl } from "@/lib/oauth-ui-guard";
 import i18n, { ensureLocale } from "@/i18n";
 import type { User, Session } from "@supabase/supabase-js";
+import { supabase } from "@/integrations/supabase/client";
 
 /**
  * One-time "linked Google to your existing account" toast.
