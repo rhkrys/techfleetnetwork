@@ -82,5 +82,12 @@ project_id = "iqsjhrhsjlgjiaedzmtz"
     # Public — serves curated i18n translation strings (no PII) with
     # ETag + SWR caching so the bundle is a CDN hit after first load.
     verify_jwt = false
+  [functions.record-auth-wedge]
+    # Public auth-recovery beacon — by definition the caller has no valid
+    # JWT to present. Hardened in-code: strict enum allow-lists, body cap,
+    # per-IP rate limit, daily-salted IP hash (no raw IPs stored).
+    verify_jwt = false
+
+
 
 
