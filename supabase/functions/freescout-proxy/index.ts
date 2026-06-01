@@ -39,6 +39,7 @@ const Action = z.discriminatedUnion("action", [
 ]);
 
 const ADMIN_ACTIONS = new Set(["listAll", "assign", "setPrivate"]);
+let loggedInvalidConfig = false;
 
 async function isAdmin(userId: string): Promise<boolean> {
   const { data, error } = await getAdminClient().rpc("has_role", { _user_id: userId, _role: "admin" });
@@ -270,15 +271,19 @@ Deno.serve(async (req) => {
   } catch (e) {
     if (e instanceof FreescoutError) {
       const reason = (e.body as { reason?: string })?.reason;
-      console.error(JSON.stringify({
-        level: "error",
-        severity: "error",
-        fn: "freescout-proxy",
-        status: e.status,
-        msg: e.message,
-        code: e.status === 503 ? "config_invalid" : "upstream_error",
-        reason,
-      }));
+      const code = e.status === 503 && e.message === "support_unavailable" ? "config_invalid" : "upstream_error";
+      if (code !== "config_invalid" || !loggedInvalidConfig) {
+        if (code === "config_invalid") loggedInvalidConfig = true;
+        console.error(JSON.stringify({
+          level: "error",
+          severity: "error",
+          fn: "freescout-proxy",
+          status: e.status,
+          msg: e.message,
+          code,
+          reason,
+        }));
+      }
 
       // Graceful degradation: read-only actions return an empty envelope
       // with HTTP 200 so the UI can render its offline state immediately
@@ -305,7 +310,7 @@ Deno.serve(async (req) => {
         );
       }
       return jsonResponse(
-        { error: e.message, unavailable: e.status === 503, reason },
+        { error: e.message, unavailable: e.status === 503, reason: reason ?? (e.status === 503 ? "support_unavailable" : undefined) },
         e.status >= 400 && e.status < 600 ? e.status : 500,
       );
     }
