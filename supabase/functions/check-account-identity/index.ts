@@ -23,9 +23,13 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// captchaToken is OPTIONAL — when called immediately after a failed password
+// attempt the Turnstile token is already consumed and a fresh one is not yet
+// available. The endpoint still rate-limits per (email|ip) hash (10/min) so
+// enumeration sweeps are bounded even without a captcha.
 const BodySchema = z.object({
   email: z.string().trim().email().max(320),
-  captchaToken: z.string().trim().min(20).max(4096),
+  captchaToken: z.string().trim().min(20).max(4096).optional(),
 });
 
 function jsonResponse(body: unknown, status = 200) {
