@@ -51,6 +51,8 @@ function useTickets(scope: "mine" | "all", status: "open" | "closed" | "all") {
       try {
         const { data, error } = await supabase.functions.invoke("freescout-proxy", {
           body: { action: scope === "mine" ? "listMine" : "listAll", status, page: 1 },
+          signal: ctrl.signal,
+          timeout: 5000,
         });
         if (error) {
           // Treat any invoke-level error as "support offline" so the UI degrades
@@ -91,6 +93,7 @@ function NewTicketDialog({ onCreated, disabled = false }: { onCreated: () => voi
           body: body.trim().slice(0, 10000),
           idempotencyKey: `create-${crypto.randomUUID()}`,
         },
+        timeout: 5000,
       });
       if (data?.unavailable || (error && /503|unavailable/i.test(error.message ?? ""))) {
         toast.error(`Help desk is offline. An admin has been notified — please email ${SUPPORT_FALLBACK_EMAIL} for now.`);
