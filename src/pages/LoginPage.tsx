@@ -328,7 +328,12 @@ export default function LoginPage() {
           setAuthError(classified.message);
         }
         const probeEmail = result.data.email;
+        // Probe immediately — endpoint accepts no-captcha calls after a
+        // failed password attempt (rate-limit gated). This guarantees a
+        // Google-only user sees "use Google sign-in" instead of being stuck
+        // on a generic "invalid credentials" error.
         setTimeout(() => {
+          void checkOauthIdentityForEmail(probeEmail, captchaToken || undefined);
           window.dispatchEvent(new CustomEvent("tfn:probe-oauth-identity", { detail: { email: probeEmail } }));
         }, 0);
       } else {
