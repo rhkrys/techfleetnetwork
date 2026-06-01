@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@/lib/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { ThemedAgGrid } from "@/components/AgGrid";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import type { ColDef } from "ag-grid-community";
+import { invokeFreescout } from "@/lib/support/freescoutInvoke";
 
 interface Row {
   id: number;
@@ -15,15 +15,6 @@ interface Row {
   assignee?: { id: number; firstName?: string; lastName?: string } | null;
   createdAt?: string;
   updatedAt?: string;
-}
-
-async function invokeFreescout(body: Record<string, unknown>) {
-  const { data: sessionData } = await supabase.auth.getSession();
-  const token = sessionData?.session?.access_token;
-  return supabase.functions.invoke("freescout-proxy", {
-    body,
-    ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
-  } as any);
 }
 
 export default function AdminAllTicketsGrid() {
