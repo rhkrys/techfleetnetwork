@@ -17,6 +17,7 @@ import {
   
   Flag,
   HeartPulse,
+  LifeBuoy,
   School,
 } from "lucide-react";
 import {
