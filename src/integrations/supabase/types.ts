@@ -387,6 +387,39 @@ export type Database = {
         }
         Relationships: []
       }
+      auth_wedge_events: {
+        Row: {
+          id: number
+          ip_hash: string | null
+          occurred_at: string
+          reason: string
+          release_tag: string | null
+          route: string | null
+          source: string
+          user_agent: string | null
+        }
+        Insert: {
+          id?: number
+          ip_hash?: string | null
+          occurred_at?: string
+          reason: string
+          release_tag?: string | null
+          route?: string | null
+          source: string
+          user_agent?: string | null
+        }
+        Update: {
+          id?: number
+          ip_hash?: string | null
+          occurred_at?: string
+          reason?: string
+          release_tag?: string | null
+          route?: string | null
+          source?: string
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
       badges_awarded: {
         Row: {
           awarded_at: string

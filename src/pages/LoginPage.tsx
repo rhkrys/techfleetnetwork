@@ -139,6 +139,28 @@ export default function LoginPage() {
     );
   }, [queryClient, location.search, location.pathname, navigate]);
 
+  // AUTH-WEDGE Phase 3: surface a friendly message when the fetch-guard
+  // redirected us here after a corrupt-JWT recovery. One-shot — strips the
+  // query param so refresh doesn't re-fire the toast.
+  const sessionExpiredHandledRef = useRef(false);
+  useEffect(() => {
+    if (sessionExpiredHandledRef.current) return;
+    const params = new URLSearchParams(location.search);
+    if (params.get("reason") !== "session_expired") return;
+    sessionExpiredHandledRef.current = true;
+    toast.info("Your session ended. Please sign in again.", {
+      duration: 30000,
+      position: "top-center",
+    });
+    params.delete("reason");
+    const nextSearch = params.toString();
+    navigate(
+      { pathname: location.pathname, search: nextSearch ? `?${nextSearch}` : "" },
+      { replace: true },
+    );
+  }, [location.search, location.pathname, navigate]);
+
+
   // Auto-heal stale device-side lockouts on mount. Users should never have
   // to clear sessionStorage by hand — see auth-lockout.ts for the security
   // rationale (server bucket is the real brute-force defense).

@@ -4,9 +4,11 @@ import { AuthService } from "@/services/auth.service";
 import { ProfileService, type Profile } from "@/services/profile.service";
 import { DiscordNotifyService } from "@/services/discord-notify.service";
 import { clearOAuthUiMarker, hasFreshOAuthUiMarker, isRootOAuthCallback, stripRootOAuthCallbackUrl } from "@/lib/oauth-ui-guard";
+import { ensureClientFingerprint, isUnrecoverableAuthError, purgeLocalAuthState } from "@/lib/auth/session-health";
 import i18n, { ensureLocale } from "@/i18n";
 import type { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+
 
 /**
  * One-time "linked Google to your existing account" toast.
@@ -78,36 +80,10 @@ if (import.meta.env?.DEV && existingAuthCtx && existingAuthCtx !== freshAuthCtx)
 const AuthContext: React.Context<AuthContextType | undefined> = freshAuthCtx;
 g[GLOBAL_KEY] = AuthContext;
 
-function isInvalidRefreshTokenAuthError(error: unknown) {
-  const message = error instanceof Error ? error.message.toLowerCase() : String(error ?? "").toLowerCase();
-  // Refresh-token corruption
-  if (
-    message.includes("refresh token") &&
-    (message.includes("invalid") ||
-      message.includes("not found") ||
-      message.includes("missing") ||
-      message.includes("expired") ||
-      message.includes("revoked") ||
-      message.includes("already used") ||
-      message.includes("reuse"))
-  ) {
-    return true;
-  }
-  // Access-token corruption / JWT rotation aftermath. After a GoTrue key
-  // rotation, previously-issued access tokens fail verification with
-  // "bad_jwt", "invalid number of segments", or "unable to parse or verify
-  // signature". These leave the user wedged because auto-refresh keeps
-  // hammering /user with the dead token. Treat them the same as an invalid
-  // refresh token — clear local auth and force a clean re-login.
-  return (
-    message.includes("bad_jwt") ||
-    message.includes("invalid jwt") ||
-    message.includes("invalid number of segments") ||
-    message.includes("token is malformed") ||
-    (message.includes("jwt") && message.includes("malformed")) ||
-    (message.includes("parse or verify signature"))
-  );
-}
+// NOTE: the legacy local `isInvalidRefreshTokenAuthError` was replaced by the
+// shared classifier in `@/lib/auth/session-health`. Keeping recovery in one
+// module means a new GoTrue error string only needs to be added in one place.
+
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -276,6 +252,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     );
 
+    // Fingerprint check FIRST — if the publishable key or URL changed since
+    // last visit, every persisted session is garbage. Purge before
+    // getSession() so we don't burn a round-trip on a guaranteed failure.
+    ensureClientFingerprint();
+
     AuthService.getSession()
       .then(async (initialSession) => {
         sessionRestoreSettledRef.current = true;
@@ -291,8 +272,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (resolvedSession?.access_token) {
           try {
             const { error } = await supabase.auth.getUser();
-            if (error && isInvalidRefreshTokenAuthError(error)) {
-              AuthService.clearLocalAuthState();
+            if (error && isUnrecoverableAuthError(error)) {
+              purgeLocalAuthState({ reason: "jwt_corrupt", source: "bootstrap" });
               await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
               setSession(null);
               setUser(null);
@@ -316,8 +297,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .catch((error) => {
         sessionRestoreSettledRef.current = true;
-        if (isInvalidRefreshTokenAuthError(error)) {
-          AuthService.clearLocalAuthState();
+        if (isUnrecoverableAuthError(error)) {
+          purgeLocalAuthState({ reason: "jwt_corrupt", source: "bootstrap" });
         }
         setSession(null);
         setUser(null);
@@ -325,6 +306,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfileLoaded(true);
       })
       .finally(() => setLoading(false));
+
 
     return () => subscription.unsubscribe();
   }, [fetchProfile, syncOAuthProfile]);

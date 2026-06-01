@@ -15,8 +15,15 @@ import { clearAppCachesForVersion } from "@/lib/app-cache-reset";
 import { installLoginCaptchaCrossTabSync } from "@/lib/auth-captcha";
 import { installWebVitalsBeacon } from "@/lib/web-vitals";
 import { installForceNewTab } from "@/lib/force-new-tab";
+import { installAuthFetchGuard } from "@/lib/auth/fetch-guard";
 import "@/i18n"; // initialize i18next + apply <html lang>/<html dir>
 import { installDomTranslator } from "@/lib/i18n/dom-translator";
+
+// AUTH-WEDGE Phase 3: install the global fetch guard BEFORE any module
+// imports the Supabase client. One bad_jwt response → clean recovery,
+// no auto-refresh storm.
+installAuthFetchGuard();
+
 
 // Unregister any existing service workers and clear caches so users always get fresh content
 if ("serviceWorker" in navigator) {

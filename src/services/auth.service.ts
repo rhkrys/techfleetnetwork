@@ -7,6 +7,8 @@ import { emailInputSchema, passwordSchema } from "@/lib/validators/auth";
 import { createAuthThrottleCaptchaError, isAuthThrottleCaptchaError } from "@/lib/auth-throttle-captcha";
 import { validateEmailDomainExists } from "@/lib/email-domain-validation";
 import { getLastActivityAt } from "@/lib/session-activity";
+import { classifyAuthError, isLikelyJwt, purgeLocalAuthState } from "@/lib/auth/session-health";
+
 
 const log = createLogger("AuthService");
 // Per product policy: users should only be signed out after 1 hour of inactivity.
@@ -71,30 +73,16 @@ function readSessionMarker(session: Pick<AuthSession, "user">): { startedAtMs: n
 }
 
 function isInvalidRefreshTokenError(error: unknown) {
-  const maybeError = error as { message?: string; status?: number; name?: string } | null | undefined;
-  const message = maybeError?.message?.toLowerCase() ?? String(error ?? "").toLowerCase();
-  const mentionsRefreshToken = message.includes("refresh token");
-  const terminalRefreshState =
-    message.includes("invalid") ||
-    message.includes("not found") ||
-    message.includes("missing") ||
-    message.includes("expired") ||
-    message.includes("revoked") ||
-    message.includes("already used") ||
-    message.includes("reuse");
-
-  return mentionsRefreshToken && terminalRefreshState;
+  const c = classifyAuthError(error);
+  return c === "refresh_invalid" || c === "jwt_corrupt";
 }
 
-function clearLocalAuthArtifacts() {
-  sessionStorage.removeItem(SESSION_STARTED_AT_KEY);
-  for (const storage of [localStorage, sessionStorage]) {
-    for (let i = storage.length - 1; i >= 0; i -= 1) {
-      const key = storage.key(i);
-      if (key && AUTH_STORAGE_KEY_PATTERN.test(key)) storage.removeItem(key);
-    }
-  }
+function clearLocalAuthArtifacts(reason: "manual" | "refresh_invalid" | "jwt_corrupt" = "manual") {
+  // Single source of truth — delegate to the shared purger so every layer
+  // (bootstrap, fetch-guard, signin/signout, OAuth) clears the same keys.
+  purgeLocalAuthState({ reason, source: "signout", silent: reason === "manual" });
 }
+
 
 function hasStoredAuthSession() {
   const url = new URL(window.location.href);
@@ -158,6 +146,16 @@ async function logAdminLoginIfElevated(userId?: string | null) {
 // interleave writes to `sb-*-auth-token` and produce a malformed JWT.
 let setSessionInflight: Promise<unknown> | null = null;
 async function singleFlightSetSession(tokens: { access_token: string; refresh_token: string }) {
+  // AUTH-WEDGE Phase 4 + Phase 2: refuse to ever write a structurally invalid
+  // JWT into storage, AND purge any residual sb-*-auth-token rows from a
+  // prior session before writing the new ones (kills the race that produced
+  // post-signin bad_jwt under LCL-FIX-004).
+  if (!isLikelyJwt(tokens.access_token) || !isLikelyJwt(tokens.refresh_token)) {
+    purgeLocalAuthState({ reason: "shape_invalid", source: "signin" });
+    throw new Error("Invalid login response");
+  }
+  purgeLocalAuthState({ reason: "manual", source: "signin", silent: true });
+
   if (setSessionInflight) {
     await setSessionInflight.catch(() => undefined);
   }
@@ -169,6 +167,7 @@ async function singleFlightSetSession(tokens: { access_token: string; refresh_to
     if (setSessionInflight === p) setSessionInflight = null;
   }
 }
+
 
 export const AuthService = {
   async signInWithPassword(email: string, password: string, captchaToken?: string, attemptId?: string) {
