@@ -276,10 +276,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
 
     AuthService.getSession()
-      .then((initialSession) => {
+      .then(async (initialSession) => {
         sessionRestoreSettledRef.current = true;
         const freshEventSession = authEventSessionRef.current;
         const resolvedSession = initialSession ?? freshEventSession;
+
+        // Self-heal wedged sessions after a GoTrue key rotation. If we restored
+        // a session from storage, validate it once against /user. A bad_jwt /
+        // "invalid number of segments" response means the stored access token
+        // can no longer be verified by the auth server — clear local state and
+        // surface a logged-out app so the user can sign in cleanly instead of
+        // staring at a spinner or getting silent 403 floods.
+        if (resolvedSession?.access_token) {
+          try {
+            const { error } = await supabase.auth.getUser();
+            if (error && isInvalidRefreshTokenAuthError(error)) {
+              AuthService.clearLocalAuthState();
+              await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
+              setSession(null);
+              setUser(null);
+              setProfile(null);
+              setProfileLoaded(true);
+              return;
+            }
+          } catch {
+            // Network error — fall through and trust the restored session.
+          }
+        }
 
         setSession(resolvedSession);
         setUser(resolvedSession?.user ?? null);
