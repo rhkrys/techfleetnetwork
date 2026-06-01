@@ -122,6 +122,7 @@ export interface FreescoutFetchOpts {
   query?: Record<string, string | number | undefined>;
   attempt?: number;
   timeoutMs?: number;
+  maxAttempts?: number;
 }
 
 export async function freescoutFetch<T = unknown>(opts: FreescoutFetchOpts): Promise<T> {
@@ -156,6 +157,7 @@ export async function freescoutFetch<T = unknown>(opts: FreescoutFetchOpts): Pro
   }
 
   const attempt = opts.attempt ?? 1;
+  const maxAttempts = Math.max(1, opts.maxAttempts ?? 3);
   const timeoutMs = opts.timeoutMs ?? 10_000;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -176,7 +178,7 @@ export async function freescoutFetch<T = unknown>(opts: FreescoutFetchOpts): Pro
   } catch (_e) {
     clearTimeout(timer);
     recordFailure();
-    if (attempt < 3) {
+    if (attempt < maxAttempts) {
       await new Promise((r) => setTimeout(r, 250 * attempt));
       return freescoutFetch<T>({ ...opts, attempt: attempt + 1 });
     }
@@ -186,7 +188,7 @@ export async function freescoutFetch<T = unknown>(opts: FreescoutFetchOpts): Pro
 
   if (res.status >= 500) {
     recordFailure();
-    if (attempt < 3) {
+    if (attempt < maxAttempts) {
       await new Promise((r) => setTimeout(r, 400 * attempt));
       return freescoutFetch<T>({ ...opts, attempt: attempt + 1 });
     }
