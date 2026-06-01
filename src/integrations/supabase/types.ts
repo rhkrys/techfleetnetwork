@@ -5999,6 +5999,36 @@ export type Database = {
         }
         Relationships: []
       }
+      system_health_events: {
+        Row: {
+          component: string
+          created_at: string
+          detail: string | null
+          id: string
+          metadata: Json
+          reason: string | null
+          status: string
+        }
+        Insert: {
+          component: string
+          created_at?: string
+          detail?: string | null
+          id?: string
+          metadata?: Json
+          reason?: string | null
+          status: string
+        }
+        Update: {
+          component?: string
+          created_at?: string
+          detail?: string | null
+          id?: string
+          metadata?: Json
+          reason?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       system_health_state: {
         Row: {
           id: number
