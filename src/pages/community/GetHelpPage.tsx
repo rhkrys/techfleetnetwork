@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@/lib/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -289,7 +289,25 @@ function TicketList({ scope }: { scope: "mine" | "all" }) {
 export default function GetHelpPage() {
   const { user } = useAuth();
   const { isAdmin } = useAdmin();
+  const qc = useQueryClient();
+
+  // Realtime: invalidate ticket lists on webhook-driven events
+  useEffect(() => {
+    if (!user) return;
+    const userChannel = supabase
+      .channel(`support:${user.id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "support_ticket_events" }, () => {
+        qc.invalidateQueries({ queryKey: ["support"] as const });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "support_ticket_pointers" }, () => {
+        qc.invalidateQueries({ queryKey: ["support"] as const });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(userChannel); };
+  }, [user, qc]);
+
   if (!user) return null;
+
 
   return (
     <div className="container max-w-5xl py-8 space-y-6">
