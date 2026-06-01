@@ -221,6 +221,7 @@ export default function SystemHealthPage() {
           <TabsTrigger value="incidents">Incidents</TabsTrigger>
           <TabsTrigger value="audit">Audit</TabsTrigger>
           <TabsTrigger value="discord">Discord</TabsTrigger>
+          <TabsTrigger value="help-desk">Help desk</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
 
