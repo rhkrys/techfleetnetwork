@@ -267,6 +267,7 @@ export default function SystemHealthPage() {
         <TabsContent value="incidents"><IncidentsTab /></TabsContent>
         <TabsContent value="audit"><AuditPressureTab /></TabsContent>
         <TabsContent value="discord"><DiscordRepairTab /></TabsContent>
+        <TabsContent value="help-desk"><HelpDeskTab /></TabsContent>
         <TabsContent value="settings" className="space-y-4">
           <StatsControlsCard />
           <Card>
