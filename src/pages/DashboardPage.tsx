@@ -37,6 +37,8 @@ import { TOTAL_DISCORD_LESSONS } from "@/data/discord-course";
 import { TOTAL_TEAMWORK_LESSONS } from "@/data/teamwork-course";
 import { TOTAL_PROJECT_TRAINING_LESSONS } from "@/data/project-training-course";
 import { TOTAL_VOLUNTEER_LESSONS } from "@/data/volunteer-teams-course";
+import { TOTAL_OBSERVER_LESSONS, ALL_OBSERVER_LESSON_IDS } from "@/data/observer-course";
+import { Progress } from "@/components/ui/progress";
 
 import { format } from "date-fns";
 import { WelcomeDialog } from "@/components/WelcomeDialog";
@@ -179,6 +181,7 @@ export default function DashboardPage() {
   const teamworkCompleted = phaseCounts.third_steps ?? 0;
   const projectTrainingCompleted = phaseCounts.project_training ?? 0;
   const volunteerCompleted = phaseCounts.volunteer ?? 0;
+  const { data: observerCompleted = 0 } = useCompletedCount(userId, "observer", ALL_OBSERVER_LESSON_IDS);
 
   const { data: latestAnnouncements = [] } = useLatestAnnouncements(5);
 
@@ -241,6 +244,9 @@ export default function DashboardPage() {
   const allProjectTrainingDone = projectTrainingCompleted >= TOTAL_PROJECT_TRAINING_LESSONS;
   const allVolunteerDone = volunteerCompleted >= TOTAL_VOLUNTEER_LESSONS;
   const allOnboardingDone = allConnectDiscordDone && allFirstStepsDone && allSecondStepsDone && allProjectTrainingDone && allVolunteerDone;
+  const observerNotStarted = allOnboardingDone && observerCompleted === 0;
+  const observerInProgress = allOnboardingDone && observerCompleted > 0 && observerCompleted < TOTAL_OBSERVER_LESSONS;
+  const observerDone = allOnboardingDone && observerCompleted >= TOTAL_OBSERVER_LESSONS;
 
   const coreCourses: CoreCourse[] = useMemo(() => [
     {
@@ -367,37 +373,69 @@ export default function DashboardPage() {
             return isVisible("core_courses") ? (
               <section key="core_courses" className="py-8">
                 {allOnboardingDone ? (
-                  <div className="tf-card overflow-hidden" aria-labelledby="core-courses-heading">
-                    <h2 id="core-courses-heading" className="sr-only">Onboard to Tech Fleet</h2>
-                    <div className="flex flex-col sm:flex-row items-stretch">
-                      <div className="sm:w-48 md:w-56 flex-shrink-0 bg-primary/5">
-                        <img
-                          src={celebrationImg}
-                          alt="Celebration — all core courses completed"
-                          width={224}
-                          height={224}
-                          className="w-full h-48 sm:h-full object-cover"
-                          loading="lazy"
-                          decoding="async"
-                        />
-                      </div>
-                      <div className="flex-1 p-6 flex flex-col justify-center space-y-3">
-                        <div className="text-center sm:text-left">
-                          <CardTitle as="h2">
-                            You finished the onboarding and core courses!
-                          </CardTitle>
+                  (() => {
+                    const observerHeading = observerNotStarted
+                      ? "You're ready to observe a Tech Fleet project"
+                      : observerInProgress
+                      ? "Keep preparing to observe"
+                      : "You finished the onboarding and core courses!";
+                    const observerBody = observerNotStarted
+                      ? "Great work finishing your onboarding. The Observer Course is your next step. It teaches you how to shadow a real project team and get ready to apply as an Observer."
+                      : observerInProgress
+                      ? `You've finished ${observerCompleted} of ${TOTAL_OBSERVER_LESSONS} sections in the Observer Course. Keep going to get ready to shadow a real Tech Fleet project team.`
+                      : "Congratulations, you are ready to keep going into deeper training in our community! Check out the basic and advanced courses to go further.";
+                    const observerCtaLabel = observerNotStarted
+                      ? "Start observer course"
+                      : observerInProgress
+                      ? "Continue observer course"
+                      : "Continue courses";
+                    const observerCtaHref = observerDone ? "/courses" : "/courses/observer";
+                    const observerPct = Math.round((observerCompleted / TOTAL_OBSERVER_LESSONS) * 100);
+                    return (
+                      <div className="tf-card overflow-hidden" aria-labelledby="core-courses-heading">
+                        <h2 id="core-courses-heading" className="sr-only">
+                          {observerNotStarted || observerInProgress ? "Observer Course next step" : "Onboard to Tech Fleet"}
+                        </h2>
+                        <div className="flex flex-col sm:flex-row items-stretch">
+                          <div className="sm:w-48 md:w-56 flex-shrink-0 bg-primary/5">
+                            <img
+                              src={celebrationImg}
+                              alt=""
+                              width={224}
+                              height={224}
+                              className="w-full h-48 sm:h-full object-cover"
+                              loading="lazy"
+                              decoding="async"
+                            />
+                          </div>
+                          <div className="flex-1 p-6 flex flex-col justify-center space-y-3">
+                            <div className="text-center sm:text-left">
+                              <CardTitle as="h2">{observerHeading}</CardTitle>
+                            </div>
+                            <p className="text-base text-muted-foreground leading-relaxed text-center sm:text-left">
+                              {observerBody}
+                            </p>
+                            {observerInProgress && (
+                              <div className="space-y-2" aria-label="Observer Course progress">
+                                <p className="text-sm font-medium text-foreground text-center sm:text-left">
+                                  {observerCompleted} of {TOTAL_OBSERVER_LESSONS} sections complete
+                                </p>
+                                <Progress
+                                  value={observerPct}
+                                  aria-label={`Observer Course progress: ${observerCompleted} of ${TOTAL_OBSERVER_LESSONS} sections complete`}
+                                />
+                              </div>
+                            )}
+                            <div className="text-center sm:text-left">
+                              <Button asChild variant="hero" size="lg">
+                                <Link to={observerCtaHref}>{observerCtaLabel}</Link>
+                              </Button>
+                            </div>
+                          </div>
                         </div>
-                        <p className="text-sm text-muted-foreground leading-relaxed text-center sm:text-left">
-                          Congratulations, you are ready to keep going into deeper training in our community! Check out the basic and advanced courses to go further.
-                        </p>
-                        <div className="text-center sm:text-left">
-                          <Button asChild variant="hero" size="lg">
-                            <Link to="/courses">Continue Courses</Link>
-                          </Button>
-                        </div>
                       </div>
-                    </div>
-                  </div>
+                    );
+                  })()
                 ) : (
                   <GettingStartedChecklist
                     title="Getting started"
