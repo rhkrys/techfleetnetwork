@@ -29,7 +29,6 @@ export interface FreescoutConfigErr {
 export type FreescoutConfig = FreescoutConfigOk | FreescoutConfigErr;
 
 let _cachedConfig: FreescoutConfig | null = null;
-let _loggedInvalidConfig = false;
 
 /**
  * Lazy, idempotent config resolver. Returns a typed result instead of
@@ -78,7 +77,6 @@ export function getFreescoutConfig(): FreescoutConfig {
 /** Test-only: clear cache between unit tests. */
 export function _resetFreescoutConfigCache() {
   _cachedConfig = null;
-  _loggedInvalidConfig = false;
 }
 
 interface BreakerState { failures: number; openedAt: number }
@@ -90,6 +88,14 @@ export class FreescoutError extends Error {
   constructor(public status: number, message: string, public body?: unknown) {
     super(message);
   }
+}
+
+export function assertConfigured(): FreescoutConfigOk {
+  const cfg = getFreescoutConfig();
+  if (!cfg.ok) {
+    throw new FreescoutError(503, "support_unavailable", { reason: cfg.reason, detail: cfg.detail });
+  }
+  return cfg;
 }
 
 function breakerOpen(): boolean {
@@ -126,22 +132,7 @@ export interface FreescoutFetchOpts {
 }
 
 export async function freescoutFetch<T = unknown>(opts: FreescoutFetchOpts): Promise<T> {
-  const cfg = getFreescoutConfig();
-  if (!cfg.ok) {
-    // Log once per cold start with a stable code so the triage queue picks it up.
-    if (!_loggedInvalidConfig) {
-      _loggedInvalidConfig = true;
-      console.error(JSON.stringify({
-        level: "error",
-        severity: "error",
-        fn: "freescout",
-        code: "config_invalid",
-        reason: cfg.reason,
-        detail: cfg.detail,
-      }));
-    }
-    throw new FreescoutError(503, "support_unavailable", { reason: cfg.reason, detail: cfg.detail });
-  }
+  const cfg = assertConfigured();
   if (breakerOpen()) {
     throw new FreescoutError(503, "support_unavailable", { reason: "breaker_open" });
   }
