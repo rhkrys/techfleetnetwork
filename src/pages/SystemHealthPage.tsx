@@ -28,6 +28,7 @@ import { EmailDlqPanel } from "@/components/system-health/EmailDlqPanel";
 import { DiscordRepairTab } from "@/components/system-health/DiscordRepairTab";
 import { LoginHealthTab } from "@/components/system-health/LoginHealthTab";
 import { TranslationsTab } from "@/components/admin/system-health/TranslationsTab";
+import { HelpDeskTab } from "@/components/system-health/HelpDeskTab";
 import { PageTitle } from "@/components/ui/typography";
 
 const FIVE_MIN = 5 * 60 * 1000;
@@ -220,6 +221,7 @@ export default function SystemHealthPage() {
           <TabsTrigger value="incidents">Incidents</TabsTrigger>
           <TabsTrigger value="audit">Audit</TabsTrigger>
           <TabsTrigger value="discord">Discord</TabsTrigger>
+          <TabsTrigger value="help-desk">Help desk</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
 
@@ -265,6 +267,7 @@ export default function SystemHealthPage() {
         <TabsContent value="incidents"><IncidentsTab /></TabsContent>
         <TabsContent value="audit"><AuditPressureTab /></TabsContent>
         <TabsContent value="discord"><DiscordRepairTab /></TabsContent>
+        <TabsContent value="help-desk"><HelpDeskTab /></TabsContent>
         <TabsContent value="settings" className="space-y-4">
           <StatsControlsCard />
           <Card>
