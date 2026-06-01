@@ -73,30 +73,16 @@ function readSessionMarker(session: Pick<AuthSession, "user">): { startedAtMs: n
 }
 
 function isInvalidRefreshTokenError(error: unknown) {
-  const maybeError = error as { message?: string; status?: number; name?: string } | null | undefined;
-  const message = maybeError?.message?.toLowerCase() ?? String(error ?? "").toLowerCase();
-  const mentionsRefreshToken = message.includes("refresh token");
-  const terminalRefreshState =
-    message.includes("invalid") ||
-    message.includes("not found") ||
-    message.includes("missing") ||
-    message.includes("expired") ||
-    message.includes("revoked") ||
-    message.includes("already used") ||
-    message.includes("reuse");
-
-  return mentionsRefreshToken && terminalRefreshState;
+  const c = classifyAuthError(error);
+  return c === "refresh_invalid" || c === "jwt_corrupt";
 }
 
-function clearLocalAuthArtifacts() {
-  sessionStorage.removeItem(SESSION_STARTED_AT_KEY);
-  for (const storage of [localStorage, sessionStorage]) {
-    for (let i = storage.length - 1; i >= 0; i -= 1) {
-      const key = storage.key(i);
-      if (key && AUTH_STORAGE_KEY_PATTERN.test(key)) storage.removeItem(key);
-    }
-  }
+function clearLocalAuthArtifacts(reason: "manual" | "refresh_invalid" | "jwt_corrupt" = "manual") {
+  // Single source of truth — delegate to the shared purger so every layer
+  // (bootstrap, fetch-guard, signin/signout, OAuth) clears the same keys.
+  purgeLocalAuthState({ reason, source: "signout", silent: reason === "manual" });
 }
+
 
 function hasStoredAuthSession() {
   const url = new URL(window.location.href);
