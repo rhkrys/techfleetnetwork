@@ -291,29 +291,30 @@ Deno.serve(async (req) => {
       }
     }
   } catch (e) {
+    const action = (raw && typeof raw === "object" ? (raw as any).action : undefined) as string | undefined;
+
     if (e instanceof FreescoutError) {
       const reason = (e.body as { reason?: string; detail?: string })?.reason;
       const detail = (e.body as { detail?: string })?.detail;
       const code = e.status === 503 && e.message === "support_unavailable" ? "config_invalid" : "upstream_error";
+
+      // Always log upstream_error (with body); config_invalid only once per cold start.
       if (code !== "config_invalid" || !loggedInvalidConfig) {
         if (code === "config_invalid") loggedInvalidConfig = true;
         console.error(JSON.stringify({
           level: "error",
           severity: "error",
           fn: "freescout-proxy",
+          action,
           status: e.status,
           msg: e.message,
           code,
           reason,
+          body: e.body,
         }));
         if (code === "config_invalid") await recordConfigInvalidSignal(reason, detail);
       }
 
-      // Graceful degradation: read-only actions return an empty envelope
-      // with HTTP 200 so the UI can render its offline state immediately
-      // instead of hanging. Mutating actions return a real 5xx so the user
-      // sees a clear error and we never silently drop a write.
-      const action = (raw && typeof raw === "object" ? (raw as any).action : undefined) as string | undefined;
       const READ_ACTIONS = new Set(["listMine", "listAll", "get"]);
       if (e.status === 503 && action && READ_ACTIONS.has(action)) {
         return new Response(
@@ -334,10 +335,25 @@ Deno.serve(async (req) => {
         );
       }
       return jsonResponse(
-        { error: e.message, unavailable: e.status === 503, reason: reason ?? (e.status === 503 ? "support_unavailable" : undefined) },
+        {
+          error: e.message,
+          unavailable: e.status === 503,
+          reason: reason ?? (e.status === 503 ? "support_unavailable" : undefined),
+          upstream: e.body ?? undefined,
+        },
         e.status >= 400 && e.status < 600 ? e.status : 500,
       );
     }
+
+    console.error(JSON.stringify({
+      level: "error",
+      severity: "error",
+      fn: "freescout-proxy",
+      action,
+      code: "unhandled_exception",
+      msg: e instanceof Error ? e.message : String(e),
+      stack: e instanceof Error ? e.stack : undefined,
+    }));
     return errorResponse(e);
   }
 });
