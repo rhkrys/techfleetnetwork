@@ -116,11 +116,12 @@ Deno.serve(async (req) => {
   if (cors) return cors;
   if (req.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
 
+  let raw: unknown = null;
   try {
     const auth = await requireAuthenticatedRequest(req, "freescout-proxy");
     if (auth instanceof Response) return auth;
 
-    const raw = await parseJsonBody(req, 256 * 1024);
+    raw = await parseJsonBody(req, 256 * 1024);
     const parsed = Action.safeParse(raw);
     if (!parsed.success) {
       return jsonResponse({ error: "Invalid input", details: parsed.error.flatten() }, 400);
