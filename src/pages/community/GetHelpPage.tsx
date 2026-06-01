@@ -74,14 +74,11 @@ function useTickets(scope: "mine" | "all", status: "open" | "closed" | "all") {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 5000);
       try {
-        const { data, error } = await supabase.functions.invoke("freescout-proxy", {
-          body: { action: scope === "mine" ? "listMine" : "listAll", status, page: 1 },
-          signal: ctrl.signal,
-          timeout: 5000,
-        });
+        const { data, error } = await invokeFreescout(
+          { action: scope === "mine" ? "listMine" : "listAll", status, page: 1 },
+          ctrl.signal,
+        );
         if (error) {
-          // Treat any invoke-level error as "support offline" so the UI degrades
-          // gracefully instead of hanging.
           return { items: [], unavailable: true, reason: error.message ?? "invoke_failed" };
         }
         return {
