@@ -350,17 +350,20 @@ export default function LoginPage() {
     const handler = (ev: Event) => {
       const detail = (ev as CustomEvent).detail as { email?: string } | undefined;
       if (!detail?.email) return;
-      const fire = () => {
-        if (!captchaToken) return false;
-        void checkOauthIdentityForEmail(detail.email!, captchaToken);
-        return true;
+      const fire = (tok?: string) => {
+        void checkOauthIdentityForEmail(detail.email!, tok);
       };
-      if (!fire()) {
-        // Wait briefly for next token; bail after 8s.
+      // First probe right away with whatever token we have (may be empty —
+      // endpoint allows it). If still no hint after the captcha refreshes,
+      // re-probe once with the fresh token to cover edge cases where the
+      // first call was blocked by rate-limit.
+      fire(captchaToken || undefined);
+      if (!captchaToken) {
         let elapsed = 0;
         const id = window.setInterval(() => {
           elapsed += 250;
-          if (fire() || elapsed >= 8_000) window.clearInterval(id);
+          if (captchaToken) { fire(captchaToken); window.clearInterval(id); }
+          else if (elapsed >= 8_000) window.clearInterval(id);
         }, 250);
       }
     };
