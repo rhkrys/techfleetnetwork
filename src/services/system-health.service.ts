@@ -143,7 +143,7 @@ export const SystemHealthService = {
   },
 
   async getFreescoutHealth(): Promise<FreescoutHealth> {
-    const { data, error } = await supabase.functions.invoke("freescout-health", { body: {} });
+    const { data, error } = await supabase.functions.invoke("freescout-health", { method: "GET", timeout: 5000 });
     if (error) {
       return {
         configured: false,
