@@ -220,8 +220,8 @@ function TicketDetail({ conversationId, onClose }: { conversationId: number; onC
     if (reply.trim().length < 1) return;
     setSending(true);
     try {
-      const { error } = await supabase.functions.invoke("freescout-proxy", {
-        body: { action: "reply", conversationId, body: reply.trim().slice(0, 10000), idempotencyKey: `reply-${crypto.randomUUID()}` },
+      const { error } = await invokeFreescout({
+        action: "reply", conversationId, body: reply.trim().slice(0, 10000), idempotencyKey: `reply-${crypto.randomUUID()}`,
       });
       if (error) throw error;
       setReply("");
