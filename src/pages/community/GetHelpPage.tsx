@@ -92,6 +92,10 @@ function NewTicketDialog({ onCreated, disabled = false }: { onCreated: () => voi
           idempotencyKey: `create-${crypto.randomUUID()}`,
         },
       });
+      if (data?.unavailable || (error && /503|unavailable/i.test(error.message ?? ""))) {
+        toast.error(`Help desk is offline. An admin has been notified — please email ${SUPPORT_FALLBACK_EMAIL} for now.`);
+        return;
+      }
       if (error || !data?.conversationId) throw error ?? new Error("Could not create ticket");
       toast.success("Ticket created. Our team will reply soon.");
       setOpen(false);
@@ -108,7 +112,7 @@ function NewTicketDialog({ onCreated, disabled = false }: { onCreated: () => voi
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>Create ticket</Button>
+        <Button disabled={disabled}>Create ticket</Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
