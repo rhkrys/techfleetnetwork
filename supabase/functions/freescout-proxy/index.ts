@@ -75,28 +75,45 @@ async function ensureCustomerForUser(userId: string): Promise<{ customerId: stri
     .select("id, email, first_name, last_name, freescout_customer_id")
     .eq("id", userId)
     .maybeSingle();
-  if (error || !prof?.email) throw new FreescoutError(400, "Profile not found");
-
-  if (prof.freescout_customer_id) {
-    return {
-      customerId: String(prof.freescout_customer_id),
-      email: prof.email,
-      firstName: prof.first_name ?? undefined,
-      lastName: prof.last_name ?? undefined,
-    };
+  if (error) {
+    console.error(JSON.stringify({ level: "error", fn: "freescout-proxy", code: "profile_lookup_failed", userId, msg: error.message }));
+    throw new FreescoutError(500, `Profile lookup failed: ${error.message}`);
   }
 
-  // Resolve or create
-  let customer = await findCustomerByEmail(prof.email);
+  // Fallback to auth.users email if profile is missing or its email column is blank —
+  // never let a profile-row gap block ticket creation.
+  let email = prof?.email ?? null;
+  let firstName = prof?.first_name ?? undefined;
+  let lastName = prof?.last_name ?? undefined;
+  if (!email) {
+    const { data: authUser, error: authErr } = await admin.auth.admin.getUserById(userId);
+    if (authErr || !authUser?.user?.email) {
+      console.error(JSON.stringify({ level: "error", fn: "freescout-proxy", code: "no_email_for_user", userId, profileExists: !!prof }));
+      throw new FreescoutError(400, "No email on file for this account. Please add one in your profile.");
+    }
+    email = authUser.user.email;
+    const meta = (authUser.user.user_metadata ?? {}) as Record<string, unknown>;
+    firstName = firstName ?? (typeof meta.first_name === "string" ? meta.first_name : undefined);
+    lastName = lastName ?? (typeof meta.last_name === "string" ? meta.last_name : undefined);
+  }
+
+  if (prof?.freescout_customer_id) {
+    return { customerId: String(prof.freescout_customer_id), email, firstName, lastName };
+  }
+
+  // Resolve or create the Freescout customer record.
+  let customer = await findCustomerByEmail(email);
   if (!customer) {
-    customer = await createCustomer(prof.email, prof.first_name ?? undefined, prof.last_name ?? undefined);
+    customer = await createCustomer(email, firstName, lastName);
   }
   const id = String(customer.id);
-  await admin.from("profiles").update({ freescout_customer_id: id }).eq("id", userId);
+  if (prof) {
+    await admin.from("profiles").update({ freescout_customer_id: id }).eq("id", userId);
+  }
   await admin.from("support_provisioning_log").insert({
     user_id: userId, kind: "customer", freescout_id: id, status: "success", attempts: 1,
   });
-  return { customerId: id, email: prof.email, firstName: prof.first_name ?? undefined, lastName: prof.last_name ?? undefined };
+  return { customerId: id, email, firstName, lastName };
 }
 
 async function ownsConversation(userId: string, conversationId: number): Promise<boolean> {
