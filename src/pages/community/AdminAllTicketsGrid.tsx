@@ -17,15 +17,22 @@ interface Row {
   updatedAt?: string;
 }
 
+async function invokeFreescout(body: Record<string, unknown>) {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData?.session?.access_token;
+  return supabase.functions.invoke("freescout-proxy", {
+    body,
+    ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+  } as any);
+}
+
 export default function AdminAllTicketsGrid() {
   const [refreshKey, setRefreshKey] = useState(0);
 
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["support", "admin-all", refreshKey] as const,
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("freescout-proxy", {
-        body: { action: "listAll", status: "all", page: 1 },
-      });
+      const { data, error } = await invokeFreescout({ action: "listAll", status: "all", page: 1 });
       if (error) throw error;
       return (data?.items ?? []) as Row[];
     },
@@ -33,7 +40,7 @@ export default function AdminAllTicketsGrid() {
   });
 
   const runAction = async (conversationId: number, body: any, success: string) => {
-    const { error } = await supabase.functions.invoke("freescout-proxy", { body: { conversationId, ...body } });
+    const { error } = await invokeFreescout({ conversationId, ...body });
     if (error) { toast.error("Could not update the ticket."); return; }
     toast.success(success);
     setRefreshKey((k) => k + 1);

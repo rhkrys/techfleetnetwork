@@ -51,6 +51,22 @@ async function readFunctionError(response?: Response): Promise<{ unavailable?: b
   }
 }
 
+/**
+ * Wrap supabase.functions.invoke so the user's access token is ALWAYS attached.
+ * The default invoke can race with auth-state hydration on first paint and send
+ * the request without an Authorization header, which the edge function rejects
+ * as `missing_token`.
+ */
+async function invokeFreescout<T = any>(body: Record<string, unknown>, signal?: AbortSignal) {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData?.session?.access_token;
+  return supabase.functions.invoke<T>("freescout-proxy", {
+    body,
+    signal,
+    ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+  } as any);
+}
+
 function useTickets(scope: "mine" | "all", status: "open" | "closed" | "all") {
   return useQuery<TicketsResponse>({
     queryKey: ["support", "tickets", scope, status] as const,
@@ -58,14 +74,11 @@ function useTickets(scope: "mine" | "all", status: "open" | "closed" | "all") {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 5000);
       try {
-        const { data, error } = await supabase.functions.invoke("freescout-proxy", {
-          body: { action: scope === "mine" ? "listMine" : "listAll", status, page: 1 },
-          signal: ctrl.signal,
-          timeout: 5000,
-        });
+        const { data, error } = await invokeFreescout(
+          { action: scope === "mine" ? "listMine" : "listAll", status, page: 1 },
+          ctrl.signal,
+        );
         if (error) {
-          // Treat any invoke-level error as "support offline" so the UI degrades
-          // gracefully instead of hanging.
           return { items: [], unavailable: true, reason: error.message ?? "invoke_failed" };
         }
         return {
@@ -96,15 +109,12 @@ function NewTicketDialog({ onCreated, disabled = false }: { onCreated: () => voi
     }
     setSubmitting(true);
     try {
-      const { data, error, response } = await supabase.functions.invoke("freescout-proxy", {
-        body: {
-          action: "create",
-          subject: subject.trim().slice(0, 200),
-          body: body.trim().slice(0, 10000),
-          idempotencyKey: `create-${crypto.randomUUID()}`,
-        },
-        timeout: 5000,
-      });
+      const { data, error, response } = await invokeFreescout({
+        action: "create",
+        subject: subject.trim().slice(0, 200),
+        body: body.trim().slice(0, 10000),
+        idempotencyKey: `create-${crypto.randomUUID()}`,
+      }) as any;
       const errorBody = await readFunctionError(response);
       if (data?.unavailable || response?.status === 503 || errorBody?.unavailable || (error && /unavailable/i.test(error.message ?? ""))) {
         setHelpDeskOffline(true);
@@ -187,9 +197,7 @@ function TicketDetail({ conversationId, onClose }: { conversationId: number; onC
   const { data: conv, isLoading } = useQuery({
     queryKey: ["support", "ticket", conversationId] as const,
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("freescout-proxy", {
-        body: { action: "get", conversationId },
-      });
+      const { data, error } = await invokeFreescout({ action: "get", conversationId });
       if (error) throw error;
       return data?.conversation as Conversation;
     },
@@ -198,9 +206,7 @@ function TicketDetail({ conversationId, onClose }: { conversationId: number; onC
 
   const closeMut = useMutation({
     mutationFn: async (action: "close" | "reopen") => {
-      const { error } = await supabase.functions.invoke("freescout-proxy", {
-        body: { action, conversationId },
-      });
+      const { error } = await invokeFreescout({ action, conversationId });
       if (error) throw error;
     },
     onSuccess: () => {
@@ -214,8 +220,8 @@ function TicketDetail({ conversationId, onClose }: { conversationId: number; onC
     if (reply.trim().length < 1) return;
     setSending(true);
     try {
-      const { error } = await supabase.functions.invoke("freescout-proxy", {
-        body: { action: "reply", conversationId, body: reply.trim().slice(0, 10000), idempotencyKey: `reply-${crypto.randomUUID()}` },
+      const { error } = await invokeFreescout({
+        action: "reply", conversationId, body: reply.trim().slice(0, 10000), idempotencyKey: `reply-${crypto.randomUUID()}`,
       });
       if (error) throw error;
       setReply("");
