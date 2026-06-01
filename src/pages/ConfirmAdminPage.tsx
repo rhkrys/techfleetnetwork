@@ -32,6 +32,14 @@ export default function ConfirmAdminPage() {
             setStatus("success");
             setMessage("Your admin role has been activated!");
           }
+          // Best-effort: provision a Freescout help-desk account.
+          // Requires user to be signed in — silently no-ops otherwise;
+          // backfill cron will pick it up later.
+          try {
+            await supabase.functions.invoke("freescout-provision-admin", {
+              body: { action: "provision" },
+            });
+          } catch { /* best effort */ }
         } else {
           setStatus("error");
           setMessage(data.error || "Confirmation failed.");
