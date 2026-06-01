@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { SystemHealthService, type FreescoutHealth } from "@/services/system-health.service";
 
 interface ProvRow {
   id: number;
