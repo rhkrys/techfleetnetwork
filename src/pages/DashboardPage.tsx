@@ -181,6 +181,7 @@ export default function DashboardPage() {
   const teamworkCompleted = phaseCounts.third_steps ?? 0;
   const projectTrainingCompleted = phaseCounts.project_training ?? 0;
   const volunteerCompleted = phaseCounts.volunteer ?? 0;
+  const { data: observerCompleted = 0 } = useCompletedCount(userId, "observer", ALL_OBSERVER_LESSON_IDS);
 
   const { data: latestAnnouncements = [] } = useLatestAnnouncements(5);
 
@@ -243,6 +244,9 @@ export default function DashboardPage() {
   const allProjectTrainingDone = projectTrainingCompleted >= TOTAL_PROJECT_TRAINING_LESSONS;
   const allVolunteerDone = volunteerCompleted >= TOTAL_VOLUNTEER_LESSONS;
   const allOnboardingDone = allConnectDiscordDone && allFirstStepsDone && allSecondStepsDone && allProjectTrainingDone && allVolunteerDone;
+  const observerNotStarted = allOnboardingDone && observerCompleted === 0;
+  const observerInProgress = allOnboardingDone && observerCompleted > 0 && observerCompleted < TOTAL_OBSERVER_LESSONS;
+  const observerDone = allOnboardingDone && observerCompleted >= TOTAL_OBSERVER_LESSONS;
 
   const coreCourses: CoreCourse[] = useMemo(() => [
     {
