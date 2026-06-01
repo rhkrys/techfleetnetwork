@@ -268,8 +268,43 @@ Deno.serve(async (req) => {
     }
   } catch (e) {
     if (e instanceof FreescoutError) {
-      console.error(JSON.stringify({ level: "error", fn: "freescout-proxy", status: e.status, msg: e.message }));
-      return jsonResponse({ error: e.message }, e.status >= 400 && e.status < 600 ? e.status : 500);
+      const reason = (e.body as { reason?: string })?.reason;
+      console.error(JSON.stringify({
+        level: "error",
+        fn: "freescout-proxy",
+        status: e.status,
+        msg: e.message,
+        code: e.status === 503 ? "config_invalid" : "upstream_error",
+        reason,
+      }));
+
+      // Graceful degradation: read-only actions return an empty envelope
+      // with HTTP 200 so the UI can render its offline state immediately
+      // instead of hanging. Mutating actions return a real 5xx so the user
+      // sees a clear error and we never silently drop a write.
+      const action = (raw && typeof raw === "object" ? (raw as any).action : undefined) as string | undefined;
+      const READ_ACTIONS = new Set(["listMine", "listAll", "get"]);
+      if (e.status === 503 && action && READ_ACTIONS.has(action)) {
+        return new Response(
+          JSON.stringify({
+            items: [],
+            conversation: null,
+            unavailable: true,
+            reason: reason ?? "support_unavailable",
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+              "Retry-After": "30",
+            },
+          },
+        );
+      }
+      return jsonResponse(
+        { error: e.message, unavailable: e.status === 503, reason },
+        e.status >= 400 && e.status < 600 ? e.status : 500,
+      );
     }
     return errorResponse(e);
   }
