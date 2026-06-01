@@ -1,0 +1,73 @@
+import { test, expect } from "@playwright/test";
+
+/**
+ * AUTH-WEDGE-001..007
+ *
+ * When a Supabase response returns 403 with a `bad_jwt` signal mid-session,
+ * the global fetch guard (src/lib/auth/fetch-guard.ts) must:
+ *   1. purge sb-*-auth-token from localStorage
+ *   2. redirect to /login?reason=session_expired
+ *   3. stop the auto-refresh storm (no further /user calls)
+ *
+ * We simulate the wedge by route-intercepting Supabase auth/REST traffic and
+ * returning a canned 403 bad_jwt payload exactly once after the app boots.
+ */
+
+test.describe("Auth wedge recovery (AUTH-WEDGE-001..007)", () => {
+  test.describe.configure({ retries: 1 });
+
+  test("403 bad_jwt mid-session → clean redirect, storage purged, no refresh storm", async ({ page, context }) => {
+    const supabaseUrl = process.env.VITE_SUPABASE_URL || "https://iqsjhrhsjlgjiaedzmtz.supabase.co";
+
+    // Seed a non-JWT access token to simulate a wedged session BEFORE any app code runs.
+    await context.addInitScript(([url]) => {
+      const ref = new URL(url as string).hostname.split(".")[0];
+      const key = `sb-${ref}-auth-token`;
+      localStorage.setItem(
+        key,
+        JSON.stringify({
+          access_token: "not-a-jwt-just-garbage",
+          refresh_token: "rt-garbage",
+          expires_at: Math.floor(Date.now() / 1000) + 3600,
+          token_type: "bearer",
+          user: { id: "00000000-0000-0000-0000-000000000000" },
+        })
+      );
+    }, [supabaseUrl]);
+
+    let userCallsAfterWedge = 0;
+    let wedgeTriggered = false;
+
+    await page.route(`${supabaseUrl}/auth/v1/**`, async (route) => {
+      const url = route.request().url();
+      if (url.includes("/user") || url.includes("/token")) {
+        if (wedgeTriggered) userCallsAfterWedge++;
+        wedgeTriggered = true;
+        await route.fulfill({
+          status: 403,
+          contentType: "application/json",
+          body: JSON.stringify({ code: "bad_jwt", message: "invalid number of segments" }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
+
+    // Should be redirected to /login with the session_expired reason.
+    await page.waitForURL(/\/login\?.*reason=session_expired/, { timeout: 10_000 });
+    await expect(page).toHaveURL(/reason=session_expired/);
+
+    // sb-*-auth-token must be purged.
+    const remaining = await page.evaluate(() =>
+      Object.keys(localStorage).filter((k) => /^sb-.*-auth-token$/.test(k))
+    );
+    expect(remaining).toHaveLength(0);
+
+    // Storm guard: after redirect, no further /user calls for 3s.
+    const before = userCallsAfterWedge;
+    await page.waitForTimeout(3000);
+    expect(userCallsAfterWedge - before).toBeLessThanOrEqual(1);
+  });
+});
