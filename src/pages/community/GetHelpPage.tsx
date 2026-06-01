@@ -262,7 +262,9 @@ function TicketDetail({ conversationId, onClose }: { conversationId: number; onC
 function TicketList({ scope }: { scope: "mine" | "all" }) {
   const [status, setStatus] = useState<"open" | "closed" | "all">("open");
   const [activeId, setActiveId] = useState<number | null>(null);
-  const { data: tickets = [], isLoading, refetch } = useTickets(scope, status);
+  const { data, isLoading, isError, refetch } = useTickets(scope, status);
+  const tickets = data?.items ?? [];
+  const unavailable = data?.unavailable === true || isError;
 
   return (
     <div className="space-y-4">
@@ -274,11 +276,31 @@ function TicketList({ scope }: { scope: "mine" | "all" }) {
             <TabsTrigger value="all">All</TabsTrigger>
           </TabsList>
         </Tabs>
-        {scope === "mine" && <NewTicketDialog onCreated={() => refetch()} />}
+        {scope === "mine" && <NewTicketDialog onCreated={() => refetch()} disabled={unavailable} />}
       </div>
 
       {isLoading && <p className="text-sm text-muted-foreground">Loading tickets…</p>}
-      {!isLoading && tickets.length === 0 && (
+
+      {!isLoading && unavailable && (
+        <Card className="border-destructive/40">
+          <CardHeader>
+            <CardTitle className="text-base">Help desk is reconnecting</CardTitle>
+            <CardDescription>
+              We can't reach our support system right now. An admin has been notified. In the meantime, you can still reach us by email.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <Button asChild>
+              <a href={`mailto:${SUPPORT_FALLBACK_EMAIL}?subject=${encodeURIComponent("Tech Fleet Network support request")}`}>
+                Email {SUPPORT_FALLBACK_EMAIL}
+              </a>
+            </Button>
+            <Button variant="outline" onClick={() => refetch()}>Try again</Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {!isLoading && !unavailable && tickets.length === 0 && (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
             <p>No tickets to show.</p>
@@ -287,24 +309,26 @@ function TicketList({ scope }: { scope: "mine" | "all" }) {
         </Card>
       )}
 
-      <div className="grid gap-3">
-        {tickets.map((t) => {
-          const status = formatStatus(t.status);
-          return (
-            <Card key={t.id} className="cursor-pointer hover:bg-accent/40 transition-colors" onClick={() => setActiveId(t.id)}>
-              <CardHeader className="py-4">
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <CardTitle className="text-base font-medium">{t.subject ?? `Ticket #${t.number ?? t.id}`}</CardTitle>
-                  <Badge variant={status.tone}>{status.label}</Badge>
-                </div>
-                {t.updatedAt && (
-                  <CardDescription>Updated {new Date(t.updatedAt).toLocaleString()}</CardDescription>
-                )}
-              </CardHeader>
-            </Card>
-          );
-        })}
-      </div>
+      {!unavailable && (
+        <div className="grid gap-3">
+          {tickets.map((t) => {
+            const s = formatStatus(t.status);
+            return (
+              <Card key={t.id} className="cursor-pointer hover:bg-accent/40 transition-colors" onClick={() => setActiveId(t.id)}>
+                <CardHeader className="py-4">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <CardTitle className="text-base font-medium">{t.subject ?? `Ticket #${t.number ?? t.id}`}</CardTitle>
+                    <Badge variant={s.tone}>{s.label}</Badge>
+                  </div>
+                  {t.updatedAt && (
+                    <CardDescription>Updated {new Date(t.updatedAt).toLocaleString()}</CardDescription>
+                  )}
+                </CardHeader>
+              </Card>
+            );
+          })}
+        </div>
+      )}
 
       {activeId !== null && <TicketDetail conversationId={activeId} onClose={() => setActiveId(null)} />}
     </div>
