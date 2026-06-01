@@ -13,6 +13,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { sanitizeHtml } from "@/lib/security";
 import { toast } from "sonner";
+import AdminAllTicketsGrid from "./AdminAllTicketsGrid";
+import MonthlyReportPanel from "./MonthlyReportPanel";
 
 interface Conversation {
   id: number;
@@ -321,10 +323,15 @@ export default function GetHelpPage() {
           <TabsList>
             <TabsTrigger value="mine">My tickets</TabsTrigger>
             <TabsTrigger value="all">All tickets</TabsTrigger>
+            <TabsTrigger value="grid">Triage grid</TabsTrigger>
+            <TabsTrigger value="reports">Reports</TabsTrigger>
           </TabsList>
           <TabsContent value="mine" className="mt-6"><TicketList scope="mine" /></TabsContent>
           <TabsContent value="all" className="mt-6"><TicketList scope="all" /></TabsContent>
+          <TabsContent value="grid" className="mt-6"><AdminAllTicketsGrid /></TabsContent>
+          <TabsContent value="reports" className="mt-6"><MonthlyReportPanel /></TabsContent>
         </Tabs>
+
       ) : (
         <TicketList scope="mine" />
       )}
