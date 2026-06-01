@@ -1,23 +1,83 @@
 // Freescout API client — single admin API key, OWASP A02/A03/A10 hardened.
-// - HTTPS-only base URL (rejected at boot if not https://)
+// - HTTPS-only base URL, validated lazily (never throws at module load)
 // - Constant-time HMAC verify for webhooks
 // - CircuitBreaker + exponential backoff
 // - No raw string-concat into URLs; encodeURIComponent on all path params
 
-const RAW_BASE = (Deno.env.get("FREESCOUT_API_URL") ?? "").trim().replace(/\/+$/, "");
-const API_KEY = Deno.env.get("FREESCOUT_API_KEY") ?? "";
-const WEBHOOK_SECRET = Deno.env.get("FREESCOUT_WEBHOOK_SECRET") ?? "";
 export const DEFAULT_MAILBOX_ID = Number.parseInt(
   Deno.env.get("FREESCOUT_DEFAULT_MAILBOX_ID") ?? "0",
   10,
 );
 
-if (RAW_BASE && !/^https:\/\//i.test(RAW_BASE)) {
-  // Fail fast on boot — A10 SSRF defense
-  throw new Error("FREESCOUT_API_URL must be https://");
+export type FreescoutConfigReason =
+  | "missing_url"
+  | "missing_key"
+  | "scheme_not_https"
+  | "url_malformed";
+
+export interface FreescoutConfigOk {
+  ok: true;
+  base: string;
+  key: string;
+  host: string;
 }
-let ALLOWED_HOST = "";
-try { ALLOWED_HOST = new URL(RAW_BASE).host; } catch { /* unset */ }
+export interface FreescoutConfigErr {
+  ok: false;
+  reason: FreescoutConfigReason;
+  detail: string;
+}
+export type FreescoutConfig = FreescoutConfigOk | FreescoutConfigErr;
+
+let _cachedConfig: FreescoutConfig | null = null;
+
+/**
+ * Lazy, idempotent config resolver. Returns a typed result instead of
+ * throwing — so a missing/invalid secret degrades to a clean 503 response
+ * instead of crash-looping the isolate at import time.
+ */
+export function getFreescoutConfig(): FreescoutConfig {
+  if (_cachedConfig) return _cachedConfig;
+
+  const rawBase = (Deno.env.get("FREESCOUT_API_URL") ?? "").trim().replace(/\/+$/, "");
+  const key = Deno.env.get("FREESCOUT_API_KEY") ?? "";
+
+  if (!rawBase) {
+    _cachedConfig = { ok: false, reason: "missing_url", detail: "FREESCOUT_API_URL is empty" };
+    return _cachedConfig;
+  }
+  if (!key) {
+    _cachedConfig = { ok: false, reason: "missing_key", detail: "FREESCOUT_API_KEY is empty" };
+    return _cachedConfig;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(rawBase);
+  } catch {
+    _cachedConfig = {
+      ok: false,
+      reason: "url_malformed",
+      detail: `FREESCOUT_API_URL is not a valid URL (got: ${rawBase.slice(0, 24)}…)`,
+    };
+    return _cachedConfig;
+  }
+  if (parsed.protocol !== "https:") {
+    _cachedConfig = {
+      ok: false,
+      reason: "scheme_not_https",
+      detail: `FREESCOUT_API_URL must use https:// (got: ${parsed.protocol}//)`,
+    };
+    return _cachedConfig;
+  }
+
+  _cachedConfig = { ok: true, base: rawBase, key, host: parsed.host };
+  return _cachedConfig;
+}
+
+/** Test-only: clear cache between unit tests. */
+export function _resetFreescoutConfigCache() {
+  _cachedConfig = null;
+}
 
 interface BreakerState { failures: number; openedAt: number }
 const breaker: BreakerState = { failures: 0, openedAt: 0 };
@@ -30,16 +90,9 @@ export class FreescoutError extends Error {
   }
 }
 
-function assertConfigured() {
-  if (!RAW_BASE || !API_KEY) {
-    throw new FreescoutError(503, "Freescout is not configured");
-  }
-}
-
 function breakerOpen(): boolean {
   if (breaker.failures < BREAKER_THRESHOLD) return false;
   if (Date.now() - breaker.openedAt > BREAKER_COOLDOWN_MS) {
-    // Half-open probe
     breaker.failures = BREAKER_THRESHOLD - 1;
     return false;
   }
@@ -55,7 +108,6 @@ function recordFailure() {
 
 function recordSuccess() {
   if (breaker.failures > 0 || breaker.openedAt > 0) {
-    // Self-heal event signal (consumed by Lane-2 logging by callers)
     breaker.failures = 0;
     breaker.openedAt = 0;
   }
@@ -63,21 +115,32 @@ function recordSuccess() {
 
 export interface FreescoutFetchOpts {
   method?: "GET" | "POST" | "PUT" | "DELETE";
-  path: string;            // must already be url-safe; do NOT include base
+  path: string;
   body?: unknown;
   query?: Record<string, string | number | undefined>;
-  attempt?: number;        // internal
+  attempt?: number;
+  timeoutMs?: number;
 }
 
 export async function freescoutFetch<T = unknown>(opts: FreescoutFetchOpts): Promise<T> {
-  assertConfigured();
+  const cfg = getFreescoutConfig();
+  if (!cfg.ok) {
+    // Log once per cold start with a stable code so the triage queue picks it up.
+    console.error(JSON.stringify({
+      level: "error",
+      fn: "freescout",
+      code: "config_invalid",
+      reason: cfg.reason,
+      detail: cfg.detail,
+    }));
+    throw new FreescoutError(503, "support_unavailable", { reason: cfg.reason, detail: cfg.detail });
+  }
   if (breakerOpen()) {
-    throw new FreescoutError(503, "Upstream temporarily unavailable");
+    throw new FreescoutError(503, "support_unavailable", { reason: "breaker_open" });
   }
 
-  // A10 — host pinned
-  const u = new URL(RAW_BASE + opts.path);
-  if (u.host !== ALLOWED_HOST) {
+  const u = new URL(cfg.base + opts.path);
+  if (u.host !== cfg.host) {
     throw new FreescoutError(400, "Refused to call non-allowlisted host");
   }
   if (opts.query) {
@@ -87,20 +150,25 @@ export async function freescoutFetch<T = unknown>(opts: FreescoutFetchOpts): Pro
   }
 
   const attempt = opts.attempt ?? 1;
+  const timeoutMs = opts.timeoutMs ?? 10_000;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   const init: RequestInit = {
     method: opts.method ?? "GET",
     headers: {
-      "X-FreeScout-API-Key": API_KEY,
+      "X-FreeScout-API-Key": cfg.key,
       "Accept": "application/json",
       ...(opts.body !== undefined ? { "Content-Type": "application/json" } : {}),
     },
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+    signal: ctrl.signal,
   };
 
   let res: Response;
   try {
     res = await fetch(u.toString(), init);
-  } catch (e) {
+  } catch (_e) {
+    clearTimeout(timer);
     recordFailure();
     if (attempt < 3) {
       await new Promise((r) => setTimeout(r, 250 * attempt));
@@ -108,6 +176,7 @@ export async function freescoutFetch<T = unknown>(opts: FreescoutFetchOpts): Pro
     }
     throw new FreescoutError(502, "Upstream unreachable");
   }
+  clearTimeout(timer);
 
   if (res.status >= 500) {
     recordFailure();
@@ -121,7 +190,6 @@ export async function freescoutFetch<T = unknown>(opts: FreescoutFetchOpts): Pro
   }
 
   if (!res.ok) {
-    // 4xx — do not retry, do not trip breaker
     let body: unknown = undefined;
     try { body = await res.json(); } catch { /* ignore */ }
     throw new FreescoutError(res.status, res.statusText, body);
@@ -158,8 +226,10 @@ function b64Decode(s: string): Uint8Array | null {
 }
 
 export async function verifyFreescoutWebhook(req: Request, rawBody: string): Promise<boolean> {
-  // Dual-secret window: accept current OR previous secret for 24h rotations.
-  const secrets = [WEBHOOK_SECRET, Deno.env.get("FREESCOUT_WEBHOOK_SECRET_PREVIOUS") ?? ""].filter(Boolean);
+  const secrets = [
+    Deno.env.get("FREESCOUT_WEBHOOK_SECRET") ?? "",
+    Deno.env.get("FREESCOUT_WEBHOOK_SECRET_PREVIOUS") ?? "",
+  ].filter(Boolean);
   if (secrets.length === 0) return false;
   const sig =
     req.headers.get("x-freescout-signature") ??

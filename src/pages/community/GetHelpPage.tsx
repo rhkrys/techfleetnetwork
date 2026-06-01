@@ -34,21 +34,44 @@ function formatStatus(s?: string): { label: string; tone: "default" | "secondary
   return { label: s ?? "Unknown", tone: "outline" };
 }
 
+interface TicketsResponse {
+  items: Conversation[];
+  unavailable: boolean;
+  reason?: string;
+}
+
+const SUPPORT_FALLBACK_EMAIL = "info@techfleet.network";
+
 function useTickets(scope: "mine" | "all", status: "open" | "closed" | "all") {
-  return useQuery({
+  return useQuery<TicketsResponse>({
     queryKey: ["support", "tickets", scope, status] as const,
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("freescout-proxy", {
-        body: { action: scope === "mine" ? "listMine" : "listAll", status, page: 1 },
-      });
-      if (error) throw error;
-      return (data?.items ?? []) as Conversation[];
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 5000);
+      try {
+        const { data, error } = await supabase.functions.invoke("freescout-proxy", {
+          body: { action: scope === "mine" ? "listMine" : "listAll", status, page: 1 },
+        });
+        if (error) {
+          // Treat any invoke-level error as "support offline" so the UI degrades
+          // gracefully instead of hanging.
+          return { items: [], unavailable: true, reason: error.message ?? "invoke_failed" };
+        }
+        return {
+          items: (data?.items ?? []) as Conversation[],
+          unavailable: data?.unavailable === true,
+          reason: data?.reason,
+        };
+      } finally {
+        clearTimeout(timer);
+      }
     },
     staleTime: 30_000,
+    retry: 1,
   });
 }
 
-function NewTicketDialog({ onCreated }: { onCreated: () => void }) {
+function NewTicketDialog({ onCreated, disabled = false }: { onCreated: () => void; disabled?: boolean }) {
   const [open, setOpen] = useState(false);
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
@@ -69,6 +92,10 @@ function NewTicketDialog({ onCreated }: { onCreated: () => void }) {
           idempotencyKey: `create-${crypto.randomUUID()}`,
         },
       });
+      if (data?.unavailable || (error && /503|unavailable/i.test(error.message ?? ""))) {
+        toast.error(`Help desk is offline. An admin has been notified — please email ${SUPPORT_FALLBACK_EMAIL} for now.`);
+        return;
+      }
       if (error || !data?.conversationId) throw error ?? new Error("Could not create ticket");
       toast.success("Ticket created. Our team will reply soon.");
       setOpen(false);
@@ -85,7 +112,7 @@ function NewTicketDialog({ onCreated }: { onCreated: () => void }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>Create ticket</Button>
+        <Button disabled={disabled}>Create ticket</Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
@@ -239,7 +266,9 @@ function TicketDetail({ conversationId, onClose }: { conversationId: number; onC
 function TicketList({ scope }: { scope: "mine" | "all" }) {
   const [status, setStatus] = useState<"open" | "closed" | "all">("open");
   const [activeId, setActiveId] = useState<number | null>(null);
-  const { data: tickets = [], isLoading, refetch } = useTickets(scope, status);
+  const { data, isLoading, isError, refetch } = useTickets(scope, status);
+  const tickets = data?.items ?? [];
+  const unavailable = data?.unavailable === true || isError;
 
   return (
     <div className="space-y-4">
@@ -251,11 +280,31 @@ function TicketList({ scope }: { scope: "mine" | "all" }) {
             <TabsTrigger value="all">All</TabsTrigger>
           </TabsList>
         </Tabs>
-        {scope === "mine" && <NewTicketDialog onCreated={() => refetch()} />}
+        {scope === "mine" && <NewTicketDialog onCreated={() => refetch()} disabled={unavailable} />}
       </div>
 
       {isLoading && <p className="text-sm text-muted-foreground">Loading tickets…</p>}
-      {!isLoading && tickets.length === 0 && (
+
+      {!isLoading && unavailable && (
+        <Card className="border-destructive/40">
+          <CardHeader>
+            <CardTitle className="text-base">Help desk is reconnecting</CardTitle>
+            <CardDescription>
+              We can't reach our support system right now. An admin has been notified. In the meantime, you can still reach us by email.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <Button asChild>
+              <a href={`mailto:${SUPPORT_FALLBACK_EMAIL}?subject=${encodeURIComponent("Tech Fleet Network support request")}`}>
+                Email {SUPPORT_FALLBACK_EMAIL}
+              </a>
+            </Button>
+            <Button variant="outline" onClick={() => refetch()}>Try again</Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {!isLoading && !unavailable && tickets.length === 0 && (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
             <p>No tickets to show.</p>
@@ -264,24 +313,26 @@ function TicketList({ scope }: { scope: "mine" | "all" }) {
         </Card>
       )}
 
-      <div className="grid gap-3">
-        {tickets.map((t) => {
-          const status = formatStatus(t.status);
-          return (
-            <Card key={t.id} className="cursor-pointer hover:bg-accent/40 transition-colors" onClick={() => setActiveId(t.id)}>
-              <CardHeader className="py-4">
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <CardTitle className="text-base font-medium">{t.subject ?? `Ticket #${t.number ?? t.id}`}</CardTitle>
-                  <Badge variant={status.tone}>{status.label}</Badge>
-                </div>
-                {t.updatedAt && (
-                  <CardDescription>Updated {new Date(t.updatedAt).toLocaleString()}</CardDescription>
-                )}
-              </CardHeader>
-            </Card>
-          );
-        })}
-      </div>
+      {!unavailable && (
+        <div className="grid gap-3">
+          {tickets.map((t) => {
+            const s = formatStatus(t.status);
+            return (
+              <Card key={t.id} className="cursor-pointer hover:bg-accent/40 transition-colors" onClick={() => setActiveId(t.id)}>
+                <CardHeader className="py-4">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <CardTitle className="text-base font-medium">{t.subject ?? `Ticket #${t.number ?? t.id}`}</CardTitle>
+                    <Badge variant={s.tone}>{s.label}</Badge>
+                  </div>
+                  {t.updatedAt && (
+                    <CardDescription>Updated {new Date(t.updatedAt).toLocaleString()}</CardDescription>
+                  )}
+                </CardHeader>
+              </Card>
+            );
+          })}
+        </div>
+      )}
 
       {activeId !== null && <TicketDetail conversationId={activeId} onClose={() => setActiveId(null)} />}
     </div>

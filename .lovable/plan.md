@@ -1,84 +1,92 @@
-## Goal
+## Root cause
 
-Today's incident (Cameron + many others wedged after the 19:32 UTC GoTrue rotation) happened because three small weaknesses lined up:
+`supabase/functions/_shared/freescout.ts:15-18` throws **at module load** when `FREESCOUT_API_URL` does not start with `https://`. Edge-function logs confirm `freescout-proxy` is crash-looping with `event loop error: Error: FREESCOUT_API_URL must be https://` on every invocation in the last hour.
 
-1. The "is this a recoverable auth error?" check lived in **two places** and only recognised refresh-token strings — not `bad_jwt` / malformed access tokens.
-2. Auth bootstrap trusted whatever was in `localStorage` and never asked GoTrue "is this token still valid?".
-3. Once a dead token was in storage, the Supabase SDK auto-refresh loop kept hammering `/user`, drowning the user (and our logs) instead of bailing out.
+Consequence chain:
+1. The isolate crashes during boot → no handler is ever registered → the runtime closes the connection without a body.
+2. `supabase.functions.invoke("freescout-proxy")` from `GetHelpPage` and `NewTicketDialog` returns a generic error after the SDK's retries — users see "Could not create your ticket" and the listings spinner appears to hang.
+3. Because the throw happens in a **shared** module, ANY future edge function that imports `_shared/freescout.ts` will also crash-loop the moment the URL is misconfigured.
 
-The hot-fix I shipped already closes #1 and #2. This refactor turns that into a permanent, single-source-of-truth pattern so no future rotation, JWT-shape change, key swap, or stale-storage bug can wedge users again.
+The secret `FREESCOUT_API_URL` is present (per `fetch_secrets`) but its value is invalid — almost certainly `http://...` or has a leading space/character that survived `.trim()` but failed `^https://`.
 
-## Phases (ship all in one shipment)
+## The three real weaknesses
 
-### Phase 1 — One classifier, one purger
+| # | Weakness | Why it caused the incident |
+|---|----------|----------------------------|
+| 1 | **Top-level `throw` in shared module** | One bad env var bricks every consumer at import time, before CORS, before logging, before any error response can be returned. |
+| 2 | **No startup self-check / no admin signal** | Admins had no in-app visibility — the only trace was raw edge-function logs. |
+| 3 | **Client treats backend outage as a hang** | `useTickets` has no timeout and no `retry`/`enabled` cap. Users wait through SDK retries; the page feels broken instead of degraded. |
 
-- New module `src/lib/auth/session-health.ts` exporting:
-  - `classifyAuthError(err): "refresh_invalid" | "jwt_corrupt" | "revoked" | "ok"`
-  - `purgeLocalAuthState({ reason })` — single implementation that clears every `sb-*-auth-token`, the marker, MFA flags, revocation cache, and the captcha cache.
-- Delete the duplicate `isInvalidRefreshTokenAuthError` in `AuthContext.tsx` and `clearLocalAuthArtifacts` in `auth.service.ts`; both import from the new module.
-- All call-sites (AuthContext bootstrap, AuthService.getSession/signInWithPassword, MfaService, `audited-invoke`, the OAuth broker wrapper in `src/integrations/lovable/index.ts`) route through these two functions.
+## Plan (ship all of it in one go)
 
-### Phase 2 — Bootstrap validation gate (formalised)
+### 1. Refactor `_shared/freescout.ts` — never throw at module load
 
-- AuthContext **always** validates a restored session against `/user` before exposing it to the app (today's hot-fix becomes the canonical path, not a special case).
-- Add a small `auth_client_fingerprint` row to localStorage = `hash(VITE_SUPABASE_PUBLISHABLE_KEY + VITE_SUPABASE_URL)`. On boot, if the stored fingerprint ≠ current → purge before even calling `getSession()`. This catches the "publishable key rotated, old session is now garbage" case without a round-trip.
-- Pre-`setSession` shape check: reject any token that isn't 3 base64url segments before writing it to storage. Stops upstream bugs from ever planting a malformed token.
+- Replace the top-level `throw` with a lazy validator `getFreescoutConfig()` that returns `{ ok: true, base, key, host }` or `{ ok: false, reason }`.
+- `assertConfigured()` becomes the single gate inside `freescoutFetch` and throws a typed `FreescoutError(503, "support_unavailable", { reason })` — never an uncaught exception.
+- Accept `RAW_BASE` regardless of trailing slashes / casing, validate scheme with `new URL(...)` (catches all malformed inputs, not just non-https), and reject anything except `https:`.
+- Result: a bad/missing secret degrades to a clean 503 JSON response with CORS headers, not a dead isolate.
 
-### Phase 3 — Global fetch guard (kills the refresh storm)
+### 2. Harden `freescout-proxy/index.ts`
 
-- Wrap the Supabase client's `global.fetch` (configured in `src/integrations/supabase/client.ts` via a thin wrapper file we own — the auto-generated client itself is untouched, we just compose around it).
-- On any response where `status === 403` AND body matches `bad_jwt` / `invalid number of segments` / `unable to parse or verify signature`:
-  1. Emit a one-shot `auth:wedged` window event (debounced 5s).
-  2. Call `purgeLocalAuthState({ reason: "jwt_corrupt" })`.
-  3. `supabase.auth.signOut({ scope: "local" })`.
-  4. Redirect to `/login?reason=session_expired` with a friendly toast ("Your session ended. Please sign in again.").
-- Net effect: one bad response → clean recovery, no loop, no log flood.
+- Wrap the body of `Deno.serve` so any `FreescoutError` with status 503 returns:
+  ```json
+  { "items": [], "unavailable": true, "reason": "support_unavailable" }
+  ```
+  with `Retry-After: 30` and 200 status for **list** actions (so the UI can render the empty state immediately) and 503 for **mutating** actions (`create`, `reply`, `close`, etc.) so the user sees a real error instead of a fake success.
+- Add a structured log line `{ level: "error", fn: "freescout-proxy", code: "config_invalid", reason }` once per cold start — feeds the existing triage queue automatically.
 
-### Phase 4 — Sign-in hygiene
+### 3. New edge function `freescout-health` (GET, admin-only)
 
-- On every successful sign-in (password + OAuth callback), call `purgeLocalAuthState({ keepCurrent: true })` **before** writing new tokens, so residual `sb-*-auth-token` rows from a prior session can't race the new ones (the existing comment at `auth.service.ts:212` admits this race; this removes it).
-- Same guard in `src/integrations/lovable/index.ts` before `supabase.auth.setSession(result.tokens)`.
+- Returns `{ configured: boolean, reachable: boolean, mailboxId, latencyMs, reason? }` by calling `freescoutFetch({ path: "/api/mailboxes" })` with a 3s timeout.
+- Wired into `HelpDeskTab` as a top banner: green "Help desk is connected" / red "Help desk is offline — Freescout config invalid (https:// required)" with a "Re-test" button.
+- The banner is the durable replacement for digging through edge logs.
 
-### Phase 5 — Observability
+### 4. Client-side fail-fast in `GetHelpPage`
 
-- New tiny edge fn `record-auth-wedge` (verify_jwt=false, rate-limited by IP) that bumps an `auth_wedge_events` counter table.
-- Hook `auth:wedged` → fire-and-forget beacon.
-- System Health → new "Auth Wedge" card, and a Triage rule: >10 events / 5 min ⇒ `agent_fix_queue.severity='error'` + admin push (same path as Triage Critical Push). We'll see the next rotation within minutes, not customer complaints.
+- `useTickets`: add `retry: 1`, `staleTime: 30_000` (already), and a 5s `AbortController` on the invoke; on error or `unavailable: true`, render an empty state with the "Help desk is reconnecting — try again in a minute" card and a "Retry" button. **No spinner past 5s, ever.**
+- `NewTicketDialog`: on 503 / `unavailable`, surface the specific reason from the response (`"Help desk is offline. An admin has been notified."`) instead of generic "Could not create your ticket."
+- Always-available fallback: show `mailto:info@techfleet.network` as a secondary action when the help desk is unavailable, so users are never stranded.
 
-### Phase 6 — Tests + BDD
+### 5. Auto-triage signal
 
-- Unit: `classifyAuthError` covers every observed message variant.
-- Unit: pre-`setSession` shape check rejects non-JWT, accepts JWT.
-- Integration (RTL): seed localStorage with a non-JWT access token → `<AuthProvider>` settles to logged-out, no infinite re-render, no spinner-lock.
-- Playwright: stub `/user` 403 bad_jwt mid-session → redirect to `/login?reason=session_expired`, toast shown, storage cleared, no further `/user` calls in next 5s.
-- BDD scenarios `AUTH-WEDGE-001..007` in `bdd_scenarios` (tri-layer Then-clauses: UI redirect, DB wedge counter row, code `purgeLocalAuthState` invocation).
+- The new `code: "config_invalid"` log already routes into `agent_fix_queue` via the existing triage classifier. Mark it severity `error` so admins get the standard 5-minute critical push notification.
 
-## Technical detail (for reference)
+### 6. BDD scenarios (added to `bdd_scenarios`)
 
-```text
-src/lib/auth/session-health.ts        NEW  classifier + purger (single source)
-src/lib/auth/jwt-shape.ts             NEW  isLikelyJwt(token): boolean
-src/lib/auth/fetch-guard.ts           NEW  wrap supabase global fetch
-src/contexts/AuthContext.tsx          EDIT use session-health; keep bootstrap probe
-src/services/auth.service.ts          EDIT delegate to session-health; purge-before-write
-src/integrations/lovable/index.ts     EDIT shape-check + purge-before-setSession
-src/integrations/supabase/audited-invoke.ts  EDIT classify via session-health
-src/services/mfa.service.ts           EDIT classify via session-health
-supabase/functions/record-auth-wedge/ NEW  observability beacon
-migrations: auth_wedge_events table + Triage rule
-src/test/lib/session-health.test.ts   NEW
-src/test/ui/AuthProvider.wedge.test.tsx NEW
-e2e/auth/wedge-recovery.e2e.ts        NEW
-bdd_scenarios rows AUTH-WEDGE-001..007
-```
+- `HELP-DESK-001` Given `FREESCOUT_API_URL` is `http://...`, when a member opens Get Help, then [UI] the empty state renders in <5s with a Retry button, [DB] one `agent_fix_queue` row with code=`config_invalid` exists, [Code] `freescout-proxy` returns 200 `{items:[],unavailable:true}` for `listMine`.
+- `HELP-DESK-002` Given config is invalid, when a member submits a new ticket, then [UI] toast reads "Help desk is offline. An admin has been notified." and the mailto fallback is shown, [Code] `freescout-proxy` returns 503 for `action:create`.
+- `HELP-DESK-003` Given config is valid, when an admin opens System Health → Help Desk, then [UI] banner shows green with latency in ms, [Code] `freescout-health` returns `{configured:true,reachable:true}`.
+- `HELP-DESK-004` Given config becomes invalid mid-session, when the banner "Re-test" is clicked, then [UI] banner flips to red with the exact reason, [DB] `system_health_events` records the transition.
+
+### 7. Memory + runbook
+
+- Add `mem://features/get-help-resilience` summarising the lazy-config pattern + UI fallback contract.
+- Add `docs/runbooks/freescout-config-recovery.md` with the exact secret format (`https://help.techfleet.network` — no trailing slash, no quotes) and the "Re-test" loop.
+
+### 8. Fix the actual secret value
+
+After the code ships, prompt the user via `update_secret(["FREESCOUT_API_URL"])` so they can paste the correct `https://...` URL. The code changes above mean that even if they paste a bad value again, the page degrades gracefully and admins are alerted — instead of bricking.
+
+## Files touched
+
+- `supabase/functions/_shared/freescout.ts` — refactor to lazy config + typed errors
+- `supabase/functions/freescout-proxy/index.ts` — 503 envelope + structured logs
+- `supabase/functions/freescout-health/index.ts` — new admin-only health probe
+- `src/pages/community/GetHelpPage.tsx` — timeout, fallback UI, mailto
+- `src/components/system-health/HelpDeskTab.tsx` — health banner + Re-test button
+- `src/services/system-health.service.ts` — `freescoutHealth()` wrapper
+- `docs/runbooks/freescout-config-recovery.md` — new
+- `mem://features/get-help-resilience` — new
+- BDD scenario inserts via `supabase--insert`
 
 ## Risk / rollback
 
-- Zero schema change to existing tables; one new counter table + one new edge fn.
-- Fetch guard is additive (composes around the auto-generated Supabase client — we never edit `client.ts`).
-- If the guard misfires, flipping a feature flag `auth_wedge_guard_enabled` in `app_config` disables it without a deploy.
+- Zero schema change. New edge function is additive.
+- Lazy-config refactor is strictly more permissive than the current throw — if anything misbehaves, the worst case is the function returning a 503 envelope (today it returns nothing).
+- Feature-flag-free; rollback = redeploy the previous function bundle.
 
 ## Out of scope
 
-- No changes to MFA, RLS, or session-revocation flows.
-- No new auth providers, no UI redesign of `/login`.
+- No change to Freescout webhook verification, HMAC, or rate-limit logic.
+- No UI redesign of Get Help beyond the offline state.
+- No migration to a different help-desk provider.

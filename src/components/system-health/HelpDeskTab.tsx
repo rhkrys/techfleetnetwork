@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { SystemHealthService, type FreescoutHealth } from "@/services/system-health.service";
 
 interface ProvRow {
   id: number;
@@ -22,6 +23,13 @@ interface MonthlyRow { month: string; status: string; ticket_count: number }
 export function HelpDeskTab() {
   const qc = useQueryClient();
   const [running, setRunning] = useState<"admins" | "members" | null>(null);
+
+  const health = useQuery<FreescoutHealth>({
+    queryKey: ["help-desk", "health"] as const,
+    queryFn: () => SystemHealthService.getFreescoutHealth(),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
 
   const provLog = useQuery({
     queryKey: ["help-desk", "prov-log"] as const,
@@ -86,8 +94,42 @@ export function HelpDeskTab() {
     URL.revokeObjectURL(url);
   };
 
+  const h = health.data;
+  const healthy = h?.configured && h?.reachable;
+  const healthLabel = healthy
+    ? `Connected${typeof h?.latencyMs === "number" ? ` · ${h.latencyMs} ms` : ""}`
+    : !h?.configured
+      ? `Configuration error: ${h?.detail ?? h?.reason ?? "missing secret"}`
+      : `Unreachable: ${h?.detail ?? h?.reason ?? "upstream error"}`;
+
   return (
     <div className="space-y-4">
+      <Card className={healthy ? "border-emerald-500/40" : "border-destructive/60"}>
+        <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
+          <div className="space-y-1">
+            <CardTitle className="text-base">
+              Help desk status:{" "}
+              <Badge variant={healthy ? "default" : "destructive"}>
+                {health.isLoading ? "Checking…" : healthy ? "Online" : "Offline"}
+              </Badge>
+            </CardTitle>
+            <CardDescription>{health.isLoading ? "Probing Freescout…" : healthLabel}</CardDescription>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => qc.invalidateQueries({ queryKey: ["help-desk", "health"] as const })}
+            disabled={health.isFetching}
+          >
+            {health.isFetching ? "Re-testing…" : "Re-test"}
+          </Button>
+        </CardHeader>
+        {!healthy && !health.isLoading && (
+          <CardContent className="text-sm text-muted-foreground">
+            Members will see an offline state on Get Help until this is fixed. Check the FREESCOUT_API_URL secret (must start with <code>https://</code> and point to the Freescout install).
+          </CardContent>
+        )}
+      </Card>
       <Card>
         <CardHeader>
           <CardTitle>Help Desk — Freescout provisioning</CardTitle>
