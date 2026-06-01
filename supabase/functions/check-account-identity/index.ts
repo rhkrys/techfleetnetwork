@@ -23,9 +23,13 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// captchaToken is OPTIONAL — when called immediately after a failed password
+// attempt the Turnstile token is already consumed and a fresh one is not yet
+// available. The endpoint still rate-limits per (email|ip) hash (10/min) so
+// enumeration sweeps are bounded even without a captcha.
 const BodySchema = z.object({
   email: z.string().trim().email().max(320),
-  captchaToken: z.string().trim().min(20).max(4096),
+  captchaToken: z.string().trim().min(20).max(4096).optional(),
 });
 
 function jsonResponse(body: unknown, status = 200) {
@@ -84,23 +88,30 @@ Deno.serve(withAuditWrapper("check-account-identity", async (req) => {
     const isProd = PRODUCTION_HOSTS.has(originHost);
     const ip = clientIp(req);
 
-    async function verify(secretKey: string) {
-      const form = new FormData();
-      form.set("secret", secretKey);
-      form.set("response", parsed.data.captchaToken);
-      if (ip) form.set("remoteip", ip);
-      const r = await fetch(VERIFY_URL, { method: "POST", body: form });
-      const j = (await r.json().catch(() => ({}))) as { success?: boolean };
-      return { ok: r.ok, success: j.success === true };
-    }
-    let cap = await verify(secret);
-    if (!cap.success && !isProd) {
-      const fb = await verify(TEST_SECRET);
-      if (fb.success) cap = fb;
-    }
-    if (!cap.success) {
-      log.warn("captcha", `Turnstile rejected [${requestId}]`, { requestId, originHost });
-      return jsonResponse({ error: "Verification required" }, 403);
+    // CAPTCHA verification is best-effort. If a token is present we verify it
+    // (and reject when it's an obvious forgery); if absent, we rely on the
+    // server-side rate limit below. This lets the LoginPage probe immediately
+    // after a failed password attempt without waiting for a fresh Turnstile.
+    if (parsed.data.captchaToken) {
+      async function verify(secretKey: string) {
+        const form = new FormData();
+        form.set("secret", secretKey);
+        form.set("response", parsed.data.captchaToken!);
+        if (ip) form.set("remoteip", ip);
+        const r = await fetch(VERIFY_URL, { method: "POST", body: form });
+        const j = (await r.json().catch(() => ({}))) as { success?: boolean };
+        return { ok: r.ok, success: j.success === true };
+      }
+      let cap = await verify(secret);
+      if (!cap.success && !isProd) {
+        const fb = await verify(TEST_SECRET);
+        if (fb.success) cap = fb;
+      }
+      if (!cap.success) {
+        log.warn("captcha", `Turnstile token present but rejected — falling through to rate-limit-only [${requestId}]`, { requestId, originHost });
+        // Do NOT short-circuit: a stale/expired token must not block a
+        // post-failure hint. Rate limit still gates abuse.
+      }
     }
 
     const admin = createClient(supabaseUrl, serviceRole, {

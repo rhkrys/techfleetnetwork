@@ -166,12 +166,11 @@ export default function LoginPage() {
     return () => window.clearInterval(timer);
   }, [lockoutState.locked]);
 
-  const checkOauthIdentityForEmail = async (emailValue: string, token: string) => {
-    if (!token) return;
+  const checkOauthIdentityForEmail = async (emailValue: string, token?: string) => {
     try {
-      const { data, error: fnErr } = await supabase.functions.invoke("check-account-identity", {
-        body: { email: emailValue, captchaToken: token },
-      });
+      const body: Record<string, string> = { email: emailValue };
+      if (token) body.captchaToken = token;
+      const { data, error: fnErr } = await supabase.functions.invoke("check-account-identity", { body });
       if (fnErr || !data) return;
       const r = data as { has_password?: boolean; has_google?: boolean };
       if (r.has_google === true && r.has_password === false) {
@@ -329,7 +328,12 @@ export default function LoginPage() {
           setAuthError(classified.message);
         }
         const probeEmail = result.data.email;
+        // Probe immediately — endpoint accepts no-captcha calls after a
+        // failed password attempt (rate-limit gated). This guarantees a
+        // Google-only user sees "use Google sign-in" instead of being stuck
+        // on a generic "invalid credentials" error.
         setTimeout(() => {
+          void checkOauthIdentityForEmail(probeEmail, captchaToken || undefined);
           window.dispatchEvent(new CustomEvent("tfn:probe-oauth-identity", { detail: { email: probeEmail } }));
         }, 0);
       } else {
@@ -346,17 +350,20 @@ export default function LoginPage() {
     const handler = (ev: Event) => {
       const detail = (ev as CustomEvent).detail as { email?: string } | undefined;
       if (!detail?.email) return;
-      const fire = () => {
-        if (!captchaToken) return false;
-        void checkOauthIdentityForEmail(detail.email!, captchaToken);
-        return true;
+      const fire = (tok?: string) => {
+        void checkOauthIdentityForEmail(detail.email!, tok);
       };
-      if (!fire()) {
-        // Wait briefly for next token; bail after 8s.
+      // First probe right away with whatever token we have (may be empty —
+      // endpoint allows it). If still no hint after the captcha refreshes,
+      // re-probe once with the fresh token to cover edge cases where the
+      // first call was blocked by rate-limit.
+      fire(captchaToken || undefined);
+      if (!captchaToken) {
         let elapsed = 0;
         const id = window.setInterval(() => {
           elapsed += 250;
-          if (fire() || elapsed >= 8_000) window.clearInterval(id);
+          if (captchaToken) { fire(captchaToken); window.clearInterval(id); }
+          else if (elapsed >= 8_000) window.clearInterval(id);
         }, 250);
       }
     };
