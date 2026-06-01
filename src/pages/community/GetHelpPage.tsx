@@ -15,6 +15,7 @@ import { sanitizeHtml } from "@/lib/security";
 import { toast } from "sonner";
 import AdminAllTicketsGrid from "./AdminAllTicketsGrid";
 import MonthlyReportPanel from "./MonthlyReportPanel";
+import { invokeFreescout } from "@/lib/support/freescoutInvoke";
 
 interface Conversation {
   id: number;
@@ -49,22 +50,6 @@ async function readFunctionError(response?: Response): Promise<{ unavailable?: b
   } catch {
     return null;
   }
-}
-
-/**
- * Wrap supabase.functions.invoke so the user's access token is ALWAYS attached.
- * The default invoke can race with auth-state hydration on first paint and send
- * the request without an Authorization header, which the edge function rejects
- * as `missing_token`.
- */
-async function invokeFreescout<T = any>(body: Record<string, unknown>, signal?: AbortSignal) {
-  const { data: sessionData } = await supabase.auth.getSession();
-  const token = sessionData?.session?.access_token;
-  return supabase.functions.invoke<T>("freescout-proxy", {
-    body,
-    signal,
-    ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
-  } as any);
 }
 
 function useTickets(scope: "mine" | "all", status: "open" | "closed" | "all") {

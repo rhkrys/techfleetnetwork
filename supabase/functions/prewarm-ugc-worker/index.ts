@@ -76,6 +76,14 @@ Deno.serve(async (req) => {
   // trigger up to BATCH (50) paid AI translation calls per invocation.
   const auth = req.headers.get("authorization") ?? "";
   if (!SERVICE_KEY || auth !== `Bearer ${SERVICE_KEY}`) {
+    console.warn(JSON.stringify({
+      level: "warn",
+      fn: "prewarm-ugc-worker",
+      code: "unauthorized_worker_invocation",
+      reason: !SERVICE_KEY ? "missing_service_key" : auth ? "invalid_token" : "missing_token",
+      hasAuthorizationHeader: Boolean(auth),
+      source: "edge.prewarm-ugc-worker",
+    }));
     return new Response(JSON.stringify({ error: "unauthorized" }), {
       status: 401,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
