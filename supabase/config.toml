@@ -13,6 +13,8 @@ project_id = "iqsjhrhsjlgjiaedzmtz"
     verify_jwt = false
   [functions.generate-discord-invite]
     verify_jwt = false
+  [functions.freescout-webhook]
+    verify_jwt = false
   [functions.gumroad-webhook]
     verify_jwt = false
   [functions.gumroad-reconcile]
