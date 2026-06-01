@@ -41,6 +41,28 @@ const Action = z.discriminatedUnion("action", [
 const ADMIN_ACTIONS = new Set(["listAll", "assign", "setPrivate"]);
 let loggedInvalidConfig = false;
 
+async function recordConfigInvalidSignal(reason?: string, detail?: string) {
+  try {
+    await getAdminClient().from("agent_fix_queue").upsert({
+      fingerprint: "freescout:config_invalid",
+      event_type: "config_invalid",
+      source: "freescout-proxy",
+      severity: "error",
+      status: "pending",
+      error_message: detail ?? reason ?? "Freescout configuration is invalid",
+      last_seen_at: new Date().toISOString(),
+      occurrence_count: 1,
+    }, { onConflict: "fingerprint" });
+  } catch (err) {
+    console.error(JSON.stringify({
+      level: "warn",
+      fn: "freescout-proxy",
+      code: "config_invalid_signal_failed",
+      msg: err instanceof Error ? err.message : String(err),
+    }));
+  }
+}
+
 async function isAdmin(userId: string): Promise<boolean> {
   const { data, error } = await getAdminClient().rpc("has_role", { _user_id: userId, _role: "admin" });
   return !error && data === true;
@@ -270,7 +292,8 @@ Deno.serve(async (req) => {
     }
   } catch (e) {
     if (e instanceof FreescoutError) {
-      const reason = (e.body as { reason?: string })?.reason;
+      const reason = (e.body as { reason?: string; detail?: string })?.reason;
+      const detail = (e.body as { detail?: string })?.detail;
       const code = e.status === 503 && e.message === "support_unavailable" ? "config_invalid" : "upstream_error";
       if (code !== "config_invalid" || !loggedInvalidConfig) {
         if (code === "config_invalid") loggedInvalidConfig = true;
@@ -283,6 +306,7 @@ Deno.serve(async (req) => {
           code,
           reason,
         }));
+        if (code === "config_invalid") await recordConfigInvalidSignal(reason, detail);
       }
 
       // Graceful degradation: read-only actions return an empty envelope
