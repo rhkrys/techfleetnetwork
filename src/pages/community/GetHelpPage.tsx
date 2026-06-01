@@ -109,15 +109,12 @@ function NewTicketDialog({ onCreated, disabled = false }: { onCreated: () => voi
     }
     setSubmitting(true);
     try {
-      const { data, error, response } = await supabase.functions.invoke("freescout-proxy", {
-        body: {
-          action: "create",
-          subject: subject.trim().slice(0, 200),
-          body: body.trim().slice(0, 10000),
-          idempotencyKey: `create-${crypto.randomUUID()}`,
-        },
-        timeout: 5000,
-      });
+      const { data, error, response } = await invokeFreescout({
+        action: "create",
+        subject: subject.trim().slice(0, 200),
+        body: body.trim().slice(0, 10000),
+        idempotencyKey: `create-${crypto.randomUUID()}`,
+      }) as any;
       const errorBody = await readFunctionError(response);
       if (data?.unavailable || response?.status === 503 || errorBody?.unavailable || (error && /unavailable/i.test(error.message ?? ""))) {
         setHelpDeskOffline(true);
