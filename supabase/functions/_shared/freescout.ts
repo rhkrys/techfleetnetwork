@@ -29,6 +29,7 @@ export interface FreescoutConfigErr {
 export type FreescoutConfig = FreescoutConfigOk | FreescoutConfigErr;
 
 let _cachedConfig: FreescoutConfig | null = null;
+let _loggedInvalidConfig = false;
 
 /**
  * Lazy, idempotent config resolver. Returns a typed result instead of
@@ -77,6 +78,7 @@ export function getFreescoutConfig(): FreescoutConfig {
 /** Test-only: clear cache between unit tests. */
 export function _resetFreescoutConfigCache() {
   _cachedConfig = null;
+  _loggedInvalidConfig = false;
 }
 
 interface BreakerState { failures: number; openedAt: number }
@@ -126,13 +128,17 @@ export async function freescoutFetch<T = unknown>(opts: FreescoutFetchOpts): Pro
   const cfg = getFreescoutConfig();
   if (!cfg.ok) {
     // Log once per cold start with a stable code so the triage queue picks it up.
-    console.error(JSON.stringify({
-      level: "error",
-      fn: "freescout",
-      code: "config_invalid",
-      reason: cfg.reason,
-      detail: cfg.detail,
-    }));
+    if (!_loggedInvalidConfig) {
+      _loggedInvalidConfig = true;
+      console.error(JSON.stringify({
+        level: "error",
+        severity: "error",
+        fn: "freescout",
+        code: "config_invalid",
+        reason: cfg.reason,
+        detail: cfg.detail,
+      }));
+    }
     throw new FreescoutError(503, "support_unavailable", { reason: cfg.reason, detail: cfg.detail });
   }
   if (breakerOpen()) {
