@@ -71,7 +71,7 @@ function useTickets(scope: "mine" | "all", status: "open" | "closed" | "all") {
   });
 }
 
-function NewTicketDialog({ onCreated }: { onCreated: () => void }) {
+function NewTicketDialog({ onCreated, disabled = false }: { onCreated: () => void; disabled?: boolean }) {
   const [open, setOpen] = useState(false);
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
