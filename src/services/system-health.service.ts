@@ -141,4 +141,27 @@ export const SystemHealthService = {
     if (error) throw error;
     return data as EmailPipelineHealth;
   },
+
+  async getFreescoutHealth(): Promise<FreescoutHealth> {
+    const { data, error } = await supabase.functions.invoke("freescout-health", { body: {} });
+    if (error) {
+      return {
+        configured: false,
+        reachable: false,
+        mailboxId: 0,
+        reason: "unknown",
+        detail: error.message ?? "Could not reach the health probe",
+      };
+    }
+    return data as FreescoutHealth;
+  },
 };
+
+export interface FreescoutHealth {
+  configured: boolean;
+  reachable: boolean;
+  mailboxId: number;
+  latencyMs?: number;
+  reason?: string;
+  detail?: string;
+}
