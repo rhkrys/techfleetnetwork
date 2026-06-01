@@ -163,62 +163,99 @@ export function ProjectsTab() {
           exportFileName="projects"
         />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-12 gap-4">
           {projects.map((p) => {
             const client = clientMap.get(p.client_id);
             const projComputed = computeMilestoneData(p.current_phase_milestones, milestoneRefs);
+            const sectionLabel = "text-base font-semibold uppercase tracking-wider text-muted-foreground";
             return (
-              <Card key={p.id} className="flex flex-col">
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-center gap-3 min-w-0">
-                      {client?.logo_url ? (
-                        <img src={client.logo_url} alt={`${client.name} logo`} className="h-10 w-10 rounded-lg object-cover border border-border flex-shrink-0" />
-                      ) : (
-                        <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0 text-sm font-semibold text-muted-foreground">
-                          {(client?.name ?? "?").trim().charAt(0).toUpperCase()}
-                        </div>
+              <div key={p.id} className="col-span-12 xl:col-span-6">
+                <Card data-card="project" className="flex flex-col h-full p-6">
+                  {/* Identity block — status, client + project, type */}
+                  <div className="space-y-3">
+                    <Badge className={`${statusBadgeColor(p.project_status)} px-3 py-1.5 text-base font-semibold uppercase tracking-wide`}>
+                      {statusLabel(p.project_status)}
+                    </Badge>
+                    <div className="space-y-1.5">
+                      <h3 className="text-2xl font-bold text-foreground leading-tight">
+                        {client?.name ?? "Unknown"}
+                      </h3>
+                      {p.friendly_name?.trim() && (
+                        <p className="text-xl font-medium text-muted-foreground leading-snug">{p.friendly_name}</p>
                       )}
-                      <div className="min-w-0">
-                        <CardTitle className="text-lg leading-tight truncate">
-                          {client?.name ?? "Unknown"}
-                          {p.friendly_name?.trim() && (
-                            <span className="text-muted-foreground font-medium"> — {p.friendly_name}</span>
-                          )}
-                        </CardTitle>
-                        <p className="text-sm text-muted-foreground mt-0.5">{typeLabel(p.project_type)} · {phaseLabel(p.phase)}</p>
+                    </div>
+                    <p className="text-base font-semibold uppercase tracking-wider text-muted-foreground">
+                      {typeLabel(p.project_type)}
+                    </p>
+                  </div>
+
+                  {/* Meta sections */}
+                  <div className="mt-5 pt-5 border-t space-y-5 flex-1">
+                    <div className="space-y-1.5">
+                      <p className={sectionLabel}>Phase</p>
+                      <p className="text-base text-foreground">{phaseLabel(p.phase)}</p>
+                    </div>
+
+                    {p.description?.trim() && (
+                      <div className="space-y-1.5">
+                        <p className={sectionLabel}>Description</p>
+                        <p className="text-base text-foreground whitespace-pre-wrap leading-relaxed line-clamp-3">{p.description}</p>
                       </div>
+                    )}
+
+                    {p.team_hats.length > 0 && (
+                      <div className="space-y-1.5">
+                        <p className={sectionLabel}>Team Hats</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {p.team_hats.map((h) => (
+                            <Badge key={h} variant="outline" className="text-base font-normal px-2.5 py-0.5">{h}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {p.current_phase_milestones.length > 0 && (
+                      <div className="space-y-1.5">
+                        <p className={sectionLabel}>Milestones</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {p.current_phase_milestones.map((m) => (
+                            <Badge key={m} variant="secondary" className="text-base font-normal px-2.5 py-0.5">{m}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {projComputed.deliverables.length > 0 && (
+                      <div className="space-y-1.5">
+                        <p className={sectionLabel}>Deliverables</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {projComputed.deliverables.slice(0, 6).map((d) => (
+                            <Badge key={d} variant="outline" className="text-base font-normal px-2.5 py-0.5 bg-accent/50">{d}</Badge>
+                          ))}
+                          {projComputed.deliverables.length > 6 && (
+                            <Badge variant="outline" className="text-base font-normal px-2.5 py-0.5">+{projComputed.deliverables.length - 6}</Badge>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="space-y-1.5">
+                      <p className={sectionLabel}>Updated</p>
+                      <p className="text-base text-foreground">{format(new Date(p.updated_at), "MMM d, yyyy")}</p>
                     </div>
-                    <Badge className={`${statusBadgeColor(p.project_status)} shrink-0 whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium`}>{statusLabel(p.project_status)}</Badge>
                   </div>
-                </CardHeader>
-                <CardContent className="flex-1 space-y-3 text-sm">
-                  {p.description?.trim() && (
-                    <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed line-clamp-3">{p.description}</p>
-                  )}
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground mb-1">Team Hats</p>
-                    <div className="flex flex-wrap gap-1">{p.team_hats.map((h) => <Badge key={h} variant="outline" className="text-xs">{h}</Badge>)}</div>
+
+                  {/* Footer — full-width primary edit + secondary delete */}
+                  <div className="mt-5 pt-5 border-t flex items-center gap-2">
+                    <Button type="button" className="flex-1" onClick={() => navigate(`/admin/clients/projects/${p.id}/edit`)}>
+                      Edit project
+                    </Button>
+                    <Button type="button" variant="outline" size="icon" onClick={() => setDeleteTarget(p)} aria-label="Delete project">
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
                   </div>
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground mb-1">Milestones</p>
-                    <div className="flex flex-wrap gap-1">{p.current_phase_milestones.map((m) => <Badge key={m} variant="secondary" className="text-xs">{m}</Badge>)}</div>
-                  </div>
-                  {projComputed.deliverables.length > 0 && (
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground mb-1">Deliverables</p>
-                      <div className="flex flex-wrap gap-1">{projComputed.deliverables.slice(0, 6).map((d) => <Badge key={d} variant="outline" className="text-xs bg-accent/50">{d}</Badge>)}{projComputed.deliverables.length > 6 && <Badge variant="outline" className="text-xs">+{projComputed.deliverables.length - 6}</Badge>}</div>
-                    </div>
-                  )}
-                </CardContent>
-                <CardFooter className="pt-3 border-t flex justify-between items-center">
-                  <span className="text-xs text-muted-foreground">Updated {format(new Date(p.updated_at), "MMM d, yyyy")}</span>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" onClick={() => navigate(`/admin/clients/projects/${p.id}/edit`)} aria-label="Edit project"><Pencil className="h-4 w-4" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(p)} aria-label="Delete project"><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                  </div>
-                </CardFooter>
-              </Card>
+                </Card>
+              </div>
             );
           })}
         </div>
