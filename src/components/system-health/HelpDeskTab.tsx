@@ -104,7 +104,7 @@ export function HelpDeskTab() {
 
   return (
     <div className="space-y-4">
-      <Card className={healthy ? "border-emerald-500/40" : "border-destructive/60"}>
+      <Card className={healthy ? "border-success/60" : "border-destructive/60"}>
         <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
           <div className="space-y-1">
             <CardTitle className="text-base">
