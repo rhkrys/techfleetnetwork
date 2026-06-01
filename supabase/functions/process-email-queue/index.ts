@@ -119,12 +119,15 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
     )
   }
 
-  // Defense in depth: verify_jwt=true already requires a valid JWT at the
-  // gateway layer. This adds an explicit role check so only service-role
-  // callers can trigger queue processing.
+  // Defense in depth: only service-role callers can trigger queue processing.
+  // Supports both legacy JWT tokens (claims.role === 'service_role') and the
+  // new signing-keys format (sb_secret_... opaque tokens, compared to the
+  // SUPABASE_SERVICE_ROLE_KEY env var).
   const token = authHeader.slice('Bearer '.length).trim()
   const claims = parseJwtClaims(token)
-  if (claims?.role !== 'service_role') {
+  const isLegacyServiceRoleJwt = claims?.role === 'service_role'
+  const isOpaqueServiceRoleKey = token === supabaseServiceKey
+  if (!isLegacyServiceRoleJwt && !isOpaqueServiceRoleKey) {
     return new Response(
       JSON.stringify({ error: 'Forbidden' }),
       { status: 403, headers: { 'Content-Type': 'application/json' } }
