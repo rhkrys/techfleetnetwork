@@ -166,12 +166,11 @@ export default function LoginPage() {
     return () => window.clearInterval(timer);
   }, [lockoutState.locked]);
 
-  const checkOauthIdentityForEmail = async (emailValue: string, token: string) => {
-    if (!token) return;
+  const checkOauthIdentityForEmail = async (emailValue: string, token?: string) => {
     try {
-      const { data, error: fnErr } = await supabase.functions.invoke("check-account-identity", {
-        body: { email: emailValue, captchaToken: token },
-      });
+      const body: Record<string, string> = { email: emailValue };
+      if (token) body.captchaToken = token;
+      const { data, error: fnErr } = await supabase.functions.invoke("check-account-identity", { body });
       if (fnErr || !data) return;
       const r = data as { has_password?: boolean; has_google?: boolean };
       if (r.has_google === true && r.has_password === false) {
