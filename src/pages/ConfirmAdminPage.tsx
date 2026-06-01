@@ -3,6 +3,7 @@ import { useSearchParams, Link } from "react-router-dom";
 import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function ConfirmAdminPage() {
   const [params] = useSearchParams();
