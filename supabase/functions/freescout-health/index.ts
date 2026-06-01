@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
 
     const start = Date.now();
     try {
-      await freescoutFetch({ path: "/api/mailboxes", timeoutMs: 3000 });
+      await freescoutFetch({ path: "/api/mailboxes", timeoutMs: 3000, maxAttempts: 1 });
       return jsonResponse({
         configured: true,
         reachable: true,

@@ -29,6 +29,7 @@ export interface FreescoutConfigErr {
 export type FreescoutConfig = FreescoutConfigOk | FreescoutConfigErr;
 
 let _cachedConfig: FreescoutConfig | null = null;
+let _loggedInvalidConfig = false;
 
 /**
  * Lazy, idempotent config resolver. Returns a typed result instead of
@@ -77,6 +78,7 @@ export function getFreescoutConfig(): FreescoutConfig {
 /** Test-only: clear cache between unit tests. */
 export function _resetFreescoutConfigCache() {
   _cachedConfig = null;
+  _loggedInvalidConfig = false;
 }
 
 interface BreakerState { failures: number; openedAt: number }
@@ -120,19 +122,24 @@ export interface FreescoutFetchOpts {
   query?: Record<string, string | number | undefined>;
   attempt?: number;
   timeoutMs?: number;
+  maxAttempts?: number;
 }
 
 export async function freescoutFetch<T = unknown>(opts: FreescoutFetchOpts): Promise<T> {
   const cfg = getFreescoutConfig();
   if (!cfg.ok) {
     // Log once per cold start with a stable code so the triage queue picks it up.
-    console.error(JSON.stringify({
-      level: "error",
-      fn: "freescout",
-      code: "config_invalid",
-      reason: cfg.reason,
-      detail: cfg.detail,
-    }));
+    if (!_loggedInvalidConfig) {
+      _loggedInvalidConfig = true;
+      console.error(JSON.stringify({
+        level: "error",
+        severity: "error",
+        fn: "freescout",
+        code: "config_invalid",
+        reason: cfg.reason,
+        detail: cfg.detail,
+      }));
+    }
     throw new FreescoutError(503, "support_unavailable", { reason: cfg.reason, detail: cfg.detail });
   }
   if (breakerOpen()) {
@@ -150,6 +157,7 @@ export async function freescoutFetch<T = unknown>(opts: FreescoutFetchOpts): Pro
   }
 
   const attempt = opts.attempt ?? 1;
+  const maxAttempts = Math.max(1, opts.maxAttempts ?? 3);
   const timeoutMs = opts.timeoutMs ?? 10_000;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -170,7 +178,7 @@ export async function freescoutFetch<T = unknown>(opts: FreescoutFetchOpts): Pro
   } catch (_e) {
     clearTimeout(timer);
     recordFailure();
-    if (attempt < 3) {
+    if (attempt < maxAttempts) {
       await new Promise((r) => setTimeout(r, 250 * attempt));
       return freescoutFetch<T>({ ...opts, attempt: attempt + 1 });
     }
@@ -180,7 +188,7 @@ export async function freescoutFetch<T = unknown>(opts: FreescoutFetchOpts): Pro
 
   if (res.status >= 500) {
     recordFailure();
-    if (attempt < 3) {
+    if (attempt < maxAttempts) {
       await new Promise((r) => setTimeout(r, 400 * attempt));
       return freescoutFetch<T>({ ...opts, attempt: attempt + 1 });
     }

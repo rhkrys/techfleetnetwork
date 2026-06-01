@@ -42,6 +42,15 @@ interface TicketsResponse {
 
 const SUPPORT_FALLBACK_EMAIL = "info@techfleet.network";
 
+async function readFunctionError(response?: Response): Promise<{ unavailable?: boolean; reason?: string } | null> {
+  if (!response) return null;
+  try {
+    return await response.clone().json();
+  } catch {
+    return null;
+  }
+}
+
 function useTickets(scope: "mine" | "all", status: "open" | "closed" | "all") {
   return useQuery<TicketsResponse>({
     queryKey: ["support", "tickets", scope, status] as const,
@@ -51,6 +60,8 @@ function useTickets(scope: "mine" | "all", status: "open" | "closed" | "all") {
       try {
         const { data, error } = await supabase.functions.invoke("freescout-proxy", {
           body: { action: scope === "mine" ? "listMine" : "listAll", status, page: 1 },
+          signal: ctrl.signal,
+          timeout: 5000,
         });
         if (error) {
           // Treat any invoke-level error as "support offline" so the UI degrades
@@ -76,6 +87,7 @@ function NewTicketDialog({ onCreated, disabled = false }: { onCreated: () => voi
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [helpDeskOffline, setHelpDeskOffline] = useState(false);
 
   const submit = async () => {
     if (subject.trim().length < 3 || body.trim().length < 1) {
@@ -84,16 +96,19 @@ function NewTicketDialog({ onCreated, disabled = false }: { onCreated: () => voi
     }
     setSubmitting(true);
     try {
-      const { data, error } = await supabase.functions.invoke("freescout-proxy", {
+      const { data, error, response } = await supabase.functions.invoke("freescout-proxy", {
         body: {
           action: "create",
           subject: subject.trim().slice(0, 200),
           body: body.trim().slice(0, 10000),
           idempotencyKey: `create-${crypto.randomUUID()}`,
         },
+        timeout: 5000,
       });
-      if (data?.unavailable || (error && /503|unavailable/i.test(error.message ?? ""))) {
-        toast.error(`Help desk is offline. An admin has been notified — please email ${SUPPORT_FALLBACK_EMAIL} for now.`);
+      const errorBody = await readFunctionError(response);
+      if (data?.unavailable || response?.status === 503 || errorBody?.unavailable || (error && /unavailable/i.test(error.message ?? ""))) {
+        setHelpDeskOffline(true);
+        toast.error("Help desk is offline. An admin has been notified.");
         return;
       }
       if (error || !data?.conversationId) throw error ?? new Error("Could not create ticket");
@@ -142,6 +157,18 @@ function NewTicketDialog({ onCreated, disabled = false }: { onCreated: () => voi
             />
             <p className="text-sm text-muted-foreground">{body.length}/10,000</p>
           </div>
+          {helpDeskOffline && (
+            <Card className="border-destructive/40">
+              <CardContent className="flex flex-wrap items-center gap-2 py-3 text-sm text-muted-foreground">
+                <span>Help desk is offline. Email us while an admin reconnects it.</span>
+                <Button asChild variant="outline" size="sm">
+                  <a href={`mailto:${SUPPORT_FALLBACK_EMAIL}?subject=${encodeURIComponent(subject.trim() || "Tech Fleet Network support request")}`}>
+                    Email {SUPPORT_FALLBACK_EMAIL}
+                  </a>
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)} disabled={submitting}>Cancel</Button>

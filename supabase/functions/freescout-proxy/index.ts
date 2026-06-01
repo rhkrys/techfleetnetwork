@@ -4,7 +4,7 @@
 import { z } from "https://deno.land/x/zod@v3.23.8/mod.ts";
 import { getAdminClient } from "../_shared/admin-client.ts";
 import { requireAuthenticatedRequest } from "../_shared/request-auth.ts";
-import { handleCors, jsonResponse, errorResponse, parseJsonBody } from "../_shared/http.ts";
+import { handleCors, jsonResponse, errorResponse, parseJsonBody, jsonHeaders } from "../_shared/http.ts";
 import {
   freescoutFetch,
   findCustomerByEmail,
@@ -272,6 +272,7 @@ Deno.serve(async (req) => {
       const reason = (e.body as { reason?: string })?.reason;
       console.error(JSON.stringify({
         level: "error",
+        severity: "error",
         fn: "freescout-proxy",
         status: e.status,
         msg: e.message,
@@ -296,6 +297,7 @@ Deno.serve(async (req) => {
           {
             status: 200,
             headers: {
+              ...jsonHeaders,
               "Content-Type": "application/json",
               "Retry-After": "30",
             },
