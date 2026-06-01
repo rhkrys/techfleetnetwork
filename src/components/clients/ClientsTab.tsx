@@ -374,48 +374,67 @@ export function ClientsTab() {
           exportFileName="clients"
         />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {clients.map((c) => (
-            <Card key={c.id} className="flex flex-col">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-3 min-w-0">
-                    {c.logo_url ? (
-                      <img
-                        src={c.logo_url}
-                        alt={`${c.name} logo`}
-                        className="h-10 w-10 rounded-lg object-cover border border-border flex-shrink-0"
-                      />
-                    ) : (
-                      <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
-                        <Building2 className="h-5 w-5 text-muted-foreground" />
-                      </div>
-                    )}
-                    <CardTitle className="text-lg leading-tight truncate">{c.name}</CardTitle>
+        <div className="grid grid-cols-12 gap-4">
+          {clients.map((c) => {
+            const sectionLabel = "text-base font-semibold uppercase tracking-wider text-muted-foreground";
+            let hostname = c.website;
+            try { hostname = new URL(c.website).hostname; } catch { /* keep raw */ }
+            return (
+              <div key={c.id} className="col-span-12 xl:col-span-6">
+                <Card data-card="client" className="flex flex-col h-full p-6">
+                  {/* Identity block — status, kind, name */}
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge className={`${c.status === "active" ? "bg-success/10 text-success border-success/20" : "bg-muted text-muted-foreground border-border"} px-3 py-1.5 text-base font-semibold uppercase tracking-wide`}>
+                        {c.status === "active" ? "Active" : "Inactive"}
+                      </Badge>
+                      <Badge variant="outline" className={`px-3 py-1.5 text-base font-semibold uppercase tracking-wide ${c.kind === "internal" ? "bg-info/10 text-info border-info/30" : ""}`}>
+                        {c.kind === "internal" ? "Internal" : "External"}
+                      </Badge>
+                    </div>
+                    <h3 className="text-2xl font-bold text-foreground leading-tight">{c.name}</h3>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <Badge variant="outline" className={c.kind === "internal" ? "bg-info/10 text-info border-info/30" : "bg-muted text-muted-foreground"}>
-                      {c.kind === "internal" ? "Internal" : "External"}
-                    </Badge>
-                    {statusBadge(c.status)}
+
+                  {/* Meta sections */}
+                  <div className="mt-5 pt-5 border-t space-y-5 flex-1">
+                    <div className="space-y-1.5">
+                      <p className={sectionLabel}>Website</p>
+                      <a href={c.website} target="_blank" rel="noopener noreferrer" className="text-base text-primary hover:underline inline-flex items-center gap-1.5 break-all">
+                        {hostname}
+                        <ExternalLink className="h-4 w-4 shrink-0" aria-hidden="true" />
+                      </a>
+                    </div>
+                    <div className="space-y-1.5">
+                      <p className={sectionLabel}>Primary Contact</p>
+                      <p className="text-base text-foreground">{c.primary_contact}</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <p className={sectionLabel}>Mission</p>
+                      <p className="text-base text-foreground line-clamp-3">{c.mission}</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <p className={sectionLabel}>Project Summary</p>
+                      <p className="text-base text-foreground line-clamp-3">{c.project_summary}</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <p className={sectionLabel}>Updated</p>
+                      <p className="text-base text-foreground">{format(new Date(c.updated_at), "MMM d, yyyy")}</p>
+                    </div>
                   </div>
-                </div>
-              </CardHeader>
-              <CardContent className="flex-1 space-y-3 text-sm">
-                <div className="flex items-center gap-2 text-muted-foreground"><Globe className="h-4 w-4 shrink-0" /><a href={c.website} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline truncate">{new URL(c.website).hostname}</a></div>
-                <div className="flex items-center gap-2 text-muted-foreground"><User className="h-4 w-4 shrink-0" /><span className="truncate">{c.primary_contact}</span></div>
-                <div><p className="text-xs font-medium text-muted-foreground mb-1">Mission</p><p className="text-foreground line-clamp-3">{c.mission}</p></div>
-                <div><p className="text-xs font-medium text-muted-foreground mb-1">Project Summary</p><p className="text-foreground line-clamp-3">{c.project_summary}</p></div>
-              </CardContent>
-              <CardFooter className="pt-3 border-t flex justify-between items-center">
-                <span className="text-xs text-muted-foreground">Updated {format(new Date(c.updated_at), "MMM d, yyyy")}</span>
-                <div className="flex gap-1">
-                  <Button variant="ghost" size="icon" onClick={() => openEdit(c)} aria-label={`Edit ${c.name}`}><Pencil className="h-4 w-4" /></Button>
-                  <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(c)} aria-label={`Delete ${c.name}`}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                </div>
-              </CardFooter>
-            </Card>
-          ))}
+
+                  {/* Footer — full-width primary edit + secondary delete */}
+                  <div className="mt-5 pt-5 border-t flex items-center gap-2">
+                    <Button type="button" className="flex-1" onClick={() => openEdit(c)}>
+                      Edit client
+                    </Button>
+                    <Button type="button" variant="outline" size="icon" onClick={() => setDeleteTarget(c)} aria-label={`Delete ${c.name}`}>
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                </Card>
+              </div>
+            );
+          })}
         </div>
       )}
 
