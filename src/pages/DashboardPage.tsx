@@ -37,6 +37,8 @@ import { TOTAL_DISCORD_LESSONS } from "@/data/discord-course";
 import { TOTAL_TEAMWORK_LESSONS } from "@/data/teamwork-course";
 import { TOTAL_PROJECT_TRAINING_LESSONS } from "@/data/project-training-course";
 import { TOTAL_VOLUNTEER_LESSONS } from "@/data/volunteer-teams-course";
+import { TOTAL_OBSERVER_LESSONS, ALL_OBSERVER_LESSON_IDS } from "@/data/observer-course";
+import { Progress } from "@/components/ui/progress";
 
 import { format } from "date-fns";
 import { WelcomeDialog } from "@/components/WelcomeDialog";
