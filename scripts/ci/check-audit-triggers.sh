@@ -7,13 +7,25 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 migration_blob="$(cat "${repo_root}"/supabase/migrations/*.sql)"
+migration_compact="$(tr '\n\t\r' '   ' <<<"${migration_blob}" | sed -E 's/[[:space:]]+/ /g')"
 
 missing=0
 
 assert_migration_contains() {
   local pattern="$1"
   local label="$2"
-  if ! grep -Eiq -- "${pattern}" <<<"${migration_blob}"; then
+  if ! grep -Eiq -- "${pattern}" <<<"${migration_compact}"; then
+    echo "MISSING migration invariant: ${label}" >&2
+    missing=1
+  else
+    echo "OK migration: ${label}"
+  fi
+}
+
+assert_migration_fixed() {
+  local needle="$1"
+  local label="$2"
+  if ! grep -Fq -- "${needle}" <<<"${migration_blob}"; then
     echo "MISSING migration invariant: ${label}" >&2
     missing=1
   else
@@ -22,7 +34,7 @@ assert_migration_contains() {
 }
 
 assert_migration_contains "create[[:space:]]+or[[:space:]]+replace[[:space:]]+function[[:space:]]+public\.reject_opaque_script_error\(" "public.reject_opaque_script_error()"
-assert_migration_contains "\^\(error:\\s\*\)\?script error\\\.\?\$" "opaque Script error first-line predicate"
+assert_migration_fixed "'^(error:\s*)?script error\.?$'" "opaque Script error first-line predicate"
 assert_migration_contains "create[[:space:]]+trigger[[:space:]]+trg_audit_log_reject_opaque_script_error[[:space:]]+before[[:space:]]+insert[[:space:]]+on[[:space:]]+public\.audit_log" "audit_log BEFORE INSERT trigger"
 assert_migration_contains "create[[:space:]]+trigger[[:space:]]+trg_agent_fix_queue_reject_opaque_script_error[[:space:]]+before[[:space:]]+insert[[:space:]]+on[[:space:]]+public\.agent_fix_queue" "agent_fix_queue BEFORE INSERT trigger"
 
