@@ -87,6 +87,11 @@ project_id = "iqsjhrhsjlgjiaedzmtz"
     # JWT to present. Hardened in-code: strict enum allow-lists, body cap,
     # per-IP rate limit, daily-salted IP hash (no raw IPs stored).
     verify_jwt = false
+  [functions.process-freescout-events]
+    # Cron-poked worker that drains the Freescout webhook queue. Validates the
+    # service-role bearer in code (same pattern as process-email-queue).
+    verify_jwt = false
+
 
 
 
