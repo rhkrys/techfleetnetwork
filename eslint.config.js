@@ -12,6 +12,7 @@ import noRawDiscordInput from "./scripts/lint/eslint-plugin-no-raw-discord-input
 import noDirectErrorReporter from "./scripts/lint/eslint-plugin-no-direct-error-reporter.mjs";
 import noRawFunctionsInvoke from "./scripts/lint/eslint-plugin-no-raw-functions-invoke.mjs";
 import noSupabaseSingle from "./scripts/lint/eslint-plugin-no-supabase-single.mjs";
+import authInvariants from "./scripts/lint/eslint-plugin-auth-invariants.mjs";
 
 export default tseslint.config(
   { ignores: ["dist"] },
@@ -41,6 +42,7 @@ export default tseslint.config(
           "no-supabase-single": noSupabaseSingle,
         },
       },
+      "auth-invariants": authInvariants,
       // Browser-compat — fails on JS APIs unsupported in our `browserslist`
       // (package.json: iOS >=14.5, Safari >=14.1, Firefox ESR, last 2 versions).
       compat,
@@ -88,6 +90,8 @@ export default tseslint.config(
       "triage-permanent/no-direct-error-reporter": "warn",
       "triage-permanent/no-raw-functions-invoke": "warn",
       "triage-permanent/no-supabase-single": "warn",
+      "auth-invariants/no-bare-password-set-input": "error",
+      "auth-invariants/no-raw-password-update": "error",
       // Typed-error hierarchy — non-typed variant avoids slow projectService.
       "no-throw-literal": "warn",
       // Browser-compat — warn until the baseline reaches zero; this is the

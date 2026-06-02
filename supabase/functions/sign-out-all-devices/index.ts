@@ -38,6 +38,16 @@ interface RequestBody {
   keep_current?: boolean;
 }
 
+function tokenIssuedAt(token: string): string | null {
+  try {
+    const payload = token.split(".")[1];
+    const decoded = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/"))) as { iat?: number };
+    return typeof decoded.iat === "number" ? new Date(decoded.iat * 1000).toISOString() : null;
+  } catch {
+    return null;
+  }
+}
+
 Deno.serve(withAuditWrapper("sign-out-all-devices", async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
@@ -76,6 +86,7 @@ Deno.serve(withAuditWrapper("sign-out-all-devices", async (req) => {
         user_id: auth.userId,
         reason,
         revoked_by: auth.userId,
+        revoke_before: keepCurrent ? tokenIssuedAt(auth.token) : null,
       });
 
     if (insertError) {

@@ -11,6 +11,10 @@ Use for every PR that touches auth, RLS, edge functions, file uploads, AI calls,
 - [ ] All auth flows go through Supabase client (no custom JWT issuance).
 - [ ] MFA enforcement preserved for admins.
 - [ ] Failed-login telemetry calls `record_failed_login`.
+- [ ] Credential-mutation screens use shared `<PasswordSetFields>`; no hand-rolled new-password inputs.
+- [ ] Password updates go through `AuthService.updatePassword` and `update-password-confirmed`; no page-level `auth.updateUser({ password })`.
+- [ ] Password reset changes include reset → sign out/clear session → sign in with new password coverage.
+- [ ] Password-update audit rows include `confirmed:true`; unconfirmed paths must fail.
 
 ## V3 — Session
 - [ ] No new long-lived tokens > 4h.

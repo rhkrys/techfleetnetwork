@@ -1,84 +1,162 @@
+# Permanent fix for recurring login and account issues
 
-## Why the AI-proposed fix is wrong
+You are right: this is not acceptable scalable auth architecture.
 
-`crossorigin="anonymous"` is **already** set on the entry module (`index.html:224`) and on every dynamically injected third-party script (GTM, Clarity, CookieYes — see `src/lib/consent/loadAnalytics.ts` and `src/components/CookieConsentBanner.tsx`). Memory entry `[Scoped Error Boundaries]` confirms this.
+## Why this happened
 
-The opaque payload `Error: Script error.` still landed in `agent_fix_queue` (rows `ce7fff5d…` at 16:30 and `3662cf6a…` at 16:23 today). Tracing it: the message went `installGlobalErrorReporter → chunkAwareReport → reportToAuditLog → writeAudit → write_audit_log RPC → audit_log → discover_audit_fingerprints → agent_fix_queue`. The JS regex `isOpaqueScriptErrorMessage` matches the payload correctly (smoke test green), yet the row was written — meaning some build/runtime path skipped or pre-dated the JS filter. The pattern repeats every few weeks: a refactor forgets the filter, or a new caller writes directly to `write_audit_log`, and the noise returns.
+The current code has three architectural gaps:
 
-## Root cause (permanent)
+1. **Password/auth forms are duplicated per page.**
+   Register has a confirm-password field, but Reset Password was built separately and only has one password field. That allowed a safety control to exist in one flow and be missing in another.
 
-The JS filter is **the only line of defense**. There is no DB-level trigger on `audit_log` rejecting opaque-script payloads. As long as defense lives only in client JS, every new write path is one bug away from re-introducing the regression. We need a database-level invariant that is impossible to bypass.
+2. **The password reset flow trusts client UI too much.**
+   `AuthService.updatePassword(newPassword)` calls the auth SDK directly. The SDK only knows the recovery session is valid; it cannot know whether the person mistyped what they meant to type. So a typo can be stored successfully, and the current recovery session makes the person appear logged in until the next sign-in.
 
-## Permanent fix
+3. **CI tests do not currently prove the full user promise.**
+   Existing tests check pieces of auth UI and service behavior, but not the full round trip: request reset → open reset link → set password → sign out/close session → sign in with the new password.
 
-### 1. Database: `BEFORE INSERT` trigger on `audit_log`
+## What I will change
 
-```sql
-create or replace function public.reject_opaque_script_error()
-returns trigger language plpgsql as $$
-declare
-  first_line text;
-begin
-  -- First non-empty trimmed line of error_message.
-  select btrim(line) into first_line
-  from unnest(string_to_array(coalesce(new.error_message, ''), e'\n')) as line
-  where btrim(line) <> ''
-  limit 1;
+### 1. Fix the immediate password-reset UX
 
-  if first_line ~* '^(error:\s*)?script error\.?$' then
-    -- Silently drop: telemetry must never throw for the caller, and we don't
-    -- want a single noisy beacon to fail an entire user action.
-    return null;
-  end if;
-  return new;
-end $$ set search_path = public;
+- Add **Confirm new password** to `ResetPasswordPage.tsx`.
+- Block submit unless:
+  - password passes the shared `passwordSchema`
+  - confirmation is present
+  - password and confirmation match exactly
+- Show an accessible inline mismatch message with `role="alert"`.
+- Disable the submit button while invalid, not just after submit.
+- Update success copy so members understand they are signed in now and should use the new password next time.
 
-create trigger trg_audit_log_reject_opaque_script_error
-before insert on public.audit_log
-for each row execute function public.reject_opaque_script_error();
+### 2. Replace page-by-page password fields with one shared component
+
+Create `src/components/auth/PasswordSetFields.tsx` as the only approved way to collect a new password.
+
+It will own:
+
+- new password field
+- confirm password field
+- show/hide controls
+- password requirements checklist
+- exact-match validation
+- accessible error text
+- `autoComplete="new-password"`
+- stable API: `{ password, isValid, errors }`
+
+Then migrate:
+
+- `ResetPasswordPage.tsx`
+- `RegisterPage.tsx`
+
+This removes the class of bug where one page forgets a safety field another page has.
+
+### 3. Move credential mutation behind an app-owned invariant
+
+Change `AuthService.updatePassword` from:
+
+```ts
+updatePassword(newPassword)
 ```
 
-### 2. Defense-in-depth trigger on `agent_fix_queue`
+to:
 
-Same predicate, separate trigger — so any future ingestion path (e.g. another discovery scanner, manual admin insert, edge replay) is also blocked.
-
-### 3. Backfill
-
-```sql
-update public.agent_fix_queue
-   set status = 'resolved',
-       resolution_note = coalesce(resolution_note,'') ||
-         e'\n[auto] opaque cross-origin Script error — closed by permanent DB backstop'
- where status <> 'resolved'
-   and error_message ~* '^(error:\s*)?script error\.?(\n|$)';
+```ts
+updatePassword({ password, confirmPassword })
 ```
 
-### 4. Refresh `known_issue_catalog` entries
+Then enforce the same invariant in the service layer before any backend call:
 
-Bump the existing two rows' `reason` to reference the trigger as the authoritative source (kept for human discoverability only — the trigger is now the enforcement point).
+- both fields required
+- schema-valid password
+- exact match
+- no direct SDK update from pages
 
-### 5. Tests
+If the invariant fails, no credential update request is made.
 
-- **Postgres smoke test** (added to `src/test/smoke/triage-permanent-fixes.smoke.test.ts`): `insert into audit_log (...) values (...'Error: Script error.\nih@…')` then `select count(*)` returns 0.
-- Keep existing `src/test/smoke/opaque-script-error.smoke.test.ts` (JS regex).
-- Add `pg_dump`-style migration assertion in CI: trigger must exist and be enabled (`scripts/ci/check-audit-triggers.sh`).
+### 4. Add a backend password-update guard
 
-### 6. BDD scenarios (`bdd_scenarios`)
+Add an app backend function, `update-password-confirmed`, that:
 
-- **TRIAGE-NOISE-020** — Given a client emits `Error: Script error.` with a multi-line stack, When the row is sent to `write_audit_log`, Then [DB] no row is written to `audit_log`, [DB] no row is written to `agent_fix_queue`, [UI] System Health Triage tab does not display the fingerprint.
-- **TRIAGE-NOISE-021** — Given a row already exists in `agent_fix_queue` whose `error_message` first line is `Script error`, When the backfill migration runs, Then [DB] the row's `status` is `resolved` and `resolution_note` contains `permanent DB backstop`, [UI] the Triage queue badge count decreases accordingly.
-- **TRIAGE-NOISE-022** — Given an admin attempts a direct insert into `agent_fix_queue` with payload `Script error.`, When the insert runs, Then [DB] the row is silently dropped (`returning *` empty), [Code] the calling edge function receives no error, [UI] no entry appears in the Triage tab.
+- requires an authenticated recovery/current session
+- validates `password` and `confirmPassword` server-side
+- rejects mismatches before changing credentials
+- updates the password only after validation
+- records a non-sensitive audit event with `confirmed: true`
+- preserves the current device session and revokes other sessions through the existing revocation path
 
-### 7. Memory update
+This is the durable invariant layer. The UI can regress, but the backend will still reject unconfirmed password updates.
 
-Append to `mem://features/triage-noise-suppression`: layer 7 = DB BEFORE-INSERT trigger on `audit_log` and `agent_fix_queue` rejecting `^(error:\s*)?script error\.?$` on first non-empty line — the only enforcement that survives client/edge refactors.
+### 5. Add a CI lint guard so this cannot be reintroduced
 
-## Why this never happens again
+Add a custom lint rule:
 
-The trigger lives in the database, has no JS/edge dependency, runs on every insert path (client RPC, edge function, cron scanner, manual SQL), and is asserted by both Vitest and a CI script. Removing it requires writing an explicit `drop trigger` migration, which will fail review.
+- forbid raw `supabase.auth.updateUser({ password })` outside `AuthService`
+- forbid raw new-password inputs outside `PasswordSetFields`
+- fail CI if a future page hand-rolls password setup again
 
-## Out of scope
+This turns the architecture rule into an automated gate.
 
-- No change to existing JS filters (kept as early-drop optimization).
-- No change to `crossorigin` attributes (already correct).
-- No change to discovery scanner severity gate (orthogonal).
+### 6. Add full round-trip auth tests
+
+Add Playwright coverage for the real user promise:
+
+- reset password with mismatched confirmation → cannot submit
+- reset password with matching confirmation → succeeds
+- sign out / clear session
+- sign in with the new password → succeeds
+- sign in with the old password → fails
+
+Also add Vitest coverage that proves:
+
+- `ResetPasswordPage` does not call `AuthService.updatePassword` on mismatch
+- `AuthService.updatePassword` refuses mismatches
+- the backend function rejects missing or false confirmation metadata
+
+### 7. Add BDD scenarios and review checklist guardrail
+
+Add BDD scenarios:
+
+- **AUTH-RESET-010** — mismatched reset confirmation blocks submit at UI and service layer
+- **AUTH-RESET-011** — matching reset password signs in successfully after a new session
+- **AUTH-RESET-012** — direct unconfirmed password update path is rejected by backend/service guard
+
+Update `docs/code-review-checklist.md` with an **Auth credential changes** section:
+
+- shared password component required
+- backend invariant required
+- full round-trip test required
+- no raw SDK password mutation from pages
+- no password-change success copy without next-sign-in expectation
+
+### 8. Save the architecture rule to project memory
+
+Add a permanent memory rule:
+
+> Credential mutation screens must use shared password primitives, app-owned service methods, backend confirmation guards, and round-trip E2E tests. No page may call password mutation SDKs directly.
+
+## Files planned
+
+- `src/components/auth/PasswordSetFields.tsx`
+- `src/pages/ResetPasswordPage.tsx`
+- `src/pages/RegisterPage.tsx`
+- `src/services/auth.service.ts`
+- `supabase/functions/update-password-confirmed/index.ts`
+- `scripts/lint/eslint-plugin-auth-invariants.mjs`
+- `eslint.config.js`
+- `src/test/ui/ResetPasswordPage.test.tsx`
+- `src/test/services/auth.service.test.ts`
+- `e2e/auth/password-reset-roundtrip.e2e.ts`
+- `.github/workflows/regression.yml`
+- `docs/code-review-checklist.md`
+- project memory + BDD scenario entries
+
+## Definition of done
+
+This is complete only when:
+
+- Reset Password cannot submit mismatched passwords.
+- No page directly mutates a password outside the auth service.
+- Backend rejects unconfirmed password updates.
+- CI fails if anyone reintroduces hand-rolled new-password fields.
+- CI proves the full reset → sign out → sign in round trip.
+- The architecture rule is documented in review checklist, BDD, and memory.

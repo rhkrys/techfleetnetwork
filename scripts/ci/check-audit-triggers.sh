@@ -37,6 +37,7 @@ assert_migration_contains "create[[:space:]]+or[[:space:]]+replace[[:space:]]+fu
 assert_migration_fixed "'^(error:\s*)?script error\.?$'" "opaque Script error first-line predicate"
 assert_migration_contains "create[[:space:]]+trigger[[:space:]]+trg_audit_log_reject_opaque_script_error[[:space:]]+before[[:space:]]+insert[[:space:]]+on[[:space:]]+public\.audit_log" "audit_log BEFORE INSERT trigger"
 assert_migration_contains "create[[:space:]]+trigger[[:space:]]+trg_agent_fix_queue_reject_opaque_script_error[[:space:]]+before[[:space:]]+insert[[:space:]]+on[[:space:]]+public\.agent_fix_queue" "agent_fix_queue BEFORE INSERT trigger"
+assert_migration_contains "create[[:space:]]+trigger[[:space:]]+trg_audit_log_password_updated_confirmed[[:space:]]+before[[:space:]]+insert[[:space:]]+on[[:space:]]+public\.audit_log" "password_updated confirmed:true audit trigger"
 
 assert_last_trigger_action_is_create() {
   local trigger_name="$1"
@@ -52,8 +53,9 @@ assert_last_trigger_action_is_create() {
 
 assert_last_trigger_action_is_create "trg_audit_log_reject_opaque_script_error"
 assert_last_trigger_action_is_create "trg_agent_fix_queue_reject_opaque_script_error"
+assert_last_trigger_action_is_create "trg_audit_log_password_updated_confirmed"
 
-if grep -Eiq "disable[[:space:]]+trigger[[:space:]]+(trg_audit_log_reject_opaque_script_error|trg_agent_fix_queue_reject_opaque_script_error)" <<<"${migration_blob}"; then
+if grep -Eiq "disable[[:space:]]+trigger[[:space:]]+(trg_audit_log_reject_opaque_script_error|trg_agent_fix_queue_reject_opaque_script_error|trg_audit_log_password_updated_confirmed)" <<<"${migration_blob}"; then
   echo "DISABLED trigger found in migrations" >&2
   missing=1
 fi
@@ -66,6 +68,7 @@ fi
 required_triggers=(
   "trg_audit_log_reject_opaque_script_error"
   "trg_agent_fix_queue_reject_opaque_script_error"
+  "trg_audit_log_password_updated_confirmed"
 )
 
 for trg in "${required_triggers[@]}"; do
@@ -81,6 +84,12 @@ done
 fn_count=$(psql -tAc "SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname='reject_opaque_script_error';")
 if [[ "${fn_count}" -lt 1 ]]; then
   echo "MISSING live function: public.reject_opaque_script_error" >&2
+  missing=1
+fi
+
+password_fn_count=$(psql -tAc "SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname='enforce_confirmed_password_update_audit';")
+if [[ "${password_fn_count}" -lt 1 ]]; then
+  echo "MISSING live function: public.enforce_confirmed_password_update_audit" >&2
   missing=1
 fi
 

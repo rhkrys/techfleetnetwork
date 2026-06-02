@@ -5676,6 +5676,7 @@ export type Database = {
           id: string
           ip_address: string | null
           reason: string
+          revoke_before: string | null
           revoked_at: string
           revoked_by: string | null
           user_id: string
@@ -5685,6 +5686,7 @@ export type Database = {
           id?: string
           ip_address?: string | null
           reason?: string
+          revoke_before?: string | null
           revoked_at?: string
           revoked_by?: string | null
           user_id: string
@@ -5694,6 +5696,7 @@ export type Database = {
           id?: string
           ip_address?: string | null
           reason?: string
+          revoke_before?: string | null
           revoked_at?: string
           revoked_by?: string | null
           user_id?: string

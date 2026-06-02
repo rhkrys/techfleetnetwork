@@ -1,26 +1,17 @@
 import { useState, useEffect, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Eye, EyeOff, Lock, CheckCircle2 } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { AuthService } from "@/services/auth.service";
-import { passwordSchema } from "@/lib/validators/auth";
 import { supabase } from "@/integrations/supabase/client";
 import techFleetLogo from "@/assets/tech-fleet-logo.svg";
 import { reportValidationRejection } from "@/services/error-reporter.service";
-
-const passwordRequirements = [
-  { label: "At least 8 characters", test: (p: string) => p.length >= 8 },
-  { label: "One uppercase letter", test: (p: string) => /[A-Z]/.test(p) },
-  { label: "One lowercase letter", test: (p: string) => /[a-z]/.test(p) },
-  { label: "One number", test: (p: string) => /[0-9]/.test(p) },
-  { label: "One special character", test: (p: string) => /[^A-Za-z0-9]/.test(p) },
-];
+import { PasswordSetFields } from "@/components/auth/PasswordSetFields";
+import { validatePasswordSet } from "@/lib/auth/password-set";
 
 export default function ResetPasswordPage() {
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
+  const [passwordSet, setPasswordSet] = useState({ password: "", confirmPassword: "" });
+  const [touched, setTouched] = useState({ password: false, confirmPassword: false });
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -91,17 +82,18 @@ export default function ResetPasswordPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const result = passwordSchema.safeParse(password);
-    if (!result.success) {
-      reportValidationRejection("passwordSchema", result.error.issues, "ResetPasswordPage.handleSubmit");
-      setError(result.error.issues[0].message);
+    setTouched({ password: true, confirmPassword: true });
+    const validation = validatePasswordSet(passwordSet);
+    if (!validation.isValid) {
+      reportValidationRejection("passwordSet", [{ message: validation.passwordError || validation.confirmError, path: [validation.passwordError ? "password" : "confirmPassword"] }], "ResetPasswordPage.handleSubmit");
+      setError(validation.passwordError || validation.confirmError);
       return;
     }
     setError("");
     setLoading(true);
 
     try {
-      const { otherDevicesRevoked: revoked } = await AuthService.updatePassword(result.data);
+      const { otherDevicesRevoked: revoked } = await AuthService.updatePassword(passwordSet);
       setOtherDevicesRevoked(revoked);
       setSuccess(true);
     } catch (err: any) {
@@ -124,6 +116,8 @@ export default function ResetPasswordPage() {
     }
   };
 
+  const passwordValidation = validatePasswordSet(passwordSet);
+
   if (success) {
     return (
       <div className="min-h-[calc(100dvh-4rem)] flex items-center justify-center px-4 py-12">
@@ -131,7 +125,7 @@ export default function ResetPasswordPage() {
           <CheckCircle2 className="h-16 w-16 text-success mx-auto" aria-hidden="true" />
           <h1 className="text-2xl font-bold text-foreground">Password updated</h1>
           <p className="text-muted-foreground">
-            You're signed in on this device. Other devices will be signed out within a minute.
+            You're signed in on this device. Use your new password the next time you sign in.
           </p>
           <div className="flex flex-col gap-2 pt-2">
             <Button onClick={() => navigate("/dashboard", { replace: true })} className="w-full">
@@ -190,42 +184,19 @@ export default function ResetPasswordPage() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-            <div className="space-y-2">
-              <Label htmlFor="new-password">New password</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                <Input id="new-password" type={showPassword ? "text" : "password"} placeholder="Enter new password" value={password} onChange={(e) => setPassword(e.target.value)} className="pl-10 pr-10" autoComplete="new-password" required aria-required="true" aria-describedby="pw-requirements" />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex h-8 w-8 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={showPassword ? "Hide password" : "Show password"}>
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-              <ul id="pw-requirements" className="space-y-1 text-xs" aria-label="Password requirements">
-                {passwordRequirements.map(({ label, test }) => {
-                  const met = password.length > 0 && test(password);
-                  return (
-                    <li key={label} className={`flex items-center gap-1.5 ${met ? "text-success" : "text-muted-foreground"}`}>
-                      {met ? <CheckCircle2 className="h-3 w-3" /> : <Circle className="h-3 w-3" />}
-                      {label}
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
+            <PasswordSetFields
+              value={passwordSet}
+              onChange={(next) => { setPasswordSet(next); setError(""); }}
+              touched={touched}
+              onBlur={(field) => setTouched((current) => ({ ...current, [field]: true }))}
+            />
 
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Updating…" : "Update Password"}
+            <Button type="submit" className="w-full" disabled={loading || !passwordValidation.isValid}>
+              {loading ? "Updating…" : "Update password"}
             </Button>
           </form>
         </div>
       </div>
     </div>
-  );
-}
-
-function Circle({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2">
-      <circle cx="12" cy="12" r="10" />
-    </svg>
   );
 }
