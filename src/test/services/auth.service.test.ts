@@ -34,8 +34,8 @@ vi.mock("@/services/logger.service", () => ({
 vi.mock("@/lib/account-activity", () => ({ logAccountActivity: vi.fn() }));
 
 const makeSession = (userId: string, issuedAgoMs = 60_000) => ({
-  access_token: `token-${userId}`,
-  refresh_token: `refresh-${userId}`,
+  access_token: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.signature",
+  refresh_token: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJyZWZyZXNoIn0.signature",
   expires_in: 600,
   expires_at: Math.floor((Date.now() - issuedAgoMs + 600_000) / 1000),
   token_type: "bearer",
