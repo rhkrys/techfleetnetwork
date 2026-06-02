@@ -16,6 +16,16 @@ function validatePassword(password: string): string | null {
   return null;
 }
 
+function tokenIssuedAt(token: string): string | null {
+  try {
+    const payload = token.split(".")[1];
+    const decoded = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/"))) as { iat?: number };
+    return typeof decoded.iat === "number" ? new Date(decoded.iat * 1000).toISOString() : null;
+  } catch {
+    return null;
+  }
+}
+
 Deno.serve(withAuditWrapper("update-password-confirmed", async (req, ctx) => {
   const cors = handleCors(req);
   if (cors) return cors;
@@ -56,6 +66,7 @@ Deno.serve(withAuditWrapper("update-password-confirmed", async (req, ctx) => {
       user_id: auth.userId,
       reason: "self_password_changed",
       revoked_by: auth.userId,
+      revoke_before: tokenIssuedAt(auth.token),
     });
     if (revokeError) {
       log.warn("revoke", `Password updated but revocation row failed for ${auth.userId}: ${revokeError.message}`, { userId: auth.userId });
