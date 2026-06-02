@@ -7,6 +7,14 @@ const DEFAULT_BATCH_SIZE = 10
 const DEFAULT_SEND_DELAY_MS = 200
 const DEFAULT_AUTH_TTL_MINUTES = 15
 const DEFAULT_TRANSACTIONAL_TTL_MINUTES = 60
+// Global workspace pacer: minimum gap between provider API calls across ALL
+// lanes within a single invocation. Sized to the Lovable Email per-workspace
+// quota (~2 sends/sec). Without this, lane priority correctly drains auth
+// first but bursts within a lane can still trip the workspace-wide rate
+// limit, which then mis-attributes to whichever lane reads the 429 next.
+// Paired with cross-lane 429 attribution below to keep cooldowns on the
+// actual offender.
+const MIN_GLOBAL_GAP_MS = 500
 
 // Check if an error is a rate-limit (429) response.
 // Uses EmailAPIError.status when available (email-js >=0.x with structured errors),
