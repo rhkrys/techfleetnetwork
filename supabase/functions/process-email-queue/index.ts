@@ -431,6 +431,18 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
 
 
       try {
+        // Global workspace pacer: enforce minimum gap between provider calls
+        // across ALL lanes. Sized to the shared per-workspace email_send
+        // quota. Lane priority is preserved (auth drains first → grabs
+        // tokens first), but bursts within a lane can no longer trip the
+        // shared rate limit and mis-attribute to whichever lane reads the
+        // 429 next. Per-lane cooldowns remain as a second line of defense.
+        const gapSinceLastSend = Date.now() - lastGlobalSendAt
+        if (lastGlobalSendAt > 0 && gapSinceLastSend < MIN_GLOBAL_GAP_MS) {
+          await new Promise((r) => setTimeout(r, MIN_GLOBAL_GAP_MS - gapSinceLastSend))
+        }
+        lastGlobalSendAt = Date.now()
+
         await sendLovableEmail(
           {
             run_id: payload.run_id,
@@ -471,6 +483,10 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
         }
         if (ALL_BULK_TEMPLATES.has(labelStr)) bulkSentLastHour++
         totalProcessed++
+        // Record this lane as the last successful sender. Used to attribute
+        // a subsequent shared-workspace 429 to the actual offender rather
+        // than to whichever lane happens to receive the error next.
+        lastSentLane = queue
 
         // Success-reset: clear this queue's consecutive 429 counter on first
         // successful send. Only writes when there's something to clear.
