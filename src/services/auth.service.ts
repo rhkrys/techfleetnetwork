@@ -4,6 +4,7 @@ import { logAccountActivity } from "@/lib/account-activity";
 import { getSessionPolicyFailureReason } from "@/lib/security";
 import { clearOAuthUiMarker, hasFreshOAuthUiMarker, isRootOAuthCallback, stripRootOAuthCallbackUrl } from "@/lib/oauth-ui-guard";
 import { emailInputSchema, passwordSchema } from "@/lib/validators/auth";
+import { validatePasswordSet, type PasswordSetValue } from "@/lib/auth/password-set";
 import { createAuthThrottleCaptchaError, isAuthThrottleCaptchaError } from "@/lib/auth-throttle-captcha";
 import { validateEmailDomainExists } from "@/lib/email-domain-validation";
 import { getLastActivityAt } from "@/lib/session-activity";
@@ -418,34 +419,24 @@ export const AuthService = {
     });
   },
 
-  async updatePassword(newPassword: string): Promise<{ otherDevicesRevoked: boolean }> {
+  async updatePassword(passwordSet: PasswordSetValue): Promise<{ otherDevicesRevoked: boolean }> {
     return log.track("updatePassword", "Updating user password", undefined, async () => {
-      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      const validation = validatePasswordSet(passwordSet);
+      if (!validation.isValid) throw new Error(validation.passwordError || validation.confirmError);
+
+      const { data, error } = await supabase.functions.invoke("update-password-confirmed", {
+        body: {
+          password: passwordSet.password,
+          confirmPassword: passwordSet.confirmPassword,
+        },
+      });
       if (error) {
         log.error("updatePassword", `Password update failed: ${error.message}`, { errorCode: error.status }, error);
         throw new Error("Failed to update password. Please try again.");
       }
       log.info("updatePassword", "Password updated successfully");
-      void logAccountActivity("password_updated", {});
-      // Keep the current device signed in; revoke other devices via the
-      // server-side `revoked_sessions` gate. A revoke failure must NEVER
-      // mask a successful password change.
-      let otherDevicesRevoked = false;
-      try {
-        const result = await this.signOutAllDevices({
-          keepCurrent: true,
-          reason: "self_password_changed",
-        });
-        otherDevicesRevoked = result.revocationRecorded;
-      } catch (revokeErr) {
-        log.warn(
-          "updatePassword",
-          `Other-device revocation failed (non-fatal): ${(revokeErr as Error)?.message}`,
-          undefined,
-          revokeErr instanceof Error ? revokeErr : undefined,
-        );
-      }
-      return { otherDevicesRevoked };
+      void logAccountActivity("password_updated", { details: { confirmed: true } });
+      return { otherDevicesRevoked: Boolean((data as { other_devices_revoked?: boolean } | null)?.other_devices_revoked) };
     });
   },
 
