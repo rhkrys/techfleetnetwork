@@ -431,26 +431,19 @@ export default function RegisterPage() {
               </div>
             </ValidatedField>
 
-            <ValidatedField id="reg-password" label="Password" required error={errors.password} value={password} touched={touched.password}>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                <Input id="reg-password" type={showPassword ? "text" : "password"} placeholder="Create a strong password" value={password} onChange={(e) => setPassword(e.target.value)} onBlur={() => markTouched("password")} className={`pl-10 pr-10 ${bc("password", password)}`} autoComplete="new-password" required aria-required="true" aria-invalid={!!errors.password} aria-describedby="password-requirements" />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex h-8 w-8 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={showPassword ? "Hide password" : "Show password"}>
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-              <PasswordRequirementsList password={password} />
-            </ValidatedField>
-
-            <ValidatedField id="reg-confirmPassword" label="Confirm password" required error={errors.confirmPassword} value={confirmPassword} touched={touched.confirmPassword}>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                <Input id="reg-confirmPassword" type={showConfirmPassword ? "text" : "password"} placeholder="Re-enter your password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} onBlur={() => markTouched("confirmPassword")} className={`pl-10 pr-10 ${bc("confirmPassword", confirmPassword)}`} autoComplete="new-password" required aria-required="true" aria-invalid={!!errors.confirmPassword} aria-describedby={errors.confirmPassword ? "reg-confirmPassword-error" : undefined} />
-                <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex h-8 w-8 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={showConfirmPassword ? "Hide repeated password" : "Show repeated password"}>
-                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-            </ValidatedField>
+            <PasswordSetFields
+              value={{ password, confirmPassword }}
+              onChange={(next) => {
+                setPassword(next.password);
+                setConfirmPassword(next.confirmPassword);
+              }}
+              ids={{ password: "reg-password", confirmPassword: "reg-confirmPassword", requirements: "password-requirements" }}
+              labels={{ password: "Password", confirmPassword: "Confirm password" }}
+              placeholders={{ password: "Create a strong password", confirmPassword: "Re-enter your password" }}
+              touched={{ password: touched.password, confirmPassword: touched.confirmPassword }}
+              onBlur={(field) => markTouched(field)}
+              errors={{ password: errors.password, confirmPassword: errors.confirmPassword }}
+            />
 
             <ValidatedField id="reg-dob" label="Date of birth" required error={errors.dob} value={dob} touched={touched.dob}>
               <div className="relative">
