@@ -23,7 +23,7 @@ interface Conversation {
   subject?: string;
   status?: string;
   customer?: { id: number; email?: string; firstName?: string; lastName?: string };
-  threads?: Array<{ id: number; type?: string; body?: string; createdAt?: string; createdBy?: any }>;
+  threads?: Array<{ id: number; type?: string; body?: string; createdAt?: string; createdBy?: unknown }>;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -35,57 +35,28 @@ function formatStatus(s?: string): { label: string; tone: "default" | "secondary
   return { label: s ?? "Unknown", tone: "outline" };
 }
 
-interface TicketsResponse {
-  items: Conversation[];
-  unavailable: boolean;
-  reason?: string;
-}
-
-const SUPPORT_FALLBACK_EMAIL = "info@techfleet.network";
-
-async function readFunctionError(response?: Response): Promise<{ unavailable?: boolean; reason?: string } | null> {
-  if (!response) return null;
-  try {
-    return await response.clone().json();
-  } catch {
-    return null;
-  }
-}
-
 function useTickets(scope: "mine" | "all", status: "open" | "closed" | "all") {
-  return useQuery<TicketsResponse>({
+  return useQuery<{ items: Conversation[] }>({
     queryKey: ["support", "tickets", scope, status] as const,
     queryFn: async () => {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 5000);
-      try {
-        const { data, error } = await invokeFreescout(
-          { action: scope === "mine" ? "listMine" : "listAll", status, page: 1 },
-          ctrl.signal,
-        );
-        if (error) {
-          return { items: [], unavailable: true, reason: error.message ?? "invoke_failed" };
-        }
-        return {
-          items: (data?.items ?? []) as Conversation[],
-          unavailable: data?.unavailable === true,
-          reason: data?.reason,
-        };
-      } finally {
-        clearTimeout(timer);
-      }
+      const { data, error } = await invokeFreescout(
+        { action: scope === "mine" ? "listMine" : "listAll", status, page: 1 },
+      );
+      if (error) throw error;
+      return { items: (data?.items ?? []) as Conversation[] };
     },
-    staleTime: 30_000,
-    retry: 1,
+    staleTime: 60_000,
+    gcTime: 300_000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
   });
 }
 
-function NewTicketDialog({ onCreated, disabled = false }: { onCreated: () => void; disabled?: boolean }) {
+function NewTicketDialog({ onCreated }: { onCreated: () => void }) {
   const [open, setOpen] = useState(false);
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [helpDeskOffline, setHelpDeskOffline] = useState(false);
 
   const submit = async () => {
     if (subject.trim().length < 3 || body.trim().length < 1) {
@@ -94,26 +65,21 @@ function NewTicketDialog({ onCreated, disabled = false }: { onCreated: () => voi
     }
     setSubmitting(true);
     try {
-      const { data, error, response } = await invokeFreescout({
+      const { data, error } = await invokeFreescout({
         action: "create",
         subject: subject.trim().slice(0, 200),
         body: body.trim().slice(0, 10000),
         idempotencyKey: `create-${crypto.randomUUID()}`,
-      }) as any;
-      const errorBody = await readFunctionError(response);
-      if (data?.unavailable || response?.status === 503 || errorBody?.unavailable || (error && /unavailable/i.test(error.message ?? ""))) {
-        setHelpDeskOffline(true);
-        toast.error("Help desk is offline. An admin has been notified.");
-        return;
-      }
+      });
       if (error || !data?.conversationId) throw error ?? new Error("Could not create ticket");
       toast.success("Ticket created. Our team will reply soon.");
       setOpen(false);
       setSubject("");
       setBody("");
       onCreated();
-    } catch (e: any) {
-      toast.error(e?.message ?? "Could not create your ticket. Please try again.");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(msg || "Could not create your ticket. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -122,7 +88,7 @@ function NewTicketDialog({ onCreated, disabled = false }: { onCreated: () => voi
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button disabled={disabled}>Create ticket</Button>
+        <Button>Create ticket</Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
@@ -152,18 +118,6 @@ function NewTicketDialog({ onCreated, disabled = false }: { onCreated: () => voi
             />
             <p className="text-sm text-muted-foreground">{body.length}/10,000</p>
           </div>
-          {helpDeskOffline && (
-            <Card className="border-destructive/40">
-              <CardContent className="flex flex-wrap items-center gap-2 py-3 text-sm text-muted-foreground">
-                <span>Help desk is offline. Email us while an admin reconnects it.</span>
-                <Button asChild variant="outline" size="sm">
-                  <a href={`mailto:${SUPPORT_FALLBACK_EMAIL}?subject=${encodeURIComponent(subject.trim() || "Tech Fleet Network support request")}`}>
-                    Email {SUPPORT_FALLBACK_EMAIL}
-                  </a>
-                </Button>
-              </CardContent>
-            </Card>
-          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)} disabled={submitting}>Cancel</Button>
@@ -211,9 +165,10 @@ function TicketDetail({ conversationId, onClose }: { conversationId: number; onC
       if (error) throw error;
       setReply("");
       toast.success("Reply sent.");
-      qc.invalidateQueries({ queryKey: ["support", "ticket", conversationId] as const });
-    } catch (e: any) {
-      toast.error(e?.message ?? "Could not send your reply.");
+      qc.invalidateQueries({ queryKey: ["support"] as const });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(msg || "Could not send your reply.");
     } finally {
       setSending(false);
     }
@@ -284,45 +239,42 @@ function TicketDetail({ conversationId, onClose }: { conversationId: number; onC
 function TicketList({ scope }: { scope: "mine" | "all" }) {
   const [status, setStatus] = useState<"open" | "closed" | "all">("open");
   const [activeId, setActiveId] = useState<number | null>(null);
-  const { data, isLoading, isError, refetch } = useTickets(scope, status);
+  const qc = useQueryClient();
+  const { data, isLoading, isError } = useTickets(scope, status);
   const tickets = data?.items ?? [];
-  const unavailable = data?.unavailable === true || isError;
+
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["support", "tickets", scope] as const });
+  };
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <Tabs value={status} onValueChange={(v) => setStatus(v as any)}>
+        <Tabs value={status} onValueChange={(v) => setStatus(v as "open" | "closed" | "all")}>
           <TabsList>
             <TabsTrigger value="open">Open</TabsTrigger>
             <TabsTrigger value="closed">Closed</TabsTrigger>
             <TabsTrigger value="all">All</TabsTrigger>
           </TabsList>
         </Tabs>
-        {scope === "mine" && <NewTicketDialog onCreated={() => refetch()} disabled={unavailable} />}
+        {scope === "mine" && <NewTicketDialog onCreated={refresh} />}
       </div>
 
       {isLoading && <p className="text-sm text-muted-foreground">Loading tickets…</p>}
 
-      {!isLoading && unavailable && (
+      {!isLoading && isError && (
         <Card className="border-destructive/40">
           <CardHeader>
-            <CardTitle className="text-base">Help desk is reconnecting</CardTitle>
-            <CardDescription>
-              We can't reach our support system right now. An admin has been notified. In the meantime, you can still reach us by email.
-            </CardDescription>
+            <CardTitle className="text-base">We couldn't load your tickets.</CardTitle>
+            <CardDescription>Please try again in a moment.</CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
-            <Button asChild>
-              <a href={`mailto:${SUPPORT_FALLBACK_EMAIL}?subject=${encodeURIComponent("Tech Fleet Network support request")}`}>
-                Email {SUPPORT_FALLBACK_EMAIL}
-              </a>
-            </Button>
-            <Button variant="outline" onClick={() => refetch()}>Try again</Button>
+          <CardContent>
+            <Button variant="outline" onClick={refresh}>Try again</Button>
           </CardContent>
         </Card>
       )}
 
-      {!isLoading && !unavailable && tickets.length === 0 && (
+      {!isLoading && !isError && tickets.length === 0 && (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
             <p>No tickets to show.</p>
@@ -331,7 +283,7 @@ function TicketList({ scope }: { scope: "mine" | "all" }) {
         </Card>
       )}
 
-      {!unavailable && (
+      {!isError && (
         <div className="grid gap-3">
           {tickets.map((t) => {
             const s = formatStatus(t.status);
@@ -362,7 +314,6 @@ export default function GetHelpPage() {
   const { isAdmin } = useAdmin();
   const qc = useQueryClient();
 
-  // Realtime: invalidate ticket lists on webhook-driven events
   useEffect(() => {
     if (!user) return;
     const userChannel = supabase
@@ -378,7 +329,6 @@ export default function GetHelpPage() {
   }, [user, qc]);
 
   if (!user) return null;
-
 
   return (
     <div className="container max-w-5xl py-8 space-y-6">
@@ -400,7 +350,6 @@ export default function GetHelpPage() {
           <TabsContent value="grid" className="mt-6"><AdminAllTicketsGrid /></TabsContent>
           <TabsContent value="reports" className="mt-6"><MonthlyReportPanel /></TabsContent>
         </Tabs>
-
       ) : (
         <TicketList scope="mine" />
       )}

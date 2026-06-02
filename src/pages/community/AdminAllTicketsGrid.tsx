@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@/lib/react-query";
+import { useQuery, useQueryClient } from "@/lib/react-query";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ThemedAgGrid } from "@/components/AgGrid";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -17,24 +18,41 @@ interface Row {
   updatedAt?: string;
 }
 
-export default function AdminAllTicketsGrid() {
-  const [refreshKey, setRefreshKey] = useState(0);
+type Scope = "open-unassigned" | "open-assigned" | "all";
 
-  const { data: rows = [], isLoading } = useQuery({
-    queryKey: ["support", "admin-all", refreshKey] as const,
+function useScopedTickets(scope: Scope) {
+  return useQuery({
+    queryKey: ["support", "admin-all", scope] as const,
     queryFn: async () => {
-      const { data, error } = await invokeFreescout({ action: "listAll", status: "all", page: 1 });
+      const assigned = scope === "open-unassigned"
+        ? "unassigned"
+        : scope === "open-assigned"
+          ? "assigned"
+          : "any";
+      const status = scope === "all" ? "all" : "open";
+      const { data, error } = await invokeFreescout({
+        action: "listAll", status, assigned, page: 1,
+      });
       if (error) throw error;
       return (data?.items ?? []) as Row[];
     },
-    staleTime: 30_000,
+    staleTime: 60_000,
+    gcTime: 300_000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
   });
+}
 
-  const runAction = async (conversationId: number, body: any, success: string) => {
+export default function AdminAllTicketsGrid() {
+  const [scope, setScope] = useState<Scope>("open-unassigned");
+  const qc = useQueryClient();
+  const { data: rows = [], isLoading } = useScopedTickets(scope);
+
+  const runAction = async (conversationId: number, body: Record<string, unknown>, success: string) => {
     const { error } = await invokeFreescout({ conversationId, ...body });
     if (error) { toast.error("Could not update the ticket."); return; }
     toast.success(success);
-    setRefreshKey((k) => k + 1);
+    qc.invalidateQueries({ queryKey: ["support"] as const });
   };
 
   const columnDefs = useMemo<ColDef<Row>[]>(() => [
@@ -42,35 +60,25 @@ export default function AdminAllTicketsGrid() {
     { headerName: "Subject", field: "subject", flex: 2, sortable: true, filter: true },
     { headerName: "Status", field: "status", width: 120, sortable: true, filter: true },
     {
-      headerName: "Customer",
-      width: 220,
+      headerName: "Customer", width: 220,
       valueGetter: (p) => p.data?.customer?.email ?? "—",
-      sortable: true,
-      filter: true,
+      sortable: true, filter: true,
     },
     {
-      headerName: "Assignee",
-      width: 180,
+      headerName: "Assignee", width: 180,
       valueGetter: (p) => {
         const a = p.data?.assignee;
         return a ? `${a.firstName ?? ""} ${a.lastName ?? ""}`.trim() : "Unassigned";
       },
-      sortable: true,
-      filter: true,
+      sortable: true, filter: true,
     },
     {
-      headerName: "Updated",
-      field: "updatedAt",
-      width: 180,
+      headerName: "Updated", field: "updatedAt", width: 180,
       valueFormatter: (p) => (p.value ? new Date(p.value).toLocaleString() : "—"),
-      sortable: true,
-      sort: "desc",
+      sortable: true, sort: "desc",
     },
     {
-      headerName: "Actions",
-      width: 360,
-      sortable: false,
-      filter: false,
+      headerName: "Actions", width: 360, sortable: false, filter: false,
       cellRenderer: (p: { data: Row }) => {
         const id = p.data?.id;
         if (!id) return null;
@@ -93,15 +101,27 @@ export default function AdminAllTicketsGrid() {
     },
   ], []);
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">Loading tickets…</p>;
-
   return (
-    <ThemedAgGrid
-      rowData={rows}
-      columnDefs={columnDefs}
-      height="600px"
-      gridId="support-tickets-admin"
-      exportFileName="support-tickets"
-    />
+    <div className="space-y-4">
+      <Tabs value={scope} onValueChange={(v) => setScope(v as Scope)}>
+        <TabsList>
+          <TabsTrigger value="open-unassigned">Open · unassigned</TabsTrigger>
+          <TabsTrigger value="open-assigned">Open · assigned</TabsTrigger>
+          <TabsTrigger value="all">All</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground">Loading tickets…</p>
+      ) : (
+        <ThemedAgGrid
+          rowData={rows}
+          columnDefs={columnDefs}
+          height="600px"
+          gridId={`support-tickets-admin-${scope}`}
+          exportFileName={`support-tickets-${scope}`}
+        />
+      )}
+    </div>
   );
 }

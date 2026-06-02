@@ -4,15 +4,20 @@ Zero-downtime rotation for `FREESCOUT_API_KEY` and `FREESCOUT_WEBHOOK_SECRET`.
 
 ## API key (`FREESCOUT_API_KEY`)
 
-1. In Freescout admin, generate a new admin API key. Keep the old key active.
-2. Update the `FREESCOUT_API_KEY` secret in Lovable Cloud → Secrets.
-3. Within ~60 seconds, redeploy `freescout-proxy`, `freescout-provision-admin`, `freescout-sync-customer`, `support-provisioning-retry`. (`supabase--deploy_edge_functions`)
-4. Smoke test:
-   - Member: open Get Help, expect ticket list to load.
-   - Admin: open System Health → Help Desk, trigger "Provision now" on a test admin.
-5. Revoke the old API key in Freescout.
+The secret is **live-validated at entry** by the `freescout-validate-secret` edge function. A bad key is rejected before it is written.
 
-If any step fails: roll back the secret to the previous value, redeploy, then investigate.
+1. In Freescout admin, generate a new admin API key. Keep the old key active.
+2. In the admin Settings → Secrets UI, paste the new key. The UI calls `freescout-validate-secret`; the secret is only saved if Freescout returns 200 and `DEFAULT_MAILBOX_ID` is present in the mailboxes list.
+3. Smoke test:
+   - Member: open Get Help, expect the ticket list to load.
+   - Admin: open System Health → Help Desk and run a test backfill.
+4. Revoke the old API key in Freescout.
+
+## Mailbox ID
+
+The mailbox is a **code constant** (`DEFAULT_MAILBOX_ID` in `supabase/functions/_shared/freescout.ts`). To change it, open a PR updating the const, then rotate the API key so `freescout-validate-secret` re-confirms the new mailbox is reachable.
+
+
 
 ## Webhook secret (`FREESCOUT_WEBHOOK_SECRET`) — dual-secret window
 

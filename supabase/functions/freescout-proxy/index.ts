@@ -1,6 +1,7 @@
 // freescout-proxy — Get Help member/admin actions
-// Triple-gated authorization: JWT → role re-check → ownership re-verify
-// OWASP A01/A03/A05/A07/A09 hardened. Zod discriminated-union on every action.
+// Constants-based config (see _shared/freescout.ts). No runtime config branch.
+// Layered cache (see _shared/freescoutCache.ts) collapses fan-out on read.
+// Triple-gated authorization: JWT → role re-check → ownership re-verify.
 import { z } from "https://deno.land/x/zod@v3.23.8/mod.ts";
 import { getAdminClient } from "../_shared/admin-client.ts";
 import { requireAuthenticatedRequest } from "../_shared/request-auth.ts";
@@ -12,13 +13,27 @@ import {
   FreescoutError,
   DEFAULT_MAILBOX_ID,
 } from "../_shared/freescout.ts";
+import {
+  cacheKey,
+  getCached,
+  setCached,
+  tagForUser,
+  invalidateUser,
+  invalidateAll,
+} from "../_shared/freescoutCache.ts";
 
 const SUBJECT_MAX = 200;
 const BODY_MAX = 10_000;
 
 const Action = z.discriminatedUnion("action", [
   z.object({ action: z.literal("listMine"), status: z.enum(["open", "closed", "all"]).default("all"), page: z.number().int().min(1).max(50).default(1) }),
-  z.object({ action: z.literal("listAll"), status: z.enum(["open", "closed", "all"]).default("open"), page: z.number().int().min(1).max(50).default(1), mailboxId: z.number().int().optional() }),
+  z.object({
+    action: z.literal("listAll"),
+    status: z.enum(["open", "closed", "all"]).default("open"),
+    page: z.number().int().min(1).max(50).default(1),
+    mailboxId: z.number().int().optional(),
+    assigned: z.enum(["assigned", "unassigned", "any"]).default("any"),
+  }),
   z.object({ action: z.literal("get"), conversationId: z.number().int().positive() }),
   z.object({
     action: z.literal("create"),
@@ -39,29 +54,12 @@ const Action = z.discriminatedUnion("action", [
 ]);
 
 const ADMIN_ACTIONS = new Set(["listAll", "assign", "setPrivate"]);
-let loggedInvalidConfig = false;
 
-async function recordConfigInvalidSignal(reason?: string, detail?: string) {
-  try {
-    await getAdminClient().from("agent_fix_queue").upsert({
-      fingerprint: "freescout:config_invalid",
-      event_type: "config_invalid",
-      source: "freescout-proxy",
-      severity: "error",
-      status: "pending",
-      error_message: detail ?? reason ?? "Freescout configuration is invalid",
-      last_seen_at: new Date().toISOString(),
-      occurrence_count: 1,
-    }, { onConflict: "fingerprint" });
-  } catch (err) {
-    console.error(JSON.stringify({
-      level: "warn",
-      fn: "freescout-proxy",
-      code: "config_invalid_signal_failed",
-      msg: err instanceof Error ? err.message : String(err),
-    }));
-  }
-}
+const READ_CACHE_TTL_MS: Record<string, number> = {
+  listMine: 30_000,
+  listAll: 30_000,
+  get: 10_000,
+};
 
 async function isAdmin(userId: string): Promise<boolean> {
   const { data, error } = await getAdminClient().rpc("has_role", { _user_id: userId, _role: "admin" });
@@ -80,15 +78,12 @@ async function ensureCustomerForUser(userId: string): Promise<{ customerId: stri
     throw new FreescoutError(500, `Profile lookup failed: ${error.message}`);
   }
 
-  // Fallback to auth.users email if profile is missing or its email column is blank —
-  // never let a profile-row gap block ticket creation.
   let email = prof?.email ?? null;
   let firstName = prof?.first_name ?? undefined;
   let lastName = prof?.last_name ?? undefined;
   if (!email) {
     const { data: authUser, error: authErr } = await admin.auth.admin.getUserById(userId);
     if (authErr || !authUser?.user?.email) {
-      console.error(JSON.stringify({ level: "error", fn: "freescout-proxy", code: "no_email_for_user", userId, profileExists: !!prof }));
       throw new FreescoutError(400, "No email on file for this account. Please add one in your profile.");
     }
     email = authUser.user.email;
@@ -101,11 +96,8 @@ async function ensureCustomerForUser(userId: string): Promise<{ customerId: stri
     return { customerId: String(prof.freescout_customer_id), email, firstName, lastName };
   }
 
-  // Resolve or create the Freescout customer record.
   let customer = await findCustomerByEmail(email);
-  if (!customer) {
-    customer = await createCustomer(email, firstName, lastName);
-  }
+  if (!customer) customer = await createCustomer(email, firstName, lastName);
   const id = String(customer.id);
   if (prof) {
     await admin.from("profiles").update({ freescout_customer_id: id }).eq("id", userId);
@@ -117,7 +109,6 @@ async function ensureCustomerForUser(userId: string): Promise<{ customerId: stri
 }
 
 async function ownsConversation(userId: string, conversationId: number): Promise<boolean> {
-  // First check our pointer cache
   const admin = getAdminClient();
   const { data: ptr } = await admin
     .from("support_ticket_pointers")
@@ -127,7 +118,6 @@ async function ownsConversation(userId: string, conversationId: number): Promise
   if (ptr?.customer_user_id === userId) return true;
   if (ptr && ptr.customer_user_id && ptr.customer_user_id !== userId) return false;
 
-  // Fall back to authoritative Freescout fetch (TOCTOU defense)
   try {
     const conv = await freescoutFetch<{ customer?: { id: number } }>({
       path: `/api/conversations/${encodeURIComponent(String(conversationId))}`,
@@ -151,6 +141,13 @@ async function upsertPointer(conversationId: number, customerUserId: string | nu
   });
 }
 
+function cacheableResponse(body: unknown, ttlSec: number): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { ...jsonHeaders, "Cache-Control": `private, max-age=${ttlSec}` },
+  });
+}
+
 Deno.serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
@@ -168,12 +165,10 @@ Deno.serve(async (req) => {
     }
     const input = parsed.data;
 
-    // Admin-only gating
     if (ADMIN_ACTIONS.has(input.action)) {
       if (!(await isAdmin(auth.userId))) return jsonResponse({ error: "Forbidden" }, 403);
     }
 
-    // Rate limit per action
     const rlMap: Record<string, [string, number]> = {
       create: ["support:create", 10],
       reply: ["support:reply", 60],
@@ -184,58 +179,86 @@ Deno.serve(async (req) => {
     };
     if (input.action in rlMap) {
       const [name, max] = rlMap[input.action];
-      const userClient = auth.userClient;
-      const { error: rlErr } = await userClient.rpc("support_check_rate_limit", {
+      const { error: rlErr } = await auth.userClient.rpc("support_check_rate_limit", {
         _action: name, _max_per_hour: max,
       });
       if (rlErr) return jsonResponse({ error: "Too many requests" }, 429);
+    }
+
+    // Cache lookup for reads
+    if (input.action in READ_CACHE_TTL_MS) {
+      const k = await cacheKey(auth.userId, input.action, input);
+      const hit = getCached(k);
+      if (hit) {
+        return cacheableResponse(hit, Math.floor(READ_CACHE_TTL_MS[input.action] / 1000));
+      }
+      // tag pre-emptively; we'll fill cache below
+      tagForUser(auth.userId, k);
+      // Stash key on input scope by closure for setCached after fetch
+      (input as { _cacheKey?: string })._cacheKey = k;
     }
 
     switch (input.action) {
       case "listMine": {
         const { data: prof } = await getAdminClient()
           .from("profiles").select("freescout_customer_id").eq("id", auth.userId).maybeSingle();
-        if (!prof?.freescout_customer_id) return jsonResponse({ items: [] });
+        if (!prof?.freescout_customer_id) {
+          const body = { items: [] };
+          const k = (input as { _cacheKey?: string })._cacheKey;
+          if (k) setCached(k, body, READ_CACHE_TTL_MS.listMine);
+          return cacheableResponse(body, 30);
+        }
         const status = input.status === "all" ? undefined : input.status === "open" ? "active" : "closed";
-        const data = await freescoutFetch<any>({
+        const data = await freescoutFetch<{ _embedded?: { conversations?: unknown[] } }>({
           path: "/api/conversations",
           query: {
             customerId: prof.freescout_customer_id,
-            status,
-            page: input.page,
-            embed: "threads",
+            status, page: input.page, embed: "threads",
           },
         });
-        return jsonResponse({ items: data?._embedded?.conversations ?? [] });
+        const body = { items: data?._embedded?.conversations ?? [] };
+        const k = (input as { _cacheKey?: string })._cacheKey;
+        if (k) setCached(k, body, READ_CACHE_TTL_MS.listMine);
+        return cacheableResponse(body, 30);
       }
       case "listAll": {
         const status = input.status === "all" ? undefined : input.status === "open" ? "active" : "closed";
-        const data = await freescoutFetch<any>({
+        const data = await freescoutFetch<{ _embedded?: { conversations?: unknown[] } }>({
           path: "/api/conversations",
           query: {
-            mailboxId: input.mailboxId ?? (DEFAULT_MAILBOX_ID || undefined),
-            status,
-            page: input.page,
+            mailboxId: input.mailboxId ?? DEFAULT_MAILBOX_ID,
+            status, page: input.page,
           },
         });
-        return jsonResponse({ items: data?._embedded?.conversations ?? [] });
+        let items = (data?._embedded?.conversations ?? []) as Array<{ assignee?: unknown }>;
+        if (input.assigned === "unassigned") {
+          items = items.filter((c) => c.assignee == null);
+        } else if (input.assigned === "assigned") {
+          items = items.filter((c) => c.assignee != null);
+        }
+        const body = { items };
+        const k = (input as { _cacheKey?: string })._cacheKey;
+        if (k) setCached(k, body, READ_CACHE_TTL_MS.listAll);
+        return cacheableResponse(body, 30);
       }
       case "get": {
         const admin = await isAdmin(auth.userId);
         if (!admin && !(await ownsConversation(auth.userId, input.conversationId))) {
           return jsonResponse({ error: "Forbidden" }, 403);
         }
-        const data = await freescoutFetch<any>({
+        const data = await freescoutFetch({
           path: `/api/conversations/${encodeURIComponent(String(input.conversationId))}`,
           query: { embed: "threads" },
         });
-        return jsonResponse({ conversation: data });
+        const body = { conversation: data };
+        const k = (input as { _cacheKey?: string })._cacheKey;
+        if (k) setCached(k, body, READ_CACHE_TTL_MS.get);
+        return cacheableResponse(body, 10);
       }
       case "create": {
         const cust = await ensureCustomerForUser(auth.userId);
-        const created = await freescoutFetch<any>({
-          method: "POST",
-          path: "/api/conversations",
+        const created = await freescoutFetch<{ id?: number; conversation?: { id?: number } }>({
+          method: "POST", path: "/api/conversations",
           body: {
             type: "email",
             subject: input.subject,
@@ -258,6 +281,8 @@ Deno.serve(async (req) => {
             mailbox_id: DEFAULT_MAILBOX_ID,
           });
         }
+        invalidateUser(auth.userId);
+        invalidateAll(); // admin views need to see the new ticket too
         return jsonResponse({ conversationId: convId });
       }
       case "reply": {
@@ -275,6 +300,8 @@ Deno.serve(async (req) => {
             ...(cust ? { customer: { email: cust.email } } : {}),
           },
         });
+        invalidateUser(auth.userId);
+        invalidateAll();
         return jsonResponse({ ok: true });
       }
       case "close":
@@ -291,6 +318,7 @@ Deno.serve(async (req) => {
         await upsertPointer(input.conversationId, null, {
           last_status: input.action === "close" ? "closed" : "active",
         });
+        invalidateAll();
         return jsonResponse({ ok: true });
       }
       case "assign": {
@@ -300,73 +328,30 @@ Deno.serve(async (req) => {
           body: { assignTo: input.assigneeUserId },
         });
         await upsertPointer(input.conversationId, null, { assignee_user_id: String(input.assigneeUserId) });
+        invalidateAll();
         return jsonResponse({ ok: true });
       }
       case "setPrivate": {
         await upsertPointer(input.conversationId, null, { is_private: input.isPrivate });
+        invalidateAll();
         return jsonResponse({ ok: true });
       }
     }
   } catch (e) {
-    const action = (raw && typeof raw === "object" ? (raw as any).action : undefined) as string | undefined;
-
+    const action = (raw && typeof raw === "object" ? (raw as { action?: string }).action : undefined);
     if (e instanceof FreescoutError) {
-      const reason = (e.body as { reason?: string; detail?: string })?.reason;
-      const detail = (e.body as { detail?: string })?.detail;
-      const code = e.status === 503 && e.message === "support_unavailable" ? "config_invalid" : "upstream_error";
-
-      // Always log upstream_error (with body); config_invalid only once per cold start.
-      if (code !== "config_invalid" || !loggedInvalidConfig) {
-        if (code === "config_invalid") loggedInvalidConfig = true;
-        console.error(JSON.stringify({
-          level: "error",
-          severity: "error",
-          fn: "freescout-proxy",
-          action,
-          status: e.status,
-          msg: e.message,
-          code,
-          reason,
-          body: e.body,
-        }));
-        if (code === "config_invalid") await recordConfigInvalidSignal(reason, detail);
-      }
-
-      const READ_ACTIONS = new Set(["listMine", "listAll", "get"]);
-      if (e.status === 503 && action && READ_ACTIONS.has(action)) {
-        return new Response(
-          JSON.stringify({
-            items: [],
-            conversation: null,
-            unavailable: true,
-            reason: reason ?? "support_unavailable",
-          }),
-          {
-            status: 200,
-            headers: {
-              ...jsonHeaders,
-              "Content-Type": "application/json",
-              "Retry-After": "30",
-            },
-          },
-        );
-      }
+      console.error(JSON.stringify({
+        level: "error", fn: "freescout-proxy", action,
+        status: e.status, code: "upstream_error",
+        msg: e.message, body: e.body,
+      }));
       return jsonResponse(
-        {
-          error: e.message,
-          unavailable: e.status === 503,
-          reason: reason ?? (e.status === 503 ? "support_unavailable" : undefined),
-          upstream: e.body ?? undefined,
-        },
+        { error: e.message, upstream: e.body ?? undefined },
         e.status >= 400 && e.status < 600 ? e.status : 500,
       );
     }
-
     console.error(JSON.stringify({
-      level: "error",
-      severity: "error",
-      fn: "freescout-proxy",
-      action,
+      level: "error", fn: "freescout-proxy", action,
       code: "unhandled_exception",
       msg: e instanceof Error ? e.message : String(e),
       stack: e instanceof Error ? e.stack : undefined,

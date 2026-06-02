@@ -7226,6 +7226,23 @@ export type Database = {
         Args: { _lesson_id: string; _user_id: string }
         Returns: undefined
       }
+      freescout_delete_event: { Args: { p_msg_id: number }; Returns: boolean }
+      freescout_dequeue_events: {
+        Args: { p_batch?: number; p_vt?: number }
+        Returns: {
+          message: Json
+          msg_id: number
+          read_ct: number
+        }[]
+      }
+      freescout_enqueue_event: {
+        Args: { p_event_id: string; p_event_type: string; p_payload: Json }
+        Returns: number
+      }
+      freescout_send_to_dlq: {
+        Args: { p_error: string; p_message: Json; p_msg_id: number }
+        Returns: number
+      }
       fw_build_entity_content: {
         Args: { p_description: string; p_entity: string; p_name: string }
         Returns: string

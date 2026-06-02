@@ -1,99 +1,25 @@
-// Freescout API client — single admin API key, OWASP A02/A03/A10 hardened.
-// - HTTPS-only base URL, validated lazily (never throws at module load)
-// - Constant-time HMAC verify for webhooks
-// - CircuitBreaker + exponential backoff
-// - No raw string-concat into URLs; encodeURIComponent on all path params
+// Freescout API client — constants + circuit breaker + concurrency semaphore.
+// Design contract: base URL and mailbox ID are CODE CONSTANTS. The only runtime
+// input is FREESCOUT_API_KEY, which is live-validated at secret entry by the
+// freescout-validate-secret edge fn. There is no runtime config resolution and
+// no defensive "degraded" branch — if the key is missing the deploy is broken
+// and we throw loudly at module load (tripwire).
+//
+// To change mailbox: edit DEFAULT_MAILBOX_ID below and open a PR.
 
-export const DEFAULT_MAILBOX_ID = Number.parseInt(
-  Deno.env.get("FREESCOUT_DEFAULT_MAILBOX_ID") ?? "0",
-  10,
-);
+export const FREESCOUT_BASE_URL = "https://meteoric-hare.pikapod.net";
+export const DEFAULT_MAILBOX_ID = 1;
+const FREESCOUT_HOST = new URL(FREESCOUT_BASE_URL).host;
 
-export type FreescoutConfigReason =
-  | "missing_url"
-  | "missing_key"
-  | "scheme_not_https"
-  | "url_malformed";
-
-export interface FreescoutConfigOk {
-  ok: true;
-  base: string;
-  key: string;
-  host: string;
-}
-export interface FreescoutConfigErr {
-  ok: false;
-  reason: FreescoutConfigReason;
-  detail: string;
-}
-export type FreescoutConfig = FreescoutConfigOk | FreescoutConfigErr;
-
-let _cachedConfig: FreescoutConfig | null = null;
-
-/**
- * Lazy, idempotent config resolver. Returns a typed result instead of
- * throwing — so a missing/invalid secret degrades to a clean 503 response
- * instead of crash-looping the isolate at import time.
- */
-export function getFreescoutConfig(): FreescoutConfig {
-  if (_cachedConfig) return _cachedConfig;
-
-  let raw = (Deno.env.get("FREESCOUT_API_URL") ?? "").trim();
-  const key = Deno.env.get("FREESCOUT_API_KEY") ?? "";
-
-  if (!raw) {
-    _cachedConfig = { ok: false, reason: "missing_url", detail: "FREESCOUT_API_URL is empty" };
-    return _cachedConfig;
-  }
-  if (!key) {
-    _cachedConfig = { ok: false, reason: "missing_key", detail: "FREESCOUT_API_KEY is empty" };
-    return _cachedConfig;
-  }
-
-  // Self-healing normalization: accept the server root in any form the user
-  // might paste — with/without scheme, trailing slashes, or a trailing
-  // /api[/v1] suffix. The client always appends `/api/...` itself, so the
-  // stored base must be JUST the origin (e.g. https://host.tld).
-  if (!/^https?:\/\//i.test(raw)) raw = `https://${raw}`;
-  raw = raw.replace(/\/+$/, "");
-  raw = raw.replace(/\/api(?:\/v\d+)?$/i, "");
-  raw = raw.replace(/\/+$/, "");
-
-  let parsed: URL;
-  try {
-    parsed = new URL(raw);
-  } catch {
-    _cachedConfig = {
-      ok: false,
-      reason: "url_malformed",
-      detail: `FREESCOUT_API_URL is not a valid URL (got: ${raw.slice(0, 64)})`,
-    };
-    return _cachedConfig;
-  }
-  if (parsed.protocol !== "https:") {
-    _cachedConfig = {
-      ok: false,
-      reason: "scheme_not_https",
-      detail: `FREESCOUT_API_URL must use https:// (got: ${parsed.protocol}//)`,
-    };
-    return _cachedConfig;
-  }
-
-  // Reduce to bare origin — drops any path/query/hash the user may have included.
-  const base = parsed.origin;
-  _cachedConfig = { ok: true, base, key, host: parsed.host };
-  return _cachedConfig;
+const FREESCOUT_API_KEY = Deno.env.get("FREESCOUT_API_KEY") ?? "";
+if (!FREESCOUT_API_KEY) {
+  // Catastrophic-only tripwire: validated-entry flow makes this unreachable in
+  // steady state. If you see this in logs, the deploy is broken — the secret
+  // was deleted or never set.
+  throw new Error("FREESCOUT_API_KEY missing — refuse to boot");
 }
 
-/** Test-only: clear cache between unit tests. */
-export function _resetFreescoutConfigCache() {
-  _cachedConfig = null;
-}
-
-interface BreakerState { failures: number; openedAt: number }
-const breaker: BreakerState = { failures: 0, openedAt: 0 };
-const BREAKER_THRESHOLD = 5;
-const BREAKER_COOLDOWN_MS = 30_000;
+// -------- Errors --------
 
 export class FreescoutError extends Error {
   constructor(public status: number, message: string, public body?: unknown) {
@@ -101,13 +27,12 @@ export class FreescoutError extends Error {
   }
 }
 
-export function assertConfigured(): FreescoutConfigOk {
-  const cfg = getFreescoutConfig();
-  if (!cfg.ok) {
-    throw new FreescoutError(503, "support_unavailable", { reason: cfg.reason, detail: cfg.detail });
-  }
-  return cfg;
-}
+// -------- Circuit breaker (existing semantics) --------
+
+interface BreakerState { failures: number; openedAt: number }
+const breaker: BreakerState = { failures: 0, openedAt: 0 };
+const BREAKER_THRESHOLD = 5;
+const BREAKER_COOLDOWN_MS = 30_000;
 
 function breakerOpen(): boolean {
   if (breaker.failures < BREAKER_THRESHOLD) return false;
@@ -117,20 +42,48 @@ function breakerOpen(): boolean {
   }
   return true;
 }
-
 function recordFailure() {
   breaker.failures += 1;
   if (breaker.failures >= BREAKER_THRESHOLD && breaker.openedAt === 0) {
     breaker.openedAt = Date.now();
   }
 }
-
 function recordSuccess() {
   if (breaker.failures > 0 || breaker.openedAt > 0) {
     breaker.failures = 0;
     breaker.openedAt = 0;
   }
 }
+
+// -------- In-isolate concurrency semaphore --------
+// Caps outbound fetches per isolate. Not a distributed rate limiter — this is
+// in-process upstream protection so a thundering herd can't DoS Pikapod from
+// a single warm isolate. Combined with the per-route response cache (see
+// freescoutCache.ts) and the breaker, the worst case is bounded.
+
+const MAX_CONCURRENT = 8;
+const MAX_WAIT_MS = 2_000;
+let inFlight = 0;
+const waiters: Array<{ resolve: () => void; reject: (e: Error) => void; timer: number }> = [];
+
+async function acquire(): Promise<void> {
+  if (inFlight < MAX_CONCURRENT) { inFlight++; return; }
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      const idx = waiters.findIndex((w) => w.timer === timer);
+      if (idx >= 0) waiters.splice(idx, 1);
+      reject(new FreescoutError(503, "Concurrency limit; try again shortly"));
+    }, MAX_WAIT_MS);
+    waiters.push({ resolve: () => { inFlight++; resolve(); }, reject, timer });
+  });
+}
+function release() {
+  inFlight = Math.max(0, inFlight - 1);
+  const next = waiters.shift();
+  if (next) { clearTimeout(next.timer); next.resolve(); }
+}
+
+// -------- fetch --------
 
 export interface FreescoutFetchOpts {
   method?: "GET" | "POST" | "PUT" | "DELETE";
@@ -143,13 +96,12 @@ export interface FreescoutFetchOpts {
 }
 
 export async function freescoutFetch<T = unknown>(opts: FreescoutFetchOpts): Promise<T> {
-  const cfg = assertConfigured();
   if (breakerOpen()) {
     throw new FreescoutError(503, "support_unavailable", { reason: "breaker_open" });
   }
 
-  const u = new URL(cfg.base + opts.path);
-  if (u.host !== cfg.host) {
+  const u = new URL(FREESCOUT_BASE_URL + opts.path);
+  if (u.host !== FREESCOUT_HOST) {
     throw new FreescoutError(400, "Refused to call non-allowlisted host");
   }
   if (opts.query) {
@@ -166,7 +118,7 @@ export async function freescoutFetch<T = unknown>(opts: FreescoutFetchOpts): Pro
   const init: RequestInit = {
     method: opts.method ?? "GET",
     headers: {
-      "X-FreeScout-API-Key": cfg.key,
+      "X-FreeScout-API-Key": FREESCOUT_API_KEY,
       "Accept": "application/json",
       ...(opts.body !== undefined ? { "Content-Type": "application/json" } : {}),
     },
@@ -174,19 +126,17 @@ export async function freescoutFetch<T = unknown>(opts: FreescoutFetchOpts): Pro
     signal: ctrl.signal,
   };
 
+  await acquire();
   let res: Response;
   try {
     res = await fetch(u.toString(), init);
   } catch (e) {
     clearTimeout(timer);
+    release();
     recordFailure();
     console.error(JSON.stringify({
-      level: "error",
-      fn: "freescout-client",
-      code: "upstream_unreachable",
-      method: init.method,
-      path: opts.path,
-      attempt,
+      level: "error", fn: "freescout-client", code: "upstream_unreachable",
+      method: init.method, path: opts.path, attempt,
       err: e instanceof Error ? e.message : String(e),
     }));
     if (attempt < maxAttempts) {
@@ -196,19 +146,15 @@ export async function freescoutFetch<T = unknown>(opts: FreescoutFetchOpts): Pro
     throw new FreescoutError(502, "Upstream unreachable");
   }
   clearTimeout(timer);
+  release();
 
   if (res.status >= 500) {
     recordFailure();
     let body: unknown = undefined;
     try { body = await res.clone().json(); } catch { try { body = await res.text(); } catch { /* ignore */ } }
     console.error(JSON.stringify({
-      level: "error",
-      fn: "freescout-client",
-      code: "upstream_5xx",
-      method: init.method,
-      path: opts.path,
-      status: res.status,
-      attempt,
+      level: "error", fn: "freescout-client", code: "upstream_5xx",
+      method: init.method, path: opts.path, status: res.status, attempt,
       body: typeof body === "string" ? body.slice(0, 1000) : body,
     }));
     if (attempt < maxAttempts) {
@@ -222,12 +168,8 @@ export async function freescoutFetch<T = unknown>(opts: FreescoutFetchOpts): Pro
     let body: unknown = undefined;
     try { body = await res.clone().json(); } catch { try { body = await res.text(); } catch { /* ignore */ } }
     console.error(JSON.stringify({
-      level: "error",
-      fn: "freescout-client",
-      code: "upstream_4xx",
-      method: init.method,
-      path: opts.path,
-      status: res.status,
+      level: "error", fn: "freescout-client", code: "upstream_4xx",
+      method: init.method, path: opts.path, status: res.status,
       statusText: res.statusText,
       body: typeof body === "string" ? body.slice(0, 1000) : body,
     }));
@@ -247,14 +189,12 @@ function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
   for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
   return diff === 0;
 }
-
 function hexDecode(s: string): Uint8Array | null {
   if (!/^[0-9a-f]+$/i.test(s) || s.length % 2 !== 0) return null;
   const out = new Uint8Array(s.length / 2);
   for (let i = 0; i < out.length; i++) out[i] = parseInt(s.substring(i * 2, i * 2 + 2), 16);
   return out;
 }
-
 function b64Decode(s: string): Uint8Array | null {
   try {
     const bin = atob(s);
@@ -294,26 +234,24 @@ export async function verifyFreescoutWebhook(req: Request, rawBody: string): Pro
   return false;
 }
 
+// -------- Typed helpers --------
+
 export interface FreescoutCustomer { id: number; emails?: { value: string }[]; firstName?: string; lastName?: string }
 export interface FreescoutUser { id: number; email?: string; firstName?: string; lastName?: string }
 
 export async function findCustomerByEmail(email: string): Promise<FreescoutCustomer | null> {
   const res = await freescoutFetch<{ _embedded?: { customers?: FreescoutCustomer[] } }>({
-    path: "/api/customers",
-    query: { email },
+    path: "/api/customers", query: { email },
   });
   const list = res._embedded?.customers ?? [];
   return list[0] ?? null;
 }
 
 export async function createCustomer(
-  email: string,
-  firstName?: string,
-  lastName?: string,
+  email: string, firstName?: string, lastName?: string,
 ): Promise<FreescoutCustomer> {
   return await freescoutFetch<FreescoutCustomer>({
-    method: "POST",
-    path: "/api/customers",
+    method: "POST", path: "/api/customers",
     body: {
       firstName: firstName || "Tech Fleet",
       lastName: lastName || "Member",
@@ -324,27 +262,21 @@ export async function createCustomer(
 
 export async function findUserByEmail(email: string): Promise<FreescoutUser | null> {
   const res = await freescoutFetch<{ _embedded?: { users?: FreescoutUser[] } }>({
-    path: "/api/users",
-    query: { email },
+    path: "/api/users", query: { email },
   });
   const list = res._embedded?.users ?? [];
   return list[0] ?? null;
 }
 
 export async function createUser(
-  email: string,
-  firstName: string,
-  lastName: string,
+  email: string, firstName: string, lastName: string,
 ): Promise<FreescoutUser> {
   return await freescoutFetch<FreescoutUser>({
-    method: "POST",
-    path: "/api/users",
+    method: "POST", path: "/api/users",
     body: {
       firstName: firstName || "Admin",
       lastName: lastName || "User",
-      email,
-      role: "user",
-      sendInvite: true,
+      email, role: "user", sendInvite: true,
       mailboxes: DEFAULT_MAILBOX_ID > 0 ? [DEFAULT_MAILBOX_ID] : [],
     },
   });
