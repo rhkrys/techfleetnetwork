@@ -88,6 +88,7 @@ const ProjectFormPage = lazy(() => import("./pages/ProjectFormPage"));
 const ProjectApplicationPage = lazy(() => import("./pages/ProjectApplicationPage"));
 const ProjectOpeningDetailPage = lazy(() => import("./pages/ProjectOpeningDetailPage"));
 const EditProfilePage = lazy(() => import("./pages/EditProfilePage"));
+const NotificationSettingsPage = lazy(() => import("./pages/NotificationSettingsPage"));
 const ProjectAnalysisDetailPage = lazy(() => import("./pages/ProjectAnalysisDetailPage"));
 const FeedbackPage = lazy(() => import("./pages/FeedbackPage"));
 const AccessibilityPage = lazy(() => import("./pages/AccessibilityPage"));
@@ -261,6 +262,7 @@ const App = () => (
                     <Route path="/updates" element={<ProtectedRoute><UpdatesPage /></ProtectedRoute>} />
                     <Route path="/profile/edit" element={<ProtectedRoute><EditProfilePage /></ProtectedRoute>} />
                     <Route path="/feedback" element={<ProtectedRoute><FeedbackPage /></ProtectedRoute>} />
+                    <Route path="/settings/notifications" element={<ProtectedRoute><NotificationSettingsPage /></ProtectedRoute>} />
                     <Route path="/accessibility" element={<AccessibilityPage />} />
                     <Route path="/privacy" element={<PrivacyPage />} />
                     <Route path="/cookies" element={<CookiesPage />} />
