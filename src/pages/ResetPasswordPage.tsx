@@ -6,7 +6,8 @@ import { AuthService } from "@/services/auth.service";
 import { supabase } from "@/integrations/supabase/client";
 import techFleetLogo from "@/assets/tech-fleet-logo.svg";
 import { reportValidationRejection } from "@/services/error-reporter.service";
-import { PasswordSetFields, validatePasswordSet } from "@/components/auth/PasswordSetFields";
+import { PasswordSetFields } from "@/components/auth/PasswordSetFields";
+import { validatePasswordSet } from "@/lib/auth/password-set";
 
 export default function ResetPasswordPage() {
   const [passwordSet, setPasswordSet] = useState({ password: "", confirmPassword: "" });
@@ -197,13 +198,5 @@ export default function ResetPasswordPage() {
         </div>
       </div>
     </div>
-  );
-}
-
-function Circle({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2">
-      <circle cx="12" cy="12" r="10" />
-    </svg>
   );
 }
