@@ -507,9 +507,46 @@ export default function ActivityLogPage() {
             ))}
           </SelectContent>
         </Select>
+        <div className="flex items-center gap-2 ml-auto">
+          <Input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => { setDateFrom(e.target.value); setPage(0); }}
+            className="w-[160px]"
+            aria-label="From date"
+            max={dateTo || undefined}
+          />
+          <span className="text-muted-foreground text-sm">to</span>
+          <Input
+            type="date"
+            value={dateTo}
+            onChange={(e) => { setDateTo(e.target.value); setPage(0); }}
+            className="w-[160px]"
+            aria-label="To date"
+            min={dateFrom || undefined}
+          />
+          {(dateFrom || dateTo) && (
+            <Button variant="ghost" size="sm" onClick={() => { setDateFrom(""); setDateTo(""); setPage(0); }}>
+              Clear
+            </Button>
+          )}
+        </div>
         <Badge variant="secondary" className="text-xs whitespace-nowrap">
           {totalCount} events
         </Badge>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleExportAll}
+          disabled={exporting || totalCount === 0}
+          className="whitespace-nowrap"
+        >
+          {exporting ? (
+            <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Exporting…</>
+          ) : (
+            <><Download className="h-4 w-4 mr-1" /> Download CSV ({totalCount.toLocaleString()})</>
+          )}
+        </Button>
       </div>
 
       {loading ? (
