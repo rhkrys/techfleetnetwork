@@ -70,7 +70,10 @@ export default function NotificationSettingsPage() {
 
   return (
     <div className="container max-w-3xl py-8 space-y-6">
-      <PageHeader title="Notification preferences" description="Choose which alerts reach you in-app. Email preferences live on your profile." />
+      <header className="space-y-1">
+        <h1 className="text-2xl font-semibold tracking-tight">Notification preferences</h1>
+        <p className="text-sm text-muted-foreground">Choose which alerts reach you in-app. Email preferences live on your profile.</p>
+      </header>
 
       <Card>
         <CardHeader>
