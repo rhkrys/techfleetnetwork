@@ -4,14 +4,23 @@ Zero-downtime rotation for `FREESCOUT_API_KEY` and `FREESCOUT_WEBHOOK_SECRET`.
 
 ## API key (`FREESCOUT_API_KEY`)
 
-The secret is **live-validated at entry** by the `freescout-validate-secret` edge function. A bad key is rejected before it is written.
+The `freescout-validate-secret` edge function is the live-probe contract — it confirms the candidate key authenticates AND that `DEFAULT_MAILBOX_ID` is reachable, before any rotation goes live.
 
 1. In Freescout admin, generate a new admin API key. Keep the old key active.
-2. In the admin Settings → Secrets UI, paste the new key. The UI calls `freescout-validate-secret`; the secret is only saved if Freescout returns 200 and `DEFAULT_MAILBOX_ID` is present in the mailboxes list.
-3. Smoke test:
+2. **Pre-flight (mandatory):** run the validator with the candidate key, signed in as an admin:
+   ```bash
+   curl -sS -X POST "https://iqsjhrhsjlgjiaedzmtz.supabase.co/functions/v1/freescout-validate-secret" \
+     -H "Authorization: Bearer $ADMIN_JWT" -H "Content-Type: application/json" \
+     -d "$(jq -nc --arg k "$NEW_KEY" '{candidateApiKey:$k}')"
+   ```
+   Proceed only if the response is `{"ok": true, "mailboxId": <DEFAULT_MAILBOX_ID>, ...}`. Any other response means the key is bad or the mailbox const is wrong — do not save the secret.
+3. Update the `FREESCOUT_API_KEY` secret in Lovable Cloud → Connectors with the validated key.
+4. Smoke test:
    - Member: open Get Help, expect the ticket list to load.
    - Admin: open System Health → Help Desk and run a test backfill.
-4. Revoke the old API key in Freescout.
+5. Revoke the old API key in Freescout.
+
+
 
 ## Mailbox ID
 
