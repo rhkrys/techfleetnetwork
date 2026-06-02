@@ -13,6 +13,8 @@ import noDirectErrorReporter from "./scripts/lint/eslint-plugin-no-direct-error-
 import noRawFunctionsInvoke from "./scripts/lint/eslint-plugin-no-raw-functions-invoke.mjs";
 import noSupabaseSingle from "./scripts/lint/eslint-plugin-no-supabase-single.mjs";
 import authInvariants from "./scripts/lint/eslint-plugin-auth-invariants.mjs";
+import lazyRequiresRetry from "./scripts/lint/eslint-plugin-lazy-requires-retry.mjs";
+import useAuthRequiresProvider from "./scripts/lint/eslint-plugin-use-auth-requires-provider.mjs";
 
 export default tseslint.config(
   { ignores: ["dist"] },
@@ -43,6 +45,9 @@ export default tseslint.config(
         },
       },
       "auth-invariants": authInvariants,
+      // Part 1 §1.5 — chunk-load brick + AuthProvider hoist invariants.
+      lazy: lazyRequiresRetry,
+      auth: useAuthRequiresProvider,
       // Browser-compat — fails on JS APIs unsupported in our `browserslist`
       // (package.json: iOS >=14.5, Safari >=14.1, Firefox ESR, last 2 versions).
       compat,
@@ -92,6 +97,13 @@ export default tseslint.config(
       "triage-permanent/no-supabase-single": "warn",
       "auth-invariants/no-bare-password-set-input": "error",
       "auth-invariants/no-raw-password-update": "error",
+      // Part 1 §1.5 — bare React.lazy white-screens on stale chunks after a
+      // deploy; the wrapper retries 3× then surfaces <UpdateAvailableBanner/>.
+      "lazy/requires-retry": "warn",
+      // Part 1 §1.5 — useAuth() must live under <AuthProvider>; calls from
+      // main.tsx or plain functions produce the "must be used within
+      // AuthProvider" white-screen.
+      "auth/use-auth-requires-provider": "error",
       // Typed-error hierarchy — non-typed variant avoids slow projectService.
       "no-throw-literal": "warn",
       // Browser-compat — warn until the baseline reaches zero; this is the
