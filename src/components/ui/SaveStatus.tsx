@@ -18,7 +18,7 @@
 
 import { useEffect, useState } from "react";
 import { Check, CircleAlert, Loader2, PencilLine } from "lucide-react";
-import { Icon } from "@/components/ui/Icon";
+import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 
 export type SaveStatusState = "idle" | "dirty" | "saving" | "saved" | "error";
