@@ -104,13 +104,15 @@ export default function AdminAllTicketsGrid({ scope: fixedScope }: { scope?: Sco
 
   return (
     <div className="space-y-4">
-      <Tabs value={scope} onValueChange={(v) => setScope(v as Scope)}>
-        <TabsList>
-          <TabsTrigger value="open-unassigned">Open · unassigned</TabsTrigger>
-          <TabsTrigger value="open-assigned">Open · assigned</TabsTrigger>
-          <TabsTrigger value="all">All</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      {!fixedScope && (
+        <Tabs value={scope} onValueChange={(v) => setInternalScope(v as Scope)}>
+          <TabsList>
+            <TabsTrigger value="open-unassigned">Open · unassigned</TabsTrigger>
+            <TabsTrigger value="open-assigned">Open · assigned</TabsTrigger>
+            <TabsTrigger value="all">All</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      )}
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Loading tickets…</p>
