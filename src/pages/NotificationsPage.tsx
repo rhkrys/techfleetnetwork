@@ -63,7 +63,7 @@ export default function NotificationsPage() {
     markAllRead.mutate();
   }, [markAllRead]);
 
-  const columnDefs = useMemo<ColDef<AppNotification>[]>(() => [
+  const columnDefs = useMemo<ColDef<DigestRow>[]>(() => [
     {
       headerName: "Status",
       field: "read",
