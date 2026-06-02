@@ -236,7 +236,7 @@ const App = () => (
                     <Route path="/courses/observer" element={<ProtectedRoute><ObserverCoursePage /></ProtectedRoute>} />
                     <Route path="/events" element={<ProtectedRoute><EventsPage /></ProtectedRoute>} />
                     <Route path="/resources" element={<ProtectedRoute><ResourcesPage /></ProtectedRoute>} />
-                    <Route path="/community/get-help" element={<ProtectedRoute><GetHelpPage /></ProtectedRoute>} />
+                    <Route path="/community/get-help" element={<ProtectedRoute><ScopedErrorBoundary label="Get Help"><GetHelpPage /></ScopedErrorBoundary></ProtectedRoute>} />
                     <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
                     <Route path="/applications" element={<ProtectedRoute><ApplicationsPage /></ProtectedRoute>} />
                     <Route path="/applications/general" element={<ProtectedRoute><GeneralApplicationPage /></ProtectedRoute>} />

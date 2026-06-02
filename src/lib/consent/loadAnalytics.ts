@@ -50,6 +50,9 @@ function loadGa4() {
   window.gtag!("config", GA4_ID, { send_page_view: false, anonymize_ip: true });
   const s = document.createElement("script");
   s.async = true;
+  // crossorigin="anonymous" lets the browser surface real stack frames from
+  // GTM/GA scripts to window.onerror instead of the opaque "Script error.".
+  s.crossOrigin = "anonymous";
   s.src = `https://www.googletagmanager.com/gtag/js?id=${GA4_ID}`;
   document.head.appendChild(s);
 }
@@ -64,6 +67,9 @@ function loadClarity() {
     c[a] = c[a] || fn;
     const t = l.createElement(r) as HTMLScriptElement;
     t.async = true;
+    // crossorigin="anonymous" → real Clarity stack frames reach our reporter
+    // instead of an opaque cross-origin "Script error.".
+    t.crossOrigin = "anonymous";
     t.src = "https://www.clarity.ms/tag/" + i;
     const y = l.getElementsByTagName(r)[0];
     y.parentNode!.insertBefore(t, y);

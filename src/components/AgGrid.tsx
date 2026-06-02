@@ -13,6 +13,7 @@ import { Suspense, type ComponentType } from "react";
 import type { AgGridReactProps } from "ag-grid-react";
 import type { GridApi } from "ag-grid-community";
 import { lazyWithRetry } from "@/lib/lazy-with-retry";
+import { ScopedErrorBoundary } from "@/components/ScopedErrorBoundary";
 
 interface ThemedAgGridProps<T> extends AgGridReactProps<T> {
   height?: string;
@@ -47,8 +48,10 @@ function GridFallback({ height = "400px" }: { height?: string }) {
 export function ThemedAgGrid<T = unknown>(props: ThemedAgGridProps<T>) {
   const Component = LazyThemedAgGrid as unknown as ComponentType<ThemedAgGridProps<T>>;
   return (
-    <Suspense fallback={<GridFallback height={props.height} />}>
-      <Component {...props} />
-    </Suspense>
+    <ScopedErrorBoundary label="Data grid">
+      <Suspense fallback={<GridFallback height={props.height} />}>
+        <Component {...props} />
+      </Suspense>
+    </ScopedErrorBoundary>
   );
 }
