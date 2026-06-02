@@ -28,18 +28,29 @@ export async function invokeFreescout<T = unknown>(body: FreescoutActionBody, si
     if (result.error) {
       const extras: string[] = [`action:${safeField(action)}`, `reason:invoke_error`];
       // Best-effort: peek upstream error body for actionable triage detail.
+      let sawContext = false;
       try {
         const ctx = (result.error as { context?: Response }).context;
         if (ctx && typeof ctx.clone === "function") {
+          sawContext = true;
           const body = await ctx.clone().json().catch(() => null);
+          const status = ctx.status;
+          if (status) extras.push(`upstream:${safeField(String(status))}`);
           if (body && typeof body === "object") {
-            const status = ctx.status;
             const upstreamCode = (body as { error?: unknown }).error;
-            if (status) extras.push(`upstream:${safeField(String(status))}`);
             if (upstreamCode) extras.push(`upstream_code:${safeField(String(upstreamCode))}`);
           }
         }
       } catch { /* best-effort only */ }
+      if (!sawContext) {
+        // No Response on the error = supabase-js never got a reply (function
+        // undeployed, gateway 404, network blocked, CORS). Tag explicitly so
+        // triage can tell "ran and failed" from "never ran" without cross-
+        // referencing edge HTTP logs.
+        extras.push(`upstream:transport_error`);
+        const name = (result.error as { name?: string })?.name;
+        if (name) extras.push(`error_name:${safeField(name)}`);
+      }
       reportActivity(
         "edge_invoke_failed",
         "edge.freescout-proxy",

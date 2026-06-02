@@ -1,162 +1,80 @@
-# Permanent fix for recurring login and account issues
+## Root cause
 
-You are right: this is not acceptable scalable auth architecture.
+Get Help loads zero tickets even though Freescout has them. The smoking gun is in the data, not the UI:
 
-## Why this happened
+- Last 12h of edge HTTP logs: **0** requests to `freescout-proxy` (every other function shows up: `process-freescout-events`, `record-web-vital`, `translate-strings`, etc.).
+- Same window in `audit_log`: ~15 client-side `edge_invoke_failed` rows for `freescout-proxy` (`listMine`, `listAll`, `create`, `reply`), all with `reason:invoke_error` and — critically — **no `upstream:<status>` tag**.
 
-The current code has three architectural gaps:
+`freescoutInvoke.ts` only attaches `upstream:` when `error.context` is a real `Response`. No context means the supabase-js call failed at transport — i.e., the Edge Functions gateway returned before the function ran. Combined with zero edge HTTP rows for that slug, the function isn't reachable in this deploy.
 
-1. **Password/auth forms are duplicated per page.**
-   Register has a confirm-password field, but Reset Password was built separately and only has one password field. That allowed a safety control to exist in one flow and be missing in another.
+Why it isn't reachable: `freescout-proxy` (and `freescout-validate-secret`, `freescout-sync-customer`, `freescout-provision-admin`) have **no entry in `supabase/config.toml`**. Only `freescout-webhook` and `process-freescout-events` are pinned. Functions without a config block rely entirely on the deploy manifest, and at least `freescout-proxy` is currently not live. The source exists in `supabase/functions/freescout-proxy/index.ts` — it just isn't deployed.
 
-2. **The password reset flow trusts client UI too much.**
-   `AuthService.updatePassword(newPassword)` calls the auth SDK directly. The SDK only knows the recovery session is valid; it cannot know whether the person mistyped what they meant to type. So a typo can be stored successfully, and the current recovery session makes the person appear logged in until the next sign-in.
+This affects admins and members identically because `listMine`, `listAll`, `get`, `create`, and `reply` all go through the same proxy.
 
-3. **CI tests do not currently prove the full user promise.**
-   Existing tests check pieces of auth UI and service behavior, but not the full round trip: request reset → open reset link → set password → sign out/close session → sign in with the new password.
+## Fix (root-cause, permanent — no band-aid)
 
-## What I will change
+### 1. Redeploy the missing Freescout edge functions
 
-### 1. Fix the immediate password-reset UX
+Deploy in one shot: `freescout-proxy`, `freescout-validate-secret`, `freescout-sync-customer`, `freescout-provision-admin`. (`freescout-webhook` and `process-freescout-events` are already live.) No code change needed — the source is already correct.
 
-- Add **Confirm new password** to `ResetPasswordPage.tsx`.
-- Block submit unless:
-  - password passes the shared `passwordSchema`
-  - confirmation is present
-  - password and confirmation match exactly
-- Show an accessible inline mismatch message with `role="alert"`.
-- Disable the submit button while invalid, not just after submit.
-- Update success copy so members understand they are signed in now and should use the new password next time.
+### 2. Pin Freescout functions in `supabase/config.toml`
 
-### 2. Replace page-by-page password fields with one shared component
+Add explicit config blocks so intent is captured in source:
 
-Create `src/components/auth/PasswordSetFields.tsx` as the only approved way to collect a new password.
-
-It will own:
-
-- new password field
-- confirm password field
-- show/hide controls
-- password requirements checklist
-- exact-match validation
-- accessible error text
-- `autoComplete="new-password"`
-- stable API: `{ password, isValid, errors }`
-
-Then migrate:
-
-- `ResetPasswordPage.tsx`
-- `RegisterPage.tsx`
-
-This removes the class of bug where one page forgets a safety field another page has.
-
-### 3. Move credential mutation behind an app-owned invariant
-
-Change `AuthService.updatePassword` from:
-
-```ts
-updatePassword(newPassword)
+```
+[functions.freescout-proxy]
+  verify_jwt = true
+[functions.freescout-validate-secret]
+  verify_jwt = true
+[functions.freescout-sync-customer]
+  verify_jwt = true
+[functions.freescout-provision-admin]
+  verify_jwt = true
 ```
 
-to:
+`verify_jwt=true` matches the existing behavior (every action in the proxy already calls `requireAuthenticatedRequest`); the explicit pin protects against silent default drift.
 
-```ts
-updatePassword({ password, confirmPassword })
-```
+### 3. Make `invoke_error` self-describing for transport failures
 
-Then enforce the same invariant in the service layer before any backend call:
+In `src/lib/support/freescoutInvoke.ts`, when `error.context` is missing (no Response = transport-level failure), tag the audit row with `upstream:transport_error` and, when available, `error_name:<error.constructor.name>`. This means the next time a function disappears or the gateway 404s, the audit row is instantly diagnosable — no need to cross-reference edge HTTP logs to figure out "did it even run?".
 
-- both fields required
-- schema-valid password
-- exact match
-- no direct SDK update from pages
+Severity stays `warn` (per existing `Edge CORS Trace Header` memory).
 
-If the invariant fails, no credential update request is made.
+### 4. CI guardrail: every function in `supabase/functions/` must be covered
 
-### 4. Add a backend password-update guard
+Add `scripts/ci/check-edge-function-coverage.mjs` that fails CI when any directory under `supabase/functions/` (other than `_shared`) lacks either:
 
-Add an app backend function, `update-password-confirmed`, that:
+- a `[functions.<name>]` block in `supabase/config.toml`, **or**
+- an entry on an explicit `KNOWN_DEFAULT_FUNCTIONS` allow-list in the script.
 
-- requires an authenticated recovery/current session
-- validates `password` and `confirmPassword` server-side
-- rejects mismatches before changing credentials
-- updates the password only after validation
-- records a non-sensitive audit event with `confirmed: true`
-- preserves the current device session and revokes other sessions through the existing revocation path
+Wire it into the existing regression workflow (`.github/workflows/regression.yml`) alongside the other smoke checks. This is the durable invariant that turns "function silently undeployed" into a red CI build, not a production outage.
 
-This is the durable invariant layer. The UI can regress, but the backend will still reject unconfirmed password updates.
+### 5. BDD coverage
 
-### 5. Add a CI lint guard so this cannot be reintroduced
+Add three scenarios in `bdd_scenarios`:
 
-Add a custom lint rule:
+- **HELP-DESK-040** — Member opens Get Help → `freescout-proxy` reachable → ticket list renders (`[UI]` items > 0 when DB pointers / Freescout has data, `[Code]` edge HTTP 200, `[DB]` `audit_log` has no `edge_invoke_failed` row for the request trace).
+- **HELP-DESK-041** — Admin opens Get Help "All tickets" → `listAll` returns rows for `DEFAULT_MAILBOX_ID` (`[UI]` AG Grid populated, `[Code]` 200, `[DB]` no error audit row).
+- **HELP-DESK-042** — Transport-level failure on `freescout-proxy` records `upstream:transport_error` on `audit_log.changed_fields` (`[Code]` `freescoutInvoke` augments extras when `error.context` is missing, `[DB]` audit row carries the tag, `[UI]` user sees the existing "We couldn't load your tickets" empty state with retry).
 
-- forbid raw `supabase.auth.updateUser({ password })` outside `AuthService`
-- forbid raw new-password inputs outside `PasswordSetFields`
-- fail CI if a future page hand-rolls password setup again
+### 6. Memory update
 
-This turns the architecture rule into an automated gate.
+Extend the existing `[Get Help Scale Contract]` / `[Get Help Secret Contract]` memory with a new core rule: **"Every edge function directory under `supabase/functions/` must be pinned in `supabase/config.toml` (excluding `_shared/`); enforced by `scripts/ci/check-edge-function-coverage.mjs`."** This makes the lesson reusable across all future functions, not just Freescout.
 
-### 6. Add full round-trip auth tests
+## Files
 
-Add Playwright coverage for the real user promise:
-
-- reset password with mismatched confirmation → cannot submit
-- reset password with matching confirmation → succeeds
-- sign out / clear session
-- sign in with the new password → succeeds
-- sign in with the old password → fails
-
-Also add Vitest coverage that proves:
-
-- `ResetPasswordPage` does not call `AuthService.updatePassword` on mismatch
-- `AuthService.updatePassword` refuses mismatches
-- the backend function rejects missing or false confirmation metadata
-
-### 7. Add BDD scenarios and review checklist guardrail
-
-Add BDD scenarios:
-
-- **AUTH-RESET-010** — mismatched reset confirmation blocks submit at UI and service layer
-- **AUTH-RESET-011** — matching reset password signs in successfully after a new session
-- **AUTH-RESET-012** — direct unconfirmed password update path is rejected by backend/service guard
-
-Update `docs/code-review-checklist.md` with an **Auth credential changes** section:
-
-- shared password component required
-- backend invariant required
-- full round-trip test required
-- no raw SDK password mutation from pages
-- no password-change success copy without next-sign-in expectation
-
-### 8. Save the architecture rule to project memory
-
-Add a permanent memory rule:
-
-> Credential mutation screens must use shared password primitives, app-owned service methods, backend confirmation guards, and round-trip E2E tests. No page may call password mutation SDKs directly.
-
-## Files planned
-
-- `src/components/auth/PasswordSetFields.tsx`
-- `src/pages/ResetPasswordPage.tsx`
-- `src/pages/RegisterPage.tsx`
-- `src/services/auth.service.ts`
-- `supabase/functions/update-password-confirmed/index.ts`
-- `scripts/lint/eslint-plugin-auth-invariants.mjs`
-- `eslint.config.js`
-- `src/test/ui/ResetPasswordPage.test.tsx`
-- `src/test/services/auth.service.test.ts`
-- `e2e/auth/password-reset-roundtrip.e2e.ts`
-- `.github/workflows/regression.yml`
-- `docs/code-review-checklist.md`
-- project memory + BDD scenario entries
+- `supabase/config.toml` — add 4 `[functions.freescout-*]` blocks
+- `src/lib/support/freescoutInvoke.ts` — tag `upstream:transport_error` / `error_name:` when context missing
+- `scripts/ci/check-edge-function-coverage.mjs` — new coverage script
+- `.github/workflows/regression.yml` — invoke the new script
+- `bdd_scenarios` — insert HELP-DESK-040..042
+- `mem://index.md` — append the new core rule
 
 ## Definition of done
 
-This is complete only when:
-
-- Reset Password cannot submit mismatched passwords.
-- No page directly mutates a password outside the auth service.
-- Backend rejects unconfirmed password updates.
-- CI fails if anyone reintroduces hand-rolled new-password fields.
-- CI proves the full reset → sign out → sign in round trip.
-- The architecture rule is documented in review checklist, BDD, and memory.
+- `freescout-proxy` returns 200 for `listMine`/`listAll` on a logged-in session; Get Help renders tickets for both admins and members.
+- Every Freescout edge function appears in `supabase/config.toml`.
+- A future undeployed/unpinned function fails CI (`check-edge-function-coverage.mjs`).
+- Any future transport-level `invoke_error` audit row carries `upstream:transport_error`.
+- BDD HELP-DESK-040..042 inserted.
+- Core memory rule added.

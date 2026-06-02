@@ -146,6 +146,9 @@ jobs:
       - name: Verify audit trigger backstop
         run: npm run check:audit-triggers
 
+      - name: Verify every edge function is pinned in config.toml
+        run: node scripts/ci/check-edge-function-coverage.mjs
+
       - name: Security headers smoke (OWASP A02 — non-blocking)
         continue-on-error: true
         env:
