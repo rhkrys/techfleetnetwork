@@ -77,15 +77,31 @@ export default function UpdatesPage() {
   const { user } = useAuth();
   const { isAdmin } = useAdmin();
   const { data: announcements = [], isLoading: loading } = useAnnouncements();
+  const { data: readIds } = useAnnouncementReadIds();
+  const { data: actionMap } = useAnnouncementActions();
   const createMutation = useCreateAnnouncement();
   const deleteMutation = useDeleteAnnouncement();
   const markReadMutation = useMarkAnnouncementRead();
   const recordViewMutation = useRecordAnnouncementView();
+  const recordActionMutation = useRecordAnnouncementAction();
 
   const [viewMode, setViewMode] = useState<ViewMode>("card");
+  const [showArchived, setShowArchived] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Announcement | null>(null);
+
+  // Tri-state status (Part 2 §C1): unread → read → acted.
+  const statusOf = (id: string): "unread" | "read" | "acted" => {
+    const acts = actionMap?.get(id);
+    if (acts && acts.size > 0) return "acted";
+    if (readIds?.has(id)) return "read";
+    return "unread";
+  };
+  const isArchived = (id: string) => actionMap?.get(id)?.has("archived") ?? false;
+  const visibleAnnouncements = showArchived
+    ? announcements
+    : announcements.filter((a) => !isArchived(a.id));
 
   // Auto-open announcement from email link
   useEffect(() => {
