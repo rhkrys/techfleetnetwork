@@ -142,6 +142,9 @@ jobs:
       - name: Run Vitest regression suite
         run: npm run test
 
+      - name: Verify audit trigger backstop
+        run: npm run check:audit-triggers
+
       - name: Security headers smoke (OWASP A02 — non-blocking)
         continue-on-error: true
         env:
