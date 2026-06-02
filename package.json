@@ -29,6 +29,7 @@
     "sbom": "cyclonedx-npm --output-format JSON --output-file sbom.json --omit dev",
     "audit:signatures": "npm audit signatures",
     "scan:secrets": "node scripts/secret-scan.mjs",
+    "check:audit-triggers": "bash scripts/ci/check-audit-triggers.sh",
     "prepare": "husky || true",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
