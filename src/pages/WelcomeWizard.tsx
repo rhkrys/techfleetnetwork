@@ -103,7 +103,7 @@ export default function WelcomeWizard() {
   if (authLoading || checking) {
     return (
       <main className="min-h-[100dvh] flex items-center justify-center px-4">
-        <Text className="text-muted-foreground">Loading your welcome…</Text>
+        <Body className="text-muted-foreground">Loading your welcome…</Body>
       </main>
     );
   }
@@ -162,10 +162,10 @@ export default function WelcomeWizard() {
     <main className="min-h-[100dvh] bg-background px-4 py-8 pt-safe pb-safe">
       <div className="mx-auto w-full max-w-xl space-y-6">
         <header className="space-y-2 text-center">
-          <Heading as="h1" size="2xl">Welcome to Tech Fleet</Heading>
-          <Text className="text-muted-foreground">
+          <PageTitle>Welcome to Tech Fleet</PageTitle>
+          <Body className="text-muted-foreground">
             A few quick questions so your team can recognize you.
-          </Text>
+          </Body>
         </header>
 
         <CompletenessMeter compact />
@@ -197,7 +197,7 @@ export default function WelcomeWizard() {
                 />
               )}
               {FIELD_HELP[field] ? (
-                <Text size="sm" className="text-muted-foreground">{FIELD_HELP[field]}</Text>
+                <BodySmall className="text-muted-foreground">{FIELD_HELP[field]}</Body>
               ) : null}
               <SaveStatus state={saveState} savedAt={savedAt} />
             </div>
@@ -213,9 +213,9 @@ export default function WelcomeWizard() {
           </CardContent>
         </Card>
 
-        <Text size="sm" className="text-center text-muted-foreground">
+        <BodySmall className="text-center text-muted-foreground">
           You can edit any of this later on your profile page.
-        </Text>
+        </Body>
       </div>
     </main>
   );
