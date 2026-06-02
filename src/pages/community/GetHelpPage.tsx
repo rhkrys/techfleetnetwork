@@ -48,7 +48,7 @@ function useTickets(scope: "mine" | "all", status: "open" | "closed" | "all") {
     staleTime: 60_000,
     gcTime: 300_000,
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    refetchOnMount: "always",
   });
 }
 
@@ -244,7 +244,7 @@ function TicketList({ scope }: { scope: "mine" | "all" }) {
   const tickets = data?.items ?? [];
 
   const refresh = () => {
-    qc.invalidateQueries({ queryKey: ["support", "tickets", scope] as const });
+    qc.invalidateQueries({ queryKey: ["support"] as const });
   };
 
   return (
@@ -341,13 +341,15 @@ export default function GetHelpPage() {
         <Tabs defaultValue="mine">
           <TabsList>
             <TabsTrigger value="mine">My tickets</TabsTrigger>
+            <TabsTrigger value="open-unassigned">Open · unassigned</TabsTrigger>
+            <TabsTrigger value="open-assigned">Open · assigned</TabsTrigger>
             <TabsTrigger value="all">All tickets</TabsTrigger>
-            <TabsTrigger value="grid">Triage grid</TabsTrigger>
             <TabsTrigger value="reports">Reports</TabsTrigger>
           </TabsList>
           <TabsContent value="mine" className="mt-6"><TicketList scope="mine" /></TabsContent>
-          <TabsContent value="all" className="mt-6"><TicketList scope="all" /></TabsContent>
-          <TabsContent value="grid" className="mt-6"><AdminAllTicketsGrid /></TabsContent>
+          <TabsContent value="open-unassigned" className="mt-6"><AdminAllTicketsGrid scope="open-unassigned" /></TabsContent>
+          <TabsContent value="open-assigned" className="mt-6"><AdminAllTicketsGrid scope="open-assigned" /></TabsContent>
+          <TabsContent value="all" className="mt-6"><AdminAllTicketsGrid scope="all" /></TabsContent>
           <TabsContent value="reports" className="mt-6"><MonthlyReportPanel /></TabsContent>
         </Tabs>
       ) : (

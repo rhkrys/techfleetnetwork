@@ -39,12 +39,13 @@ function useScopedTickets(scope: Scope) {
     staleTime: 60_000,
     gcTime: 300_000,
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    refetchOnMount: "always",
   });
 }
 
-export default function AdminAllTicketsGrid() {
-  const [scope, setScope] = useState<Scope>("open-unassigned");
+export default function AdminAllTicketsGrid({ scope: fixedScope }: { scope?: Scope } = {}) {
+  const [internalScope, setInternalScope] = useState<Scope>("open-unassigned");
+  const scope = fixedScope ?? internalScope;
   const qc = useQueryClient();
   const { data: rows = [], isLoading } = useScopedTickets(scope);
 
@@ -103,13 +104,15 @@ export default function AdminAllTicketsGrid() {
 
   return (
     <div className="space-y-4">
-      <Tabs value={scope} onValueChange={(v) => setScope(v as Scope)}>
-        <TabsList>
-          <TabsTrigger value="open-unassigned">Open · unassigned</TabsTrigger>
-          <TabsTrigger value="open-assigned">Open · assigned</TabsTrigger>
-          <TabsTrigger value="all">All</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      {!fixedScope && (
+        <Tabs value={scope} onValueChange={(v) => setInternalScope(v as Scope)}>
+          <TabsList>
+            <TabsTrigger value="open-unassigned">Open · unassigned</TabsTrigger>
+            <TabsTrigger value="open-assigned">Open · assigned</TabsTrigger>
+            <TabsTrigger value="all">All</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      )}
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Loading tickets…</p>
