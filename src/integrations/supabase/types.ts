@@ -4617,6 +4617,95 @@ export type Database = {
         }
         Relationships: []
       }
+      refactor_kpi_catalog: {
+        Row: {
+          baseline_value: number
+          category: string
+          created_at: string
+          description: string
+          direction: string
+          label: string
+          metric_key: string
+          related_section: string
+          sort_order: number
+          target_value: number
+          unit: string
+        }
+        Insert: {
+          baseline_value: number
+          category: string
+          created_at?: string
+          description: string
+          direction: string
+          label: string
+          metric_key: string
+          related_section: string
+          sort_order?: number
+          target_value: number
+          unit: string
+        }
+        Update: {
+          baseline_value?: number
+          category?: string
+          created_at?: string
+          description?: string
+          direction?: string
+          label?: string
+          metric_key?: string
+          related_section?: string
+          sort_order?: number
+          target_value?: number
+          unit?: string
+        }
+        Relationships: []
+      }
+      refactor_kpi_daily: {
+        Row: {
+          computed_at: string
+          denominator: number | null
+          id: number
+          metadata: Json
+          metric_key: string
+          metric_unit: string
+          metric_value: number
+          numerator: number | null
+          snapshot_date: string
+          window_label: string
+        }
+        Insert: {
+          computed_at?: string
+          denominator?: number | null
+          id?: number
+          metadata?: Json
+          metric_key: string
+          metric_unit: string
+          metric_value: number
+          numerator?: number | null
+          snapshot_date: string
+          window_label: string
+        }
+        Update: {
+          computed_at?: string
+          denominator?: number | null
+          id?: number
+          metadata?: Json
+          metric_key?: string
+          metric_unit?: string
+          metric_value?: number
+          numerator?: number | null
+          snapshot_date?: string
+          window_label?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "refactor_kpi_daily_metric_key_fkey"
+            columns: ["metric_key"]
+            isOneToOne: false
+            referencedRelation: "refactor_kpi_catalog"
+            referencedColumns: ["metric_key"]
+          },
+        ]
+      }
       reference_activities: {
         Row: {
           category: string
@@ -6856,6 +6945,18 @@ export type Database = {
       _current_aal: { Args: never; Returns: string }
       _login_hash: { Args: { value: string }; Returns: string }
       _login_outcome_allowed: { Args: { o: string }; Returns: boolean }
+      _upsert_kpi: {
+        Args: {
+          p_date: string
+          p_den?: number
+          p_key: string
+          p_num?: number
+          p_unit: string
+          p_value: number
+          p_window: string
+        }
+        Returns: undefined
+      }
       admin_2fa_grace_active: { Args: { _user_id: string }; Returns: boolean }
       admin_2fa_grace_deadline: { Args: { _user_id: string }; Returns: string }
       admin_recompute_stats: { Args: never; Returns: Json }
@@ -7442,6 +7543,26 @@ export type Database = {
           notion_repository_url: string
         }[]
       }
+      get_refactor_kpis: {
+        Args: { p_days?: number }
+        Returns: {
+          baseline_value: number
+          category: string
+          current_value: number
+          current_window: string
+          description: string
+          direction: string
+          label: string
+          last_updated: string
+          metric_key: string
+          previous_value: number
+          related_section: string
+          status: string
+          target_value: number
+          trend: number[]
+          unit: string
+        }[]
+      }
       get_roster_project_header: {
         Args: { p_project_id: string }
         Returns: Json
@@ -7764,6 +7885,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      snapshot_refactor_kpis: { Args: never; Returns: number }
       snooze_fix_queue_entry: {
         Args: { p_days?: number; p_id: string }
         Returns: undefined
