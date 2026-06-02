@@ -154,7 +154,7 @@ export function RefactorKpisTab() {
   });
 
   // Realtime: refresh when daily snapshots change
-  useMemo(() => {
+  useEffect(() => {
     if (!user) return;
     const channel = supabase
       .channel("refactor-kpis-daily")
@@ -163,6 +163,7 @@ export function RefactorKpisTab() {
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [user, qc]);
+
 
   const summary = useMemo(() => {
     const out = { met: 0, on_track: 0, at_risk: 0, off_track: 0, no_data: 0 };
