@@ -27,7 +27,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAdmin } from "@/hooks/use-admin";
 import {
   useAnnouncements, useCreateAnnouncement, useDeleteAnnouncement, useMarkAnnouncementRead,
-  useRecordAnnouncementView,
+  useRecordAnnouncementView, useAnnouncementReadIds, useAnnouncementActions,
+  useRecordAnnouncementAction,
 } from "@/hooks/use-announcements";
 import { stripHtml, normalizeRichTextHtml } from "@/lib/html";
 import { TranslatedContent } from "@/components/i18n/TranslatedContent";
@@ -76,15 +77,31 @@ export default function UpdatesPage() {
   const { user } = useAuth();
   const { isAdmin } = useAdmin();
   const { data: announcements = [], isLoading: loading } = useAnnouncements();
+  const { data: readIds } = useAnnouncementReadIds();
+  const { data: actionMap } = useAnnouncementActions();
   const createMutation = useCreateAnnouncement();
   const deleteMutation = useDeleteAnnouncement();
   const markReadMutation = useMarkAnnouncementRead();
   const recordViewMutation = useRecordAnnouncementView();
+  const recordActionMutation = useRecordAnnouncementAction();
 
   const [viewMode, setViewMode] = useState<ViewMode>("card");
+  const [showArchived, setShowArchived] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Announcement | null>(null);
+
+  // Tri-state status (Part 2 §C1): unread → read → acted.
+  const statusOf = (id: string): "unread" | "read" | "acted" => {
+    const acts = actionMap?.get(id);
+    if (acts && acts.size > 0) return "acted";
+    if (readIds?.has(id)) return "read";
+    return "unread";
+  };
+  const isArchived = (id: string) => actionMap?.get(id)?.has("archived") ?? false;
+  const visibleAnnouncements = showArchived
+    ? announcements
+    : announcements.filter((a) => !isArchived(a.id));
 
   // Auto-open announcement from email link
   useEffect(() => {
@@ -192,6 +209,14 @@ export default function UpdatesPage() {
               <LayoutList className="h-4 w-4" />
             </Button>
           </div>
+          <Button
+            variant={showArchived ? "secondary" : "ghost"}
+            size="sm"
+            onClick={() => setShowArchived((v) => !v)}
+            aria-pressed={showArchived}
+          >
+            {showArchived ? "Hide archived" : "Show archived"}
+          </Button>
           {isAdmin && (
             <Button onClick={() => setCreateOpen(true)} className="gap-2">
               <Plus className="h-4 w-4" />
@@ -214,7 +239,7 @@ export default function UpdatesPage() {
         <ThemedAgGrid<Announcement>
           gridId="updates"
           height="450px"
-          rowData={announcements}
+          rowData={visibleAnnouncements}
           columnDefs={columnDefs}
           getRowId={(params) => params.data.id}
           onRowClicked={(params) => params.data && selectAndMarkRead(params.data)}
@@ -226,47 +251,60 @@ export default function UpdatesPage() {
         />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {announcements.map((a) => (
-            <button
-              key={a.id}
-              onClick={() => selectAndMarkRead(a)}
-              className="card-elevated p-5 text-left hover:border-primary/40 transition-all group border border-white/50"
-            >
-              <div className="flex items-start justify-between gap-2 mb-2">
-                <div className="flex items-center gap-2">
-                <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors line-clamp-2">
-                  <TranslatedContent entityTable="announcements" entityId={a.id} columnName="title" sourceText={a.title} />
-                </h3>
-                  {a.video_url && (
-                    <Video className="h-4 w-4 text-primary shrink-0" aria-label="Has video" />
-                  )}
-                  {!a.video_url && a.audio_url && (
-                    <Mic className="h-4 w-4 text-primary shrink-0" aria-label="Has audio" />
+          {visibleAnnouncements.map((a) => {
+            const status = statusOf(a.id);
+            const statusLabel =
+              status === "acted" ? "Acted" : status === "read" ? "Read" : "Unread";
+            const statusVariant: "default" | "secondary" | "outline" =
+              status === "unread" ? "default" : status === "read" ? "secondary" : "outline";
+            return (
+              <button
+                key={a.id}
+                onClick={() => selectAndMarkRead(a)}
+                className={`card-elevated p-5 text-left hover:border-primary/40 transition-all group border border-white/50 ${
+                  status === "unread" ? "ring-1 ring-primary/30" : ""
+                }`}
+                aria-label={`${a.title} — ${statusLabel}`}
+              >
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors line-clamp-2">
+                      <TranslatedContent entityTable="announcements" entityId={a.id} columnName="title" sourceText={a.title} />
+                    </h3>
+                    {a.video_url && (
+                      <Video className="h-4 w-4 text-primary shrink-0" aria-label="Has video" />
+                    )}
+                    {!a.video_url && a.audio_url && (
+                      <Mic className="h-4 w-4 text-primary shrink-0" aria-label="Has audio" />
+                    )}
+                  </div>
+                  {isAdmin && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0 text-destructive hover:text-destructive"
+                      onClick={(e) => { e.stopPropagation(); setDeleteTarget(a); }}
+                      aria-label={`Delete ${a.title}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
                   )}
                 </div>
-                {isAdmin && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 shrink-0 text-destructive hover:text-destructive"
-                    onClick={(e) => { e.stopPropagation(); setDeleteTarget(a); }}
-                    aria-label={`Delete ${a.title}`}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                )}
-              </div>
-              <p className="text-sm text-muted-foreground line-clamp-3 mb-3">
-                {stripHtml(a.body_html).slice(0, 150)}
-              </p>
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <Badge variant="secondary" className="text-xs">
-                  {format(new Date(a.created_at), "MMM d, yyyy")}
-                </Badge>
-                <AnnouncementViewStats announcementId={a.id} />
-              </div>
-            </button>
-          ))}
+                <p className="text-sm text-muted-foreground line-clamp-3 mb-3">
+                  {stripHtml(a.body_html).slice(0, 150)}
+                </p>
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <Badge variant={statusVariant} className="text-xs">{statusLabel}</Badge>
+                    <Badge variant="secondary" className="text-xs">
+                      {format(new Date(a.created_at), "MMM d, yyyy")}
+                    </Badge>
+                  </div>
+                  <AnnouncementViewStats announcementId={a.id} />
+                </div>
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -323,6 +361,26 @@ export default function UpdatesPage() {
               )}
             </div>
           </ScrollArea>
+          {selectedAnnouncement && (
+            <div className="border-t px-6 py-3 flex items-center justify-end gap-2 shrink-0">
+              {isArchived(selectedAnnouncement.id) ? (
+                <span className="text-sm text-muted-foreground">Archived</span>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const id = selectedAnnouncement.id;
+                    recordActionMutation.mutate({ announcementId: id, action: "archived" });
+                    toast.success("Announcement archived. Find it again under Show archived.");
+                    setSelectedAnnouncement(null);
+                  }}
+                >
+                  Archive announcement
+                </Button>
+              )}
+            </div>
+          )}
         </SheetContent>
       </Sheet>
 
