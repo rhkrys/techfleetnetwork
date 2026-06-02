@@ -13,6 +13,7 @@ import { AdminRoute } from "@/components/AdminRoute";
 import { TeacherRoute } from "@/components/TeacherRoute";
 import { IdleTimeoutGuard } from "@/components/IdleTimeoutGuard";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ScopedErrorBoundary } from "@/components/ScopedErrorBoundary";
 import { AuthRedirectHandler } from "@/components/AuthRedirectHandler";
 import { IdleMount } from "@/components/IdleMount";
 import { Suspense } from "react";
