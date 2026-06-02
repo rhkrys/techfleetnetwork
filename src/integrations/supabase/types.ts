@@ -2702,6 +2702,8 @@ export type Database = {
           completed_at: string | null
           created_at: string
           current_section: number
+          draft_state: Json
+          draft_updated_at: string | null
           email: string
           hours_commitment: string
           id: string
@@ -2728,6 +2730,8 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           current_section?: number
+          draft_state?: Json
+          draft_updated_at?: string | null
           email?: string
           hours_commitment?: string
           id?: string
@@ -2754,6 +2758,8 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           current_section?: number
+          draft_state?: Json
+          draft_updated_at?: string | null
           email?: string
           hours_commitment?: string
           id?: string
@@ -4068,6 +4074,7 @@ export type Database = {
           country: string
           country_code_at_signup: string | null
           created_at: string
+          dashboard_layout_version: number
           discord_invite_created_at: string | null
           discord_invite_url: string
           discord_linked_at: string | null
@@ -4098,6 +4105,7 @@ export type Database = {
           membership_updated_at: string | null
           notify_announcements: boolean
           notify_training_opportunities: boolean
+          onboarded_at: string | null
           portfolio_url: string
           preferred_language: string
           professional_background: string
@@ -4117,6 +4125,7 @@ export type Database = {
           country?: string
           country_code_at_signup?: string | null
           created_at?: string
+          dashboard_layout_version?: number
           discord_invite_created_at?: string | null
           discord_invite_url?: string
           discord_linked_at?: string | null
@@ -4147,6 +4156,7 @@ export type Database = {
           membership_updated_at?: string | null
           notify_announcements?: boolean
           notify_training_opportunities?: boolean
+          onboarded_at?: string | null
           portfolio_url?: string
           preferred_language?: string
           professional_background?: string
@@ -4166,6 +4176,7 @@ export type Database = {
           country?: string
           country_code_at_signup?: string | null
           created_at?: string
+          dashboard_layout_version?: number
           discord_invite_created_at?: string | null
           discord_invite_url?: string
           discord_linked_at?: string | null
@@ -4196,6 +4207,7 @@ export type Database = {
           membership_updated_at?: string | null
           notify_announcements?: boolean
           notify_training_opportunities?: boolean
+          onboarded_at?: string | null
           portfolio_url?: string
           preferred_language?: string
           professional_background?: string
