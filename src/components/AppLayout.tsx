@@ -26,6 +26,7 @@ import {
   Flag,
   Sparkles,
   HeartPulse,
+  Bell,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { ThemeToggle } from "./ThemeToggle";
