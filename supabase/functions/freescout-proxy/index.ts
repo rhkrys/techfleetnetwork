@@ -274,11 +274,15 @@ Deno.serve(async (req) => {
             subject: input.subject,
             mailboxId: DEFAULT_MAILBOX_ID,
             status: "active",
-            customer: { email: cust.email },
+            customer: cust.customerId
+              ? { id: Number(cust.customerId) }
+              : { email: cust.email },
             threads: [{
               type: "customer",
               text: input.body,
-              customer: { email: cust.email },
+              customer: cust.customerId
+                ? { id: Number(cust.customerId) }
+                : { email: cust.email },
             }],
           },
         });
