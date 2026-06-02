@@ -206,6 +206,7 @@ export default function SystemHealthPage() {
 
       <SystemHealthTabs>
         <TabsList aria-label="System health sections">
+          <TabsTrigger value="refactor-kpis">Refactor KPIs</TabsTrigger>
           <TabsTrigger value="queues">Queues</TabsTrigger>
           <TabsTrigger value="delivery">Delivery</TabsTrigger>
           <TabsTrigger value="deliverability">Deliverability</TabsTrigger>
