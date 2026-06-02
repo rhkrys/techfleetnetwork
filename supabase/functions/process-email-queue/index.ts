@@ -508,6 +508,21 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
         })
 
         if (isRateLimited(error)) {
+          // Cross-lane attribution: when the provider's rate-limit key is
+          // workspace-scoped (rate_limit:workspace:email_send:...) the
+          // offender is whichever lane sent immediately before — not
+          // necessarily this lane. Without attribution, an auth-lane burst
+          // that exhausts the workspace quota would freeze whichever lane
+          // happens to read the 429 next (typically transactional, which
+          // drains right after auth). Attribute to lastSentLane when it
+          // differs from this lane AND the error message mentions the
+          // workspace key; otherwise attribute to this lane as before.
+          const isWorkspaceQuota = /rate_limit:workspace:email_send/i.test(errorMsg)
+          const offenderLane =
+            isWorkspaceQuota && lastSentLane && lastSentLane !== queue
+              ? lastSentLane
+              : queue
+
           await supabase.from('email_send_log').insert({
             message_id: payload.message_id,
             template_name: payload.label || queue,
@@ -516,10 +531,11 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
             error_message: errorMsg.slice(0, 1000),
           })
 
-          // Exponential backoff per consecutive 429 for this queue: 60s → 120s → 240s …, cap 900s.
-          // Honor provider Retry-After when present; otherwise grow exponentially from a 60s base.
+          // Exponential backoff per consecutive 429 for the OFFENDER lane:
+          // 60s → 120s → 240s …, cap 900s. Honor provider Retry-After when
+          // present; otherwise grow exponentially from a 60s base.
           const providerSecs = getRetryAfterSeconds(error)
-          const nextCount = (consecutive[queue] ?? 0) + 1
+          const nextCount = (consecutive[offenderLane] ?? 0) + 1
           const expSecs = Math.min(60 * Math.pow(2, nextCount - 1), 900)
           const retryAfterSecs = Math.max(providerSecs, expSecs)
           const until = new Date(Date.now() + retryAfterSecs * 1000).toISOString()
@@ -527,30 +543,34 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
           await supabase
             .from('email_send_state')
             .update({
-              [cooldownCols[queue]]: until,
-              [counterCols[queue]]: nextCount,
+              [cooldownCols[offenderLane]]: until,
+              [counterCols[offenderLane]]: nextCount,
               updated_at: new Date().toISOString(),
             })
             .eq('id', 1)
-          cooldownUntil[queue] = until
-          consecutive[queue] = nextCount
+          cooldownUntil[offenderLane] = until
+          consecutive[offenderLane] = nextCount
 
-          // Admin signal — deduped per hour per queue via agent_fix_queue.
+          // Admin signal — deduped per hour per offender lane via agent_fix_queue.
           // Wrapped because the table is optional and failures here must not break sends.
           try {
             const hourBucket = new Date().toISOString().slice(0, 13) // YYYY-MM-DDTHH
-            // Auth + transactional freezes are user-critical (signup confirmation,
-            // password reset, 1:1 receipts) — surface as 'error' so System Health
-            // Triage pages admins. Bulk lane freezes stay at 'warn' since they
-            // only delay digests/blasts and are isolated by design.
-            const laneSeverity = queue === 'bulk_emails' ? 'warn' : 'error'
+            // Severity is based on the OFFENDER lane: an auth burst that
+            // tripped the workspace quota is user-critical even when the
+            // 429 arrives on transactional. Bulk lane offenders stay at
+            // 'warn' since they're isolated by design.
+            const laneSeverity = offenderLane === 'bulk_emails' ? 'warn' : 'error'
+            const attributionNote =
+              offenderLane === queue
+                ? ''
+                : ` (workspace-quota 429 attributed from ${queue} to ${offenderLane})`
             await supabase.from('agent_fix_queue').upsert(
               {
-                fingerprint: `email_queue.rate_limited.${queue}.${hourBucket}`,
+                fingerprint: `email_queue.rate_limited.${offenderLane}.${hourBucket}`,
                 event_type: 'email_rate_limited',
                 source: 'process-email-queue',
                 severity: laneSeverity,
-                error_message: `${queue} paused ${retryAfterSecs}s after consecutive 429 #${nextCount}. ${errorMsg.slice(0, 500)}`,
+                error_message: `${offenderLane} paused ${retryAfterSecs}s after consecutive 429 #${nextCount}.${attributionNote} ${errorMsg.slice(0, 500)}`,
               } as any,
               { onConflict: 'fingerprint', ignoreDuplicates: false }
             )
