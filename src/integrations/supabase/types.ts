@@ -4110,6 +4110,7 @@ export type Database = {
           membership_sku: string
           membership_tier: Database["public"]["Enums"]["membership_tier"]
           membership_updated_at: string | null
+          notification_prefs: Json
           notify_announcements: boolean
           notify_training_opportunities: boolean
           onboarded_at: string | null
@@ -4161,6 +4162,7 @@ export type Database = {
           membership_sku?: string
           membership_tier?: Database["public"]["Enums"]["membership_tier"]
           membership_updated_at?: string | null
+          notification_prefs?: Json
           notify_announcements?: boolean
           notify_training_opportunities?: boolean
           onboarded_at?: string | null
@@ -4212,6 +4214,7 @@ export type Database = {
           membership_sku?: string
           membership_tier?: Database["public"]["Enums"]["membership_tier"]
           membership_updated_at?: string | null
+          notification_prefs?: Json
           notify_announcements?: boolean
           notify_training_opportunities?: boolean
           onboarded_at?: string | null
