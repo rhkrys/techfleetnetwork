@@ -91,6 +91,23 @@ describe("AuthService session max-age marker", () => {
     expect(supabase.functions.invoke).not.toHaveBeenCalledWith("login-with-captcha", expect.anything());
   });
 
+  it("AUTH-RESET-010: refuses mismatched password updates before backend call", async () => {
+    await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass124!" })).rejects.toThrow(/passwords do not match/i);
+    expect(supabase.functions.invoke).not.toHaveBeenCalledWith("update-password-confirmed", expect.anything());
+    expect(supabase.auth.updateUser).not.toHaveBeenCalled();
+  });
+
+  it("AUTH-RESET-011: sends confirmed password updates through the guarded function", async () => {
+    vi.mocked(supabase.functions.invoke).mockResolvedValue({ data: { success: true, confirmed: true, other_devices_revoked: true }, error: null });
+
+    await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).resolves.toEqual({ otherDevicesRevoked: true });
+
+    expect(supabase.functions.invoke).toHaveBeenCalledWith("update-password-confirmed", {
+      body: { password: "StrongPass123!", confirmPassword: "StrongPass123!" },
+    });
+    expect(logAccountActivity).toHaveBeenCalledWith("password_updated", { details: { confirmed: true } });
+  });
+
   it("does not sign out a user because another account left a stale timestamp", async () => {
     const session = makeSession("current-user");
     localStorage.setItem("sb-project-auth-token", JSON.stringify({ access_token: session.access_token, refresh_token: session.refresh_token }));
