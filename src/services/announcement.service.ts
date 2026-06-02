@@ -74,7 +74,7 @@ export const AnnouncementService = {
           message: `Transient announcement fetch failure (degraded): ${error.message}`,
           level: "warn",
         });
-        return lastKnownGood.get(limit) ?? [];
+        return lastKnownGood.get(limit) ?? readLkgFromStorage(limit) ?? [];
       }
       // Structural (RLS / schema / auth) → throw so it surfaces in triage.
       handleServiceError(error, {
@@ -87,6 +87,7 @@ export const AnnouncementService = {
 
     const rows = (data ?? []) as unknown as Announcement[];
     lastKnownGood.set(limit, rows);
+    writeLkgToStorage(limit, rows);
     return rows;
   },
 
