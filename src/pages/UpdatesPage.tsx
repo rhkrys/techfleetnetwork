@@ -209,6 +209,14 @@ export default function UpdatesPage() {
               <LayoutList className="h-4 w-4" />
             </Button>
           </div>
+          <Button
+            variant={showArchived ? "secondary" : "ghost"}
+            size="sm"
+            onClick={() => setShowArchived((v) => !v)}
+            aria-pressed={showArchived}
+          >
+            {showArchived ? "Hide archived" : "Show archived"}
+          </Button>
           {isAdmin && (
             <Button onClick={() => setCreateOpen(true)} className="gap-2">
               <Plus className="h-4 w-4" />
