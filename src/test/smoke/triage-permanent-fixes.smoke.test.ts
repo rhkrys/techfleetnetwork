@@ -78,7 +78,8 @@ describe("TRIAGE-FIX permanent root-cause fixes", () => {
 
   it("TRIAGE-FIX-006: error-reporter SUPPRESSED_PATTERNS no longer contains the eight refactored strings", () => {
     const src = read("src/services/error-reporter.service.ts");
-    const suppressedArray = src.match(/const SUPPRESSED_PATTERNS = \[([\s\S]*?)\] as const;/)?.[1] ?? "";
+    const suppressedArray = (src.match(/const SUPPRESSED_PATTERNS = \[([\s\S]*?)\] as const;/)?.[1] ?? "")
+      .replace(/\/\/.*$/gm, "");
     expect(suppressedArray).toBeTruthy();
     const banned = [
       '"Not authorized for project"',
