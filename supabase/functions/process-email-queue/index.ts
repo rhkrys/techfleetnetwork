@@ -7,6 +7,14 @@ const DEFAULT_BATCH_SIZE = 10
 const DEFAULT_SEND_DELAY_MS = 200
 const DEFAULT_AUTH_TTL_MINUTES = 15
 const DEFAULT_TRANSACTIONAL_TTL_MINUTES = 60
+// Global workspace pacer: minimum gap between provider API calls across ALL
+// lanes within a single invocation. Sized to the Lovable Email per-workspace
+// quota (~2 sends/sec). Without this, lane priority correctly drains auth
+// first but bursts within a lane can still trip the workspace-wide rate
+// limit, which then mis-attributes to whichever lane reads the 429 next.
+// Paired with cross-lane 429 attribution below to keep cooldowns on the
+// actual offender.
+const MIN_GLOBAL_GAP_MS = 500
 
 // Check if an error is a rate-limit (429) response.
 // Uses EmailAPIError.status when available (email-js >=0.x with structured errors),
@@ -219,11 +227,18 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
   }
 
   let totalProcessed = 0
+  // Tracks the lane whose last send hit the provider successfully. When a 429
+  // arrives with a workspace-scoped rate-limit key, the offender is whoever
+  // sent immediately before — NOT necessarily the lane that received the 429.
+  // Without this attribution, every shared-quota 429 would mis-blame the
+  // lane that happens to drain next (typically transactional, which drains
+  // right after an auth burst).
+  let lastSentLane: string | null = null
+  // Global workspace pacer state: timestamp of the most recent provider call
+  // across all lanes within this invocation.
+  let lastGlobalSendAt = 0
 
   // 2. Process queues in fixed priority order.
-  // Each queue has its own cooldown so one queue's 429 cannot freeze another.
-  // Auth confirmations always drain first; bulk is strictly last so it can
-  // never starve user-critical mail.
   for (const queue of ['auth_emails', 'transactional_emails', 'bulk_emails']) {
     if (cooldownUntil[queue] && new Date(cooldownUntil[queue] as string) > new Date()) {
       console.log('Skipping queue (cooldown active)', { queue, until: cooldownUntil[queue] })
@@ -416,6 +431,18 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
 
 
       try {
+        // Global workspace pacer: enforce minimum gap between provider calls
+        // across ALL lanes. Sized to the shared per-workspace email_send
+        // quota. Lane priority is preserved (auth drains first → grabs
+        // tokens first), but bursts within a lane can no longer trip the
+        // shared rate limit and mis-attribute to whichever lane reads the
+        // 429 next. Per-lane cooldowns remain as a second line of defense.
+        const gapSinceLastSend = Date.now() - lastGlobalSendAt
+        if (lastGlobalSendAt > 0 && gapSinceLastSend < MIN_GLOBAL_GAP_MS) {
+          await new Promise((r) => setTimeout(r, MIN_GLOBAL_GAP_MS - gapSinceLastSend))
+        }
+        lastGlobalSendAt = Date.now()
+
         await sendLovableEmail(
           {
             run_id: payload.run_id,
@@ -456,6 +483,10 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
         }
         if (ALL_BULK_TEMPLATES.has(labelStr)) bulkSentLastHour++
         totalProcessed++
+        // Record this lane as the last successful sender. Used to attribute
+        // a subsequent shared-workspace 429 to the actual offender rather
+        // than to whichever lane happens to receive the error next.
+        lastSentLane = queue
 
         // Success-reset: clear this queue's consecutive 429 counter on first
         // successful send. Only writes when there's something to clear.
@@ -477,6 +508,21 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
         })
 
         if (isRateLimited(error)) {
+          // Cross-lane attribution: when the provider's rate-limit key is
+          // workspace-scoped (rate_limit:workspace:email_send:...) the
+          // offender is whichever lane sent immediately before — not
+          // necessarily this lane. Without attribution, an auth-lane burst
+          // that exhausts the workspace quota would freeze whichever lane
+          // happens to read the 429 next (typically transactional, which
+          // drains right after auth). Attribute to lastSentLane when it
+          // differs from this lane AND the error message mentions the
+          // workspace key; otherwise attribute to this lane as before.
+          const isWorkspaceQuota = /rate_limit:workspace:email_send/i.test(errorMsg)
+          const offenderLane =
+            isWorkspaceQuota && lastSentLane && lastSentLane !== queue
+              ? lastSentLane
+              : queue
+
           await supabase.from('email_send_log').insert({
             message_id: payload.message_id,
             template_name: payload.label || queue,
@@ -485,10 +531,11 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
             error_message: errorMsg.slice(0, 1000),
           })
 
-          // Exponential backoff per consecutive 429 for this queue: 60s → 120s → 240s …, cap 900s.
-          // Honor provider Retry-After when present; otherwise grow exponentially from a 60s base.
+          // Exponential backoff per consecutive 429 for the OFFENDER lane:
+          // 60s → 120s → 240s …, cap 900s. Honor provider Retry-After when
+          // present; otherwise grow exponentially from a 60s base.
           const providerSecs = getRetryAfterSeconds(error)
-          const nextCount = (consecutive[queue] ?? 0) + 1
+          const nextCount = (consecutive[offenderLane] ?? 0) + 1
           const expSecs = Math.min(60 * Math.pow(2, nextCount - 1), 900)
           const retryAfterSecs = Math.max(providerSecs, expSecs)
           const until = new Date(Date.now() + retryAfterSecs * 1000).toISOString()
@@ -496,30 +543,34 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
           await supabase
             .from('email_send_state')
             .update({
-              [cooldownCols[queue]]: until,
-              [counterCols[queue]]: nextCount,
+              [cooldownCols[offenderLane]]: until,
+              [counterCols[offenderLane]]: nextCount,
               updated_at: new Date().toISOString(),
             })
             .eq('id', 1)
-          cooldownUntil[queue] = until
-          consecutive[queue] = nextCount
+          cooldownUntil[offenderLane] = until
+          consecutive[offenderLane] = nextCount
 
-          // Admin signal — deduped per hour per queue via agent_fix_queue.
+          // Admin signal — deduped per hour per offender lane via agent_fix_queue.
           // Wrapped because the table is optional and failures here must not break sends.
           try {
             const hourBucket = new Date().toISOString().slice(0, 13) // YYYY-MM-DDTHH
-            // Auth + transactional freezes are user-critical (signup confirmation,
-            // password reset, 1:1 receipts) — surface as 'error' so System Health
-            // Triage pages admins. Bulk lane freezes stay at 'warn' since they
-            // only delay digests/blasts and are isolated by design.
-            const laneSeverity = queue === 'bulk_emails' ? 'warn' : 'error'
+            // Severity is based on the OFFENDER lane: an auth burst that
+            // tripped the workspace quota is user-critical even when the
+            // 429 arrives on transactional. Bulk lane offenders stay at
+            // 'warn' since they're isolated by design.
+            const laneSeverity = offenderLane === 'bulk_emails' ? 'warn' : 'error'
+            const attributionNote =
+              offenderLane === queue
+                ? ''
+                : ` (workspace-quota 429 attributed from ${queue} to ${offenderLane})`
             await supabase.from('agent_fix_queue').upsert(
               {
-                fingerprint: `email_queue.rate_limited.${queue}.${hourBucket}`,
+                fingerprint: `email_queue.rate_limited.${offenderLane}.${hourBucket}`,
                 event_type: 'email_rate_limited',
                 source: 'process-email-queue',
                 severity: laneSeverity,
-                error_message: `${queue} paused ${retryAfterSecs}s after consecutive 429 #${nextCount}. ${errorMsg.slice(0, 500)}`,
+                error_message: `${offenderLane} paused ${retryAfterSecs}s after consecutive 429 #${nextCount}.${attributionNote} ${errorMsg.slice(0, 500)}`,
               } as any,
               { onConflict: 'fingerprint', ignoreDuplicates: false }
             )
