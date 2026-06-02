@@ -4,14 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Eye, EyeOff, Mail, Lock, CheckCircle2, User, Cake, ShieldAlert } from "lucide-react";
+import { Mail, CheckCircle2, User, Cake, ShieldAlert } from "lucide-react";
 import { AuthService } from "@/services/auth.service";
 import { RateLimitService } from "@/services/rate-limit.service";
 import { registerSchema, ageInYears, GUARDIAN_MIN_AGE } from "@/lib/validators/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 import techFleetLogo from "@/assets/tech-fleet-logo.svg";
-import { PasswordRequirementsList } from "@/components/registration/PasswordRequirementsList";
+import { PasswordSetFields } from "@/components/auth/PasswordSetFields";
 import { ValidatedField } from "@/components/ui/validated-field";
 import { validationBorderClass, getFieldValidationState, showFormErrors, scrollToFirstError } from "@/lib/form-validation";
 import { logAccountActivity } from "@/lib/account-activity";
@@ -39,8 +39,6 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [dob, setDob] = useState(""); // ISO yyyy-mm-dd
   const countryCode = loadConsent()?.countryCode ?? null;
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [electronicCommsConsent, setElectronicCommsConsent] = useState(false);
   const [guardianEmail, setGuardianEmail] = useState("");
