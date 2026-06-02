@@ -137,13 +137,36 @@ export const JourneyService = {
       taskId,
       completed,
     }, async () => {
+      // Part 2 §B1: uncompletion must go through the SECURITY DEFINER RPC,
+      // which sets app.allow_uncomplete=true so the BEFORE-UPDATE guard on
+      // journey_progress permits clearing completed/completed_at. Callers
+      // are expected to gate this behind a verb+object ConfirmDialog
+      // ("Mark step incomplete").
+      if (!completed) {
+        const { error } = await supabase.rpc("mark_task_incomplete", {
+          p_phase: phase,
+          p_task_id: taskId,
+        });
+        if (error) {
+          log.error("upsertTask", `Failed to mark task "${taskId}" incomplete for user ${userId}: ${error.message}`, {
+            userId, phase, taskId, completed,
+            errorCode: error.code, errorDetails: error.details,
+          }, error);
+          throw new Error("Failed to update progress");
+        }
+        log.info("upsertTask", `Task "${taskId}" uncompleted for user ${userId} in ${phase}`, {
+          userId, phase, taskId, completed,
+        });
+        return;
+      }
+
       const { error } = await supabase.from("journey_progress").upsert(
         {
           user_id: userId,
           phase,
           task_id: taskId,
           completed,
-          completed_at: completed ? new Date().toISOString() : null,
+          completed_at: new Date().toISOString(),
         },
         { onConflict: "user_id,phase,task_id" }
       );
@@ -158,7 +181,7 @@ export const JourneyService = {
         }, error);
         throw new Error("Failed to update progress");
       }
-      log.info("upsertTask", `Task "${taskId}" ${completed ? "completed" : "uncompleted"} for user ${userId} in ${phase}`, {
+      log.info("upsertTask", `Task "${taskId}" completed for user ${userId} in ${phase}`, {
         userId,
         phase,
         taskId,
