@@ -1,20 +1,15 @@
 // process-freescout-events — drains q_freescout_events, applies the same
 // downstream writes the webhook used to do inline. Cron-poked every 15s.
-// Auth: shared-secret bearer like process-email-queue (verify_jwt=false).
+// Auth: shared service-role validator (accepts BOTH legacy JWT and opaque
+// sb_secret_* tokens — see _shared/service-role-auth.ts). verify_jwt=false.
 import { getAdminClient } from "../_shared/admin-client.ts";
 import { handleCors, jsonResponse } from "../_shared/http.ts";
+import { authorizeServiceRoleRequest } from "../_shared/service-role-auth.ts";
 
 const BATCH = 25;
 const VT_SECONDS = 60;
 const MAX_ATTEMPTS = 3;
 
-function authorized(req: Request): boolean {
-  const auth = req.headers.get("authorization") ?? "";
-  if (!auth.startsWith("Bearer ")) return false;
-  const tok = auth.slice("Bearer ".length).trim();
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-  return tok.length > 0 && serviceKey.length > 0 && tok === serviceKey;
-}
 
 interface FreescoutEvent {
   msg_id: number;
