@@ -39,12 +39,13 @@ function useScopedTickets(scope: Scope) {
     staleTime: 60_000,
     gcTime: 300_000,
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    refetchOnMount: "always",
   });
 }
 
-export default function AdminAllTicketsGrid() {
-  const [scope, setScope] = useState<Scope>("open-unassigned");
+export default function AdminAllTicketsGrid({ scope: fixedScope }: { scope?: Scope } = {}) {
+  const [internalScope, setInternalScope] = useState<Scope>("open-unassigned");
+  const scope = fixedScope ?? internalScope;
   const qc = useQueryClient();
   const { data: rows = [], isLoading } = useScopedTickets(scope);
 
