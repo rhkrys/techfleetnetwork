@@ -78,6 +78,8 @@ describe("TRIAGE-FIX permanent root-cause fixes", () => {
 
   it("TRIAGE-FIX-006: error-reporter SUPPRESSED_PATTERNS no longer contains the eight refactored strings", () => {
     const src = read("src/services/error-reporter.service.ts");
+    const suppressedArray = src.match(/const SUPPRESSED_PATTERNS = \[([\s\S]*?)\] as const;/)?.[1] ?? "";
+    expect(suppressedArray).toBeTruthy();
     const banned = [
       '"Not authorized for project"',
       '"code=42501"',
@@ -89,10 +91,7 @@ describe("TRIAGE-FIX permanent root-cause fixes", () => {
       '"Script error."',
     ];
     for (const needle of banned) {
-      // Allowed: at most 2 references in comments / the isOpaqueScriptError
-      // classifier. Banned: keeping the string as a SUPPRESSED_PATTERNS entry.
-      const occurrences = src.split(needle).length - 1;
-      expect(occurrences, `pattern ${needle} should not be a SUPPRESSED_PATTERNS entry`).toBeLessThanOrEqual(2);
+      expect(suppressedArray, `pattern ${needle} should not be a SUPPRESSED_PATTERNS entry`).not.toContain(needle);
     }
 
     // email_capped / email_dlq must be in the non-actionable allow-list.
