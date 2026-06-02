@@ -498,17 +498,28 @@ function isEmptyRejection(msg: string): boolean {
   return trimmed === "{}" || trimmed === "" || trimmed === "null" || trimmed === "undefined";
 }
 
-function isOpaqueScriptError(_event: ErrorEvent, msg: string): boolean {
+export function isOpaqueScriptErrorMessage(msg: string): boolean {
   // Browsers emit the literal string "Script error." (sometimes without the
   // trailing period, sometimes wrapped as "Error: Script error.") when a
-  // cross-origin script throws and CORS hides the real details. The payload
-  // carries no stack, no message, no file we can act on — by definition not
-  // actionable. Drop unconditionally; do NOT gate on filename/lineno because
-  // some browsers (Safari, older Chromium) populate those even when the
-  // underlying message is fully opaque.
-  const normalized = msg.replace(/^Error:\s*/i, "").trim().replace(/\.$/, "");
-  return normalized === "Script error";
+  // cross-origin script throws and CORS hides the real details. React's
+  // synthetic dispatchEvent path can also wrap the payload with a synthesized
+  // stack trace, so the message may be MULTI-LINE — we must only inspect the
+  // first non-empty line.
+  //
+  // The payload carries no actionable stack/file/message — by definition not
+  // debuggable. Drop unconditionally at every reporter entrypoint.
+  const firstLine = (msg ?? "")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .find((l) => l.length > 0) ?? "";
+  return /^(error:\s*)?script error\.?$/i.test(firstLine);
 }
+
+// Back-compat wrapper for the window.onerror caller (uses ErrorEvent shape).
+function isOpaqueScriptError(_event: ErrorEvent, msg: string): boolean {
+  return isOpaqueScriptErrorMessage(msg);
+}
+
 
 // --- Aggregate observability for silent drops ------------------------
 // We never want suppression / dedup to be a black hole. Once a minute we
