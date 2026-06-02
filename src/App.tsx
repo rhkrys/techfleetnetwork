@@ -59,6 +59,7 @@ const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage"));
 const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
 const ProfileSetupPage = lazy(() => import("./pages/ProfileSetupPage"));
+const WelcomeWizard = lazy(() => import("./pages/WelcomeWizard"));
 const FirstStepsPage = lazy(() => import("./pages/FirstStepsPage"));
 const SecondStepsPage = lazy(() => import("./pages/SecondStepsPage"));
 const ThirdStepsPage = lazy(() => import("./pages/ThirdStepsPage"));
@@ -223,6 +224,7 @@ const App = () => (
                     <Route path="/reset-password" element={<ResetPasswordPage />} />
                     <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
                     <Route path="/profile-setup" element={<ProtectedRoute><ProfileSetupPage /></ProtectedRoute>} />
+                    <Route path="/welcome" element={<ProtectedRoute><WelcomeWizard /></ProtectedRoute>} />
                     <Route path="/my-journey" element={<ProtectedRoute><MyJourneyPage /></ProtectedRoute>} />
                     <Route path="/my-journey/quest/:pathId" element={<ProtectedRoute><QuestDetailPage /></ProtectedRoute>} />
                     
