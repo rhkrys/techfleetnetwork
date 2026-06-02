@@ -227,11 +227,18 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
   }
 
   let totalProcessed = 0
+  // Tracks the lane whose last send hit the provider successfully. When a 429
+  // arrives with a workspace-scoped rate-limit key, the offender is whoever
+  // sent immediately before — NOT necessarily the lane that received the 429.
+  // Without this attribution, every shared-quota 429 would mis-blame the
+  // lane that happens to drain next (typically transactional, which drains
+  // right after an auth burst).
+  let lastSentLane: string | null = null
+  // Global workspace pacer state: timestamp of the most recent provider call
+  // across all lanes within this invocation.
+  let lastGlobalSendAt = 0
 
   // 2. Process queues in fixed priority order.
-  // Each queue has its own cooldown so one queue's 429 cannot freeze another.
-  // Auth confirmations always drain first; bulk is strictly last so it can
-  // never starve user-critical mail.
   for (const queue of ['auth_emails', 'transactional_emails', 'bulk_emails']) {
     if (cooldownUntil[queue] && new Date(cooldownUntil[queue] as string) > new Date()) {
       console.log('Skipping queue (cooldown active)', { queue, until: cooldownUntil[queue] })
