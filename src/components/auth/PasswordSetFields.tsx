@@ -36,7 +36,7 @@ export function PasswordSetFields({
   const requirementsId = ids?.requirements ?? `${passwordId}-requirements`;
   const validation = useMemo(() => validatePasswordSet(value), [value]);
   const passwordError = errors?.password ?? (touched?.password ? validation.passwordError : "");
-  const confirmError = errors?.confirmPassword ?? (touched?.confirmPassword ? validation.confirmError : "");
+  const confirmError = errors?.confirmPassword ?? (touched?.confirmPassword || value.confirmPassword ? validation.confirmError : "");
 
   return (
     <div className={cn("space-y-4", className)} data-auth-password-set-fields>
