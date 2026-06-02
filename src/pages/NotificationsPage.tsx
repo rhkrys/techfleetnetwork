@@ -116,9 +116,17 @@ export default function NotificationsPage() {
       pinned: "right",
       sortable: false,
       filter: false,
-      cellRenderer: (params: ICellRendererParams<AppNotification>) => {
+      cellRenderer: (params: ICellRendererParams<DigestRow>) => {
         if (!params.data) return null;
-        const notif = params.data;
+        const row = params.data;
+        if (isStack(row)) {
+          return (
+            <div className="flex items-center gap-1 h-full">
+              <span className="text-xs text-muted-foreground">{row.stackCount} grouped</span>
+            </div>
+          );
+        }
+        const notif = row;
         return (
           <div className="flex items-center gap-1 h-full">
             {!notif.read && (
