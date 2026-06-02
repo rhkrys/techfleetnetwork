@@ -10,7 +10,7 @@
 // abuse, and the body is fully validated before insert.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
+import { corsHeaders } from "../_shared/http.ts";
 
 const ALLOWED_REASONS = new Set([
   "jwt_corrupt",
