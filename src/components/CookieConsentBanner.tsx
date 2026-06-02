@@ -71,6 +71,10 @@ function loadCookieYesScript() {
   script.src = COOKIEYES_SRC;
   script.async = true;
   script.defer = true;
+  // crossorigin="anonymous" so CookieYes errors carry a real stack trace
+  // instead of the opaque cross-origin "Script error." our reporter has
+  // to drop wholesale.
+  script.crossOrigin = "anonymous";
   script.onerror = () => {
     // eslint-disable-next-line no-console
     console.warn("[consent] CookieYes failed to load — analytics remain disabled");

@@ -13,6 +13,7 @@ import { AdminRoute } from "@/components/AdminRoute";
 import { TeacherRoute } from "@/components/TeacherRoute";
 import { IdleTimeoutGuard } from "@/components/IdleTimeoutGuard";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ScopedErrorBoundary } from "@/components/ScopedErrorBoundary";
 import { AuthRedirectHandler } from "@/components/AuthRedirectHandler";
 import { IdleMount } from "@/components/IdleMount";
 import { Suspense } from "react";
@@ -236,7 +237,7 @@ const App = () => (
                     <Route path="/courses/observer" element={<ProtectedRoute><ObserverCoursePage /></ProtectedRoute>} />
                     <Route path="/events" element={<ProtectedRoute><EventsPage /></ProtectedRoute>} />
                     <Route path="/resources" element={<ProtectedRoute><ResourcesPage /></ProtectedRoute>} />
-                    <Route path="/community/get-help" element={<ProtectedRoute><GetHelpPage /></ProtectedRoute>} />
+                    <Route path="/community/get-help" element={<ProtectedRoute><ScopedErrorBoundary label="Get Help"><GetHelpPage /></ScopedErrorBoundary></ProtectedRoute>} />
                     <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
                     <Route path="/applications" element={<ProtectedRoute><ApplicationsPage /></ProtectedRoute>} />
                     <Route path="/applications/general" element={<ProtectedRoute><GeneralApplicationPage /></ProtectedRoute>} />
