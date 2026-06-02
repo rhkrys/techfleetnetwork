@@ -218,6 +218,41 @@ export type Database = {
         }
         Relationships: []
       }
+      announcement_actions: {
+        Row: {
+          action: string
+          announcement_id: string
+          id: string
+          metadata: Json
+          occurred_at: string
+          user_id: string
+        }
+        Insert: {
+          action: string
+          announcement_id: string
+          id?: string
+          metadata?: Json
+          occurred_at?: string
+          user_id: string
+        }
+        Update: {
+          action?: string
+          announcement_id?: string
+          id?: string
+          metadata?: Json
+          occurred_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "announcement_actions_announcement_id_fkey"
+            columns: ["announcement_id"]
+            isOneToOne: false
+            referencedRelation: "announcements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       announcement_reads: {
         Row: {
           announcement_id: string
@@ -6203,6 +6238,13 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "support_ticket_pointers_customer_user_id_fkey"
+            columns: ["customer_user_id"]
+            isOneToOne: false
+            referencedRelation: "v_profile_readiness"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
       support_webhook_events: {
@@ -7089,6 +7131,24 @@ export type Database = {
           queue_failed: number | null
           queue_pending: number | null
           translated_ok: number | null
+        }
+        Relationships: []
+      }
+      v_profile_readiness: {
+        Row: {
+          missing_fields: string[] | null
+          score: number | null
+          user_id: string | null
+        }
+        Insert: {
+          missing_fields?: never
+          score?: never
+          user_id?: string | null
+        }
+        Update: {
+          missing_fields?: never
+          score?: never
+          user_id?: string | null
         }
         Relationships: []
       }
