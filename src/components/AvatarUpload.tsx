@@ -121,7 +121,7 @@ export function AvatarUpload({ userId, currentUrl, initials, onUploaded, classNa
       <input
         ref={inputRef}
         type="file"
-        accept=".png,.jpg,.jpeg"
+        accept=".png,.jpg,.jpeg,.webp"
         onChange={handleFileSelect}
         className="hidden"
         aria-label="Upload profile picture"
@@ -151,7 +151,14 @@ export function AvatarUpload({ userId, currentUrl, initials, onUploaded, classNa
           </Button>
         )}
       </div>
-      <p className="text-xs text-muted-foreground">PNG or JPG, max 2MB. Optional.</p>
+      <p className="text-xs text-muted-foreground">PNG, JPG, or WEBP, max 5MB. Cropped to a 512×512 square.</p>
+
+      <AvatarCropperDialog
+        open={Boolean(cropSrc)}
+        imageSrc={cropSrc}
+        onCancel={closeCropper}
+        onConfirm={handleCropConfirm}
+      />
     </div>
   );
 }
