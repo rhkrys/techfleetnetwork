@@ -187,7 +187,7 @@ export default function NotificationsPage() {
 
       <ThemedAgGrid
         gridId="notifications"
-        rowData={notifications}
+        rowData={digestRows}
         columnDefs={columnDefs}
         loading={isLoading}
         domLayout="autoHeight"
