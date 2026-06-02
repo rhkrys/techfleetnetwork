@@ -262,6 +262,7 @@ const App = () => (
                     <Route path="/updates" element={<ProtectedRoute><UpdatesPage /></ProtectedRoute>} />
                     <Route path="/profile/edit" element={<ProtectedRoute><EditProfilePage /></ProtectedRoute>} />
                     <Route path="/feedback" element={<ProtectedRoute><FeedbackPage /></ProtectedRoute>} />
+                    <Route path="/settings/notifications" element={<ProtectedRoute><NotificationSettingsPage /></ProtectedRoute>} />
                     <Route path="/accessibility" element={<AccessibilityPage />} />
                     <Route path="/privacy" element={<PrivacyPage />} />
                     <Route path="/cookies" element={<CookiesPage />} />
