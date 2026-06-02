@@ -197,7 +197,7 @@ export default function WelcomeWizard() {
                 />
               )}
               {FIELD_HELP[field] ? (
-                <BodySmall className="text-muted-foreground">{FIELD_HELP[field]}</Body>
+                <BodySmall className="text-muted-foreground">{FIELD_HELP[field]}</BodySmall>
               ) : null}
               <SaveStatus state={saveState} savedAt={savedAt} />
             </div>
@@ -215,7 +215,7 @@ export default function WelcomeWizard() {
 
         <BodySmall className="text-center text-muted-foreground">
           You can edit any of this later on your profile page.
-        </Body>
+        </BodySmall>
       </div>
     </main>
   );
