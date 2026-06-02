@@ -22,6 +22,7 @@ import {
 import { stripHtml } from "@/lib/html";
 import type { ColDef, ICellRendererParams } from "ag-grid-community";
 import type { AppNotification } from "@/services/notification.service";
+import { collapseNotificationsToDigest, isStack, type DigestRow } from "@/lib/notifications/collapseDigest";
 
 /** Friendly label for notification_type values */
 function typeLabel(type: string): string {
@@ -39,6 +40,10 @@ export default function NotificationsPage() {
   const { setHeader } = usePageHeader();
   const navigate = useNavigate();
   const { data: notifications = [], isLoading } = useNotifications(500);
+  const digestRows = useMemo<DigestRow[]>(
+    () => collapseNotificationsToDigest(notifications),
+    [notifications],
+  );
   const unreadCount = useUnreadNotificationCount();
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllNotificationsRead();
@@ -58,7 +63,7 @@ export default function NotificationsPage() {
     markAllRead.mutate();
   }, [markAllRead]);
 
-  const columnDefs = useMemo<ColDef<AppNotification>[]>(() => [
+  const columnDefs = useMemo<ColDef<DigestRow>[]>(() => [
     {
       headerName: "Status",
       field: "read",
@@ -111,9 +116,17 @@ export default function NotificationsPage() {
       pinned: "right",
       sortable: false,
       filter: false,
-      cellRenderer: (params: ICellRendererParams<AppNotification>) => {
+      cellRenderer: (params: ICellRendererParams<DigestRow>) => {
         if (!params.data) return null;
-        const notif = params.data;
+        const row = params.data;
+        if (isStack(row)) {
+          return (
+            <div className="flex items-center gap-1 h-full">
+              <span className="text-xs text-muted-foreground">{row.stackCount} grouped</span>
+            </div>
+          );
+        }
+        const notif = row;
         return (
           <div className="flex items-center gap-1 h-full">
             {!notif.read && (
@@ -174,7 +187,7 @@ export default function NotificationsPage() {
 
       <ThemedAgGrid
         gridId="notifications"
-        rowData={notifications}
+        rowData={digestRows}
         columnDefs={columnDefs}
         loading={isLoading}
         domLayout="autoHeight"
