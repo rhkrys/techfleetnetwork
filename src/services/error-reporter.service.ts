@@ -498,8 +498,16 @@ function isEmptyRejection(msg: string): boolean {
   return trimmed === "{}" || trimmed === "" || trimmed === "null" || trimmed === "undefined";
 }
 
-function isOpaqueScriptError(event: ErrorEvent, msg: string): boolean {
-  return msg === "Script error." && !event.error && !event.filename && event.lineno === 0 && event.colno === 0;
+function isOpaqueScriptError(_event: ErrorEvent, msg: string): boolean {
+  // Browsers emit the literal string "Script error." (sometimes without the
+  // trailing period, sometimes wrapped as "Error: Script error.") when a
+  // cross-origin script throws and CORS hides the real details. The payload
+  // carries no stack, no message, no file we can act on — by definition not
+  // actionable. Drop unconditionally; do NOT gate on filename/lineno because
+  // some browsers (Safari, older Chromium) populate those even when the
+  // underlying message is fully opaque.
+  const normalized = msg.replace(/^Error:\s*/i, "").trim().replace(/\.$/, "");
+  return normalized === "Script error";
 }
 
 // --- Aggregate observability for silent drops ------------------------
