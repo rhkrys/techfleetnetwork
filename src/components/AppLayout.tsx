@@ -59,6 +59,7 @@ import { UniversalSearch } from "./UniversalSearch";
 import { NotificationBell } from "./NotificationBell";
 import { AnnouncementBanner } from "./AnnouncementBanner";
 import { CookieConsentBanner } from "./CookieConsentBanner";
+import { UpdateAvailableBanner } from "./UpdateAvailableBanner";
 import { ShortcutCheatsheet } from "./ShortcutCheatsheet";
 import { PrivacyFooterLinks } from "./PrivacyFooterLinks";
 import { AppFooter } from "./AppFooter";
