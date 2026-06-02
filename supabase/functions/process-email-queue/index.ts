@@ -2,6 +2,7 @@ import { sendLovableEmail } from 'npm:@lovable.dev/email-js'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 import { withAuditWrapper } from "../_shared/audit.ts";
+import { authorizeServiceRoleRequest } from "../_shared/service-role-auth.ts";
 const MAX_RETRIES = 5
 const DEFAULT_BATCH_SIZE = 10
 const DEFAULT_SEND_DELAY_MS = 200
@@ -43,23 +44,9 @@ function getRetryAfterSeconds(error: unknown): number {
   return 60
 }
 
-function parseJwtClaims(token: string): Record<string, unknown> | null {
-  const parts = token.split('.')
-  if (parts.length < 2) {
-    return null
-  }
+// (Service-role bearer parsing moved to _shared/service-role-auth.ts so
+// every cron worker stays in lockstep on key-format support.)
 
-  try {
-    const payload = parts[1]
-      .replaceAll('-', '+')
-      .replaceAll('_', '/')
-      .padEnd(Math.ceil(parts[1].length / 4) * 4, '=')
-
-    return JSON.parse(atob(payload)) as Record<string, unknown>
-  } catch {
-    return null
-  }
-}
 
 // Move a message to the dead letter queue and log the reason.
 //
@@ -119,28 +106,16 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
     )
   }
 
-  const authHeader = req.headers.get('Authorization')
-  if (!authHeader?.startsWith('Bearer ')) {
+  // Shared service-role validator: accepts both legacy JWT and opaque
+  // sb_secret_* tokens. See _shared/service-role-auth.ts.
+  const auth = authorizeServiceRoleRequest(req)
+  if (!auth.ok) {
     return new Response(
-      JSON.stringify({ error: 'Unauthorized' }),
-      { status: 401, headers: { 'Content-Type': 'application/json' } }
+      JSON.stringify({ error: auth.error }),
+      { status: auth.status, headers: { 'Content-Type': 'application/json' } }
     )
   }
 
-  // Defense in depth: only service-role callers can trigger queue processing.
-  // Supports both legacy JWT tokens (claims.role === 'service_role') and the
-  // new signing-keys format (sb_secret_... opaque tokens, compared to the
-  // SUPABASE_SERVICE_ROLE_KEY env var).
-  const token = authHeader.slice('Bearer '.length).trim()
-  const claims = parseJwtClaims(token)
-  const isLegacyServiceRoleJwt = claims?.role === 'service_role'
-  const isOpaqueServiceRoleKey = token === supabaseServiceKey
-  if (!isLegacyServiceRoleJwt && !isOpaqueServiceRoleKey) {
-    return new Response(
-      JSON.stringify({ error: 'Forbidden' }),
-      { status: 403, headers: { 'Content-Type': 'application/json' } }
-    )
-  }
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey)
 

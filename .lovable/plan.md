@@ -1,130 +1,117 @@
 ## Root cause
 
-Two distinct production bugs collapse onto the same `freescout-proxy reply invoke_error` line in triage, plus one missing notification leg the user explicitly called out.
+Four distinct production bugs land on the same triage page. Each gets a permanent fix.
 
-### Bug A — `Assign me` sends a non-existent Freescout user id
-`src/pages/community/AdminAllTicketsGrid.tsx:87` hard-codes `assigneeUserId: 0`. The proxy's `assign` action forwards `assignTo: 0` to Freescout, which 422s ("user does not exist"). Self-assignment has never worked from the admin grid.
+### Bug A — `process-freescout-events` returns 401 every 15s (`authn_unauthorized`)
+`supabase/functions/process-freescout-events/index.ts:11-17` checks bearer with `tok === SUPABASE_SERVICE_ROLE_KEY` (literal equality only). Per the established `process-email-queue` pattern (memory: Email Queue Cron Bulk + Keys), the cron worker MUST also accept a legacy `service_role` JWT (Supabase sometimes sends one and sometimes the new opaque `sb_secret_*` token). Right now every cron wake (4×/min) returns 401, no events are drained, AND each 401 flips `authn_unauthorized` into the triage queue. Edge logs confirm the steady-state 401 storm.
 
-### Bug B — Admin reply omits the required `user` field
-`supabase/functions/freescout-proxy/index.ts:288-306` (case `reply`) submits `{ type: "message", text }` when the actor is an admin. Freescout requires a `user` field (the admin's Freescout user id) for `type: "message"` threads — it rejects with 422 `validation_failed: user`. Our wrapper catches the error and the frontend renders it as `invoke_error` with no actionable signal in triage.
+### Bug B — `discover_audit_fingerprints` re-promotes every audit row to `severity='error'`
+`discover_audit_fingerprints` (server cron) scans `audit_log` for the last 24h and **hard-codes** `severity='error'` on the `INSERT INTO agent_fix_queue`, ignoring whatever severity the client reporter wrote into `audit_log.changed_fields`. So:
 
-Both depend on the same missing piece: **the admin's `profiles.freescout_user_id` is provisioned by `freescout-provision-admin` but never read at action time.** When `assigneeUserId === 0` (or unset), the proxy should resolve "self" by looking up `profiles.freescout_user_id` for the calling admin and refuse the call (with an actionable error) if it isn't provisioned. Same lookup feeds the reply path.
+- `freescoutInvoke` reports `freescout-proxy listMine invoke_error` at `severity:"warn"` ✓
+- Client reporter correctly **skips** the direct queue write (`args.severity !== "error"` guard at `error-reporter.service.ts:316`) ✓
+- BUT it still writes the audit row (correct) ✓
+- Discovery picks it up next cycle and force-inserts at `error`, escalating it past HELP-DESK-024 ✗
 
-### Bug C — Member never receives email when an admin replies
-`process-freescout-events` creates an in-app notification (line 80-90) but does NOT send a transactional email. The previous assumption ("Freescout sends the customer email automatically") is fragile — it depends on per-mailbox settings outside our control and produces unbranded mail. The user explicitly wants email + in-app every time an admin replies.
+This single defect explains the `freescout-proxy listMine invoke_error` row (and every previous warn-severity edge-invoke noise that has been ranked as an error). It also defeats the Triage Noise Suppression policy: the client correctly classifies the event as warn, then the server escalates it back.
 
-### Bug D — Upstream 4xx detail is invisible in triage
-The proxy logs `level:error code:upstream_error msg body` to edge logs, but the `agent_fix_queue` row only carries `invoke_error` from the client wrapper. Future Freescout schema mismatches will recur opaquely. We must propagate the upstream error body into `audit_log.extraFields` so triage shows the real reason.
+### Bug C — `isOpaqueScriptError` predicate breaks on multi-line payloads
+`error-reporter.service.ts:501-511` strips `^Error:` and trailing `.`, then asserts equality to `"Script error"`. The real production payload is multi-line:
+```
+Error: Script error.
+ih@https://techfleet.network/assets/index-xwXUwr4r.js:2:23615
+...
+```
+Normalization keeps the embedded newlines, equality fails, the event leaks through. It also only runs in `window.onerror`; the React error-boundary path (`reportError` → `reportToAuditLog`) has no opaque-error guard, so a synthesized `dispatchEvent` Script error always lands in audit + triage.
+
+### Bug D — Stale rows
+`agent_fix_queue.3662cf6a` (Script error, triaged) and `ce7fff5d` (Script error, proposed) remain visible; `112cf9f4` (listMine invoke_error) is already `resolved` but will recur until Bug B is fixed.
+
+`client_error_suppressed` / `client_error_deduped` are intentionally observability-only (already in `v_excluded_events`) — they appear in the Activity Log, not Triage. No fix needed; documented in BDD.
 
 ## Permanent fix
 
-### 1. Provision-aware self-assign + admin user resolution
-- **New helper** in `supabase/functions/_shared/freescout-admin.ts`:
-  - `resolveAdminFreescoutUserId(userId)` → reads `profiles.freescout_user_id`; if null, calls `freescout-provision-admin` synchronously (it already exists, is idempotent, and returns the id). Throws `FreescoutError(412, "Admin not provisioned in Get Help. Try again in a moment.")` on persistent failure.
-- **`freescout-proxy` `assign` action**: extend the Zod schema so `assigneeUserId` accepts the literal string `"self"` OR a positive integer. When `"self"`, resolve via the helper. Reject `0` outright with 400.
-- **`freescout-proxy` `reply` action** (admin branch): call the helper, pass the returned id as `user` in the body to Freescout. Keep the customer branch unchanged.
-- **`AdminAllTicketsGrid.tsx`**: change `assigneeUserId: 0` → `assigneeUserId: "self"`. Localize the toast on 412 to "Setting up your helpdesk account. Try again in a few seconds." and auto-retry once after 2s.
+### 1. Cron auth parity (Bug A)
+- **New** `supabase/functions/_shared/service-role-auth.ts` exporting `authorizeServiceRoleRequest(req): { ok: true } | { ok: false, status: 401|403, body: { error: string } }`. Accepts both legacy JWT (`claims.role === 'service_role'`) and opaque `sb_secret_*` (`token === SUPABASE_SERVICE_ROLE_KEY`). Mirror of the proven `process-email-queue` logic.
+- `process-freescout-events/index.ts`: replace inline `authorized()` with the helper. Returns 401 only when bearer is missing/malformed; 403 when present but doesn't match. Both flagged severity=`warn` (cron noise, not actionable).
+- `process-email-queue/index.ts`: refactor to import the same helper (DRY; ensures one place to evolve cron auth). No behavior change.
+- Deploy both functions.
 
-### 2. Surface upstream errors to triage
-- In the proxy `catch` for `FreescoutError`, return JSON `{ error, upstream_code, upstream_body_excerpt }` (already partly done) AND emit a `console.error` line that `withAuditWrapper` mirrors into `audit_log.extra_fields`.
-- In `src/lib/support/freescoutInvoke.ts`, when `result.error` includes a parsed body with `upstream_code`, append it as an extra audit field so triage shows `upstream:422 validation_failed: user`. No severity change — still `warn` per HELP-DESK-024.
+### 2. Discovery respects client severity (Bug B)
+- **Migration** updates `discover_audit_fingerprints` so the inner `SELECT` from `audit_log`:
+  - aggregates `bool_or('severity:error' = ANY(changed_fields))` per fingerprint as `v_any_error`.
+  - the per-row `INSERT INTO agent_fix_queue` uses `'error'` when `v_any_error`, else **skips** the row entirely (counted in `v_silenced`).
+  - adds a backstop event-type exclusion list mirroring the client's `NON_ACTIONABLE_EVENT_TYPES` (e.g. `edge_invoke_failed`, `validation_rejected`, `email_frequency_capped`) — when severity-tag is absent (legacy rows), still drop these. Document the dual gate inline.
+- This is the root fix for HELP-DESK-024 (CORS trace + warn severity) actually holding end-to-end.
 
-### 3. Member email on admin reply (in addition to in-app)
-- **`process-freescout-events`** — when `eventType` matches `convo.{thread.created,user.replied,customer.replied}` AND the new thread's `createdBy.type === "user"` (admin), AND a `customer_user_id` resolved:
-  1. Insert the existing in-app `notifications` row (unchanged).
-  2. Invoke `send-transactional-email` with template `support_ticket_reply` (new), payload `{ to: customer.email, subject: "Re: <ticket subject>", ticket_url: APP_URL + "/community/get-help?ticket=" + conversationId, preview: first 280 chars of plain-text thread body, replier_name }`. Idempotency key = `support-reply-${conversationId}-${threadId}`.
-- **New React Email template** `supabase/functions/send-transactional-email/templates/support-ticket-reply.tsx` — reuses the existing branded shell (Tech Fleet logo, footer with deep-link to notification prefs per the Footer Deep Links rule), brand voice ("Hi <first name>, your support ticket got a new reply…"). Register in the TEMPLATES map.
-- The transactional path already respects the 3-lane queue, suppression list, and React Email rendering — no infra changes needed.
-- Frequency cap is not applied (per memory: transactional support replies are not bulk).
+### 3. Opaque Script error — first-line predicate + dual-path guard (Bug C)
+- `error-reporter.service.ts`:
+  - Replace `isOpaqueScriptError(event, msg)` with message-level `isOpaqueScriptErrorMessage(msg)` that splits on `/\r?\n/`, takes the first non-empty line, and matches `/^(error:\s*)?script error\.?$/i`.
+  - Call the new predicate as the **very first** check inside `reportError()` AND `reportToAuditLog()` — both return early before writing audit OR queue, no "suppressed" aggregate (the event is structurally non-debuggable; counting it doesn't help admins).
+  - Keep the window.onerror call as a thin wrapper around the same predicate (DRY).
+- **Migration** inserts a `known_issue_catalog` row: `{ pattern: 'Script error', match_kind: 'substring', event_type_filter: 'client_error', is_active: true }` and a second row scoped to `event_type_filter: NULL` (for unhandledrejection) — belt-and-braces backstop in case a future caller bypasses the client predicate.
+- `index.html`: add `crossorigin="anonymous"` to the entry `<script type="module" src="/src/main.tsx">`. Vite already injects this on build, but make it explicit so dev preview and source maps also carry it.
 
-### 4. Defense-in-depth
-- Add Zod refinement: `assigneeUserId` cannot be `0`.
-- Add a smoke test `src/test/smoke/freescout-admin-actions.smoke.test.ts` that mocks `invokeFreescout` and asserts `AdminAllTicketsGrid`'s Assign-me button sends `"self"`.
+### 4. Resolve stale queue rows + memory
+- `UPDATE agent_fix_queue SET status='resolved', resolved_at=now(), dismissed_reason='triage_root_cause_shipped'` for ids `3662cf6a-125f-47b1-b0a6-835e307ee90f` and `ce7fff5d-7c08-4a78-bae0-bae75bdbd079`.
+- Append a memory file `mem://features/triage-discovery-severity-gate` and amend `mem://features/triage-noise-suppression` to record the 7th layer (discovery severity gate) and the dual-path Script error filter. Update the core index entry.
 
-### 5. Resolve the existing queue row
-- Mark `agent_fix_queue.id='05576857-8ae8-410b-babf-c0a46a00919d'` as `status='resolved'` with `resolution_notes='Bug A+B+C fix: admin reply now passes user id, Assign me passes "self", member receives in-app + email; HELP-DESK-025/026/027/028.'`.
+### 5. BDD scenarios (inserted into `bdd_scenarios`)
+Each carries tri-layer Then-clauses.
 
-## BDD scenarios (insert into `bdd_scenarios`)
+- **TRIAGE-NOISE-010** — Warn-severity audit rows never enter Triage via discovery
+  - Given the client reports `edge_invoke_failed` with `severity:warn`
+  - When `discover_audit_fingerprints(1)` runs
+  - Then [UI] System Health Triage shows no new row · [DB] no `agent_fix_queue` row · [Code] discovery counts the fingerprint in `silenced` and skips the INSERT.
 
-Each scenario carries the mandatory `[UI]` + `[DB]` + `[Code]` Then-clauses.
+- **TRIAGE-NOISE-011** — Error-severity rows still flow
+  - Given a `client_error` with `severity:error` in audit
+  - Then [UI] row appears in Triage at `severity='error'` · [DB] `agent_fix_queue.severity='error'` · [Code] `bool_or('severity:error' = ANY(changed_fields))` is true.
 
-### HELP-DESK-025 — Admin self-assigns an unassigned ticket
-- **Given** an admin views Get Help → Admin tickets → Open · unassigned tab AND their `profiles.freescout_user_id` is provisioned.
-- **When** they click "Assign me" on row `T`.
-- **Then [UI]** a success toast "Assigned to you." appears within 1s; the row moves to Open · assigned on next refetch.
-- **And [DB]** `support_ticket_pointers.assignee_user_id` for `T.conversation_id` equals the admin's Freescout user id (string).
-- **And [Code]** `freescout-proxy` receives `{action:"assign", assigneeUserId:"self"}`, resolves it to the admin's `freescout_user_id`, and forwards `PUT /api/conversations/{id} { assignTo: <int> }` returning 200.
+- **TRIAGE-NOISE-012** — Multi-line "Script error." is dropped at the source
+  - Given a window.onerror or React dispatchEvent with body `"Error: Script error.\n<stack>"`
+  - Then [UI] no Triage row, no toast · [DB] no `audit_log` insert, no `agent_fix_queue` row · [Code] `isOpaqueScriptErrorMessage` returns true on first non-empty line; both `reportError` and `reportToAuditLog` short-circuit.
 
-### HELP-DESK-026 — Admin self-assigns while not yet provisioned
-- **Given** an admin whose `profiles.freescout_user_id` is null clicks "Assign me".
-- **Then [UI]** toast "Setting up your helpdesk account. Try again in a few seconds." appears and the action auto-retries once after 2s; on the second attempt the assignment succeeds.
-- **And [DB]** after the retry, `profiles.freescout_user_id` is populated.
-- **And [Code]** `resolveAdminFreescoutUserId` invoked `freescout-provision-admin` exactly once; second attempt reads the cached id without calling provision.
+- **HELP-DESK-033** — `process-freescout-events` accepts both bearer formats
+  - When cron wakes the worker with a legacy service-role JWT, then with an opaque `sb_secret_*`
+  - Then [UI] no `authn_unauthorized` row in Triage · [DB] freescout events drain from `q_freescout_events` (msg_id removed) · [Code] both branches in `authorizeServiceRoleRequest` return `{ok:true}`.
 
-### HELP-DESK-027 — Admin replies to an open ticket
-- **Given** the admin opens ticket `T` (they may or may not be the assignee) and types "Thanks, looking into this."
-- **When** they click "Send reply".
-- **Then [UI]** the reply textarea clears; toast "Reply sent." appears; the new thread appears in the conversation pane on next refetch.
-- **And [DB]** `support_ticket_events` gains a row `event_type='user.replied'`, `actor_kind='user'`, `conversation_id=T`. `support_ticket_pointers.last_synced_at` advances.
-- **And [Code]** `freescout-proxy` POSTs `/api/conversations/{T}/threads` with `{type:"message", text, user:<admin freescout_user_id>}` returning 201.
+- **HELP-DESK-034** — Missing/invalid bearer is rejected without flooding triage
+  - When the worker is called without a bearer (401) or with an unknown bearer (403)
+  - Then [UI] no Triage row · [DB] discovery does not enqueue (severity=`warn` on the audit row) · [Code] helper logs at severity=`warn`.
 
-### HELP-DESK-028 — Member receives in-app + email when admin replies
-- **Given** member `M` created ticket `T` and has `profiles.email = m@example.com`, notification prefs allow support emails.
-- **When** an admin replies (HELP-DESK-027 completes) and `process-freescout-events` drains the resulting `user.replied` payload.
-- **Then [UI]** within 30s `M` sees a header notification "New reply on your ticket – Re: <subject>" linking to `/community/get-help?ticket=T`; opening Get Help auto-selects the ticket and shows the new thread.
-- **And [DB]** one `notifications` row exists with `user_id=M`, `category='support'`, `link='/community/get-help?ticket=T'`. One `email_send_log` row exists with `template_name='support_ticket_reply'`, `to_email='m@example.com'`, `status` progressing `pending`→`sent`, idempotency key `support-reply-T-<threadId>`.
-- **And [Code]** processOne invoked `send-transactional-email` exactly once; a second drain of the same `event_id` does NOT enqueue a duplicate email (pgmq event dedupe + email idempotency key both hold).
-
-### HELP-DESK-029 — Customer replies to their own ticket (regression)
-- **Given** member `M` is signed in and has ticket `T` open.
-- **When** `M` types a reply and clicks "Send reply".
-- **Then [UI]** toast "Reply sent." appears; new thread appears in `M`'s view.
-- **And [DB]** `support_ticket_events.event_type='customer.replied'`; no `email_send_log` row for `support_ticket_reply` is created (we only email the customer when an admin replies, not when the customer themselves does).
-- **And [Code]** `freescout-proxy` POSTs `{type:"customer", text, customer:{email:M.email}}` — no `user` field.
-
-### HELP-DESK-030 — Upstream Freescout error is actionable in triage
-- **Given** Freescout returns 422 `{ error: "validation_failed: user" }` to an admin reply (simulated by stripping the freescout_user_id).
-- **Then [UI]** the admin sees toast "Could not send your reply." (existing copy).
-- **And [DB]** `agent_fix_queue` gains/updates a row with `event_type='edge_invoke_failed'`, `severity='warn'`, and `extra_fields` containing `upstream:422` and `upstream_code:validation_failed:user`.
-- **And [Code]** the audit row preserves the trace id from the client wrapper so admins can correlate to the proxy edge log line.
-
-### HELP-DESK-031 — Reply forbidden when not owner and not admin (security regression)
-- **Given** member `B` is signed in and tries to POST `freescout-proxy {action:"reply", conversationId:T_of_A}` directly.
-- **Then [Code]** proxy returns 403 `Forbidden`.
-- **And [DB]** no `support_ticket_events` row is inserted; no email queued.
-- **And [UI]** N/A (no UI path triggers this; covered by API contract test).
-
-### HELP-DESK-032 — Cache invalidation after admin reply / assign
-- **When** any of `reply | assign | close | reopen | setPrivate` succeeds.
-- **Then [UI]** the AG Grid for Open · unassigned, Open · assigned, and the member's listMine all reflect the change on next focus (no manual refresh).
-- **And [Code]** the proxy called `invalidateAll()` (admin views) and, for member-initiated mutations, `invalidateUser(auth.userId)`. React Query keys `["support","admin-all",*]` and `["support","mine",*]` are invalidated by the success path.
+### 6. Smoke tests
+- `src/test/smoke/opaque-script-error.smoke.test.ts` — feeds the exact multi-line payload from the user report into both `reportError` and the simulated `window.onerror`, asserts `write_audit_log` and `upsert_fix_queue_entry` spies are NEVER called.
+- `supabase/functions/process-freescout-events/auth.test.ts` — Deno test for both branches of `authorizeServiceRoleRequest`.
 
 ## Out of scope
 
-- Replacing AG Grid actions column with a `<DropdownMenu>` — pure UX polish; ship separately if requested.
-- Multi-mailbox routing — only `DEFAULT_MAILBOX_ID` is configured per the Get Help Secret Contract.
-- Customer-side typing indicators / read receipts.
+- Refactoring `discover_audit_fingerprints` to also dedupe across `process-freescout-events` 401s already in `agent_fix_queue` from earlier today — they'll be silenced naturally on the next 24h discovery window once Bug A is patched.
+- A System Health "Why was this silenced?" inspector — useful, but a separate UX project.
+- Removing `x-trace-id` from `freescoutInvoke` (kept; HELP-DESK-024 already validated).
 
 ## Files touched
 
 ```text
-src/pages/community/AdminAllTicketsGrid.tsx           (Assign me payload + retry-on-412)
-src/lib/support/freescoutInvoke.ts                    (propagate upstream_code into audit extras)
-supabase/functions/_shared/freescout-admin.ts         (NEW: resolveAdminFreescoutUserId)
-supabase/functions/freescout-proxy/index.ts           (Zod refine, reply.user, assign self)
-supabase/functions/process-freescout-events/index.ts  (queue support_ticket_reply email)
-supabase/functions/send-transactional-email/templates/support-ticket-reply.tsx  (NEW)
-supabase/functions/send-transactional-email/index.ts  (register template in TEMPLATES)
-src/test/smoke/freescout-admin-actions.smoke.test.ts  (NEW)
-bdd_scenarios                                          (HELP-DESK-025..032)
-agent_fix_queue                                        (resolve existing row)
-mem://features/get-help-scale-contract                 (note new admin user resolution + reply email)
+supabase/functions/_shared/service-role-auth.ts                 (NEW)
+supabase/functions/process-freescout-events/index.ts            (use helper)
+supabase/functions/process-email-queue/index.ts                 (use helper, no behavior change)
+supabase/functions/process-freescout-events/auth.test.ts        (NEW)
+supabase/migrations/<ts>_discover_severity_gate.sql             (NEW — patches discover_audit_fingerprints + known_issue_catalog inserts + queue resolves)
+src/services/error-reporter.service.ts                          (first-line predicate, dual-path guard)
+src/test/smoke/opaque-script-error.smoke.test.ts                (NEW)
+index.html                                                      (explicit crossorigin on entry script)
+bdd_scenarios                                                   (TRIAGE-NOISE-010..012, HELP-DESK-033..034)
+mem://features/triage-discovery-severity-gate                   (NEW)
+mem://features/triage-noise-suppression                         (append layer 7 + dual-path note)
+mem://index.md                                                  (core line refresh)
 ```
 
 ## Verification
 
-1. Deploy `freescout-proxy`, `process-freescout-events`, `send-transactional-email`.
-2. As admin, click "Assign me" → toast success; check `support_ticket_pointers.assignee_user_id` populated.
-3. As admin, send a reply → check Freescout UI shows the message thread and the member receives both the in-app notification and the branded email (verify via `email_send_log` row).
-4. Re-run `bunx vitest run src/test/smoke/freescout-admin-actions.smoke.test.ts`.
-5. Confirm `agent_fix_queue` shows no new `freescout-proxy reply invoke_error` rows over 24h.
+1. Deploy `process-freescout-events`, `process-email-queue`, `send-transactional-email` is unchanged.
+2. Tail edge logs for 1 minute → confirm `process-freescout-events` returns 200 on cron wake.
+3. Manually invoke `select * from public.discover_audit_fingerprints(1);` → confirm `silenced` includes the warn-severity rows; `queued` only contains real errors.
+4. Run `bunx vitest run src/test/smoke/opaque-script-error.smoke.test.ts`.
+5. Trigger a synthetic "Script error." via console (`window.dispatchEvent(new ErrorEvent('error', {message:'Script error.'}))`) → confirm zero new `audit_log` rows and zero Triage rows.
+6. 24h later: no new `freescout-proxy * invoke_error` or `authn_unauthorized` rows in `agent_fix_queue`.
