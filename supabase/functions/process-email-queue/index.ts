@@ -120,28 +120,16 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
     )
   }
 
-  const authHeader = req.headers.get('Authorization')
-  if (!authHeader?.startsWith('Bearer ')) {
+  // Shared service-role validator: accepts both legacy JWT and opaque
+  // sb_secret_* tokens. See _shared/service-role-auth.ts.
+  const auth = authorizeServiceRoleRequest(req)
+  if (!auth.ok) {
     return new Response(
-      JSON.stringify({ error: 'Unauthorized' }),
-      { status: 401, headers: { 'Content-Type': 'application/json' } }
+      JSON.stringify({ error: auth.error }),
+      { status: auth.status, headers: { 'Content-Type': 'application/json' } }
     )
   }
 
-  // Defense in depth: only service-role callers can trigger queue processing.
-  // Supports both legacy JWT tokens (claims.role === 'service_role') and the
-  // new signing-keys format (sb_secret_... opaque tokens, compared to the
-  // SUPABASE_SERVICE_ROLE_KEY env var).
-  const token = authHeader.slice('Bearer '.length).trim()
-  const claims = parseJwtClaims(token)
-  const isLegacyServiceRoleJwt = claims?.role === 'service_role'
-  const isOpaqueServiceRoleKey = token === supabaseServiceKey
-  if (!isLegacyServiceRoleJwt && !isOpaqueServiceRoleKey) {
-    return new Response(
-      JSON.stringify({ error: 'Forbidden' }),
-      { status: 403, headers: { 'Content-Type': 'application/json' } }
-    )
-  }
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
