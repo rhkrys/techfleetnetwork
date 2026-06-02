@@ -40,6 +40,10 @@ export default function NotificationsPage() {
   const { setHeader } = usePageHeader();
   const navigate = useNavigate();
   const { data: notifications = [], isLoading } = useNotifications(500);
+  const digestRows = useMemo<DigestRow[]>(
+    () => collapseNotificationsToDigest(notifications),
+    [notifications],
+  );
   const unreadCount = useUnreadNotificationCount();
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllNotificationsRead();
