@@ -5,9 +5,11 @@ import { Camera, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { AvatarCropperDialog } from "@/components/profile/AvatarCropperDialog";
 
-const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/jpg"];
-const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
+// Pre-crop accept list (cropper re-encodes to JPEG and strips EXIF).
+const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB pre-crop; output is ~<200KB JPEG.
 
 interface AvatarUploadProps {
   userId: string;
@@ -20,37 +22,39 @@ interface AvatarUploadProps {
 export function AvatarUpload({ userId, currentUrl, initials, onUploaded, className }: AvatarUploadProps) {
   const [uploading, setUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(currentUrl);
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (!ACCEPTED_TYPES.includes(file.type)) {
-      toast.error("Please upload a PNG or JPG image.");
+      toast.error("Please upload a PNG, JPG, or WEBP image.");
       return;
     }
     if (file.size > MAX_FILE_SIZE) {
-      toast.error("Image must be under 2MB.");
+      toast.error("Image must be under 5MB.");
       return;
     }
 
+    const url = URL.createObjectURL(file);
+    setCropSrc(url);
+    if (inputRef.current) inputRef.current.value = "";
+  };
+
+  const handleCropConfirm = async (blob: Blob) => {
     setUploading(true);
     try {
-      const rawExt = file.name.split(".").pop()?.toLowerCase() || "jpg";
-      const ext = /^[a-z0-9]{1,5}$/.test(rawExt) ? rawExt : "jpg";
-      const path = `${userId}/avatar.${ext}`;
-
+      const path = `${userId}/avatar.jpg`;
       const { error: uploadError } = await supabase.storage
         .from("avatars")
-        .upload(path, file, { upsert: true, contentType: file.type });
-
+        .upload(path, blob, { upsert: true, contentType: "image/jpeg" });
       if (uploadError) throw uploadError;
 
       const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path);
       const publicUrl = `${urlData.publicUrl}?t=${Date.now()}`;
 
-      // Update profile with new avatar URL
       await supabase
         .from("profiles")
         .update({ avatar_url: publicUrl } as any)
@@ -58,13 +62,18 @@ export function AvatarUpload({ userId, currentUrl, initials, onUploaded, classNa
 
       setPreviewUrl(publicUrl);
       onUploaded(publicUrl);
-      toast.success("Profile picture updated!");
+      toast.success("Profile picture updated.");
+      closeCropper();
     } catch (err: any) {
       toast.error(err.message || "Failed to upload image.");
     } finally {
       setUploading(false);
-      if (inputRef.current) inputRef.current.value = "";
     }
+  };
+
+  const closeCropper = () => {
+    if (cropSrc) URL.revokeObjectURL(cropSrc);
+    setCropSrc(null);
   };
 
   const handleRemove = async () => {
@@ -112,7 +121,7 @@ export function AvatarUpload({ userId, currentUrl, initials, onUploaded, classNa
       <input
         ref={inputRef}
         type="file"
-        accept=".png,.jpg,.jpeg"
+        accept=".png,.jpg,.jpeg,.webp"
         onChange={handleFileSelect}
         className="hidden"
         aria-label="Upload profile picture"
@@ -142,7 +151,14 @@ export function AvatarUpload({ userId, currentUrl, initials, onUploaded, classNa
           </Button>
         )}
       </div>
-      <p className="text-xs text-muted-foreground">PNG or JPG, max 2MB. Optional.</p>
+      <p className="text-xs text-muted-foreground">PNG, JPG, or WEBP, max 5MB. Cropped to a 512×512 square.</p>
+
+      <AvatarCropperDialog
+        open={Boolean(cropSrc)}
+        imageSrc={cropSrc}
+        onCancel={closeCropper}
+        onConfirm={handleCropConfirm}
+      />
     </div>
   );
 }
