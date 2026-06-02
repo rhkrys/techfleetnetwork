@@ -1,92 +1,58 @@
-## Root cause
+# Stop the "left my tab, came back, everything reset" reload
 
-`supabase/functions/_shared/freescout.ts:15-18` throws **at module load** when `FREESCOUT_API_URL` does not start with `https://`. Edge-function logs confirm `freescout-proxy` is crash-looping with `event loop error: Error: FREESCOUT_API_URL must be https://` on every invocation in the last hour.
+## Why it happens
 
-Consequence chain:
-1. The isolate crashes during boot → no handler is ever registered → the runtime closes the connection without a body.
-2. `supabase.functions.invoke("freescout-proxy")` from `GetHelpPage` and `NewTicketDialog` returns a generic error after the SDK's retries — users see "Could not create your ticket" and the listings spinner appears to hang.
-3. Because the throw happens in a **shared** module, ANY future edge function that imports `_shared/freescout.ts` will also crash-loop the moment the URL is misconfigured.
+`src/lib/deploy-watcher.ts` runs in every tab. Every 60s (and on `focus` / `online` / `visibilitychange → visible`) it fetches `/version.json` and compares the server's `buildId` to the bundle's `__BUILD_ID__`. When they differ:
 
-The secret `FREESCOUT_API_URL` is present (per `fetch_secrets`) but its value is invalid — almost certainly `http://...` or has a leading space/character that survived `.trim()` but failed `^https://`.
+- If the tab is **hidden**, it calls `window.location.reload()` immediately (line 104–105).
+- If visible, it sets a 30s `scheduleIdleReload` timer that keeps re-checking and reloads as soon as the tab goes hidden (line 79–92).
+- `RouteChangeReloader` also reloads at the next route change.
 
-## The three real weaknesses
+So the normal flow when a deploy lands while your tab is open in the background:
+1. You switch to another tab → `visibilitychange → hidden` (or the 30s timer fires).
+2. Deploy watcher reloads the page in the background.
+3. You return → fresh page, scroll reset, unread badges gone, any draft not yet autosaved is gone.
 
-| # | Weakness | Why it caused the incident |
-|---|----------|----------------------------|
-| 1 | **Top-level `throw` in shared module** | One bad env var bricks every consumer at import time, before CORS, before logging, before any error response can be returned. |
-| 2 | **No startup self-check / no admin signal** | Admins had no in-app visibility — the only trace was raw edge-function logs. |
-| 3 | **Client treats backend outage as a hang** | `useTickets` has no timeout and no `retry`/`enabled` cap. Users wait through SDK retries; the page feels broken instead of degraded. |
+Drafts that go through `useServerDraft` / `useAutosave` survive (they flush on `visibilitychange → hidden`), but **scroll position, expanded panels, modal state, in-progress form input that hasn't autosaved yet, and any local component state are all lost** — exactly the jarring experience you described.
 
-## Plan (ship all of it in one go)
+## Fix: never auto-reload a tab the user is using
 
-### 1. Refactor `_shared/freescout.ts` — never throw at module load
+Rip out the silent background reload. Replace it with a non-blocking, user-controlled refresh banner. The stale-chunk safety net (`lazyWithRetry`) stays, so the real failure mode the watcher was protecting against (a stale chunk 404 on next lazy import) is still handled — it just doesn't pre-emptively destroy your session anymore.
 
-- Replace the top-level `throw` with a lazy validator `getFreescoutConfig()` that returns `{ ok: true, base, key, host }` or `{ ok: false, reason }`.
-- `assertConfigured()` becomes the single gate inside `freescoutFetch` and throws a typed `FreescoutError(503, "support_unavailable", { reason })` — never an uncaught exception.
-- Accept `RAW_BASE` regardless of trailing slashes / casing, validate scheme with `new URL(...)` (catches all malformed inputs, not just non-https), and reject anything except `https:`.
-- Result: a bad/missing secret degrades to a clean 503 JSON response with CORS headers, not a dead isolate.
+### Changes
 
-### 2. Harden `freescout-proxy/index.ts`
+**`src/lib/deploy-watcher.ts`**
+- Remove `safeReload()` calls from `checkVersion()` and `scheduleIdleReload()`. Delete `scheduleIdleReload` + `idleTimer` entirely.
+- Keep polling and keep flipping `stale = true` + `notify()` so listeners can react.
+- Keep `reloadIfStale()` exported (used by the new banner's "Refresh now" button); stop calling it from `RouteChangeReloader`.
 
-- Wrap the body of `Deno.serve` so any `FreescoutError` with status 503 returns:
-  ```json
-  { "items": [], "unavailable": true, "reason": "support_unavailable" }
-  ```
-  with `Retry-After: 30` and 200 status for **list** actions (so the UI can render the empty state immediately) and 503 for **mutating** actions (`create`, `reply`, `close`, etc.) so the user sees a real error instead of a fake success.
-- Add a structured log line `{ level: "error", fn: "freescout-proxy", code: "config_invalid", reason }` once per cold start — feeds the existing triage queue automatically.
+**`src/components/RouteChangeReloader.tsx`**
+- Remove the `isAppStale()` / `reloadIfStale()` branch. It still scroll-resets and clears the chunk-reload flag on navigation. (Rationale: a user mid-flow who clicks a link does not expect a full page reload either — `lazyWithRetry` handles the rare stale-chunk case.)
 
-### 3. New edge function `freescout-health` (GET, admin-only)
+**New `src/components/UpdateAvailableBanner.tsx`**
+- Subscribes to `onDeployStale`. When stale, renders a small, dismissible toast/banner at the top: copy "A new version is ready." with a verb+object CTA "Refresh now" (calls `reloadIfStale()`) and a "Later" dismiss. Sentence case, brand voice, uses existing `<Card>` / toast tokens. Mount once in `AppLayout` (all 3 branches).
+- Banner is sticky until clicked or until a route change to a path that doesn't have an active draft — but it does not auto-reload.
 
-- Returns `{ configured: boolean, reachable: boolean, mailboxId, latencyMs, reason? }` by calling `freescoutFetch({ path: "/api/mailboxes" })` with a 3s timeout.
-- Wired into `HelpDeskTab` as a top banner: green "Help desk is connected" / red "Help desk is offline — Freescout config invalid (https:// required)" with a "Re-test" button.
-- The banner is the durable replacement for digging through edge logs.
+**Keep as-is**
+- `lazyWithRetry` (real stale-chunk recovery on navigation only).
+- `checkNow()` from the error reporter (still useful to flip `stale=true` faster on a `FunctionsFetchError`).
+- React Query defaults — already `refetchOnWindowFocus: false` project-wide, so they are not contributing.
 
-### 4. Client-side fail-fast in `GetHelpPage`
+### Tests / BDD
 
-- `useTickets`: add `retry: 1`, `staleTime: 30_000` (already), and a 5s `AbortController` on the invoke; on error or `unavailable: true`, render an empty state with the "Help desk is reconnecting — try again in a minute" card and a "Retry" button. **No spinner past 5s, ever.**
-- `NewTicketDialog`: on 503 / `unavailable`, surface the specific reason from the response (`"Help desk is offline. An admin has been notified."`) instead of generic "Could not create your ticket."
-- Always-available fallback: show `mailto:info@techfleet.network` as a secondary action when the help desk is unavailable, so users are never stranded.
+Add to `bdd_scenarios`:
+- `DEPLOY-WATCH-001` — Given a new deploy lands while my tab is hidden, when I return to the tab, then [UI] the page is not reloaded, my scroll/draft/modal state is preserved, and a non-blocking "A new version is ready" banner is shown; [Code] `window.location.reload` is not called by deploy-watcher; [DB] no state.
+- `DEPLOY-WATCH-002` — Given the update banner is shown, when I click "Refresh now", then [UI] the page reloads to the new build; [Code] `reloadIfStale()` invoked once.
+- `DEPLOY-WATCH-003` — Given I am stale and I navigate to a new route, then [UI] the route changes without a full reload and the banner remains visible.
 
-### 5. Auto-triage signal
-
-- The new `code: "config_invalid"` log already routes into `agent_fix_queue` via the existing triage classifier. Mark it severity `error` so admins get the standard 5-minute critical push notification.
-
-### 6. BDD scenarios (added to `bdd_scenarios`)
-
-- `HELP-DESK-001` Given `FREESCOUT_API_URL` is `http://...`, when a member opens Get Help, then [UI] the empty state renders in <5s with a Retry button, [DB] one `agent_fix_queue` row with code=`config_invalid` exists, [Code] `freescout-proxy` returns 200 `{items:[],unavailable:true}` for `listMine`.
-- `HELP-DESK-002` Given config is invalid, when a member submits a new ticket, then [UI] toast reads "Help desk is offline. An admin has been notified." and the mailto fallback is shown, [Code] `freescout-proxy` returns 503 for `action:create`.
-- `HELP-DESK-003` Given config is valid, when an admin opens System Health → Help Desk, then [UI] banner shows green with latency in ms, [Code] `freescout-health` returns `{configured:true,reachable:true}`.
-- `HELP-DESK-004` Given config becomes invalid mid-session, when the banner "Re-test" is clicked, then [UI] banner flips to red with the exact reason, [DB] `system_health_events` records the transition.
-
-### 7. Memory + runbook
-
-- Add `mem://features/get-help-resilience` summarising the lazy-config pattern + UI fallback contract.
-- Add `docs/runbooks/freescout-config-recovery.md` with the exact secret format (`https://help.techfleet.network` — no trailing slash, no quotes) and the "Re-test" loop.
-
-### 8. Fix the actual secret value
-
-After the code ships, prompt the user via `update_secret(["FREESCOUT_API_URL"])` so they can paste the correct `https://...` URL. The code changes above mean that even if they paste a bad value again, the page degrades gracefully and admins are alerted — instead of bricking.
-
-## Files touched
-
-- `supabase/functions/_shared/freescout.ts` — refactor to lazy config + typed errors
-- `supabase/functions/freescout-proxy/index.ts` — 503 envelope + structured logs
-- `supabase/functions/freescout-health/index.ts` — new admin-only health probe
-- `src/pages/community/GetHelpPage.tsx` — timeout, fallback UI, mailto
-- `src/components/system-health/HelpDeskTab.tsx` — health banner + Re-test button
-- `src/services/system-health.service.ts` — `freescoutHealth()` wrapper
-- `docs/runbooks/freescout-config-recovery.md` — new
-- `mem://features/get-help-resilience` — new
-- BDD scenario inserts via `supabase--insert`
-
-## Risk / rollback
-
-- Zero schema change. New edge function is additive.
-- Lazy-config refactor is strictly more permissive than the current throw — if anything misbehaves, the worst case is the function returning a 503 envelope (today it returns nothing).
-- Feature-flag-free; rollback = redeploy the previous function bundle.
+Update `src/test/services/error-reporter.dead-sources.test.ts` only if the existing assertion about `checkNow` still holds (it does; `checkNow` is unchanged).
 
 ## Out of scope
 
-- No change to Freescout webhook verification, HMAC, or rate-limit logic.
-- No UI redesign of Get Help beyond the offline state.
-- No migration to a different help-desk provider.
+- Reload-on-error fallback for actual stale-chunk fetches stays (`lazyWithRetry`).
+- No changes to React Query, autosave, or session-activity tracking.
+- No service worker changes (already disabled).
+
+## Risk
+
+Strictly less aggressive: the only behavior removed is a silent reload of an idle tab. Worst case after this change is that a user keeps an old bundle running until they manually click Refresh, which is exactly what every other web app does and what the user is asking for.

@@ -59,6 +59,7 @@ import { UniversalSearch } from "./UniversalSearch";
 import { NotificationBell } from "./NotificationBell";
 import { AnnouncementBanner } from "./AnnouncementBanner";
 import { CookieConsentBanner } from "./CookieConsentBanner";
+import { UpdateAvailableBanner } from "./UpdateAvailableBanner";
 import { ShortcutCheatsheet } from "./ShortcutCheatsheet";
 import { PrivacyFooterLinks } from "./PrivacyFooterLinks";
 import { AppFooter } from "./AppFooter";
@@ -316,6 +317,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         <MfaEnforcementGuard />
         <LiveAnnouncer />
         <CookieConsentBanner />
+        <UpdateAvailableBanner />
         <ShortcutCheatsheet />
         <AppFooter />
       </div>
@@ -474,6 +476,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         <MfaEnforcementGuard />
         <LiveAnnouncer />
         <CookieConsentBanner />
+        <UpdateAvailableBanner />
         <AdminTwoFactorGraceDialog />
         <ShortcutCheatsheet />
         <Suspense fallback={null}><FleetyChatWidget /></Suspense>
@@ -507,6 +510,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         <MfaEnforcementGuard />
         <LiveAnnouncer />
         <CookieConsentBanner />
+        <UpdateAvailableBanner />
         <AdminTwoFactorGraceDialog />
         <Suspense fallback={null}><FleetyChatWidget /></Suspense>
         <ShortcutCheatsheet />
