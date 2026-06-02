@@ -219,6 +219,10 @@ Deno.serve(withAuditWrapper("resend-signup-confirmations", async (req) => {
         })
 
         sent++
+        if (sent >= MAX_PER_CYCLE) {
+          console.log(`[resend-signup-confirmations] reached MAX_PER_CYCLE=${MAX_PER_CYCLE}, deferring remaining ${candidates.length - processed} to next tick`)
+          break
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         errors.push({ email: c.email, error: msg })
