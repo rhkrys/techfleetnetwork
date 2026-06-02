@@ -26,15 +26,25 @@ export async function invokeFreescout<T = unknown>(body: FreescoutActionBody, si
       headers: { Authorization: `Bearer ${token}`, "x-trace-id": traceId },
     } as Parameters<typeof supabase.functions.invoke>[1]);
     if (result.error) {
+      const extras: string[] = [`action:${safeField(action)}`, `reason:invoke_error`];
+      // Best-effort: peek upstream error body for actionable triage detail.
+      try {
+        const ctx = (result.error as { context?: Response }).context;
+        if (ctx && typeof ctx.clone === "function") {
+          const body = await ctx.clone().json().catch(() => null);
+          if (body && typeof body === "object") {
+            const status = ctx.status;
+            const upstreamCode = (body as { error?: unknown }).error;
+            if (status) extras.push(`upstream:${safeField(String(status))}`);
+            if (upstreamCode) extras.push(`upstream_code:${safeField(String(upstreamCode))}`);
+          }
+        }
+      } catch { /* best-effort only */ }
       reportActivity(
         "edge_invoke_failed",
         "edge.freescout-proxy",
         `freescout-proxy ${action} invoke_error`,
-        {
-          severity: "warn",
-          traceId,
-          extraFields: [`action:${safeField(action)}`, `reason:invoke_error`],
-        },
+        { severity: "warn", traceId, extraFields: extras },
       );
     }
     return result;

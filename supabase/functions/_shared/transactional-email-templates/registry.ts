@@ -20,6 +20,7 @@ import { template as projectBlast } from './project-blast.tsx'
 import { template as communityAgreementRequest } from './community-agreement-request.tsx'
 import { template as adminMemberAlert } from './admin-member-alert.tsx'
 import { template as classStatusChange } from './class-status-change.tsx'
+import { template as supportTicketReply } from './support-ticket-reply.tsx'
 
 export const TEMPLATES: Record<string, TemplateEntry> = {
   'interview-invite': interviewInvite,
@@ -33,4 +34,5 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
   'community-agreement-request': communityAgreementRequest,
   'admin-member-alert': adminMemberAlert,
   'class-status-change': classStatusChange,
+  'support-ticket-reply': supportTicketReply,
 }

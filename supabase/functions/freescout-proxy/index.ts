@@ -13,6 +13,7 @@ import {
   FreescoutError,
   DEFAULT_MAILBOX_ID,
 } from "../_shared/freescout.ts";
+import { resolveAdminFreescoutUserId } from "../_shared/freescout-admin.ts";
 import {
   cacheKey,
   getCached,
@@ -49,7 +50,11 @@ const Action = z.discriminatedUnion("action", [
   }),
   z.object({ action: z.literal("close"), conversationId: z.number().int().positive() }),
   z.object({ action: z.literal("reopen"), conversationId: z.number().int().positive() }),
-  z.object({ action: z.literal("assign"), conversationId: z.number().int().positive(), assigneeUserId: z.number().int() }),
+  z.object({
+    action: z.literal("assign"),
+    conversationId: z.number().int().positive(),
+    assigneeUserId: z.union([z.literal("self"), z.number().int().positive()]),
+  }),
   z.object({ action: z.literal("setPrivate"), conversationId: z.number().int().positive(), isPrivate: z.boolean() }),
 ]);
 
@@ -290,6 +295,7 @@ Deno.serve(async (req) => {
         if (!admin && !(await ownsConversation(auth.userId, input.conversationId))) {
           return jsonResponse({ error: "Forbidden" }, 403);
         }
+        const adminUserId = admin ? await resolveAdminFreescoutUserId(auth.userId) : null;
         const cust = admin ? null : await ensureCustomerForUser(auth.userId);
         await freescoutFetch({
           method: "POST",
@@ -297,6 +303,7 @@ Deno.serve(async (req) => {
           body: {
             type: admin ? "message" : "customer",
             text: input.body,
+            ...(adminUserId ? { user: adminUserId } : {}),
             ...(cust ? { customer: { email: cust.email } } : {}),
           },
         });
@@ -322,12 +329,15 @@ Deno.serve(async (req) => {
         return jsonResponse({ ok: true });
       }
       case "assign": {
+        const assigneeId = input.assigneeUserId === "self"
+          ? await resolveAdminFreescoutUserId(auth.userId)
+          : input.assigneeUserId;
         await freescoutFetch({
           method: "PUT",
           path: `/api/conversations/${encodeURIComponent(String(input.conversationId))}`,
-          body: { assignTo: input.assigneeUserId },
+          body: { assignTo: assigneeId },
         });
-        await upsertPointer(input.conversationId, null, { assignee_user_id: String(input.assigneeUserId) });
+        await upsertPointer(input.conversationId, null, { assignee_user_id: String(assigneeId) });
         invalidateAll();
         return jsonResponse({ ok: true });
       }
