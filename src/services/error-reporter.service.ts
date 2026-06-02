@@ -389,11 +389,13 @@ export function reportError(
   optionsOrUserId: ReportOptions | string = {},
 ) {
   const msg = formatThrowable(err);
+  if (isOpaqueScriptErrorMessage(msg)) return;
   if (isSuppressed(msg)) return;
   const options: ReportOptions = typeof optionsOrUserId === "string"
     ? { userId: optionsOrUserId }
     : optionsOrUserId;
   void reportToAuditLog(msg, source, options);
+
 }
 
 /**
