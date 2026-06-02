@@ -132,6 +132,11 @@ function ProfileDropdown({
           Membership
         </DropdownMenuItem>
         <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => navigate("/settings/notifications")}>
+          <Bell className="h-4 w-4 mr-2" />
+          Notification preferences
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onSignOut}>
           <LogOut className="h-4 w-4 mr-2" />
           Sign Out
