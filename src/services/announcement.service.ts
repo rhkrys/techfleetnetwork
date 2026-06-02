@@ -167,4 +167,49 @@ export const AnnouncementService = {
     }
     return map;
   },
+
+  /**
+   * Record a member action on an announcement (tri-state card — Part 2 §C1).
+   * action ∈ {'clicked_cta','dismissed','archived'}.
+   * Idempotent via UNIQUE(user_id, announcement_id, action) — duplicates
+   * are silently swallowed so re-archiving never errors.
+   */
+  async recordAction(
+    userId: string,
+    announcementId: string,
+    action: "clicked_cta" | "dismissed" | "archived",
+  ): Promise<void> {
+    const { error } = await supabase
+      .from("announcement_actions")
+      .insert({ user_id: userId, announcement_id: announcementId, action } as any);
+    if (error && !error.message.includes("duplicate")) {
+      handleServiceError(error, {
+        logger: log,
+        action: "recordAction",
+        message: `Failed to record announcement action: ${error.message}`,
+        level: "warn",
+      });
+    }
+  },
+
+  /** Fetch the user's per-announcement action map (id → Set of actions). */
+  async getActionMap(userId: string): Promise<Map<string, Set<string>>> {
+    const { data, error } = await supabase
+      .from("announcement_actions")
+      .select("announcement_id, action")
+      .eq("user_id", userId);
+    if (handleServiceError(error, {
+      logger: log,
+      action: "getActionMap",
+      message: `Failed to fetch announcement actions: ${error?.message ?? "Unknown error"}`,
+      level: "warn",
+    })) return new Map();
+    const map = new Map<string, Set<string>>();
+    for (const r of (data ?? []) as Array<{ announcement_id: string; action: string }>) {
+      const existing = map.get(r.announcement_id) ?? new Set<string>();
+      existing.add(r.action);
+      map.set(r.announcement_id, existing);
+    }
+    return map;
+  },
 };
