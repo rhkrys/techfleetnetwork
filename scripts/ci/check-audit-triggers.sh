@@ -38,6 +38,21 @@ assert_migration_fixed "'^(error:\s*)?script error\.?$'" "opaque Script error fi
 assert_migration_contains "create[[:space:]]+trigger[[:space:]]+trg_audit_log_reject_opaque_script_error[[:space:]]+before[[:space:]]+insert[[:space:]]+on[[:space:]]+public\.audit_log" "audit_log BEFORE INSERT trigger"
 assert_migration_contains "create[[:space:]]+trigger[[:space:]]+trg_agent_fix_queue_reject_opaque_script_error[[:space:]]+before[[:space:]]+insert[[:space:]]+on[[:space:]]+public\.agent_fix_queue" "agent_fix_queue BEFORE INSERT trigger"
 
+assert_last_trigger_action_is_create() {
+  local trigger_name="$1"
+  local last_action
+  last_action=$(grep -Ein "(create|drop)[[:space:]]+trigger([[:space:]]+if[[:space:]]+exists)?[[:space:]]+${trigger_name}\b" <<<"${migration_blob}" | tail -n 1 || true)
+  if [[ ! "${last_action}" =~ [Cc][Rr][Ee][Aa][Tt][Ee][[:space:]]+[Tt][Rr][Ii][Gg][Gg][Ee][Rr] ]]; then
+    echo "MISSING migration invariant: final action for ${trigger_name} must be CREATE TRIGGER" >&2
+    missing=1
+  else
+    echo "OK migration: final action for ${trigger_name} is CREATE TRIGGER"
+  fi
+}
+
+assert_last_trigger_action_is_create "trg_audit_log_reject_opaque_script_error"
+assert_last_trigger_action_is_create "trg_agent_fix_queue_reject_opaque_script_error"
+
 if grep -Eiq "disable[[:space:]]+trigger[[:space:]]+(trg_audit_log_reject_opaque_script_error|trg_agent_fix_queue_reject_opaque_script_error)" <<<"${migration_blob}"; then
   echo "DISABLED trigger found in migrations" >&2
   missing=1
