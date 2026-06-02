@@ -50,7 +50,7 @@ describe("ResetPasswordPage UI (BDD 20.1)", () => {
     await user.type(screen.getByLabelText(/^new password$/i), "StrongPass123!");
     await user.type(screen.getByLabelText(/confirm new password/i), "StrongPass124!");
 
-    expect(screen.getByRole("alert", { name: "" })).toHaveTextContent(/passwords do not match/i);
+    expect(screen.getByText(/passwords do not match/i)).toHaveAttribute("role", "alert");
     expect(screen.getByRole("button", { name: /update password/i })).toBeDisabled();
     expect(AuthService.updatePassword).not.toHaveBeenCalled();
   });
