@@ -273,13 +273,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           try {
             const { error } = await supabase.auth.getUser();
             if (error && isUnrecoverableAuthError(error)) {
-              purgeLocalAuthState({ reason: "jwt_corrupt", source: "bootstrap" });
-              await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
-              setSession(null);
-              setUser(null);
-              setProfile(null);
-              setProfileLoaded(true);
-              return;
+              // Two-strike + stored-token-health gate. A single transient
+              // bad_jwt during a GoTrue config reload must NOT sign out a
+              // user whose stored access token is still a valid, unexpired
+              // JWT. Try one refresh; if that also fails, only then purge.
+              const decision = decidePurgeOnBadJwt();
+              if (!decision.shouldPurge) {
+                try {
+                  const { error: refreshError } = await supabase.auth.refreshSession();
+                  if (!refreshError) {
+                    // Refresh succeeded — session is healthy again, keep user signed in.
+                  } else if (isUnrecoverableAuthError(refreshError)) {
+                    purgeLocalAuthState({ reason: "jwt_corrupt", source: "bootstrap" });
+                    await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
+                    setSession(null);
+                    setUser(null);
+                    setProfile(null);
+                    setProfileLoaded(true);
+                    return;
+                  }
+                  // Network or transient refresh error — trust the stored session.
+                } catch {
+                  // Refresh threw — trust the stored session; SDK will retry.
+                }
+              } else {
+                purgeLocalAuthState({ reason: "jwt_corrupt", source: "bootstrap" });
+                await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
+                setSession(null);
+                setUser(null);
+                setProfile(null);
+                setProfileLoaded(true);
+                return;
+              }
             }
           } catch {
             // Network error — fall through and trust the restored session.
