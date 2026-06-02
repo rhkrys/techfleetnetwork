@@ -14,7 +14,7 @@
  *     exists you'll get an email" message; never confirm whether the email
  *     resolves to a real account.
  */
-import { corsHeaders } from "npm:@supabase/supabase-js@2.99.1/cors";
+import { corsHeaders } from "../_shared/http.ts";
 import { z } from "npm:zod@4.3.6";
 import { createClient } from "npm:@supabase/supabase-js@2.99.1";
 import { withAuditWrapper } from "../_shared/audit.ts";
