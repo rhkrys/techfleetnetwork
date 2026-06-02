@@ -88,6 +88,127 @@ export function isLikelyJwt(token: unknown): token is string {
 }
 
 /* ---------------------------------------------------------------------- */
+/* 2b. Stored access-token health — used to distinguish transient server  */
+/* bad_jwt (GoTrue restart, edge proxy hiccup) from a real corruption.    */
+/* ---------------------------------------------------------------------- */
+
+export type StoredTokenHealth =
+  | { state: "missing" }
+  | { state: "shape_invalid" }
+  | { state: "expired"; expSeconds: number }
+  | { state: "valid"; expSeconds: number };
+
+function decodeJwtPayload(token: string): { exp?: number } | null {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return null;
+    const b64 = payload.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(payload.length / 4) * 4, "=");
+    return JSON.parse(atob(b64));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Inspect the currently stored sb-*-auth-token without touching the server.
+ * Returns the structural + expiry health of the access token. The fetch
+ * guard and bootstrap use this to decide whether a single server bad_jwt
+ * should be treated as transient (token still looks valid client-side) or
+ * as a real corruption (token shape broken / already expired).
+ */
+export function getStoredAccessTokenHealth(): StoredTokenHealth {
+  if (typeof window === "undefined") return { state: "missing" };
+  let raw: string | null = null;
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i -= 1) {
+      const key = localStorage.key(i);
+      if (key && AUTH_STORAGE_KEY_PATTERN.test(key)) {
+        raw = localStorage.getItem(key);
+        if (raw) break;
+      }
+    }
+  } catch {
+    return { state: "missing" };
+  }
+  if (!raw) return { state: "missing" };
+
+  let accessToken: unknown;
+  try {
+    const parsed = JSON.parse(raw);
+    accessToken = parsed?.access_token ?? parsed?.currentSession?.access_token;
+  } catch {
+    accessToken = raw;
+  }
+  if (!isLikelyJwt(accessToken)) return { state: "shape_invalid" };
+
+  const payload = decodeJwtPayload(accessToken);
+  const expSeconds = Number(payload?.exp ?? 0);
+  if (!Number.isFinite(expSeconds) || expSeconds <= 0) return { state: "shape_invalid" };
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  // Allow a 60s grace window so we don't race the SDK auto-refresh.
+  if (expSeconds + 60 < nowSeconds) return { state: "expired", expSeconds };
+  return { state: "valid", expSeconds };
+}
+
+/* ---------------------------------------------------------------------- */
+/* 2c. Two-strike gate — single transient bad_jwt MUST NOT sign out a     */
+/* user whose stored token is structurally valid and unexpired.           */
+/* ---------------------------------------------------------------------- */
+
+const TRANSIENT_BAD_JWT_KEY = "tfn_auth_transient_bad_jwt_first_ms";
+const TRANSIENT_WINDOW_MS = 15_000;
+
+export interface PurgeDecision {
+  shouldPurge: boolean;
+  reason: "shape_invalid" | "expired" | "second_strike" | "transient";
+  health: StoredTokenHealth;
+}
+
+/**
+ * Decide whether a server bad_jwt response should trigger a purge+signout.
+ * Rules:
+ *   - Stored token shape broken or already expired → purge immediately.
+ *   - Stored token still valid → record a transient strike. If a second
+ *     bad_jwt arrives within TRANSIENT_WINDOW_MS, purge. Otherwise let the
+ *     SDK auto-refresh recover and keep the user signed in.
+ */
+export function decidePurgeOnBadJwt(now: number = Date.now()): PurgeDecision {
+  const health = getStoredAccessTokenHealth();
+  if (health.state === "shape_invalid" || health.state === "missing") {
+    clearTransientStrike();
+    return { shouldPurge: true, reason: "shape_invalid", health };
+  }
+  if (health.state === "expired") {
+    clearTransientStrike();
+    return { shouldPurge: true, reason: "expired", health };
+  }
+  let firstMs = 0;
+  try {
+    firstMs = Number(sessionStorage.getItem(TRANSIENT_BAD_JWT_KEY) ?? "0");
+  } catch {
+    firstMs = 0;
+  }
+  if (Number.isFinite(firstMs) && firstMs > 0 && now - firstMs <= TRANSIENT_WINDOW_MS) {
+    clearTransientStrike();
+    return { shouldPurge: true, reason: "second_strike", health };
+  }
+  try {
+    sessionStorage.setItem(TRANSIENT_BAD_JWT_KEY, String(now));
+  } catch {
+    /* private mode — fail open, do not purge */
+  }
+  return { shouldPurge: false, reason: "transient", health };
+}
+
+export function clearTransientStrike(): void {
+  try {
+    sessionStorage.removeItem(TRANSIENT_BAD_JWT_KEY);
+  } catch {
+    /* noop */
+  }
+}
+
+/* ---------------------------------------------------------------------- */
 /* 3. Purger — clears every sb-*-auth-token + side-state in one shot      */
 /* ---------------------------------------------------------------------- */
 
