@@ -227,7 +227,10 @@ export default function SystemHealthPage() {
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
 
+        <TabsContent value="refactor-kpis"><RefactorKpisTab /></TabsContent>
+
         <TabsContent value="queues" className="grid gap-4 md:grid-cols-2">
+
 
           {data.queue_stats.map((queue) => (
             <Card key={queue.queue_name}>
