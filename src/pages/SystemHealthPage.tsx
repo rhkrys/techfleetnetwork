@@ -29,6 +29,7 @@ import { DiscordRepairTab } from "@/components/system-health/DiscordRepairTab";
 import { LoginHealthTab } from "@/components/system-health/LoginHealthTab";
 import { TranslationsTab } from "@/components/admin/system-health/TranslationsTab";
 import { HelpDeskTab } from "@/components/system-health/HelpDeskTab";
+import { RefactorKpisTab } from "@/components/system-health/RefactorKpisTab";
 import { PageTitle } from "@/components/ui/typography";
 
 const FIVE_MIN = 5 * 60 * 1000;
@@ -205,6 +206,7 @@ export default function SystemHealthPage() {
 
       <SystemHealthTabs>
         <TabsList aria-label="System health sections">
+          <TabsTrigger value="refactor-kpis">Refactor KPIs</TabsTrigger>
           <TabsTrigger value="queues">Queues</TabsTrigger>
           <TabsTrigger value="delivery">Delivery</TabsTrigger>
           <TabsTrigger value="deliverability">Deliverability</TabsTrigger>
@@ -225,7 +227,10 @@ export default function SystemHealthPage() {
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
 
+        <TabsContent value="refactor-kpis"><RefactorKpisTab /></TabsContent>
+
         <TabsContent value="queues" className="grid gap-4 md:grid-cols-2">
+
 
           {data.queue_stats.map((queue) => (
             <Card key={queue.queue_name}>
@@ -334,7 +339,7 @@ function ErrorList({ errors, generatedAt }: { errors: Array<{ error_message: str
   );
 }
 
-const VALID_HEALTH_TABS = ["queues","delivery","deliverability","blasts","errors","triage","silent","performance","login","fleety","content","privacy","incidents","audit","discord","settings"] as const;
+const VALID_HEALTH_TABS = ["refactor-kpis","queues","delivery","deliverability","blasts","errors","triage","silent","performance","login","fleety","content","translations","privacy","incidents","audit","discord","help-desk","settings"] as const;
 
 function SystemHealthTabs({ children }: { children: React.ReactNode }) {
   const [params, setParams] = useSearchParams();
