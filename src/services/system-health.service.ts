@@ -142,4 +142,36 @@ export const SystemHealthService = {
     return data as EmailPipelineHealth;
   },
 
+  async getRefactorKpis(days = 30): Promise<RefactorKpi[]> {
+    const { data, error } = await sb.rpc("get_refactor_kpis", { p_days: days });
+    if (error) throw error;
+    return (data ?? []) as RefactorKpi[];
+  },
+
+  async runRefactorKpisSnapshot(): Promise<number> {
+    const { data, error } = await sb.rpc("snapshot_refactor_kpis");
+    if (error) throw error;
+    return (data as number) ?? 0;
+  },
 };
+
+export type RefactorKpiStatus = "met" | "on_track" | "at_risk" | "off_track" | "no_data";
+
+export interface RefactorKpi {
+  metric_key: string;
+  label: string;
+  description: string;
+  category: "errors" | "ux" | "email" | "infra" | "auth";
+  unit: "percent" | "count" | "minutes" | "ratio" | "seconds";
+  baseline_value: number;
+  target_value: number;
+  direction: "lower_is_better" | "higher_is_better";
+  related_section: string;
+  current_value: number | null;
+  previous_value: number | null;
+  current_window: string | null;
+  last_updated: string | null;
+  trend: number[];
+  status: RefactorKpiStatus;
+}
+
