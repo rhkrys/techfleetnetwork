@@ -6257,13 +6257,6 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "support_ticket_pointers_customer_user_id_fkey"
-            columns: ["customer_user_id"]
-            isOneToOne: false
-            referencedRelation: "v_profile_readiness"
-            referencedColumns: ["user_id"]
-          },
         ]
       }
       support_webhook_events: {
@@ -7156,17 +7149,23 @@ export type Database = {
       v_profile_readiness: {
         Row: {
           missing_fields: string[] | null
+          onboarded_at: string | null
           score: number | null
+          updated_at: string | null
           user_id: string | null
         }
         Insert: {
           missing_fields?: never
+          onboarded_at?: string | null
           score?: never
+          updated_at?: string | null
           user_id?: string | null
         }
         Update: {
           missing_fields?: never
+          onboarded_at?: string | null
           score?: never
+          updated_at?: string | null
           user_id?: string | null
         }
         Relationships: []
