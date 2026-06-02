@@ -27,7 +27,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAdmin } from "@/hooks/use-admin";
 import {
   useAnnouncements, useCreateAnnouncement, useDeleteAnnouncement, useMarkAnnouncementRead,
-  useRecordAnnouncementView,
+  useRecordAnnouncementView, useAnnouncementReadIds, useAnnouncementActions,
+  useRecordAnnouncementAction,
 } from "@/hooks/use-announcements";
 import { stripHtml, normalizeRichTextHtml } from "@/lib/html";
 import { TranslatedContent } from "@/components/i18n/TranslatedContent";
