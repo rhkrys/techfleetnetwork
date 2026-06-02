@@ -145,13 +145,30 @@ export const SystemHealthService = {
   async getRefactorKpis(days = 30): Promise<RefactorKpi[]> {
     const { data, error } = await sb.rpc("get_refactor_kpis", { p_days: days });
     if (error) throw error;
-    return (data ?? []) as RefactorKpi[];
+    return (data ?? []).map((row: any): RefactorKpi => ({
+      metric_key: row.metric_key,
+      label: row.label,
+      description: row.description,
+      category: row.category,
+      unit: row.unit,
+      baseline_value: Number(row.baseline_value),
+      target_value: Number(row.target_value),
+      direction: row.direction,
+      related_section: row.related_section,
+      current_value: row.current_value == null ? null : Number(row.current_value),
+      previous_value: row.previous_value == null ? null : Number(row.previous_value),
+      current_window: null,
+      last_updated: row.last_snapshot ?? null,
+      trend: Array.isArray(row.trend) ? row.trend.map((v: any) => Number(v)) : [],
+      status: row.status,
+    }));
   },
 
   async runRefactorKpisSnapshot(): Promise<number> {
-    const { data, error } = await sb.rpc("snapshot_refactor_kpis");
+    const { data, error } = await sb.rpc("run_refactor_kpis_snapshot_now");
     if (error) throw error;
-    return (data as number) ?? 0;
+    const payload = (data ?? {}) as { ok?: boolean; rows?: number };
+    return Number(payload.rows ?? 0);
   },
 };
 
@@ -174,4 +191,5 @@ export interface RefactorKpi {
   trend: number[];
   status: RefactorKpiStatus;
 }
+
 
