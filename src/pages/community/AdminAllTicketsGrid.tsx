@@ -84,7 +84,7 @@ export default function AdminAllTicketsGrid() {
         if (!id) return null;
         return (
           <div className="flex items-center gap-2 h-full">
-            <Button size="sm" variant="outline" onClick={() => runAction(id, { action: "assign", assigneeUserId: 0 }, "Assigned to you.")}>
+            <Button size="sm" variant="outline" onClick={() => runAction(id, { action: "assign", assigneeUserId: "self" }, "Assigned to you.")}>
               Assign me
             </Button>
             <Button size="sm" variant="outline" onClick={() => runAction(id, { action: "setPrivate", isPrivate: true }, "Marked private.")}>
