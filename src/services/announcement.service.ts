@@ -23,9 +23,37 @@ export interface Announcement {
   author_name?: string;
 }
 
-// Module-level last-known-good cache (graceful degradation pattern). Keyed by
-// limit so the bell (5) and full updates page (50) maintain separate caches.
+// Module-level + localStorage last-known-good cache (graceful degradation
+// pattern, Part 2 §H2). Keyed by limit so the bell (5) and full updates page
+// (50) keep separate caches. localStorage carries last-known-good across cold
+// page loads with a 24h TTL.
+const LKG_LS_PREFIX = "tfn.announcements.lkg.";
+const LKG_TTL_MS = 24 * 60 * 60 * 1000;
 const lastKnownGood = new Map<number, Announcement[]>();
+
+function readLkgFromStorage(limit: number): Announcement[] | null {
+  try {
+    const raw = typeof window !== "undefined" ? window.localStorage.getItem(LKG_LS_PREFIX + limit) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { savedAt: number; rows: Announcement[] };
+    if (!parsed?.savedAt || Date.now() - parsed.savedAt > LKG_TTL_MS) return null;
+    return Array.isArray(parsed.rows) ? parsed.rows : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLkgToStorage(limit: number, rows: Announcement[]): void {
+  try {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(
+      LKG_LS_PREFIX + limit,
+      JSON.stringify({ savedAt: Date.now(), rows }),
+    );
+  } catch {
+    /* quota or private-mode — non-fatal */
+  }
+}
 
 export const AnnouncementService = {
   async list(limit = 50): Promise<Announcement[]> {
