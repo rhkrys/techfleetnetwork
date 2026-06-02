@@ -1,0 +1,140 @@
+// process-freescout-events — drains q_freescout_events, applies the same
+// downstream writes the webhook used to do inline. Cron-poked every 15s.
+// Auth: shared-secret bearer like process-email-queue (verify_jwt=false).
+import { getAdminClient } from "../_shared/admin-client.ts";
+import { handleCors, jsonResponse } from "../_shared/http.ts";
+
+const BATCH = 25;
+const VT_SECONDS = 60;
+const MAX_ATTEMPTS = 3;
+
+function authorized(req: Request): boolean {
+  const auth = req.headers.get("authorization") ?? "";
+  if (!auth.startsWith("Bearer ")) return false;
+  const tok = auth.slice("Bearer ".length).trim();
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  return tok.length > 0 && serviceKey.length > 0 && tok === serviceKey;
+}
+
+interface FreescoutEvent {
+  msg_id: number;
+  read_ct: number;
+  message: {
+    event_id: string;
+    event_type: string;
+    payload: Record<string, unknown>;
+  };
+}
+
+async function processOne(admin: ReturnType<typeof getAdminClient>, ev: FreescoutEvent) {
+  const { payload, event_type: eventType } = ev.message;
+
+  const conv = (payload?.conversation as Record<string, unknown>) ?? payload;
+  const conversationId = Number((conv as { id?: unknown })?.id ?? (payload as { conversation_id?: unknown }).conversation_id);
+  const customerEmail = (conv as { customer?: { email?: string } })?.customer?.email
+    ?? (payload as { customer?: { email?: string } })?.customer?.email;
+
+  let customerUserId: string | null = null;
+  const freescoutCustomerId = (conv as { customer?: { id?: number | string } })?.customer?.id
+    ? String((conv as { customer: { id: number | string } }).customer.id)
+    : null;
+
+  if (customerEmail) {
+    const { data: prof } = await admin
+      .from("profiles")
+      .select("id, freescout_customer_id")
+      .eq("email", customerEmail)
+      .maybeSingle();
+    if (prof?.id) {
+      customerUserId = prof.id;
+      if (freescoutCustomerId && !prof.freescout_customer_id) {
+        await admin.from("profiles").update({ freescout_customer_id: freescoutCustomerId }).eq("id", prof.id);
+      }
+    }
+  }
+
+  if (Number.isFinite(conversationId) && conversationId > 0) {
+    await admin.from("support_ticket_pointers").upsert({
+      conversation_id: conversationId,
+      customer_user_id: customerUserId,
+      freescout_customer_id: freescoutCustomerId,
+      subject: (conv as { subject?: string })?.subject ?? null,
+      last_status: (conv as { status?: string })?.status ?? null,
+      mailbox_id: (conv as { mailboxId?: number; mailbox_id?: number })?.mailboxId
+        ?? (conv as { mailbox_id?: number })?.mailbox_id ?? null,
+      last_synced_at: new Date().toISOString(),
+    });
+
+    await admin.from("support_ticket_events").insert({
+      conversation_id: conversationId,
+      customer_user_id: customerUserId,
+      event_type: eventType,
+      actor_email: (payload as { user?: { email?: string }; actor?: { email?: string } })?.user?.email
+        ?? (payload as { actor?: { email?: string } })?.actor?.email ?? null,
+      actor_kind: (payload as { user?: unknown }).user
+        ? "user"
+        : (payload as { customer?: unknown }).customer ? "customer" : null,
+      payload,
+    });
+
+    if (customerUserId && (eventType.includes("user.replied") || eventType.includes("status_changed") || eventType === "convo.assigned")) {
+      try {
+        await admin.from("notifications").insert({
+          user_id: customerUserId,
+          title: eventType.includes("status") ? "Ticket status updated" : "New reply on your ticket",
+          body: (conv as { subject?: string })?.subject ? `Re: ${(conv as { subject?: string }).subject}` : "View your support ticket for details.",
+          link: `/community/get-help?ticket=${conversationId}`,
+          category: "support",
+        });
+      } catch { /* best effort */ }
+    }
+  }
+}
+
+Deno.serve(async (req) => {
+  const cors = handleCors(req);
+  if (cors) return cors;
+  if (!authorized(req)) return jsonResponse({ error: "Unauthorized" }, 401);
+
+  const admin = getAdminClient();
+  let processed = 0;
+  let failed = 0;
+  let dlq = 0;
+
+  for (let i = 0; i < BATCH; i++) {
+    const { data, error } = await admin.rpc("freescout_dequeue_events", {
+      p_batch: 1, p_vt: VT_SECONDS,
+    });
+    if (error) {
+      console.error(JSON.stringify({ level: "error", fn: "process-freescout-events", code: "dequeue_failed", msg: error.message }));
+      break;
+    }
+    const rows = (data ?? []) as FreescoutEvent[];
+    if (rows.length === 0) break;
+    const ev = rows[0];
+
+    try {
+      await processOne(admin, ev);
+      await admin.rpc("freescout_delete_event", { p_msg_id: ev.msg_id });
+      processed++;
+    } catch (e) {
+      failed++;
+      console.error(JSON.stringify({
+        level: "error", fn: "process-freescout-events", code: "processing_failed",
+        msgId: ev.msg_id, readCt: ev.read_ct,
+        msg: e instanceof Error ? e.message : String(e),
+      }));
+      if (ev.read_ct >= MAX_ATTEMPTS) {
+        await admin.rpc("freescout_send_to_dlq", {
+          p_msg_id: ev.msg_id,
+          p_message: ev.message,
+          p_error: e instanceof Error ? e.message : String(e),
+        });
+        dlq++;
+      }
+      // else: leave it; pgmq visibility timeout will re-deliver
+    }
+  }
+
+  return jsonResponse({ ok: true, processed, failed, dlq });
+});
