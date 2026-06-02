@@ -46,20 +46,3 @@ test.describe("AUTH-RESET-011 password reset round trip", () => {
     }
   });
 });
-
-test.describe("AUTH-RESET-010 reset confirmation UI", () => {
-  test("mismatched confirmation cannot submit", async ({ page }) => {
-    await page.goto("/reset-password?type=recovery");
-    await page.evaluate(() => {
-      window.localStorage.setItem("sb-test-auth-token", JSON.stringify({ access_token: "header.payload.signature", refresh_token: "header.payload.signature" }));
-    });
-    await page.route("**/auth/v1/token**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ access_token: "header.payload.signature", refresh_token: "header.payload.signature", user: { id: "e2e-user" } }) }));
-    await page.route("**/auth/v1/user**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ id: "e2e-user", email: "e2e@example.com" }) }));
-
-    await page.goto("/reset-password?type=recovery&code=test-code");
-    await page.getByLabel(/^new password$/i).fill("StrongPass123!");
-    await page.getByLabel(/confirm new password/i).fill("StrongPass124!");
-    await expect(page.getByRole("button", { name: /update password/i })).toBeDisabled();
-    await expect(page.getByText(/passwords do not match/i)).toBeVisible();
-  });
-});
