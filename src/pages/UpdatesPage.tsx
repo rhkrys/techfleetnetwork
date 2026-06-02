@@ -239,7 +239,7 @@ export default function UpdatesPage() {
         <ThemedAgGrid<Announcement>
           gridId="updates"
           height="450px"
-          rowData={announcements}
+          rowData={visibleAnnouncements}
           columnDefs={columnDefs}
           getRowId={(params) => params.data.id}
           onRowClicked={(params) => params.data && selectAndMarkRead(params.data)}
