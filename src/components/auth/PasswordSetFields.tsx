@@ -3,19 +3,8 @@ import { Eye, EyeOff, Lock } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordRequirementsList } from "@/components/registration/PasswordRequirementsList";
-import { passwordSchema } from "@/lib/validators/auth";
 import { cn } from "@/lib/utils";
-
-export interface PasswordSetValue {
-  password: string;
-  confirmPassword: string;
-}
-
-export interface PasswordSetValidation {
-  passwordError: string;
-  confirmError: string;
-  isValid: boolean;
-}
+import { validatePasswordSet, type PasswordSetValue } from "@/lib/auth/password-set";
 
 interface PasswordSetFieldsProps {
   value: PasswordSetValue;
@@ -27,15 +16,6 @@ interface PasswordSetFieldsProps {
   onBlur?: (field: keyof PasswordSetValue) => void;
   errors?: { password?: string; confirmPassword?: string };
   className?: string;
-}
-
-export function validatePasswordSet(value: PasswordSetValue): PasswordSetValidation {
-  const parsed = passwordSchema.safeParse(value.password);
-  const passwordError = parsed.success ? "" : parsed.error.issues[0]?.message ?? "Enter a stronger password.";
-  let confirmError = "";
-  if (!value.confirmPassword) confirmError = "Please confirm your password.";
-  else if (value.password !== value.confirmPassword) confirmError = "Those passwords do not match yet. Retype the second one.";
-  return { passwordError, confirmError, isValid: !passwordError && !confirmError };
 }
 
 export function PasswordSetFields({
