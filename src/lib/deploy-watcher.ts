@@ -1,39 +1,30 @@
 /**
- * Deploy watcher — proactively detects new deployments while a tab is open
- * and refreshes the page BEFORE the user triggers a stale-chunk fetch.
+ * Deploy watcher — detects new deployments while a tab is open and exposes
+ * a `stale` signal that the UI surfaces via <UpdateAvailableBanner/>.
  *
- * Strategy (defense in depth):
- *  1. Vite injects __BUILD_ID__ into the running bundle at build time.
- *  2. The build also emits /version.json (uncached) with the same id.
- *  3. We poll /version.json on focus, on `online`, and every 60s.
- *  4. If the server build id differs from ours, we mark the app "stale" and
- *     trigger a reload at the next safe boundary (route change) or after a
- *     short idle window — whichever comes first.
- *  5. The fallback safety net is `lazyWithRetry`, which catches any
- *     stale-chunk error that slips through and forces a single reload.
- *
- * This combination means a stale chunk request should virtually never
- * surface to the user.
+ * IMPORTANT: this module never auto-reloads the page. Silent reloads (even
+ * on hidden tabs) destroy in-flight UI state — scroll position, modal
+ * state, un-autosaved input, expanded panels — and surprise the member
+ * when they return to the tab. The only reloads happen when:
+ *   1. The member clicks "Refresh now" in the banner (reloadIfStale()).
+ *   2. lazyWithRetry catches an actual stale-chunk error on a route load.
  */
 
 declare const __BUILD_ID__: string;
 
 const VERSION_URL = "/version.json";
 const POLL_INTERVAL_MS = 60_000; // 1 minute
-const IDLE_RELOAD_DELAY_MS = 30_000; // wait 30s of inactivity before forcing reload
 const RELOAD_FLAG = "__lovable_chunk_reload__";
 
 let currentBuildId = "";
 let serverBuildId = "";
 let pollTimer: number | null = null;
-let idleTimer: number | null = null;
 let started = false;
 let stale = false;
 const listeners = new Set<(stale: boolean) => void>();
 
 function readCurrentBuildId(): string {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return typeof __BUILD_ID__ !== "undefined" ? __BUILD_ID__ : "";
   } catch {
     return "";
@@ -66,29 +57,12 @@ function notify() {
 
 function safeReload() {
   if (typeof window === "undefined") return;
-  // Clear any prior stale-chunk reload flag — a successful version-driven
-  // reload is the "good" path and should not block future recovery attempts.
   try {
     window.sessionStorage.removeItem(RELOAD_FLAG);
   } catch {
     /* ignore */
   }
   window.location.reload();
-}
-
-function scheduleIdleReload() {
-  if (typeof window === "undefined") return;
-  if (idleTimer !== null) return; // already scheduled
-  idleTimer = window.setTimeout(() => {
-    // Only reload if user is idle (page hidden OR no recent input)
-    if (document.visibilityState === "hidden") {
-      safeReload();
-    } else {
-      // Reschedule — try again in another window
-      idleTimer = null;
-      scheduleIdleReload();
-    }
-  }, IDLE_RELOAD_DELAY_MS);
 }
 
 async function checkVersion() {
@@ -99,13 +73,7 @@ async function checkVersion() {
   if (next !== currentBuildId && !stale) {
     stale = true;
     notify();
-    // Try to reload immediately if the page is hidden; otherwise wait for
-    // an idle window or for the next route change (handled by the router hook).
-    if (document.visibilityState === "hidden") {
-      safeReload();
-    } else {
-      scheduleIdleReload();
-    }
+    // No auto-reload. The banner asks the member to refresh on their terms.
   }
 }
 
@@ -118,7 +86,6 @@ export function startDeployWatcher(): void {
   currentBuildId = readCurrentBuildId();
   if (!currentBuildId) return; // no build id available (dev mode) — skip
 
-  // Initial check shortly after startup
   window.setTimeout(() => {
     void checkVersion();
   }, 5_000);
@@ -139,7 +106,6 @@ export function startDeployWatcher(): void {
  */
 export function onDeployStale(cb: (stale: boolean) => void): () => void {
   listeners.add(cb);
-  // Fire immediately with current state
   cb(stale);
   return () => {
     listeners.delete(cb);
@@ -154,7 +120,8 @@ export function isAppStale(): boolean {
 }
 
 /**
- * Force a reload now (used by router on next navigation when stale).
+ * Reload now if the app is stale. Only invoked by explicit member action
+ * (Refresh now button in <UpdateAvailableBanner/>).
  */
 export function reloadIfStale(): boolean {
   if (stale) {
@@ -165,10 +132,9 @@ export function reloadIfStale(): boolean {
 }
 
 /**
- * Trigger an out-of-band version check immediately. Used when the error
- * reporter sees a symptom that strongly suggests a stale bundle (e.g. a
- * FunctionsFetchError from a removed component) so a stuck tab can be
- * detected and reloaded without waiting for the 60s poll cycle.
+ * Trigger an out-of-band version check immediately. Used by the error
+ * reporter when a symptom suggests a stale bundle so the banner can
+ * appear without waiting for the 60s poll cycle.
  *
  * Throttled so spammy callers cannot DoS /version.json.
  */
@@ -184,5 +150,5 @@ export function checkNow(): void {
 
 /** Internal helper for tests/debug. */
 export function __debug() {
-  return { currentBuildId, serverBuildId, stale };
+  return { currentBuildId, serverBuildId, stale, pollTimer };
 }
