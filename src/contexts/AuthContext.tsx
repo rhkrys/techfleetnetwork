@@ -4,7 +4,7 @@ import { AuthService } from "@/services/auth.service";
 import { ProfileService, type Profile } from "@/services/profile.service";
 import { DiscordNotifyService } from "@/services/discord-notify.service";
 import { clearOAuthUiMarker, hasFreshOAuthUiMarker, isRootOAuthCallback, stripRootOAuthCallbackUrl } from "@/lib/oauth-ui-guard";
-import { ensureClientFingerprint, isUnrecoverableAuthError, purgeLocalAuthState } from "@/lib/auth/session-health";
+import { decidePurgeOnBadJwt, ensureClientFingerprint, isUnrecoverableAuthError, purgeLocalAuthState } from "@/lib/auth/session-health";
 import i18n, { ensureLocale } from "@/i18n";
 import type { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
