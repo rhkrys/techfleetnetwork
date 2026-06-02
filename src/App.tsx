@@ -88,6 +88,7 @@ const ProjectFormPage = lazy(() => import("./pages/ProjectFormPage"));
 const ProjectApplicationPage = lazy(() => import("./pages/ProjectApplicationPage"));
 const ProjectOpeningDetailPage = lazy(() => import("./pages/ProjectOpeningDetailPage"));
 const EditProfilePage = lazy(() => import("./pages/EditProfilePage"));
+const NotificationSettingsPage = lazy(() => import("./pages/NotificationSettingsPage"));
 const ProjectAnalysisDetailPage = lazy(() => import("./pages/ProjectAnalysisDetailPage"));
 const FeedbackPage = lazy(() => import("./pages/FeedbackPage"));
 const AccessibilityPage = lazy(() => import("./pages/AccessibilityPage"));
