@@ -387,6 +387,30 @@ export type Database = {
         }
         Relationships: []
       }
+      audit_sink_registry: {
+        Row: {
+          mode: string
+          notes: string | null
+          sink: string
+          table_name: string
+          updated_at: string
+        }
+        Insert: {
+          mode: string
+          notes?: string | null
+          sink: string
+          table_name: string
+          updated_at?: string
+        }
+        Update: {
+          mode?: string
+          notes?: string | null
+          sink?: string
+          table_name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       auth_wedge_events: {
         Row: {
           id: number
@@ -1633,6 +1657,42 @@ export type Database = {
           transactional_consecutive_rate_limits?: number
           transactional_email_ttl_minutes?: number
           transactional_retry_after_until?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      email_templates: {
+        Row: {
+          created_at: string
+          default_headers: Json
+          frequency_cap_applies: boolean
+          lane: string
+          list_unsubscribe_path: string | null
+          notes: string | null
+          purpose: string
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          default_headers?: Json
+          frequency_cap_applies?: boolean
+          lane: string
+          list_unsubscribe_path?: string | null
+          notes?: string | null
+          purpose: string
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          default_headers?: Json
+          frequency_cap_applies?: boolean
+          lane?: string
+          list_unsubscribe_path?: string | null
+          notes?: string | null
+          purpose?: string
+          slug?: string
           updated_at?: string
         }
         Relationships: []
@@ -3746,6 +3806,7 @@ export type Database = {
           body_html: string
           created_at: string
           id: string
+          idempotency_key: string | null
           link_url: string
           notification_type: string
           read: boolean
@@ -3756,6 +3817,7 @@ export type Database = {
           body_html?: string
           created_at?: string
           id?: string
+          idempotency_key?: string | null
           link_url?: string
           notification_type?: string
           read?: boolean
@@ -3766,6 +3828,7 @@ export type Database = {
           body_html?: string
           created_at?: string
           id?: string
+          idempotency_key?: string | null
           link_url?: string
           notification_type?: string
           read?: boolean
@@ -3804,6 +3867,69 @@ export type Database = {
           projects_role_granted_at?: string | null
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      ops_events: {
+        Row: {
+          actor_id: string | null
+          event_day: string
+          expires_at: string
+          id: number
+          kind: string
+          occurred_at: string
+          payload: Json
+          ref_id: string | null
+          ref_table: string | null
+          severity: string
+        }
+        Insert: {
+          actor_id?: string | null
+          event_day?: string
+          expires_at?: string
+          id?: number
+          kind: string
+          occurred_at?: string
+          payload?: Json
+          ref_id?: string | null
+          ref_table?: string | null
+          severity?: string
+        }
+        Update: {
+          actor_id?: string | null
+          event_day?: string
+          expires_at?: string
+          id?: number
+          kind?: string
+          occurred_at?: string
+          payload?: Json
+          ref_id?: string | null
+          ref_table?: string | null
+          severity?: string
+        }
+        Relationships: []
+      }
+      ops_metrics: {
+        Row: {
+          metadata: Json
+          metric_day: string
+          metric_key: string
+          metric_value: number
+          updated_at: string
+        }
+        Insert: {
+          metadata?: Json
+          metric_day: string
+          metric_key: string
+          metric_value?: number
+          updated_at?: string
+        }
+        Update: {
+          metadata?: Json
+          metric_day?: string
+          metric_key?: string
+          metric_value?: number
+          updated_at?: string
         }
         Relationships: []
       }
@@ -5756,6 +5882,36 @@ export type Database = {
           source?: string
           source_row_id?: string | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      request_idempotency: {
+        Row: {
+          created_at: string
+          expires_at: string
+          key: string
+          request_hash: string
+          response_json: Json | null
+          status_code: number | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string
+          key: string
+          request_hash: string
+          response_json?: Json | null
+          status_code?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          key?: string
+          request_hash?: string
+          response_json?: Json | null
+          status_code?: number | null
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -7753,6 +7909,18 @@ export type Database = {
       recompute_all_stats_lock_key: { Args: never; Returns: number }
       reconcile_account_orphans: { Args: never; Returns: Json }
       reconcile_course_badge_parity: { Args: never; Returns: Json }
+      record_event: {
+        Args: {
+          p_actor?: string
+          p_kind: string
+          p_payload?: Json
+          p_ref_id?: string
+          p_ref_table?: string
+          p_severity?: string
+          p_sink: string
+        }
+        Returns: number
+      }
       record_failed_login: {
         Args: { _email: string; _ip?: string; _user_agent?: string }
         Returns: Json
