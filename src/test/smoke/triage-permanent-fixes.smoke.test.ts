@@ -13,6 +13,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { execFileSync } from "node:child_process";
 
 const REPO = resolve(__dirname, "../../..");
 const read = (rel: string) => readFileSync(resolve(REPO, rel), "utf8");
@@ -125,6 +126,42 @@ describe("TRIAGE-FIX permanent root-cause fixes", () => {
     expect(blob).toMatch(/trg_agent_fix_queue_reject_opaque_script_error/);
     // Regex literal must be present so a future edit can't silently weaken it.
     expect(blob).toMatch(/\^\(error:\\s\*\)\?script error\\\.\?\$/);
+  });
+
+  it("TRIAGE-NOISE-020/022: live DB triggers silently drop opaque Script error inserts when PGHOST is available", () => {
+    if (!process.env.PGHOST) return;
+
+    const sql = String.raw`
+      begin;
+      select set_config('request.jwt.claim.role','service_role', true);
+      select public.write_audit_log(
+        'client_error',
+        'smoke_triage_backstop',
+        'opaque-test',
+        null,
+        ARRAY['severity:error'],
+        E'Error: Script error.\nih@https://example.invalid/app.js:1:1'
+      );
+      select 'audit_rows=' || count(*)
+        from public.audit_log
+       where table_name = 'smoke_triage_backstop'
+         and record_id = 'opaque-test';
+      with queue_insert as (
+        insert into public.agent_fix_queue(fingerprint, event_type, source, error_message)
+        values ('smoke.opaque.' || gen_random_uuid()::text, 'client_error', 'smoke', E'Script error.\nstack')
+        returning id
+      )
+      select 'queue_rows=' || count(*) from queue_insert;
+      rollback;
+    `;
+
+    const output = execFileSync("psql", ["-v", "ON_ERROR_STOP=1", "-tAc", sql], {
+      encoding: "utf8",
+      env: process.env,
+    });
+
+    expect(output).toContain("audit_rows=0");
+    expect(output).toContain("queue_rows=0");
   });
 });
 
