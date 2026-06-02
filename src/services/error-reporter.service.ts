@@ -336,6 +336,10 @@ async function reportToAuditLog(
   source: string,
   options: ReportOptions = {},
 ) {
+  // Opaque cross-origin "Script error." carries no actionable detail. Drop
+  // FIRST so it never reaches audit_log (where discover_audit_fingerprints
+  // would re-promote it into the Triage queue).
+  if (isOpaqueScriptErrorMessage(errorMessage)) return;
   // Universal suppression — applies to every reporter path, not just the
   // global window handlers. This closes the bypass that previously let
   // direct callers (e.g. service-layer catches) skip the SUPPRESSED_PATTERNS
