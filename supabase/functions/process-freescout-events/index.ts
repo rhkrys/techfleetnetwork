@@ -139,7 +139,9 @@ async function processOne(admin: ReturnType<typeof getAdminClient>, ev: Freescou
 Deno.serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
-  if (!authorized(req)) return jsonResponse({ error: "Unauthorized" }, 401);
+  const auth = authorizeServiceRoleRequest(req);
+  if (!auth.ok) return jsonResponse({ error: auth.error }, auth.status);
+
 
   const admin = getAdminClient();
   let processed = 0;
