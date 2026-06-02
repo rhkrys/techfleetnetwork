@@ -690,6 +690,7 @@ export function installGlobalErrorReporter() {
 
   window.addEventListener("unhandledrejection", (event) => {
     const msg = formatThrowable(event.reason);
+    if (isOpaqueScriptErrorMessage(msg)) return;
     if (isSuppressed(msg)) return;
     chunkAwareReport(msg, "unhandledrejection");
   });
