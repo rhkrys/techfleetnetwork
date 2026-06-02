@@ -110,4 +110,21 @@ describe("TRIAGE-FIX permanent root-cause fixes", () => {
     expect(src).toMatch(/QueryClient/);
     expect(src).toMatch(/useQuery/);
   });
+
+  it("TRIAGE-NOISE-020: DB-level reject_opaque_script_error trigger function exists in migrations", () => {
+    // The permanent backstop is a Postgres BEFORE INSERT trigger on audit_log
+    // AND agent_fix_queue. Asserting the migration source guarantees the
+    // invariant is checked into history and reviewed on every schema change.
+    // (Live DB assertion lives in the Supabase linter / smoke-deploy gate.)
+    const { readdirSync } = require("node:fs") as typeof import("node:fs");
+    const dir = resolve(REPO, "supabase/migrations");
+    const files = readdirSync(dir).filter((f) => f.endsWith(".sql"));
+    const blob = files.map((f) => read(`supabase/migrations/${f}`)).join("\n");
+    expect(blob).toMatch(/create or replace function public\.reject_opaque_script_error/);
+    expect(blob).toMatch(/trg_audit_log_reject_opaque_script_error/);
+    expect(blob).toMatch(/trg_agent_fix_queue_reject_opaque_script_error/);
+    // Regex literal must be present so a future edit can't silently weaken it.
+    expect(blob).toMatch(/\^\(error:\\s\*\)\?script error\\\.\?\$/);
+  });
 });
+

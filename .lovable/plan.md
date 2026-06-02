@@ -1,42 +1,84 @@
-# Get Help — ticket visibility + admin tab structure
 
-## Root causes
+## Why the AI-proposed fix is wrong
 
-**1. New tickets don't appear in "My open" or "All"**
-- `freescout-proxy create` sends `customer: { email }` only. Freescout links the new conversation to whichever customer record matches that email — which may be a different ID than the one we cached in `profiles.freescout_customer_id` (e.g. created earlier with a different casing or a pre-existing record). `listMine` then filters Freescout by `customerId = stored id` and returns nothing for the just-created ticket.
-- Client `useTickets` uses `staleTime: 60_000` + `refetchOnMount: false`, so switching tabs after creating does not refetch. The dialog's `onCreated` only invalidates the active scope's key (`["support","tickets","mine"]`), so the admin "All" tab stays stale even after a navigation.
-- Edge isolate cache is correctly invalidated (`invalidateUser` + `invalidateAll`) on create, so this is purely a client-cache + customer-linking bug, not an edge-cache bug.
+`crossorigin="anonymous"` is **already** set on the entry module (`index.html:224`) and on every dynamically injected third-party script (GTM, Clarity, CookieYes — see `src/lib/consent/loadAnalytics.ts` and `src/components/CookieConsentBanner.tsx`). Memory entry `[Scoped Error Boundaries]` confirms this.
 
-**2. Admin needs first-class "Open unassigned" and "Open assigned" tabs**
-- These filters exist today but are buried inside the "Triage grid" sub-view. The top-level admin tab bar only shows: My tickets | All tickets | Triage grid | Reports.
+The opaque payload `Error: Script error.` still landed in `agent_fix_queue` (rows `ce7fff5d…` at 16:30 and `3662cf6a…` at 16:23 today). Tracing it: the message went `installGlobalErrorReporter → chunkAwareReport → reportToAuditLog → writeAudit → write_audit_log RPC → audit_log → discover_audit_fingerprints → agent_fix_queue`. The JS regex `isOpaqueScriptErrorMessage` matches the payload correctly (smoke test green), yet the row was written — meaning some build/runtime path skipped or pre-dated the JS filter. The pattern repeats every few weeks: a refactor forgets the filter, or a new caller writes directly to `write_audit_log`, and the noise returns.
 
-## Changes
+## Root cause (permanent)
 
-### `supabase/functions/freescout-proxy/index.ts`
-- `create` handler: send `customer: { id: Number(cust.customerId) }` (with `email` as fallback only when no id) on both the conversation and the inner thread, so Freescout always attaches the new conversation to our stored customer id. This makes `listMine?customerId=…` find it.
-- `listMine`: also pass `customerEmail: cust.email` alongside `customerId` so legacy conversations linked by email still surface even when ids drift.
-- Keep existing `invalidateUser` + `invalidateAll` calls.
+The JS filter is **the only line of defense**. There is no DB-level trigger on `audit_log` rejecting opaque-script payloads. As long as defense lives only in client JS, every new write path is one bug away from re-introducing the regression. We need a database-level invariant that is impossible to bypass.
 
-### `src/pages/community/GetHelpPage.tsx`
-- `useTickets`: change `refetchOnMount: false` → `refetchOnMount: "always"`; keep `staleTime: 60_000` so background polling stays cheap but tab switches always revalidate.
-- `NewTicketDialog.onCreated`: replace the scope-specific refresh with `qc.invalidateQueries({ queryKey: ["support"] })` so admin tabs refresh too.
-- Restructure admin tab bar to:
-  - **My tickets** (`<TicketList scope="mine" />`)
-  - **Open · unassigned** (new `<AdminScopedList scope="open-unassigned" />`)
-  - **Open · assigned** (new `<AdminScopedList scope="open-assigned" />`)
-  - **All tickets** (`<AdminScopedList scope="all" />`)
-  - **Reports** (`<MonthlyReportPanel />`)
-- The current "Triage grid" tab is dropped — its three sub-scopes become the three top-level admin tabs, powered by the existing `AdminAllTicketsGrid` rendered with a fixed scope prop.
+## Permanent fix
 
-### `src/pages/community/AdminAllTicketsGrid.tsx`
-- Accept an optional `scope?: "open-unassigned" | "open-assigned" | "all"` prop; when provided, hide the internal `<Tabs>` and use the prop directly.
-- Apply the same `refetchOnMount: "always"` change to `useScopedTickets`.
+### 1. Database: `BEFORE INSERT` trigger on `audit_log`
 
-### BDD
-- Append migration inserting into `bdd_scenarios`:
-  - `HELP-DESK-040` — Newly created ticket appears in "My tickets" on the next render.
-  - `HELP-DESK-041` — Newly created ticket appears in admin "All tickets" after switching tabs.
-  - `HELP-DESK-042` — Admin tab bar exposes "Open · unassigned" and "Open · assigned" as top-level tabs and each shows only matching tickets.
+```sql
+create or replace function public.reject_opaque_script_error()
+returns trigger language plpgsql as $$
+declare
+  first_line text;
+begin
+  -- First non-empty trimmed line of error_message.
+  select btrim(line) into first_line
+  from unnest(string_to_array(coalesce(new.error_message, ''), e'\n')) as line
+  where btrim(line) <> ''
+  limit 1;
+
+  if first_line ~* '^(error:\s*)?script error\.?$' then
+    -- Silently drop: telemetry must never throw for the caller, and we don't
+    -- want a single noisy beacon to fail an entire user action.
+    return null;
+  end if;
+  return new;
+end $$ set search_path = public;
+
+create trigger trg_audit_log_reject_opaque_script_error
+before insert on public.audit_log
+for each row execute function public.reject_opaque_script_error();
+```
+
+### 2. Defense-in-depth trigger on `agent_fix_queue`
+
+Same predicate, separate trigger — so any future ingestion path (e.g. another discovery scanner, manual admin insert, edge replay) is also blocked.
+
+### 3. Backfill
+
+```sql
+update public.agent_fix_queue
+   set status = 'resolved',
+       resolution_note = coalesce(resolution_note,'') ||
+         e'\n[auto] opaque cross-origin Script error — closed by permanent DB backstop'
+ where status <> 'resolved'
+   and error_message ~* '^(error:\s*)?script error\.?(\n|$)';
+```
+
+### 4. Refresh `known_issue_catalog` entries
+
+Bump the existing two rows' `reason` to reference the trigger as the authoritative source (kept for human discoverability only — the trigger is now the enforcement point).
+
+### 5. Tests
+
+- **Postgres smoke test** (added to `src/test/smoke/triage-permanent-fixes.smoke.test.ts`): `insert into audit_log (...) values (...'Error: Script error.\nih@…')` then `select count(*)` returns 0.
+- Keep existing `src/test/smoke/opaque-script-error.smoke.test.ts` (JS regex).
+- Add `pg_dump`-style migration assertion in CI: trigger must exist and be enabled (`scripts/ci/check-audit-triggers.sh`).
+
+### 6. BDD scenarios (`bdd_scenarios`)
+
+- **TRIAGE-NOISE-020** — Given a client emits `Error: Script error.` with a multi-line stack, When the row is sent to `write_audit_log`, Then [DB] no row is written to `audit_log`, [DB] no row is written to `agent_fix_queue`, [UI] System Health Triage tab does not display the fingerprint.
+- **TRIAGE-NOISE-021** — Given a row already exists in `agent_fix_queue` whose `error_message` first line is `Script error`, When the backfill migration runs, Then [DB] the row's `status` is `resolved` and `resolution_note` contains `permanent DB backstop`, [UI] the Triage queue badge count decreases accordingly.
+- **TRIAGE-NOISE-022** — Given an admin attempts a direct insert into `agent_fix_queue` with payload `Script error.`, When the insert runs, Then [DB] the row is silently dropped (`returning *` empty), [Code] the calling edge function receives no error, [UI] no entry appears in the Triage tab.
+
+### 7. Memory update
+
+Append to `mem://features/triage-noise-suppression`: layer 7 = DB BEFORE-INSERT trigger on `audit_log` and `agent_fix_queue` rejecting `^(error:\s*)?script error\.?$` on first non-empty line — the only enforcement that survives client/edge refactors.
+
+## Why this never happens again
+
+The trigger lives in the database, has no JS/edge dependency, runs on every insert path (client RPC, edge function, cron scanner, manual SQL), and is asserted by both Vitest and a CI script. Removing it requires writing an explicit `drop trigger` migration, which will fail review.
 
 ## Out of scope
-- No edge-cache TTL changes, no schema changes, no Freescout webhook changes, no other audit/severity changes.
+
+- No change to existing JS filters (kept as early-drop optimization).
+- No change to `crossorigin` attributes (already correct).
+- No change to discovery scanner severity gate (orthogonal).
