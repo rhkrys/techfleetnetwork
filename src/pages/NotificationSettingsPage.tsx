@@ -7,7 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { PageHeader } from "@/components/PageHeader";
+
 
 type Prefs = Record<string, "on" | "off">;
 
