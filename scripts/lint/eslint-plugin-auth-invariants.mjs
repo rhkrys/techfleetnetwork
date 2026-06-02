@@ -1,5 +1,6 @@
 const PASSWORD_SET_COMPONENT = "src/components/auth/PasswordSetFields.tsx";
 const AUTH_SERVICE = "src/services/auth.service.ts";
+const PASSWORD_UPDATE_FUNCTION = "supabase/functions/update-password-confirmed/index.ts";
 
 function fileEndsWith(context, suffix) {
   return context.getFilename().replace(/\\/g, "/").endsWith(suffix);
@@ -45,7 +46,7 @@ const noRawPasswordUpdate = {
     },
   },
   create(context) {
-    if (fileEndsWith(context, AUTH_SERVICE)) return {};
+    if (fileEndsWith(context, AUTH_SERVICE) || fileEndsWith(context, PASSWORD_UPDATE_FUNCTION)) return {};
     return {
       CallExpression(node) {
         const callee = node.callee;
