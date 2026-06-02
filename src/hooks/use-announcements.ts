@@ -14,6 +14,7 @@ import { isTransientError } from "@/lib/transient-error";
 
 const ANNOUNCEMENTS_KEY = ["announcements"] as const;
 const READ_IDS_KEY = ["announcement-read-ids"] as const;
+const ACTIONS_KEY = ["announcement-actions"] as const;
 
 // Retry transient failures up to 2 extra times with backoff. Structural
 // failures (RLS / schema) are surfaced immediately — no retry.
@@ -136,6 +137,56 @@ export function useDeleteAnnouncement() {
     mutationFn: (id: string) => AnnouncementService.remove(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ANNOUNCEMENTS_KEY });
+    },
+  });
+}
+
+/**
+ * Tri-state announcement status (Part 2 §C1): unread → read → acted.
+ * "Acted" = the member clicked the CTA, dismissed, or archived the card.
+ */
+export function useAnnouncementActions() {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: [...ACTIONS_KEY, user?.id],
+    queryFn: () => AnnouncementService.getActionMap(user!.id),
+    enabled: !!user,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: false,
+    staleTime: 45_000,
+    placeholderData: (prev) => prev,
+    retry: transientRetry,
+    retryDelay: transientRetryDelay,
+  });
+}
+
+export function useRecordAnnouncementAction() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      announcementId,
+      action,
+    }: { announcementId: string; action: "clicked_cta" | "dismissed" | "archived" }) => {
+      if (!user) throw new Error("Not authenticated");
+      return AnnouncementService.recordAction(user.id, announcementId, action);
+    },
+    onMutate: async ({ announcementId, action }) => {
+      await queryClient.cancelQueries({ queryKey: ACTIONS_KEY });
+      queryClient.setQueryData<Map<string, Set<string>>>(
+        [...ACTIONS_KEY, user?.id],
+        (old) => {
+          const next = new Map(old ?? new Map());
+          const existing = new Set(next.get(announcementId) ?? []);
+          existing.add(action);
+          next.set(announcementId, existing);
+          return next;
+        },
+      );
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ACTIONS_KEY });
     },
   });
 }

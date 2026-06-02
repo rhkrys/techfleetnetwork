@@ -23,9 +23,37 @@ export interface Announcement {
   author_name?: string;
 }
 
-// Module-level last-known-good cache (graceful degradation pattern). Keyed by
-// limit so the bell (5) and full updates page (50) maintain separate caches.
+// Module-level + localStorage last-known-good cache (graceful degradation
+// pattern, Part 2 §H2). Keyed by limit so the bell (5) and full updates page
+// (50) keep separate caches. localStorage carries last-known-good across cold
+// page loads with a 24h TTL.
+const LKG_LS_PREFIX = "tfn.announcements.lkg.";
+const LKG_TTL_MS = 24 * 60 * 60 * 1000;
 const lastKnownGood = new Map<number, Announcement[]>();
+
+function readLkgFromStorage(limit: number): Announcement[] | null {
+  try {
+    const raw = typeof window !== "undefined" ? window.localStorage.getItem(LKG_LS_PREFIX + limit) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { savedAt: number; rows: Announcement[] };
+    if (!parsed?.savedAt || Date.now() - parsed.savedAt > LKG_TTL_MS) return null;
+    return Array.isArray(parsed.rows) ? parsed.rows : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLkgToStorage(limit: number, rows: Announcement[]): void {
+  try {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(
+      LKG_LS_PREFIX + limit,
+      JSON.stringify({ savedAt: Date.now(), rows }),
+    );
+  } catch {
+    /* quota or private-mode — non-fatal */
+  }
+}
 
 export const AnnouncementService = {
   async list(limit = 50): Promise<Announcement[]> {
@@ -46,7 +74,7 @@ export const AnnouncementService = {
           message: `Transient announcement fetch failure (degraded): ${error.message}`,
           level: "warn",
         });
-        return lastKnownGood.get(limit) ?? [];
+        return lastKnownGood.get(limit) ?? readLkgFromStorage(limit) ?? [];
       }
       // Structural (RLS / schema / auth) → throw so it surfaces in triage.
       handleServiceError(error, {
@@ -59,6 +87,7 @@ export const AnnouncementService = {
 
     const rows = (data ?? []) as unknown as Announcement[];
     lastKnownGood.set(limit, rows);
+    writeLkgToStorage(limit, rows);
     return rows;
   },
 
@@ -135,6 +164,51 @@ export const AnnouncementService = {
     const map = new Map<string, { total: number; unique: number }>();
     for (const row of (data ?? []) as Array<{ announcement_id: string; total_views: number; unique_views: number }>) {
       map.set(row.announcement_id, { total: Number(row.total_views), unique: Number(row.unique_views) });
+    }
+    return map;
+  },
+
+  /**
+   * Record a member action on an announcement (tri-state card — Part 2 §C1).
+   * action ∈ {'clicked_cta','dismissed','archived'}.
+   * Idempotent via UNIQUE(user_id, announcement_id, action) — duplicates
+   * are silently swallowed so re-archiving never errors.
+   */
+  async recordAction(
+    userId: string,
+    announcementId: string,
+    action: "clicked_cta" | "dismissed" | "archived",
+  ): Promise<void> {
+    const { error } = await supabase
+      .from("announcement_actions")
+      .insert({ user_id: userId, announcement_id: announcementId, action } as any);
+    if (error && !error.message.includes("duplicate")) {
+      handleServiceError(error, {
+        logger: log,
+        action: "recordAction",
+        message: `Failed to record announcement action: ${error.message}`,
+        level: "warn",
+      });
+    }
+  },
+
+  /** Fetch the user's per-announcement action map (id → Set of actions). */
+  async getActionMap(userId: string): Promise<Map<string, Set<string>>> {
+    const { data, error } = await supabase
+      .from("announcement_actions")
+      .select("announcement_id, action")
+      .eq("user_id", userId);
+    if (handleServiceError(error, {
+      logger: log,
+      action: "getActionMap",
+      message: `Failed to fetch announcement actions: ${error?.message ?? "Unknown error"}`,
+      level: "warn",
+    })) return new Map();
+    const map = new Map<string, Set<string>>();
+    for (const r of (data ?? []) as Array<{ announcement_id: string; action: string }>) {
+      const existing = map.get(r.announcement_id) ?? new Set<string>();
+      existing.add(r.action);
+      map.set(r.announcement_id, existing);
     }
     return map;
   },
