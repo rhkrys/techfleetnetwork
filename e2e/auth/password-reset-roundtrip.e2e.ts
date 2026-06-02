@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
 const anonKey = process.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || "";
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const appBaseUrl = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${process.env.PORT ?? 4173}`;
 const canRunLiveRoundtrip = Boolean(url && anonKey && serviceKey);
 
 test.describe("AUTH-RESET-011 password reset round trip", () => {
@@ -22,7 +23,7 @@ test.describe("AUTH-RESET-011 password reset round trip", () => {
       const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
         type: "recovery",
         email,
-        options: { redirectTo: `${test.info().project.use.baseURL}/reset-password` },
+        options: { redirectTo: `${appBaseUrl}/reset-password` },
       });
       expect(linkError).toBeNull();
       expect(linkData.properties?.action_link).toBeTruthy();
