@@ -1,4 +1,16 @@
-import { corsHeaders } from "npm:@supabase/supabase-js@2.99.1/cors";
+import { corsHeaders as sdkCorsHeaders } from "npm:@supabase/supabase-js@2.99.1/cors";
+
+// Override Access-Control-Allow-Headers to include trace/request headers that
+// frontend wrappers attach (e.g. freescoutInvoke sets `x-trace-id`). Without
+// this, browser preflight rejects the POST and the function is never invoked —
+// surfacing as `*_invoke_error` in agent_fix_queue with zero edge-side logs.
+const ALLOWED_REQUEST_HEADERS =
+  "authorization, x-client-info, apikey, content-type, x-trace-id, x-request-id";
+
+export const corsHeaders = {
+  ...sdkCorsHeaders,
+  "Access-Control-Allow-Headers": ALLOWED_REQUEST_HEADERS,
+};
 
 export const jsonHeaders = {
   ...corsHeaders,

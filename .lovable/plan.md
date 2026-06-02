@@ -1,58 +1,35 @@
-# Stop the "left my tab, came back, everything reset" reload
+## Root cause
 
-## Why it happens
+`src/lib/support/freescoutInvoke.ts` sends a custom `x-trace-id` header on every `freescout-proxy` POST. The shared CORS preflight response (from `_shared/http.ts` → `npm:@supabase/supabase-js/cors`) only allows `authorization, x-client-info, apikey, content-type`. Browsers reject the preflight, the POST never fires, and `supabase.functions.invoke` returns `invoke_error`.
 
-`src/lib/deploy-watcher.ts` runs in every tab. Every 60s (and on `focus` / `online` / `visibilitychange → visible`) it fetches `/version.json` and compares the server's `buildId` to the bundle's `__BUILD_ID__`. When they differ:
+Evidence:
+- Edge logs for `freescout-proxy` show only `OPTIONS | 200` — zero POST entries in the last 24h.
+- Live `curl -X OPTIONS` confirms `access-control-allow-headers: authorization, x-client-info, apikey, content-type` (no `x-trace-id`).
+- `agent_fix_queue` has 13× listMine, 2× listAll, 3× create — all same wrapper, all transport-blocked.
+- Severity is logged as `error` despite wrapper passing `warn` (separate triage classification issue, not load-bearing here).
 
-- If the tab is **hidden**, it calls `window.location.reload()` immediately (line 104–105).
-- If visible, it sets a 30s `scheduleIdleReload` timer that keeps re-checking and reloads as soon as the tab goes hidden (line 79–92).
-- `RouteChangeReloader` also reloads at the next route change.
+## Fix (single small change, no UX impact)
 
-So the normal flow when a deploy lands while your tab is open in the background:
-1. You switch to another tab → `visibilitychange → hidden` (or the 30s timer fires).
-2. Deploy watcher reloads the page in the background.
-3. You return → fresh page, scroll reset, unread badges gone, any draft not yet autosaved is gone.
+Override `Access-Control-Allow-Headers` once in `supabase/functions/_shared/http.ts` so every function using `handleCors` / `jsonHeaders` accepts trace headers:
 
-Drafts that go through `useServerDraft` / `useAutosave` survive (they flush on `visibilitychange → hidden`), but **scroll position, expanded panels, modal state, in-progress form input that hasn't autosaved yet, and any local component state are all lost** — exactly the jarring experience you described.
+- Define `EXTRA_ALLOWED_HEADERS = "authorization, x-client-info, apikey, content-type, x-trace-id, x-request-id"`.
+- Build `mergedCorsHeaders` by spreading the SDK `corsHeaders` and overriding `Access-Control-Allow-Headers`.
+- Use `mergedCorsHeaders` in both `handleCors()` and `jsonHeaders`.
 
-## Fix: never auto-reload a tab the user is using
+That's it. No frontend changes, no schema, no other functions to edit — this fixes freescout-proxy and pre-empts the same trap in any other function that uses these helpers.
 
-Rip out the silent background reload. Replace it with a non-blocking, user-controlled refresh banner. The stale-chunk safety net (`lazyWithRetry`) stays, so the real failure mode the watcher was protecting against (a stale chunk 404 on next lazy import) is still handled — it just doesn't pre-emptively destroy your session anymore.
+## Verification
 
-### Changes
+1. Redeploy `freescout-proxy` (plus any other functions that hot-import `_shared/http.ts`; Lovable redeploys on shared edits).
+2. `curl -X OPTIONS … -H "Access-Control-Request-Headers: x-trace-id"` → expect `x-trace-id` in the allow-list.
+3. Reload Get Help in the browser → POST appears in edge logs, no new `freescout-proxy * invoke_error` rows in `agent_fix_queue`.
+4. Mark the three existing `agent_fix_queue` rows as resolved.
 
-**`src/lib/deploy-watcher.ts`**
-- Remove `safeReload()` calls from `checkVersion()` and `scheduleIdleReload()`. Delete `scheduleIdleReload` + `idleTimer` entirely.
-- Keep polling and keep flipping `stale = true` + `notify()` so listeners can react.
-- Keep `reloadIfStale()` exported (used by the new banner's "Refresh now" button); stop calling it from `RouteChangeReloader`.
+## BDD
 
-**`src/components/RouteChangeReloader.tsx`**
-- Remove the `isAppStale()` / `reloadIfStale()` branch. It still scroll-resets and clears the chunk-reload flag on navigation. (Rationale: a user mid-flow who clicks a link does not expect a full page reload either — `lazyWithRetry` handles the rare stale-chunk case.)
-
-**New `src/components/UpdateAvailableBanner.tsx`**
-- Subscribes to `onDeployStale`. When stale, renders a small, dismissible toast/banner at the top: copy "A new version is ready." with a verb+object CTA "Refresh now" (calls `reloadIfStale()`) and a "Later" dismiss. Sentence case, brand voice, uses existing `<Card>` / toast tokens. Mount once in `AppLayout` (all 3 branches).
-- Banner is sticky until clicked or until a route change to a path that doesn't have an active draft — but it does not auto-reload.
-
-**Keep as-is**
-- `lazyWithRetry` (real stale-chunk recovery on navigation only).
-- `checkNow()` from the error reporter (still useful to flip `stale=true` faster on a `FunctionsFetchError`).
-- React Query defaults — already `refetchOnWindowFocus: false` project-wide, so they are not contributing.
-
-### Tests / BDD
-
-Add to `bdd_scenarios`:
-- `DEPLOY-WATCH-001` — Given a new deploy lands while my tab is hidden, when I return to the tab, then [UI] the page is not reloaded, my scroll/draft/modal state is preserved, and a non-blocking "A new version is ready" banner is shown; [Code] `window.location.reload` is not called by deploy-watcher; [DB] no state.
-- `DEPLOY-WATCH-002` — Given the update banner is shown, when I click "Refresh now", then [UI] the page reloads to the new build; [Code] `reloadIfStale()` invoked once.
-- `DEPLOY-WATCH-003` — Given I am stale and I navigate to a new route, then [UI] the route changes without a full reload and the banner remains visible.
-
-Update `src/test/services/error-reporter.dead-sources.test.ts` only if the existing assertion about `checkNow` still holds (it does; `checkNow` is unchanged).
+Add `HELP-DESK-024` to `bdd_scenarios`: preflight for `x-trace-id` returns 200 with header in allow-list [UI: Get Help loads tickets without invoke_error toast] [DB: no new agent_fix_queue freescout fingerprints] [Code: OPTIONS response contains `x-trace-id` in `Access-Control-Allow-Headers`].
 
 ## Out of scope
 
-- Reload-on-error fallback for actual stale-chunk fetches stays (`lazyWithRetry`).
-- No changes to React Query, autosave, or session-activity tracking.
-- No service worker changes (already disabled).
-
-## Risk
-
-Strictly less aggressive: the only behavior removed is a silent reload of an idle tab. Worst case after this change is that a user keeps an old bundle running until they manually click Refresh, which is exactly what every other web app does and what the user is asking for.
+- Triage severity mapping (`warn` → `error`) — separate from this incident; track separately if you want.
+- Removing `x-trace-id` from the wrapper — keep it; the trace header is useful for correlation.
