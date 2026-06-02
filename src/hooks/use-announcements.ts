@@ -14,6 +14,7 @@ import { isTransientError } from "@/lib/transient-error";
 
 const ANNOUNCEMENTS_KEY = ["announcements"] as const;
 const READ_IDS_KEY = ["announcement-read-ids"] as const;
+const ACTIONS_KEY = ["announcement-actions"] as const;
 
 // Retry transient failures up to 2 extra times with backoff. Structural
 // failures (RLS / schema) are surfaced immediately — no retry.
