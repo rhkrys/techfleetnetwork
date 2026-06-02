@@ -317,6 +317,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         <MfaEnforcementGuard />
         <LiveAnnouncer />
         <CookieConsentBanner />
+        <UpdateAvailableBanner />
         <ShortcutCheatsheet />
         <AppFooter />
       </div>
@@ -475,6 +476,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         <MfaEnforcementGuard />
         <LiveAnnouncer />
         <CookieConsentBanner />
+        <UpdateAvailableBanner />
         <AdminTwoFactorGraceDialog />
         <ShortcutCheatsheet />
         <Suspense fallback={null}><FleetyChatWidget /></Suspense>
@@ -508,6 +510,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         <MfaEnforcementGuard />
         <LiveAnnouncer />
         <CookieConsentBanner />
+        <UpdateAvailableBanner />
         <AdminTwoFactorGraceDialog />
         <Suspense fallback={null}><FleetyChatWidget /></Suspense>
         <ShortcutCheatsheet />
