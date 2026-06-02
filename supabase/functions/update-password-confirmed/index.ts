@@ -44,14 +44,14 @@ Deno.serve(withAuditWrapper("update-password-confirmed", async (req, ctx) => {
       return jsonResponse({ error: passwordError || "Passwords do not match" }, 400);
     }
 
-    const admin = getAdminClient();
-    const { error: updateError } = await admin.auth.admin.updateUserById(auth.userId, { password });
+    const { error: updateError } = await auth.userClient.auth.updateUser({ password });
     if (updateError) {
       log.warn("update", `Password update rejected for ${auth.userId}: ${updateError.message}`, { userId: auth.userId });
       return jsonResponse({ error: "Failed to update password. Please try again." }, 400);
     }
 
     let otherDevicesRevoked = false;
+    const admin = getAdminClient();
     const { error: revokeError } = await admin.from("revoked_sessions").insert({
       user_id: auth.userId,
       reason: "self_password_changed",
