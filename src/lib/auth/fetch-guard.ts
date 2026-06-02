@@ -11,7 +11,7 @@
  * response into a clean recovery, no loop, no log flood.
  */
 
-import { isUnrecoverableAuthError, purgeLocalAuthState } from "./session-health";
+import { decidePurgeOnBadJwt, isUnrecoverableAuthError, purgeLocalAuthState } from "./session-health";
 
 const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL as string) ?? "";
 const TRIGGER_RE = /bad_jwt|invalid number of segments|token is malformed|parse or verify signature|invalid jwt|jwt expired/i;
@@ -38,11 +38,9 @@ export function installAuthFetchGuard(): void {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
     if (!url.startsWith(SUPABASE_URL)) return res;
 
-    // Already recovered once this page-load? Don't loop.
     const w = window as unknown as Record<string, unknown>;
     if (w[RECOVERY_FLAG]) return res;
 
-    // Peek body without consuming the original Response stream.
     let snippet = "";
     try {
       snippet = await res.clone().text();
@@ -52,12 +50,35 @@ export function installAuthFetchGuard(): void {
     const hit = TRIGGER_RE.test(snippet) || /bad_jwt|bad-jwt/i.test(res.headers.get("x-supabase-error") ?? "");
     if (!hit && !isUnrecoverableAuthError(snippet)) return res;
 
+    // Two-strike + stored-token-health gate. A single transient bad_jwt during
+    // a GoTrue config reload (observed 2026-06-02 22:08:48Z) must NOT sign out
+    // a user whose locally stored access token is still a valid, unexpired JWT.
+    // The SDK auto-refresh will recover; we just let this one request fail.
+    const decision = decidePurgeOnBadJwt();
+    if (!decision.shouldPurge) {
+      try {
+        // Best-effort beacon so transient strikes are observable in Triage
+        // without triggering a wedge recovery.
+        const endpoint = `${SUPABASE_URL}/functions/v1/record-auth-wedge`;
+        const body = JSON.stringify({
+          reason: "transient_bad_jwt",
+          source: "fetch_guard",
+          user_agent: navigator.userAgent.slice(0, 200),
+          route: window.location.pathname,
+        });
+        if (typeof navigator.sendBeacon === "function") {
+          navigator.sendBeacon(endpoint, new Blob([body], { type: "application/json" }));
+        }
+      } catch {
+        /* observability never breaks recovery */
+      }
+      return res;
+    }
+
     w[RECOVERY_FLAG] = true;
     try {
       purgeLocalAuthState({ reason: "jwt_corrupt", source: "fetch_guard" });
     } finally {
-      // Defer the redirect so the calling code can still observe the failure
-      // and unwind cleanly before the page transitions.
       queueMicrotask(() => {
         try {
           const current = `${window.location.pathname}${window.location.search}`;
