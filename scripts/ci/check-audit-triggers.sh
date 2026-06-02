@@ -55,7 +55,7 @@ assert_last_trigger_action_is_create "trg_audit_log_reject_opaque_script_error"
 assert_last_trigger_action_is_create "trg_agent_fix_queue_reject_opaque_script_error"
 assert_last_trigger_action_is_create "trg_audit_log_password_updated_confirmed"
 
-if grep -Eiq "disable[[:space:]]+trigger[[:space:]]+(trg_audit_log_reject_opaque_script_error|trg_agent_fix_queue_reject_opaque_script_error)" <<<"${migration_blob}"; then
+if grep -Eiq "disable[[:space:]]+trigger[[:space:]]+(trg_audit_log_reject_opaque_script_error|trg_agent_fix_queue_reject_opaque_script_error|trg_audit_log_password_updated_confirmed)" <<<"${migration_blob}"; then
   echo "DISABLED trigger found in migrations" >&2
   missing=1
 fi
