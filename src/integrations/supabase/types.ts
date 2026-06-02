@@ -7820,14 +7820,14 @@ export type Database = {
           baseline_value: number
           category: string
           current_value: number
-          current_window: string
           description: string
           direction: string
           label: string
-          last_updated: string
+          last_snapshot: string
           metric_key: string
           previous_value: number
           related_section: string
+          sort_order: number
           status: string
           target_value: number
           trend: number[]
@@ -8119,6 +8119,7 @@ export type Database = {
       retry_pending_discord_role_grants: { Args: never; Returns: number }
       retry_stuck_fanout_jobs: { Args: never; Returns: number }
       run_auto_remediations: { Args: never; Returns: Json }
+      run_refactor_kpis_snapshot_now: { Args: never; Returns: Json }
       safe_create_notification: {
         Args: {
           p_body_html?: string
@@ -8168,7 +8169,14 @@ export type Database = {
           isSetofReturn: false
         }
       }
-      snapshot_refactor_kpis: { Args: never; Returns: number }
+      snapshot_refactor_kpis: {
+        Args: never
+        Returns: {
+          metric_key: string
+          metric_value: number
+          window_label: string
+        }[]
+      }
       snooze_fix_queue_entry: {
         Args: { p_days?: number; p_id: string }
         Returns: undefined
