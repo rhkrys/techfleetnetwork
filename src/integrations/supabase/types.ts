@@ -7923,6 +7923,13 @@ export type Database = {
         Args: { p_error?: string; p_id: string; p_success: boolean }
         Returns: undefined
       }
+      mark_task_incomplete: {
+        Args: {
+          p_phase: Database["public"]["Enums"]["journey_phase"]
+          p_task_id: string
+        }
+        Returns: undefined
+      }
       mark_two_factor_login_verified: {
         Args: { _session_hash: string }
         Returns: boolean
