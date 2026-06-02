@@ -244,7 +244,7 @@ function TicketList({ scope }: { scope: "mine" | "all" }) {
   const tickets = data?.items ?? [];
 
   const refresh = () => {
-    qc.invalidateQueries({ queryKey: ["support", "tickets", scope] as const });
+    qc.invalidateQueries({ queryKey: ["support"] as const });
   };
 
   return (
