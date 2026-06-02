@@ -48,7 +48,7 @@ function useTickets(scope: "mine" | "all", status: "open" | "closed" | "all") {
     staleTime: 60_000,
     gcTime: 300_000,
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    refetchOnMount: "always",
   });
 }
 
