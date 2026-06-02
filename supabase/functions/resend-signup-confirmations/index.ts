@@ -17,6 +17,12 @@ const REMINDER_AFTER_MINUTES = 10
 const MIN_MINUTES_BETWEEN_REMINDERS = 30
 const MAX_REMINDERS_PER_USER = 4
 const HARD_CUTOFF_DAYS = 14
+// Burst control: enqueue at most N safety-net signup reminders per cron tick
+// so we never flood the workspace per-second email quota. The cron runs every
+// 6h; with MAX_PER_CYCLE=1 an unconfirmed user still gets a reminder within
+// the next cycle, but the burst that previously starved the transactional
+// lane (5 simultaneous sends triggering shared-quota 429s) is gone.
+const MAX_PER_CYCLE = 1
 const APP_URL = 'https://techfleet.network'
 const SITE_NAME = 'Tech Fleet Network'
 const SENDER_DOMAIN = 'notify.techfleet.org'
