@@ -18,8 +18,10 @@ import {
   AlertCircle,
   ChevronLeft,
   ChevronRight,
+  Download,
 } from "lucide-react";
 import { format } from "date-fns";
+import { toast } from "sonner";
 import { ThemedAgGrid } from "@/components/AgGrid";
 import type { ColDef } from "ag-grid-community";
 
@@ -156,6 +158,9 @@ export default function ActivityLogPage() {
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   const [triageMap, setTriageMap] = useState<Map<string, TriageState>>(new Map());
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
+  const [exporting, setExporting] = useState(false);
 
   const fetchProfiles = async () => {
       const { data } = await withTimeout<{ data: Array<{ user_id: string; email: string; first_name: string; last_name: string; display_name: string }> | null }>(
@@ -174,23 +179,36 @@ export default function ActivityLogPage() {
     }
   };
 
+  const applyRangeFilters = <T extends { gte: (col: string, v: string) => T; lte: (col: string, v: string) => T; eq: (col: string, v: string) => T }>(q: T): T => {
+    let out = q;
+    if (eventFilter !== "all") out = out.eq("event_type", eventFilter);
+    if (dateFrom) out = out.gte("created_at", new Date(dateFrom).toISOString());
+    if (dateTo) {
+      // include the whole "to" day
+      const end = new Date(dateTo);
+      end.setHours(23, 59, 59, 999);
+      out = out.lte("created_at", end.toISOString());
+    }
+    return out;
+  };
+
   const fetchLogs = async () => {
     setLoading(true);
     setLoadError("");
     try {
-      let countQuery = supabase
-        .from("audit_log")
-        .select("id", { count: "exact", head: true });
-      if (eventFilter !== "all") countQuery = countQuery.eq("event_type", eventFilter);
+      const countQuery = applyRangeFilters(
+        supabase.from("audit_log").select("id", { count: "exact", head: true }) as never
+      );
       const { count } = await withTimeout<{ count: number | null }>(countQuery as unknown as PromiseLike<{ count: number | null }>, "Activity log count");
       setTotalCount(count || 0);
 
-      let query = supabase
-        .from("audit_log")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
-      if (eventFilter !== "all") query = query.eq("event_type", eventFilter);
+      const query = applyRangeFilters(
+        supabase
+          .from("audit_log")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1) as never
+      );
       const { data, error } = await withTimeout<{ data: unknown[] | null; error: Error | null }>(query as unknown as PromiseLike<{ data: unknown[] | null; error: Error | null }>, "Activity log load");
       if (error) throw error;
       const rows = (data || []) as unknown as AuditLogEntry[];
@@ -223,13 +241,79 @@ export default function ActivityLogPage() {
     }
   };
 
+  const csvEscape = (v: unknown): string => {
+    if (v === null || v === undefined) return "";
+    const s = typeof v === "string" ? v : Array.isArray(v) ? v.join(" | ") : String(v);
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+
+  const handleExportAll = async () => {
+    setExporting(true);
+    try {
+      const BATCH = 1000;
+      let from = 0;
+      const all: AuditLogEntry[] = [];
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const q = applyRangeFilters(
+          supabase
+            .from("audit_log")
+            .select("*")
+            .order("created_at", { ascending: false })
+            .range(from, from + BATCH - 1) as never
+        );
+        const { data, error } = await (q as unknown as PromiseLike<{ data: unknown[] | null; error: Error | null }>);
+        if (error) throw error;
+        const batch = (data || []) as unknown as AuditLogEntry[];
+        all.push(...batch);
+        if (batch.length < BATCH) break;
+        from += BATCH;
+        if (all.length > 250_000) break; // safety cap
+      }
+
+      const headers = ["created_at","event_type","table_name","record_id","user_id","actor_email","changed_fields","error_message","error_fingerprint","id"];
+      const lines = [headers.join(",")];
+      for (const e of all) {
+        lines.push([
+          e.created_at,
+          e.event_type,
+          e.table_name,
+          e.record_id,
+          e.user_id,
+          e.actor_email || (e.user_id ? profiles.get(e.user_id)?.email : null),
+          e.changed_fields,
+          e.error_message,
+          e.error_fingerprint,
+          e.id,
+        ].map(csvEscape).join(","));
+      }
+      const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const rangeLabel = dateFrom || dateTo ? `_${dateFrom || "start"}_to_${dateTo || "now"}` : "_all";
+      a.href = url;
+      a.download = `activity-log${rangeLabel}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success(`Exported ${all.length.toLocaleString()} records`);
+    } catch (err) {
+      console.error("Activity log export failed:", err);
+      toast.error(err instanceof Error ? err.message : "Export failed");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   useEffect(() => {
     fetchProfiles();
   }, []);
 
   useEffect(() => {
     fetchLogs();
-  }, [page, eventFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, eventFilter, dateFrom, dateTo]);
 
   const filteredEntries = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -423,9 +507,46 @@ export default function ActivityLogPage() {
             ))}
           </SelectContent>
         </Select>
+        <div className="flex items-center gap-2 ml-auto">
+          <Input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => { setDateFrom(e.target.value); setPage(0); }}
+            className="w-[160px]"
+            aria-label="From date"
+            max={dateTo || undefined}
+          />
+          <span className="text-muted-foreground text-sm">to</span>
+          <Input
+            type="date"
+            value={dateTo}
+            onChange={(e) => { setDateTo(e.target.value); setPage(0); }}
+            className="w-[160px]"
+            aria-label="To date"
+            min={dateFrom || undefined}
+          />
+          {(dateFrom || dateTo) && (
+            <Button variant="ghost" size="sm" onClick={() => { setDateFrom(""); setDateTo(""); setPage(0); }}>
+              Clear
+            </Button>
+          )}
+        </div>
         <Badge variant="secondary" className="text-xs whitespace-nowrap">
           {totalCount} events
         </Badge>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleExportAll}
+          disabled={exporting || totalCount === 0}
+          className="whitespace-nowrap"
+        >
+          {exporting ? (
+            <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Exporting…</>
+          ) : (
+            <><Download className="h-4 w-4 mr-1" /> Download CSV ({totalCount.toLocaleString()})</>
+          )}
+        </Button>
       </div>
 
       {loading ? (
@@ -454,8 +575,6 @@ export default function ActivityLogPage() {
             rowClassRules={{
               "bg-destructive/5": (params) => !!params.data?.error_message,
             }}
-            showExportCsv
-            exportFileName="activity-log"
           />
 
           {totalPages > 1 && (
