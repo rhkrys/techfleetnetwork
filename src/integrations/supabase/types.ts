@@ -2691,6 +2691,13 @@ export type Database = {
             referencedRelation: "general_applications"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "general_application_submissions_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "v_resumable_general_applications"
+            referencedColumns: ["id"]
+          },
         ]
       }
       general_applications: {
@@ -7160,6 +7167,42 @@ export type Database = {
         Update: {
           missing_fields?: never
           score?: never
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      v_resumable_general_applications: {
+        Row: {
+          current_section: number | null
+          draft_updated_at: string | null
+          has_draft_payload: boolean | null
+          id: string | null
+          last_touched_at: string | null
+          seconds_since_touch: number | null
+          status: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          current_section?: number | null
+          draft_updated_at?: string | null
+          has_draft_payload?: never
+          id?: string | null
+          last_touched_at?: never
+          seconds_since_touch?: never
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          current_section?: number | null
+          draft_updated_at?: string | null
+          has_draft_payload?: never
+          id?: string | null
+          last_touched_at?: never
+          seconds_since_touch?: never
+          status?: string | null
+          updated_at?: string | null
           user_id?: string | null
         }
         Relationships: []
