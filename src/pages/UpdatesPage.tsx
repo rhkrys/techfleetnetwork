@@ -361,6 +361,26 @@ export default function UpdatesPage() {
               )}
             </div>
           </ScrollArea>
+          {selectedAnnouncement && (
+            <div className="border-t px-6 py-3 flex items-center justify-end gap-2 shrink-0">
+              {isArchived(selectedAnnouncement.id) ? (
+                <span className="text-sm text-muted-foreground">Archived</span>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const id = selectedAnnouncement.id;
+                    recordActionMutation.mutate({ announcementId: id, action: "archived" });
+                    toast.success("Announcement archived. Find it again under Show archived.");
+                    setSelectedAnnouncement(null);
+                  }}
+                >
+                  Archive announcement
+                </Button>
+              )}
+            </div>
+          )}
         </SheetContent>
       </Sheet>
 
