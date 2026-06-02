@@ -7151,25 +7151,12 @@ export type Database = {
       }
       v_profile_readiness: {
         Row: {
+          filled_count: number | null
           missing_fields: string[] | null
           onboarded_at: string | null
           score: number | null
-          updated_at: string | null
+          total_count: number | null
           user_id: string | null
-        }
-        Insert: {
-          missing_fields?: never
-          onboarded_at?: string | null
-          score?: never
-          updated_at?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          missing_fields?: never
-          onboarded_at?: string | null
-          score?: never
-          updated_at?: string | null
-          user_id?: string | null
         }
         Relationships: []
       }
