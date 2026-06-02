@@ -19,7 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CompletenessMeter } from "@/components/profile/CompletenessMeter";
 import { SaveStatus, type SaveState } from "@/components/ui/save-status";
 import { toast } from "@/components/ui/sonner";
-import { Heading, Text } from "@/components/ui/typography";
+import { PageTitle, Body, BodySmall } from "@/components/ui/typography";
 
 interface Readiness {
   score: number;
