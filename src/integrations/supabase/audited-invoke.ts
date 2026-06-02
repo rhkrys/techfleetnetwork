@@ -23,17 +23,22 @@ export async function auditedInvoke<T = unknown>(
     try {
       const result = await supabase.functions.invoke<T>(fn, { ...options, headers });
       if (result.error) {
+        // Severity is `warn` (not `error`) because client-side invoke failures
+        // are almost always transport-layer (CORS preflight, network drop,
+        // 4xx from validation) — not actionable code bugs. Genuine bugs are
+        // logged at `error` severity by the edge function itself via its own
+        // audit path, so triage stays high-signal. See HELP-DESK-024.
         reportError(
           `${fn}: ${result.error.message ?? String(result.error)}`,
           `edge.${fn}`,
-          { eventType: "edge_invoke_failed", severity: "error", traceId },
+          { eventType: "edge_invoke_failed", severity: "warn", traceId },
         );
       }
       return result;
     } catch (err) {
       reportError(err, `edge.${fn}`, {
         eventType: "edge_invoke_failed",
-        severity: "error",
+        severity: "warn",
         traceId,
       });
       throw err;
