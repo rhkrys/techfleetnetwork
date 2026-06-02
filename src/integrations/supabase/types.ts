@@ -8191,9 +8191,9 @@ export type Database = {
       snapshot_refactor_kpis: {
         Args: never
         Returns: {
-          metric_key: string
-          metric_value: number
-          window_label: string
+          out_metric_key: string
+          out_metric_value: number
+          out_window_label: string
         }[]
       }
       snooze_fix_queue_entry: {
