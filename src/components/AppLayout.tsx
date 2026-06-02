@@ -26,6 +26,7 @@ import {
   Flag,
   Sparkles,
   HeartPulse,
+  Bell,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { ThemeToggle } from "./ThemeToggle";
@@ -129,6 +130,11 @@ function ProfileDropdown({
         <DropdownMenuItem onClick={() => navigate("/profile/edit?tab=membership")}>
           <Sparkles className="h-4 w-4 mr-2" />
           Membership
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => navigate("/settings/notifications")}>
+          <Bell className="h-4 w-4 mr-2" />
+          Notification preferences
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onSignOut}>
