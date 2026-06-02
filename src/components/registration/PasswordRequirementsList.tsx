@@ -18,11 +18,12 @@ function Circle({ className }: { className?: string }) {
 
 interface PasswordRequirementsListProps {
   password: string;
+  id?: string;
 }
 
-export function PasswordRequirementsList({ password }: PasswordRequirementsListProps) {
+export function PasswordRequirementsList({ password, id = "password-requirements" }: PasswordRequirementsListProps) {
   return (
-    <ul id="password-requirements" className="space-y-1 text-xs" aria-label="Password requirements">
+    <ul id={id} className="space-y-1 text-xs" aria-label="Password requirements">
       {passwordRequirements.map(({ label, test }) => {
         const met = password.length > 0 && test(password);
         return (
