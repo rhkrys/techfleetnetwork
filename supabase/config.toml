@@ -39,6 +39,10 @@ project_id = "iqsjhrhsjlgjiaedzmtz"
     verify_jwt = false
   [functions.process-email-queue]
     verify_jwt = false
+  [functions.replay-email-dlq]
+    # Cron-poked DLQ replay worker. Uses authorizeServiceRoleRequest in code
+    # (same pattern as process-email-queue) so verify_jwt stays false.
+    verify_jwt = false
   [functions.promote-to-admin]
     verify_jwt = false
   [functions.public-project-detail]

@@ -7949,6 +7949,15 @@ export type Database = {
         }
         Returns: number
       }
+      notify_admins_email_dlq_escalation: {
+        Args: {
+          p_lane: string
+          p_payload: Json
+          p_recipient: string
+          p_template: string
+        }
+        Returns: undefined
+      }
       open_incident: {
         Args: {
           _affected_user_count?: number
@@ -7968,6 +7977,20 @@ export type Database = {
           p_window_minutes?: number
         }
         Returns: Json
+      }
+      pgmq_archive_delete: {
+        Args: { msg_id: number; queue_name: string }
+        Returns: boolean
+      }
+      pgmq_read_archive: {
+        Args: { qty: number; queue_name: string }
+        Returns: {
+          enqueued_at: string
+          message: Json
+          msg_id: number
+          read_ct: number
+          vt: string
+        }[]
       }
       process_notification_fanout_chunk: {
         Args: { p_chunk_size?: number; p_job_id: string }
