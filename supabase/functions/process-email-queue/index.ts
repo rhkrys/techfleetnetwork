@@ -2,6 +2,7 @@ import { sendLovableEmail } from 'npm:@lovable.dev/email-js'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 import { withAuditWrapper } from "../_shared/audit.ts";
+import { authorizeServiceRoleRequest } from "../_shared/service-role-auth.ts";
 const MAX_RETRIES = 5
 const DEFAULT_BATCH_SIZE = 10
 const DEFAULT_SEND_DELAY_MS = 200
