@@ -22,6 +22,7 @@ import {
 import { stripHtml } from "@/lib/html";
 import type { ColDef, ICellRendererParams } from "ag-grid-community";
 import type { AppNotification } from "@/services/notification.service";
+import { collapseNotificationsToDigest, isStack, type DigestRow } from "@/lib/notifications/collapseDigest";
 
 /** Friendly label for notification_type values */
 function typeLabel(type: string): string {
