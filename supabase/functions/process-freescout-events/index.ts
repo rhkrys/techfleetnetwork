@@ -77,16 +77,66 @@ async function processOne(admin: ReturnType<typeof getAdminClient>, ev: Freescou
       payload,
     });
 
-    if (customerUserId && (eventType.includes("user.replied") || eventType.includes("status_changed") || eventType === "convo.assigned")) {
+    const isUserReply = eventType.includes("user.replied") || eventType === "convo.user.replied";
+    const isStatusChange = eventType.includes("status_changed");
+    const isAssigned = eventType === "convo.assigned";
+
+    if (customerUserId && (isUserReply || isStatusChange || isAssigned)) {
       try {
         await admin.from("notifications").insert({
           user_id: customerUserId,
-          title: eventType.includes("status") ? "Ticket status updated" : "New reply on your ticket",
+          title: isStatusChange ? "Ticket status updated" : "New reply on your ticket",
           body: (conv as { subject?: string })?.subject ? `Re: ${(conv as { subject?: string }).subject}` : "View your support ticket for details.",
           link: `/community/get-help?ticket=${conversationId}`,
           category: "support",
         });
       } catch { /* best effort */ }
+    }
+
+    // Email the customer when an admin replies (in-app notification above + email).
+    if (customerUserId && customerEmail && isUserReply) {
+      try {
+        const thread = (payload as { thread?: Record<string, unknown> })?.thread
+          ?? (Array.isArray((conv as { threads?: unknown[] })?.threads)
+            ? ((conv as { threads: Record<string, unknown>[] }).threads[0] ?? null)
+            : null);
+        const threadId = thread ? Number((thread as { id?: unknown })?.id ?? 0) : 0;
+        const rawBody = String(
+          (thread as { body?: unknown })?.body
+          ?? (thread as { text?: unknown })?.text
+          ?? "",
+        );
+        // Strip HTML for the preview snippet.
+        const previewText = rawBody.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim().slice(0, 280);
+        const subject = (conv as { subject?: string })?.subject ?? "your support ticket";
+        const actor = (payload as { user?: { firstName?: string; lastName?: string } })?.user;
+        const replierName = actor
+          ? `${actor.firstName ?? ""} ${actor.lastName ?? ""}`.trim() || "The Tech Fleet team"
+          : "The Tech Fleet team";
+
+        const { data: prof } = await admin
+          .from("profiles").select("first_name").eq("id", customerUserId).maybeSingle();
+
+        await admin.functions.invoke("send-transactional-email", {
+          body: {
+            templateName: "support-ticket-reply",
+            recipientEmail: customerEmail,
+            idempotencyKey: `support-reply-${conversationId}-${threadId || ev.message.event_id}`,
+            templateData: {
+              firstName: prof?.first_name ?? undefined,
+              subject,
+              preview: previewText || undefined,
+              replierName,
+              ticketUrl: `https://techfleet.network/community/get-help?ticket=${conversationId}`,
+            },
+          },
+        });
+      } catch (err) {
+        console.error(JSON.stringify({
+          level: "warn", fn: "process-freescout-events", code: "support_reply_email_failed",
+          conversationId, msg: err instanceof Error ? err.message : String(err),
+        }));
+      }
     }
   }
 }
