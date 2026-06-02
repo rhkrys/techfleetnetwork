@@ -87,4 +87,10 @@ if [[ "${fn_count}" -lt 1 ]]; then
   missing=1
 fi
 
+password_fn_count=$(psql -tAc "SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname='enforce_confirmed_password_update_audit';")
+if [[ "${password_fn_count}" -lt 1 ]]; then
+  echo "MISSING live function: public.enforce_confirmed_password_update_audit" >&2
+  missing=1
+fi
+
 exit "${missing}"
