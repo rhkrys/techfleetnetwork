@@ -44,7 +44,7 @@ export function EmailBulkThrottleCard() {
     queryKey: ["email", "stuck-pending"] as const,
     meta: { audit: "system_health.stuck_pending_email" },
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("get_stuck_pending_email_count", { _minutes: 10 });
+      const { data, error } = await supabase.rpc("get_stuck_pending_email_count", { p_age_minutes: 10 });
       if (error) throw error;
       return Number(data ?? 0);
     },
