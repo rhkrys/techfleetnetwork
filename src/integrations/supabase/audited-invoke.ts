@@ -23,6 +23,11 @@ export async function auditedInvoke<T = unknown>(
     try {
       const result = await supabase.functions.invoke<T>(fn, { ...options, headers });
       if (result.error) {
+        // Best-effort: pull upstream HTTP status off the FunctionsHttpError
+        // context so triage can group "ran and failed" vs "never ran".
+        const ctx = (result.error as { context?: Response }).context;
+        const status = ctx && typeof ctx.status === "number" ? ctx.status : undefined;
+        const upstream = status ? `upstream:${status}` : `upstream:transport_error`;
         // Severity is `warn` (not `error`) because client-side invoke failures
         // are almost always transport-layer (CORS preflight, network drop,
         // 4xx from validation) — not actionable code bugs. Genuine bugs are
@@ -31,15 +36,17 @@ export async function auditedInvoke<T = unknown>(
         reportError(
           `${fn}: ${result.error.message ?? String(result.error)}`,
           `edge.${fn}`,
-          { eventType: "edge_invoke_failed", severity: "warn", traceId },
+          { eventType: "edge_invoke_failed", severity: "warn", traceId, extraFields: [upstream] },
         );
       }
       return result;
     } catch (err) {
+      const errName = err instanceof Error ? err.name : "Unknown";
       reportError(err, `edge.${fn}`, {
         eventType: "edge_invoke_failed",
         severity: "warn",
         traceId,
+        extraFields: [`upstream:transport_error`, `error_name:${errName}`],
       });
       throw err;
     }
