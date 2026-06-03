@@ -213,7 +213,16 @@ export default function FirstStepsPage() {
     const task = tasks.find((t) => t.id === id);
     if (!task) return;
 
+    // §2B1: re-clicking a completed task must require a verb+object confirm.
+    // The DB BEFORE-UPDATE guard on journey_progress also blocks silent
+    // uncompletes — this UI gate prevents accidental clicks before the round-trip.
+    if (task.completed) {
+      setPendingUncomplete(id);
+      return;
+    }
+
     const newCompleted = !task.completed;
+
 
     // CWV pass 4 (INP): paint the optimistic state IMMEDIATELY so the click
     // commits within the 200ms INP budget. The network round-trip and the
