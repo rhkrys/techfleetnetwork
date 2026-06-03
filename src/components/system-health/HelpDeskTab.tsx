@@ -167,6 +167,7 @@ export function HelpDeskTab() {
                   <th className="py-2 pr-2">Attempts</th>
                   <th className="py-2 pr-2">Freescout id</th>
                   <th className="py-2 pr-2">Error</th>
+                  <th className="py-2 pr-2"></th>
                 </tr>
               </thead>
               <tbody>
@@ -176,6 +177,19 @@ export function HelpDeskTab() {
                     <td className="py-2 pr-2">{r.kind}</td>
                     <td className="py-2 pr-2"><Badge variant={tone(r.status) as any}>{r.status}</Badge></td>
                     <td className="py-2 pr-2">{r.attempts}</td>
+                    <td className="py-2 pr-2 font-mono text-xs">{r.freescout_id ?? "—"}</td>
+                    <td className="py-2 pr-2 text-muted-foreground text-xs max-w-[24rem] truncate" title={r.last_error ?? ""}>
+                      {r.last_error ?? "—"}
+                    </td>
+                    <td className="py-2 pr-2">
+                      {r.status === "failed" && (
+                        <Button size="sm" variant="outline" onClick={() => retryRow.mutate(r.id)} disabled={retryRow.isPending}>
+                          Retry now
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
                     <td className="py-2 pr-2 font-mono text-xs">{r.freescout_id ?? "—"}</td>
                     <td className="py-2 pr-2 text-muted-foreground text-xs max-w-[24rem] truncate" title={r.last_error ?? ""}>
                       {r.last_error ?? "—"}
