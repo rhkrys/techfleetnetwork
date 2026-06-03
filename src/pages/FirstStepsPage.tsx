@@ -25,6 +25,7 @@ import { toast } from "sonner";
 import { CommunityAgreementPanel } from "@/components/CommunityAgreementPanel";
 import { LegalPolicyPanel } from "@/components/LegalPolicyPanel";
 import { DiscordInviteBanner } from "@/components/DiscordInviteBanner";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 interface Task {
   id: string;
@@ -167,6 +168,7 @@ export default function FirstStepsPage() {
   const [agreementOpen, setAgreementOpen] = useState(false);
   const [legalPanelId, setLegalPanelId] = useState<keyof typeof LEGAL_PANELS | null>(null);
   const [showCompletionDialog, setShowCompletionDialog] = useState(false);
+  const [pendingUncomplete, setPendingUncomplete] = useState<string | null>(null);
   const completionShownRef = useRef(false);
 
   // Re-build tasks when profile changes (e.g. discord added) or profile finishes loading
@@ -211,7 +213,16 @@ export default function FirstStepsPage() {
     const task = tasks.find((t) => t.id === id);
     if (!task) return;
 
+    // §2B1: re-clicking a completed task must require a verb+object confirm.
+    // The DB BEFORE-UPDATE guard on journey_progress also blocks silent
+    // uncompletes — this UI gate prevents accidental clicks before the round-trip.
+    if (task.completed) {
+      setPendingUncomplete(id);
+      return;
+    }
+
     const newCompleted = !task.completed;
+
 
     // CWV pass 4 (INP): paint the optimistic state IMMEDIATELY so the click
     // commits within the 200ms INP budget. The network round-trip and the
@@ -257,6 +268,37 @@ export default function FirstStepsPage() {
       setLoadingId(null);
     }
   };
+
+  // §2B1: confirmed uncomplete path — calls the same upsertTask with completed=false.
+  // The service layer sets app.allow_uncomplete=true so the DB BEFORE-UPDATE
+  // guard permits clearing completed/completed_at.
+  const confirmUncomplete = async () => {
+    if (!user || !pendingUncomplete) return;
+    const id = pendingUncomplete;
+    const task = tasks.find((t) => t.id === id);
+    if (!task) { setPendingUncomplete(null); return; }
+    setLoadingId(id);
+    startTransition(() => {
+      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, completed: false } : t)));
+    });
+    try {
+      await JourneyService.upsertTask(user.id, "first_steps", id, false);
+      queryClient.invalidateQueries({ queryKey: ["journey-completed", user.id, "first_steps"] });
+      queryClient.invalidateQueries({ queryKey: ["journey-progress", user.id, "first_steps"] });
+    } catch (err: any) {
+      startTransition(() => {
+        setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, completed: true } : t)));
+      });
+      toast.error("We couldn't mark that task incomplete. Please try again.", {
+        description: err?.message || "Please try again.",
+      });
+    } finally {
+      setLoadingId(null);
+      setPendingUncomplete(null);
+    }
+  };
+
+
 
   const handlePanelAccepted = async (taskId: string) => {
     if (!user) return;
@@ -463,6 +505,19 @@ export default function FirstStepsPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* §2B1: verb+object confirm before uncompleting a finished onboarding task */}
+      <ConfirmDialog
+        open={pendingUncomplete !== null}
+        onOpenChange={(o) => { if (!o) setPendingUncomplete(null); }}
+        title="Mark this task incomplete?"
+        consequence="Your progress for this step will be cleared. You can complete it again anytime."
+        actionLabel="Mark incomplete"
+        cancelLabel="Keep it complete"
+        destructive
+        loading={loadingId === pendingUncomplete}
+        onConfirm={confirmUncomplete}
+      />
     </div>
   );
 }
