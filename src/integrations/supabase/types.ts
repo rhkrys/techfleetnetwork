@@ -7788,6 +7788,7 @@ export type Database = {
         Args: { p_hours?: number; p_limit?: number }
         Returns: Json
       }
+      get_email_reconciler_status: { Args: never; Returns: Json }
       get_i18n_bundle: {
         Args: { p_locale: string; p_namespace?: string }
         Returns: {
