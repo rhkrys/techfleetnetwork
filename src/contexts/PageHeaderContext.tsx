@@ -64,11 +64,10 @@ export function usePageHeader() {
   return useContext(canonical);
 }
 
-// Force a full reload on HMR updates to this module so we never end up with
-// two divergent context instances coexisting in memory.
+// Self-accept HMR updates without reloading — the globalThis-pinned context
+// above keeps Provider and consumers in sync across hot updates, so a full
+// reload would only destroy scroll/modal/draft state. Production never hits
+// this branch.
 if (import.meta.hot) {
-  import.meta.hot.accept(() => {
-    try { window.dispatchEvent(new Event("lovable:pre-hmr-reload")); } catch { /* noop */ }
-    queueMicrotask(() => window.location.reload());
-  });
+  import.meta.hot.accept(() => { /* no-op: globalThis pinning handles it */ });
 }
