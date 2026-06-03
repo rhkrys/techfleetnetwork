@@ -94,11 +94,11 @@ export function startDeployWatcher(): void {
     void checkVersion();
   }, POLL_INTERVAL_MS);
 
-  window.addEventListener("focus", () => void checkVersion());
+  // NO focus / visibilitychange listeners. Tab switches must NEVER trigger
+  // version checks — they surface the update banner mid-interaction and
+  // feel like the page is reloading itself. The 60s poll + `online` event
+  // are enough; the banner is non-blocking either way.
   window.addEventListener("online", () => void checkVersion());
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") void checkVersion();
-  });
 }
 
 /**

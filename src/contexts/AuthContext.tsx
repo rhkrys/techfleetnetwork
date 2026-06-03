@@ -380,10 +380,9 @@ export function useAuth() {
 }
 
 if (import.meta.hot) {
-  import.meta.hot.accept(() => {
-    // Let draft/autosave hooks flush via beacon before the page goes away.
-    try { window.dispatchEvent(new Event("lovable:pre-hmr-reload")); } catch { /* noop */ }
-    // Give the synchronous beacon a tick before reloading.
-    queueMicrotask(() => window.location.reload());
-  });
+  // Self-accept the HMR update WITHOUT reloading. The globalThis-pinned
+  // context (above) keeps Provider and useAuth in sync across HMR boundaries,
+  // so a full page reload here is unnecessary and destroys scroll/modal/draft
+  // state on every dev save. Production never hits this branch.
+  import.meta.hot.accept(() => { /* no-op: globalThis pinning handles it */ });
 }
