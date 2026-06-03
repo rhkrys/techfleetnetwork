@@ -15,6 +15,7 @@ import noSupabaseSingle from "./scripts/lint/eslint-plugin-no-supabase-single.mj
 import authInvariants from "./scripts/lint/eslint-plugin-auth-invariants.mjs";
 import lazyRequiresRetry from "./scripts/lint/eslint-plugin-lazy-requires-retry.mjs";
 import useAuthRequiresProvider from "./scripts/lint/eslint-plugin-use-auth-requires-provider.mjs";
+import noAnonymousMutation from "./scripts/lint/eslint-plugin-no-anonymous-mutation.mjs";
 
 export default tseslint.config(
   { ignores: ["dist"] },
@@ -48,6 +49,10 @@ export default tseslint.config(
       // Part 1 §1.5 — chunk-load brick + AuthProvider hoist invariants.
       lazy: lazyRequiresRetry,
       auth: useAuthRequiresProvider,
+      // Issue G of 2026-06-02 audit — every useMutation must declare
+      // mutationKey or meta.audit so failures aren't logged as
+      // source:"mutation.anonymous".
+      "triage-mutation": noAnonymousMutation,
       // Browser-compat — fails on JS APIs unsupported in our `browserslist`
       // (package.json: iOS >=14.5, Safari >=14.1, Firefox ESR, last 2 versions).
       compat,
@@ -104,6 +109,7 @@ export default tseslint.config(
       // main.tsx or plain functions produce the "must be used within
       // AuthProvider" white-screen.
       "auth/use-auth-requires-provider": "error",
+      "triage-mutation/require-audit-label": "warn",
       // Typed-error hierarchy — non-typed variant avoids slow projectService.
       "no-throw-literal": "warn",
       // Browser-compat — warn until the baseline reaches zero; this is the
