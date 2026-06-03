@@ -424,6 +424,7 @@ export type Database = {
       }
       audit_sink_registry: {
         Row: {
+          created_at: string
           mode: string
           notes: string | null
           sink: string
@@ -431,6 +432,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          created_at?: string
           mode: string
           notes?: string | null
           sink: string
@@ -438,6 +440,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          created_at?: string
           mode?: string
           notes?: string | null
           sink?: string
