@@ -21,6 +21,7 @@ import { template as communityAgreementRequest } from './community-agreement-req
 import { template as adminMemberAlert } from './admin-member-alert.tsx'
 import { template as classStatusChange } from './class-status-change.tsx'
 import { template as supportTicketReply } from './support-ticket-reply.tsx'
+import { template as resumeApplication } from './resume-application.tsx'
 
 export const TEMPLATES: Record<string, TemplateEntry> = {
   'interview-invite': interviewInvite,
@@ -35,4 +36,5 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
   'admin-member-alert': adminMemberAlert,
   'class-status-change': classStatusChange,
   'support-ticket-reply': supportTicketReply,
+  'resume-application': resumeApplication,
 }
