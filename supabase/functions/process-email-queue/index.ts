@@ -153,7 +153,18 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
   const txBatchSize = state?.batch_size ?? DEFAULT_BATCH_SIZE
   const txBaseDelayMs = state?.send_delay_ms ?? DEFAULT_SEND_DELAY_MS
   const bulkBatchSize = (state as any)?.bulk_batch_size ?? 3
-  const bulkBaseDelayMs = (state as any)?.bulk_send_delay_ms ?? 1000
+  const bulkBaseDelayMsOff = (state as any)?.bulk_send_delay_ms ?? 1000
+  const bulkBaseDelayMsPeak = (state as any)?.bulk_send_delay_peak_ms ?? 900
+  const bulkPeakHours: number[] = Array.isArray((state as any)?.bulk_peak_hours_utc)
+    ? (state as any).bulk_peak_hours_utc
+    : [18, 19, 20, 21]
+  // Plan §1.H: during peak UTC hours, slow the bulk lane down so we don't
+  // saturate the provider's burst quota (26 rate-limits in May 2026 audit,
+  // all 18:00-22:00 UTC).
+  const nowUtcHour = new Date().getUTCHours()
+  const bulkBaseDelayMs = bulkPeakHours.includes(nowUtcHour)
+    ? bulkBaseDelayMsPeak
+    : bulkBaseDelayMsOff
   const batchSizeByQueue: Record<string, number> = {
     auth_emails: txBatchSize,
     transactional_emails: txBatchSize,
