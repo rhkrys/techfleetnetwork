@@ -1638,8 +1638,10 @@ export type Database = {
           bulk_email_ttl_minutes: number
           bulk_hourly_cap: number
           bulk_paused: boolean
+          bulk_peak_hours_utc: number[]
           bulk_retry_after_until: string | null
           bulk_send_delay_ms: number
+          bulk_send_delay_peak_ms: number
           bulk_warmup_started_at: string
           id: number
           per_recipient_bulk_max: number
@@ -1661,8 +1663,10 @@ export type Database = {
           bulk_email_ttl_minutes?: number
           bulk_hourly_cap?: number
           bulk_paused?: boolean
+          bulk_peak_hours_utc?: number[]
           bulk_retry_after_until?: string | null
           bulk_send_delay_ms?: number
+          bulk_send_delay_peak_ms?: number
           bulk_warmup_started_at?: string
           id?: number
           per_recipient_bulk_max?: number
@@ -1684,8 +1688,10 @@ export type Database = {
           bulk_email_ttl_minutes?: number
           bulk_hourly_cap?: number
           bulk_paused?: boolean
+          bulk_peak_hours_utc?: number[]
           bulk_retry_after_until?: string | null
           bulk_send_delay_ms?: number
+          bulk_send_delay_peak_ms?: number
           bulk_warmup_started_at?: string
           id?: number
           per_recipient_bulk_max?: number
@@ -7375,6 +7381,10 @@ export type Database = {
       enqueue_email: {
         Args: { payload: Json; queue_name: string }
         Returns: number
+      }
+      enqueue_freescout_provisioning: {
+        Args: { _kind: string; _user_id: string }
+        Returns: undefined
       }
       evaluate_system_health: {
         Args: never

@@ -271,12 +271,16 @@ export async function findUserByEmail(email: string): Promise<FreescoutUser | nu
 export async function createUser(
   email: string, firstName: string, lastName: string,
 ): Promise<FreescoutUser> {
+  // sendInvite:false on purpose — the platform proxies every Freescout call
+  // with the master API key, so admins never need a Freescout password or
+  // login. Inviting them would just spam their inbox with a setup link they
+  // don't need. See plan §1.A — silent provisioning.
   return await freescoutFetch<FreescoutUser>({
     method: "POST", path: "/api/users",
     body: {
       firstName: firstName || "Admin",
       lastName: lastName || "User",
-      email, role: "user", sendInvite: true,
+      email, role: "user", sendInvite: false,
       mailboxes: DEFAULT_MAILBOX_ID > 0 ? [DEFAULT_MAILBOX_ID] : [],
     },
   });

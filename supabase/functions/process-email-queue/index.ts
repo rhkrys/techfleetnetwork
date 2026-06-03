@@ -124,7 +124,7 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
   // Three lanes (priority order): auth_emails → transactional_emails → bulk_emails.
   const { data: state } = await supabase
     .from('email_send_state')
-    .select('retry_after_until, auth_retry_after_until, transactional_retry_after_until, bulk_retry_after_until, auth_consecutive_rate_limits, transactional_consecutive_rate_limits, bulk_consecutive_rate_limits, batch_size, send_delay_ms, bulk_batch_size, bulk_send_delay_ms, auth_email_ttl_minutes, transactional_email_ttl_minutes, bulk_email_ttl_minutes, bulk_hourly_cap, bulk_paused, per_recipient_bulk_window_hours, per_recipient_bulk_max')
+    .select('retry_after_until, auth_retry_after_until, transactional_retry_after_until, bulk_retry_after_until, auth_consecutive_rate_limits, transactional_consecutive_rate_limits, bulk_consecutive_rate_limits, batch_size, send_delay_ms, bulk_batch_size, bulk_send_delay_ms, bulk_send_delay_peak_ms, bulk_peak_hours_utc, auth_email_ttl_minutes, transactional_email_ttl_minutes, bulk_email_ttl_minutes, bulk_hourly_cap, bulk_paused, per_recipient_bulk_window_hours, per_recipient_bulk_max')
     .single()
 
   const cooldownCols: Record<string, string> = {
@@ -153,7 +153,18 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
   const txBatchSize = state?.batch_size ?? DEFAULT_BATCH_SIZE
   const txBaseDelayMs = state?.send_delay_ms ?? DEFAULT_SEND_DELAY_MS
   const bulkBatchSize = (state as any)?.bulk_batch_size ?? 3
-  const bulkBaseDelayMs = (state as any)?.bulk_send_delay_ms ?? 1000
+  const bulkBaseDelayMsOff = (state as any)?.bulk_send_delay_ms ?? 1000
+  const bulkBaseDelayMsPeak = (state as any)?.bulk_send_delay_peak_ms ?? 900
+  const bulkPeakHours: number[] = Array.isArray((state as any)?.bulk_peak_hours_utc)
+    ? (state as any).bulk_peak_hours_utc
+    : [18, 19, 20, 21]
+  // Plan §1.H: during peak UTC hours, slow the bulk lane down so we don't
+  // saturate the provider's burst quota (26 rate-limits in May 2026 audit,
+  // all 18:00-22:00 UTC).
+  const nowUtcHour = new Date().getUTCHours()
+  const bulkBaseDelayMs = bulkPeakHours.includes(nowUtcHour)
+    ? bulkBaseDelayMsPeak
+    : bulkBaseDelayMsOff
   const batchSizeByQueue: Record<string, number> = {
     auth_emails: txBatchSize,
     transactional_emails: txBatchSize,
@@ -225,7 +236,13 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
       continue
     }
     // Adaptive send delay: if this queue is recovering from 429s, slow down.
-    const sendDelayMs = baseDelayByQueue[queue] * Math.pow(2, Math.min(consecutive[queue] ?? 0, 4))
+    let sendDelayMs = baseDelayByQueue[queue] * Math.pow(2, Math.min(consecutive[queue] ?? 0, 4))
+    // Plan §1.H: when the bulk lane is at ≥80% of its hourly cap, double the
+    // delay for the rest of this run so we glide under the cap instead of
+    // racing into a 429.
+    if (queue === 'bulk_emails' && bulkHourlyCap > 0 && bulkSentLastHour >= 0.8 * bulkHourlyCap) {
+      sendDelayMs = sendDelayMs * 2
+    }
     const batchSize = batchSizeByQueue[queue]
 
     const { data: messages, error: readError } = await supabase.rpc('read_email_batch', {

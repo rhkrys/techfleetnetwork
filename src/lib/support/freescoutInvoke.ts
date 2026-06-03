@@ -60,6 +60,10 @@ export async function invokeFreescout<T = unknown>(body: FreescoutActionBody, si
     }
     return result;
   } catch (err) {
+    // Outer-catch tagging parity with the inner-error path: every
+    // edge_invoke_failed row MUST carry an upstream:* tag so triage can
+    // group transport vs HTTP-error vs auth failures. See plan §1.B.
+    const errName = err instanceof Error ? err.name : "Unknown";
     reportActivity(
       "edge_invoke_failed",
       "edge.freescout-proxy",
@@ -67,7 +71,12 @@ export async function invokeFreescout<T = unknown>(body: FreescoutActionBody, si
       {
         severity: "warn",
         traceId,
-        extraFields: [`action:${safeField(action)}`, `reason:transport_exception`],
+        extraFields: [
+          `action:${safeField(action)}`,
+          `reason:transport_exception`,
+          `upstream:transport_error`,
+          `error_name:${safeField(errName)}`,
+        ],
       },
     );
     return { data: null, error: err instanceof Error ? err : new Error(String(err)) } as const;
