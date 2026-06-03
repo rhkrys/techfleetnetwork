@@ -142,6 +142,14 @@ export const SystemHealthService = {
     return data as EmailPipelineHealth;
   },
 
+  async getEmailReconcilerStatus(): Promise<EmailReconcilerStatus> {
+    const { data, error } = await sb.rpc("get_email_reconciler_status");
+    if (error) throw error;
+    return (data as EmailReconcilerStatus) ?? {
+      stuck_pending: 0, last_run_at: null, last_run: null, last_severity: null,
+    };
+  },
+
   async getRefactorKpis(days = 30): Promise<RefactorKpi[]> {
     const { data, error } = await sb.rpc("get_refactor_kpis", { p_days: days });
     if (error) throw error;
