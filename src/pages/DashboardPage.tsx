@@ -352,6 +352,7 @@ export default function DashboardPage() {
 
       <WelcomeDialog />
       <DiscordInviteBanner />
+      <ResumeApplicationBanner />
 
       {widgetOrder.map((widgetId) => {
         switch (widgetId) {
