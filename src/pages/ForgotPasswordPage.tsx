@@ -72,7 +72,12 @@ export default function ForgotPasswordPage() {
     setLoading(true);
 
     try {
-      const rateCheck = await RateLimitService.check(result.data, "password_reset");
+      // Peek (read-only) — never increments on a happy-path submit. We only
+      // record a failure if Supabase confirms a real rejection below. Mirrors
+      // the login/signup fairness fix (LCL-RL-001..009) — previously every
+      // click of "Send reset link" burned 1 of 3 attempts, blocking real
+      // users for 60 minutes after a few harmless retries.
+      const rateCheck = await RateLimitService.peek(result.data, "password_reset");
       if (!rateCheck.allowed) {
         const minutes = Math.ceil(rateCheck.retry_after / 60);
         setError(`Too many requests. Please try again in ${minutes} minute${minutes > 1 ? "s" : ""}.`);
@@ -92,6 +97,8 @@ export default function ForgotPasswordPage() {
         setError(err.message);
         return;
       }
+      // Confirmed send failure → record so abusive loops still get capped.
+      void RateLimitService.recordFailure(result.data, "password_reset");
       // Always show success to prevent email enumeration
       setSubmitted(true);
     } finally {
