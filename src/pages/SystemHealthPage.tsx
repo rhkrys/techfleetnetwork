@@ -25,6 +25,7 @@ import { IncidentsTab } from "@/components/system-health/IncidentsTab";
 import { ProjectBlastsHealthCard } from "@/components/system-health/ProjectBlastsHealthCard";
 import { EmailDeliverabilityCard } from "@/components/system-health/EmailDeliverabilityCard";
 import { EmailDlqPanel } from "@/components/system-health/EmailDlqPanel";
+import { EmailBulkThrottleCard } from "@/components/system-health/EmailBulkThrottleCard";
 import { DiscordRepairTab } from "@/components/system-health/DiscordRepairTab";
 import { LoginHealthTab } from "@/components/system-health/LoginHealthTab";
 import { TranslationsTab } from "@/components/admin/system-health/TranslationsTab";
@@ -253,6 +254,7 @@ export default function SystemHealthPage() {
 
         <TabsContent value="delivery"><LogTable logs={data.recent_logs} generatedAt={generatedAt} /></TabsContent>
         <TabsContent value="deliverability" className="space-y-4">
+          <EmailBulkThrottleCard />
           <EmailDeliverabilityCard />
           <EmailDlqPanel />
         </TabsContent>
