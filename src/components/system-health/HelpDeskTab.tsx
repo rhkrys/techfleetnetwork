@@ -86,27 +86,61 @@ export function HelpDeskTab() {
     URL.revokeObjectURL(url);
   };
 
+  const rows = provLog.data ?? [];
+  const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+  const pending24 = rows.filter(
+    (r) => (r.status === "pending" || r.status === "retry") && new Date(r.created_at).getTime() > dayAgo,
+  ).length;
+  const failed24 = rows.filter(
+    (r) => r.status === "failed" && new Date(r.created_at).getTime() > dayAgo,
+  ).length;
+  const retryRow = useMutation({
+    mutationFn: async (id: number) => {
+      const { error } = await supabase
+        .from("support_provisioning_log")
+        .update({ status: "retry", attempts: 0, last_error: null })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Re-enqueued for next retry tick.");
+      qc.invalidateQueries({ queryKey: ["help-desk"] as const });
+    },
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Retry failed."),
+  });
+
   return (
     <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Pending provisioning (24h)</CardDescription>
+            <CardTitle className="text-3xl">
+              <Badge variant={pending24 === 0 ? "default" : "secondary"}>{pending24}</Badge>
+            </CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Failed provisioning (24h)</CardDescription>
+            <CardTitle className="text-3xl">
+              <Badge variant={failed24 === 0 ? "default" : "destructive"}>{failed24}</Badge>
+            </CardTitle>
+          </CardHeader>
+        </Card>
+      </div>
       <Card>
         <CardHeader>
           <CardTitle>Help Desk — Freescout provisioning</CardTitle>
           <CardDescription>
-            Members are provisioned on their first ticket. Admins are provisioned when they confirm their promotion. Use the buttons below to backfill existing people.
+            New members and admins are provisioned automatically via DB triggers. Use the buttons below to backfill anyone the triggers missed.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
-          <Button
-            onClick={() => backfill.mutate("admins")}
-            disabled={running !== null}
-          >
+          <Button onClick={() => backfill.mutate("admins")} disabled={running !== null}>
             {running === "admins" ? "Running backfill…" : "Backfill admins"}
           </Button>
-          <Button
-            variant="outline"
-            onClick={() => backfill.mutate("members")}
-            disabled={running !== null}
-          >
+          <Button variant="outline" onClick={() => backfill.mutate("members")} disabled={running !== null}>
             {running === "members" ? "Resolving members…" : "Resolve existing members"}
           </Button>
           <Button variant="outline" onClick={failuresCsv}>Export failures (CSV)</Button>
@@ -133,6 +167,7 @@ export function HelpDeskTab() {
                   <th className="py-2 pr-2">Attempts</th>
                   <th className="py-2 pr-2">Freescout id</th>
                   <th className="py-2 pr-2">Error</th>
+                  <th className="py-2 pr-2"></th>
                 </tr>
               </thead>
               <tbody>
@@ -145,6 +180,13 @@ export function HelpDeskTab() {
                     <td className="py-2 pr-2 font-mono text-xs">{r.freescout_id ?? "—"}</td>
                     <td className="py-2 pr-2 text-muted-foreground text-xs max-w-[24rem] truncate" title={r.last_error ?? ""}>
                       {r.last_error ?? "—"}
+                    </td>
+                    <td className="py-2 pr-2">
+                      {r.status === "failed" && (
+                        <Button size="sm" variant="outline" onClick={() => retryRow.mutate(r.id)} disabled={retryRow.isPending}>
+                          Retry now
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 ))}
