@@ -87,6 +87,13 @@ export interface EmailPipelineHealth {
   recent_logs: EmailPipelineLog[];
 }
 
+export interface EmailReconcilerStatus {
+  stuck_pending: number;
+  last_run_at: string | null;
+  last_run: { reconciled_terminal: number; marked_dlq: number; left_in_queue: number; checked: number } | null;
+  last_severity: "info" | "warn" | "error" | null;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const sb = supabase as any;
 
@@ -140,6 +147,14 @@ export const SystemHealthService = {
     });
     if (error) throw error;
     return data as EmailPipelineHealth;
+  },
+
+  async getEmailReconcilerStatus(): Promise<EmailReconcilerStatus> {
+    const { data, error } = await sb.rpc("get_email_reconciler_status");
+    if (error) throw error;
+    return (data as EmailReconcilerStatus) ?? {
+      stuck_pending: 0, last_run_at: null, last_run: null, last_severity: null,
+    };
   },
 
   async getRefactorKpis(days = 30): Promise<RefactorKpi[]> {
