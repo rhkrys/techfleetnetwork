@@ -137,9 +137,9 @@ Deno.serve(withAuditWrapper("update-password-confirmed", async (req, ctx) => {
         severity: classified.code === "rate_limited" ? "warn" : "info",
         fields: [`reason:${classified.code}`],
       });
-      const headers: Record<string, string> = {};
-      if (classified.retryAfter) headers["Retry-After"] = String(classified.retryAfter);
-      return jsonResponse({ error: classified.message, code: classified.code }, classified.status, headers);
+      const resp = jsonResponse({ error: classified.message, code: classified.code }, classified.status);
+      if (classified.retryAfter) resp.headers.set("Retry-After", String(classified.retryAfter));
+      return resp;
     }
 
     const admin = getAdminClient();
