@@ -337,6 +337,8 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
           .select('id, created_at')
           .eq('message_id', payload.message_id)
           .eq('status', 'sent')
+          .order('created_at', { ascending: true })
+          .limit(1)
           .maybeSingle()
 
         if (alreadySent) {
