@@ -115,6 +115,14 @@ export default function SystemHealthPage() {
     refetchOnWindowFocus: false,
   });
 
+  const { data: reconciler } = useQuery({
+    queryKey: ["system-health", "email-reconciler"],
+    queryFn: () => SystemHealthService.getEmailReconcilerStatus(),
+    staleTime: FIVE_MIN,
+    refetchInterval: FIVE_MIN,
+    refetchOnWindowFocus: false,
+  });
+
   // Realtime: invalidate cache whenever the source-of-truth row changes.
   useSystemHealthRealtime(true);
 
