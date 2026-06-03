@@ -134,7 +134,6 @@ export function ThemedAgGrid<T = unknown>({
     if (apiRef.current) {
       apiRef.current.resetColumnState();
       apiRef.current.setFilterModel(null);
-      apiRef.current.sizeColumnsToFit();
       refreshPickerCols();
     }
     toast.success("Table view reset to default");
@@ -169,9 +168,12 @@ export function ThemedAgGrid<T = unknown>({
         if (savedState.filterModel) {
           setTimeout(() => e.api.setFilterModel(savedState.filterModel!), 0);
         }
-      } else {
-        e.api.sizeColumnsToFit();
       }
+      // NOTE: do NOT call sizeColumnsToFit() here. Forcing fit shrinks
+      // explicit-width columns (e.g. Actions) below their content size and
+      // suppresses AG Grid's native horizontal scrollbar. Let declared
+      // widths + flex render naturally; horizontal scroll appears when
+      // total column width exceeds the viewport.
       refreshPickerCols();
       externalOnGridReady?.(e);
     },
