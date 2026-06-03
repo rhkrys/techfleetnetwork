@@ -422,7 +422,11 @@ export const AuthService = {
   async updatePassword(passwordSet: PasswordSetValue): Promise<{ otherDevicesRevoked: boolean }> {
     return log.track("updatePassword", "Updating user password", undefined, async () => {
       const validation = validatePasswordSet(passwordSet);
-      if (!validation.isValid) throw new Error(validation.passwordError || validation.confirmError);
+      if (!validation.isValid) {
+        const err = new Error(validation.passwordError || validation.confirmError) as Error & { code?: string };
+        err.code = "weak_password_client";
+        throw err;
+      }
 
       const { data, error } = await supabase.functions.invoke("update-password-confirmed", {
         body: {
@@ -431,14 +435,31 @@ export const AuthService = {
         },
       });
       if (error) {
-        log.error("updatePassword", `Password update failed: ${error.message}`, { errorCode: error.status }, error);
-        throw new Error("Failed to update password. Please try again.");
+        // FunctionsHttpError surfaces the response body via .context.response
+        let serverCode: string | undefined;
+        let serverMessage: string | undefined;
+        try {
+          const resp = (error as { context?: { response?: Response } }).context?.response;
+          if (resp) {
+            const cloned = resp.clone();
+            const body = await cloned.json().catch(() => null) as { error?: string; code?: string } | null;
+            serverCode = body?.code;
+            serverMessage = body?.error;
+          }
+        } catch {
+          // Ignore parse failures — fall through to generic message.
+        }
+        log.error("updatePassword", `Password update failed: ${serverMessage || error.message} [${serverCode || "unknown"}]`, { errorCode: serverCode || error.status });
+        const wrapped = new Error(serverMessage || "We couldn't update your password. Please try again.") as Error & { code?: string };
+        wrapped.code = serverCode || "unknown";
+        throw wrapped;
       }
       log.info("updatePassword", "Password updated successfully");
       void logAccountActivity("password_updated", { details: { confirmed: true } });
       return { otherDevicesRevoked: Boolean((data as { other_devices_revoked?: boolean } | null)?.other_devices_revoked) };
     });
   },
+
 
   async signOut() {
     log.info("signOut", "Signing out user");
