@@ -68,6 +68,7 @@ export type QueueTransactionalEmailResult =
       queued: true
       messageId: string
       suppressed: boolean
+      deduped?: boolean
       reason?: 'email_suppressed'
     }
   | {
@@ -106,6 +107,7 @@ async function insertEmailLog(
     recipient_email: string
     status: string
     error_message?: string
+    metadata?: JsonRecord
   }
 ) {
   const { error } = await supabase.from('email_send_log').insert(payload)
