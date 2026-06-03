@@ -470,6 +470,7 @@ export async function queueTransactionalEmail({
         queued: true,
         messageId,
         suppressed: false,
+        deduped: true,
       }
     }
   }
@@ -479,6 +480,12 @@ export async function queueTransactionalEmail({
     template_name: templateName,
     recipient_email: effectiveRecipient,
     status: 'pending',
+    metadata: {
+      templateData,
+      idempotency_key: requestIdempotencyKey,
+      bypass_frequency_cap: bypassFrequencyCap,
+      queued_at: new Date().toISOString(),
+    },
   })
 
   // Bulk-sender headers required by Gmail/Yahoo (RFC 8058) + inbox-trust signals.
