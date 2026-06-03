@@ -15,6 +15,10 @@ vi.mock("@/services/system-health.service", () => ({
   },
 }));
 
+vi.mock("@/hooks/use-system-health-realtime", () => ({
+  useSystemHealthRealtime: vi.fn(),
+}));
+
 import SystemHealthPage from "@/pages/SystemHealthPage";
 
 describe("SystemHealthPage", () => {
