@@ -211,7 +211,19 @@ export default function SystemHealthPage() {
         <StatCard label="Sent" value={totals.sent} detail="Successfully handed to the sender" generatedAt={generatedAt} />
         <StatCard label="Pending" value={totals.pending} detail="Waiting or still processing" generatedAt={generatedAt} tone={totals.pending > 0 ? "warning" : "default"} />
         <StatCard label="Failure Rate" value={`${failureRate}%`} detail={`${totals.failed} failed or dead-lettered`} generatedAt={generatedAt} tone={failureRate > 0 ? "danger" : "default"} />
+        <StatCard
+          label="Stuck pending (>10 min)"
+          value={reconciler?.stuck_pending ?? 0}
+          detail={
+            reconciler?.last_run_at
+              ? `Reconciler last ran ${relativeTime(reconciler.last_run_at)} · terminal ${reconciler.last_run?.reconciled_terminal ?? 0} · dlq ${reconciler.last_run?.marked_dlq ?? 0}`
+              : "Reconciler runs every 5 min"
+          }
+          generatedAt={generatedAt}
+          tone={(reconciler?.stuck_pending ?? 0) > 0 ? "warning" : "default"}
+        />
       </div>
+
 
       <SystemHealthTabs>
         <TabsList aria-label="System health sections">
