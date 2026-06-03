@@ -124,7 +124,7 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
   // Three lanes (priority order): auth_emails → transactional_emails → bulk_emails.
   const { data: state } = await supabase
     .from('email_send_state')
-    .select('retry_after_until, auth_retry_after_until, transactional_retry_after_until, bulk_retry_after_until, auth_consecutive_rate_limits, transactional_consecutive_rate_limits, bulk_consecutive_rate_limits, batch_size, send_delay_ms, bulk_batch_size, bulk_send_delay_ms, auth_email_ttl_minutes, transactional_email_ttl_minutes, bulk_email_ttl_minutes, bulk_hourly_cap, bulk_paused, per_recipient_bulk_window_hours, per_recipient_bulk_max')
+    .select('retry_after_until, auth_retry_after_until, transactional_retry_after_until, bulk_retry_after_until, auth_consecutive_rate_limits, transactional_consecutive_rate_limits, bulk_consecutive_rate_limits, batch_size, send_delay_ms, bulk_batch_size, bulk_send_delay_ms, bulk_send_delay_peak_ms, bulk_peak_hours_utc, auth_email_ttl_minutes, transactional_email_ttl_minutes, bulk_email_ttl_minutes, bulk_hourly_cap, bulk_paused, per_recipient_bulk_window_hours, per_recipient_bulk_max')
     .single()
 
   const cooldownCols: Record<string, string> = {
