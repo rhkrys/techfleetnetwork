@@ -168,6 +168,7 @@ export default function FirstStepsPage() {
   const [agreementOpen, setAgreementOpen] = useState(false);
   const [legalPanelId, setLegalPanelId] = useState<keyof typeof LEGAL_PANELS | null>(null);
   const [showCompletionDialog, setShowCompletionDialog] = useState(false);
+  const [pendingUncomplete, setPendingUncomplete] = useState<string | null>(null);
   const completionShownRef = useRef(false);
 
   // Re-build tasks when profile changes (e.g. discord added) or profile finishes loading
