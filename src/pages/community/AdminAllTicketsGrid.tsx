@@ -3,6 +3,14 @@ import { useQuery, useQueryClient } from "@/lib/react-query";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ThemedAgGrid } from "@/components/AgGrid";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { MoreHorizontal, UserPlus, EyeOff, XCircle, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import type { ColDef } from "ag-grid-community";
 import { invokeFreescout } from "@/lib/support/freescoutInvoke";
@@ -58,7 +66,7 @@ export default function AdminAllTicketsGrid({ scope: fixedScope }: { scope?: Sco
 
   const columnDefs = useMemo<ColDef<Row>[]>(() => [
     { headerName: "#", field: "number", width: 90, sortable: true, filter: true },
-    { headerName: "Subject", field: "subject", flex: 2, sortable: true, filter: true },
+    { headerName: "Subject", field: "subject", flex: 2, minWidth: 240, sortable: true, filter: true },
     { headerName: "Status", field: "status", width: 120, sortable: true, filter: true },
     {
       headerName: "Customer", width: 220,
@@ -79,23 +87,44 @@ export default function AdminAllTicketsGrid({ scope: fixedScope }: { scope?: Sco
       sortable: true, sort: "desc",
     },
     {
-      headerName: "Actions", width: 360, sortable: false, filter: false,
+      headerName: "", width: 70, sortable: false, filter: false,
+      resizable: false, suppressMenu: true, suppressSizeToFit: true,
       cellRenderer: (p: { data: Row }) => {
         const id = p.data?.id;
         if (!id) return null;
+        const isClosed = p.data.status === "closed";
+        const label = `Actions for ticket ${p.data.number ?? id}`;
         return (
-          <div className="flex items-center gap-2 h-full">
-            <Button size="sm" variant="outline" onClick={() => runAction(id, { action: "assign", assigneeUserId: "self" }, "Assigned to you.")}>
-              Assign me
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => runAction(id, { action: "setPrivate", isPrivate: true }, "Marked private.")}>
-              Mark private
-            </Button>
-            {p.data.status !== "closed" ? (
-              <Button size="sm" variant="outline" onClick={() => runAction(id, { action: "close" }, "Ticket closed.")}>Close</Button>
-            ) : (
-              <Button size="sm" variant="outline" onClick={() => runAction(id, { action: "reopen" }, "Ticket reopened.")}>Reopen</Button>
-            )}
+          <div className="flex items-center h-full">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label={label}>
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={() => runAction(id, { action: "assign", assigneeUserId: "self" }, "Assigned to you.")}>
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Assign me
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => runAction(id, { action: "setPrivate", isPrivate: true }, "Marked private.")}>
+                  <EyeOff className="h-4 w-4 mr-2" />
+                  Mark private
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {isClosed ? (
+                  <DropdownMenuItem onClick={() => runAction(id, { action: "reopen" }, "Ticket reopened.")}>
+                    <RotateCcw className="h-4 w-4 mr-2" />
+                    Reopen ticket
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem onClick={() => runAction(id, { action: "close" }, "Ticket closed.")}>
+                    <XCircle className="h-4 w-4 mr-2" />
+                    Close ticket
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         );
       },
