@@ -330,14 +330,16 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
           })
           // Layer 2 of EMAIL-RECONCILE: write a terminal reconciliation row
           // so the latest-row-per-message_id dashboard view becomes terminal.
-          // Without this, the duplicate `pending` row inserted at enqueue
-          // time stays as the latest row forever (the bug that made
-          // isabelle's email show pending for 23 hours).
+          // Uses status='reconciled' (NOT 'sent') because the partial unique
+          // index idx_email_send_log_message_sent_unique forbids a second
+          // 'sent' row per message_id. Without this, the duplicate `pending`
+          // row inserted at enqueue time stays as the latest row forever
+          // (the bug that made isabelle's email show pending for 23 hours).
           await supabase.from('email_send_log').insert({
             message_id: payload.message_id,
             template_name: payload.label || queue,
             recipient_email: payload.to,
-            status: 'sent',
+            status: 'reconciled',
             error_message: `Duplicate enqueue reconciled — original sent at ${alreadySent.created_at}`,
           })
           const { error: dupDelError } = await supabase.rpc('delete_email', {
