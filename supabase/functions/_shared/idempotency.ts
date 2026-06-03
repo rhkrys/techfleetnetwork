@@ -1,114 +1,146 @@
-// Shared idempotency helper for mutating edge functions.
-// Wave 1 of the comprehensive refactor — see plan §1.2.
-//
-// Usage:
-//   import { withIdempotency } from "../_shared/idempotency.ts";
-//   return withIdempotency(req, supabaseAdmin, async () => {
-//     // ... do mutation, return Response ...
-//   });
-//
-// Behavior:
-//   - Reads X-Request-Id (or X-Idempotency-Key) from the incoming request.
-//   - If absent, runs the handler normally (no dedupe).
-//   - If present, hashes the request body and looks up request_idempotency.
-//     * Hit + same hash → replays the cached response.
-//     * Hit + different hash → 409 Conflict (key reuse with different body).
-//     * Miss → runs handler, stores the response, returns it.
-//   - Rows expire after 24h via request_idempotency.expires_at.
+/**
+ * Part 1 §1.2 — Server-side idempotency wrapper for Supabase Edge Functions.
+ *
+ * Usage:
+ *   import { withIdempotency } from "../_shared/idempotency.ts";
+ *
+ *   serve(async (req) => {
+ *     return withIdempotency(req, supabase, async () => {
+ *       // your handler that performs the mutation
+ *       return new Response(JSON.stringify({ ok: true }), { status: 200 });
+ *     });
+ *   });
+ *
+ * Behavior:
+ *   - Reads `X-Request-Id` (or `X-Idempotency-Key`) from the incoming request.
+ *   - If absent, calls handler normally (no caching) — useful for read paths.
+ *   - If present, calls `claim_idempotency_key`; on a cache hit returns the
+ *     stored response immediately. On first-call, executes the handler then
+ *     records the response via `complete_idempotency`.
+ *   - The request hash is `method:path:body-sha256` so accidental key reuse
+ *     with a different payload throws instead of silently returning the old
+ *     response.
+ */
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const KEY_HEADERS = ["x-request-id", "x-idempotency-key"];
+const KEY_HEADER_PRIMARY = "x-request-id";
+const KEY_HEADER_FALLBACK = "x-idempotency-key";
 
 async function sha256Hex(input: string): Promise<string> {
-  const bytes = new TextEncoder().encode(input);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest))
+  const buf = new TextEncoder().encode(input);
+  const hash = await crypto.subtle.digest("SHA-256", buf);
+  return Array.from(new Uint8Array(hash))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
 
-function extractKey(req: Request): string | null {
-  for (const h of KEY_HEADERS) {
-    const v = req.headers.get(h);
-    if (v && v.length >= 8 && v.length <= 200) return v.trim();
-  }
-  return null;
+export interface WithIdempotencyOptions {
+  /** TTL the cached response lives for, in minutes. Default 1440 (24h). */
+  ttlMinutes?: number;
+  /** Optional user id; if omitted, parsed from JWT (`sub`). */
+  userId?: string | null;
+  /** Override the key (e.g., for cron workers that compose their own). */
+  explicitKey?: string;
 }
 
-export interface IdempotencyOptions {
-  /** Override the user id stored on the cache row. Defaults to null. */
-  userId?: string | null;
-  /** Cache TTL in seconds. Default 24h. */
-  ttlSeconds?: number;
+function readUserIdFromJwt(req: Request): string | null {
+  const auth = req.headers.get("authorization");
+  if (!auth?.startsWith("Bearer ")) return null;
+  const token = auth.slice(7);
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return typeof payload.sub === "string" ? payload.sub : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function withIdempotency(
   req: Request,
   supabase: SupabaseClient,
   handler: () => Promise<Response>,
-  opts: IdempotencyOptions = {},
+  opts: WithIdempotencyOptions = {},
 ): Promise<Response> {
-  const key = extractKey(req);
-  if (!key) return handler();
+  const key =
+    opts.explicitKey ??
+    req.headers.get(KEY_HEADER_PRIMARY) ??
+    req.headers.get(KEY_HEADER_FALLBACK);
 
-  // Hash the body so a replay with a different payload is rejected.
-  const clone = req.clone();
+  // No key: behave transparently.
+  if (!key || key.length < 8) {
+    return handler();
+  }
+
+  const userId = opts.userId !== undefined ? opts.userId : readUserIdFromJwt(req);
+
+  // Hash the request shape so reuse with a different payload throws.
   let body = "";
   try {
-    body = await clone.text();
+    body = await req.clone().text();
   } catch {
     body = "";
   }
-  const hash = await sha256Hex(`${req.method} ${new URL(req.url).pathname} ${body}`);
+  const url = new URL(req.url);
+  const requestHash = await sha256Hex(`${req.method}:${url.pathname}:${body}`);
 
-  // Lookup
-  const { data: existing, error: lookupErr } = await supabase
-    .from("request_idempotency")
-    .select("request_hash, response_json, status_code")
-    .eq("key", key)
-    .maybeSingle();
+  const { data: claim, error: claimErr } = await supabase.rpc("claim_idempotency_key", {
+    p_key: key,
+    p_user_id: userId,
+    p_request_hash: requestHash,
+    p_ttl_minutes: opts.ttlMinutes ?? 1440,
+  });
 
-  if (!lookupErr && existing) {
-    if (existing.request_hash !== hash) {
-      return new Response(
-        JSON.stringify({ error: "idempotency_key_reused_with_different_payload" }),
-        { status: 409, headers: { "Content-Type": "application/json" } },
-      );
-    }
-    return new Response(JSON.stringify(existing.response_json ?? {}), {
-      status: existing.status_code ?? 200,
-      headers: { "Content-Type": "application/json", "X-Idempotent-Replay": "1" },
+  if (claimErr) {
+    // Idempotency tracking failed — fall through to the handler so we don't
+    // brick the request. Log via response header so ops can grep.
+    const r = await handler();
+    r.headers.set("X-Idempotency-Error", claimErr.message.slice(0, 120));
+    return r;
+  }
+
+  const row = Array.isArray(claim) ? claim[0] : claim;
+  if (row && row.claimed === false && row.cached_response) {
+    // Cache hit — replay stored response.
+    const body = JSON.stringify(row.cached_response);
+    return new Response(body, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "X-Idempotent-Replay": "1",
+      },
     });
   }
 
-  // Run handler
-  const response = await handler();
+  // First call — run handler and record result.
+  let response: Response;
+  try {
+    response = await handler();
+  } catch (err) {
+    await supabase.rpc("complete_idempotency", {
+      p_key: key,
+      p_response: { error: String(err) },
+      p_status: "failed",
+    });
+    throw err;
+  }
 
-  // Only cache successful 2xx responses with JSON-ish bodies.
-  if (response.status >= 200 && response.status < 300) {
+  // Only cache JSON 2xx responses; pass others through without storing.
+  if (response.ok && response.headers.get("content-type")?.includes("application/json")) {
     try {
-      const respClone = response.clone();
-      const text = await respClone.text();
-      let parsed: unknown = null;
-      try {
-        parsed = text ? JSON.parse(text) : null;
-      } catch {
-        parsed = { raw: text };
-      }
-      const ttl = Math.max(60, opts.ttlSeconds ?? 24 * 60 * 60);
-      await supabase.from("request_idempotency").insert({
-        key,
-        user_id: opts.userId ?? null,
-        request_hash: hash,
-        response_json: parsed,
-        status_code: response.status,
-        expires_at: new Date(Date.now() + ttl * 1000).toISOString(),
+      const clone = response.clone();
+      const json = await clone.json();
+      await supabase.rpc("complete_idempotency", {
+        p_key: key,
+        p_response: json,
+        p_status: "complete",
       });
     } catch {
-      // Best-effort caching; never fail the request because of cache write.
+      // ignore — response is still returned to caller
     }
   }
 
+  response.headers.set("X-Request-Id", key);
   return response;
 }

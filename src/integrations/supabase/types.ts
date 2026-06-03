@@ -7270,6 +7270,19 @@ export type Database = {
         }
         Returns: Json
       }
+      claim_idempotency_key: {
+        Args: {
+          p_key: string
+          p_request_hash: string
+          p_ttl_minutes?: number
+          p_user_id: string
+        }
+        Returns: {
+          cached_response: Json
+          claimed: boolean
+          status: string
+        }[]
+      }
       claim_triage_budget: { Args: { p_cap?: number }; Returns: boolean }
       classify_triage_rule: {
         Args: { p_from_status: string; p_reason: string; p_to_status: string }
@@ -7277,11 +7290,16 @@ export type Database = {
       }
       cleanup_chunk_load_noise: { Args: never; Returns: Json }
       cleanup_rate_limits: { Args: never; Returns: number }
+      cleanup_request_idempotency: { Args: never; Returns: number }
       cleanup_stuck_email_queue: { Args: never; Returns: number }
       cleanup_two_factor_login_artifacts: { Args: never; Returns: number }
       clear_rate_limits_for_email: {
         Args: { p_email: string }
         Returns: number
+      }
+      complete_idempotency: {
+        Args: { p_key: string; p_response: Json; p_status?: string }
+        Returns: undefined
       }
       compute_email_domain_health: {
         Args: { p_since: string }
