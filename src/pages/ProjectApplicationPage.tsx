@@ -33,6 +33,7 @@ import {
 import { format } from "date-fns";
 import { useAutosave } from "@/hooks/use-autosave";
 import { AutosaveStatus } from "@/components/ui/AutosaveStatus";
+import { AutosaveCircuitBanner } from "@/components/forms/AutosaveCircuitBanner";
 
 
 /* ── types ─────────────────────────────────────────────────── */
@@ -618,6 +619,11 @@ export default function ProjectApplicationPage() {
       {/* ── Content ────────────────────────────── */}
       <div ref={scrollRef}>
         <div className="max-w-3xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
+          <AutosaveCircuitBanner
+            open={autosave.circuitOpen}
+            reason={autosave.circuitReason}
+            onRetry={autosave.retry}
+          />
           {step === 1 && (
           <Card>
             <CardContent className="pt-4 space-y-2">

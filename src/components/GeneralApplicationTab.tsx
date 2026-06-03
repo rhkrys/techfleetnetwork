@@ -15,6 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { useGeneralApplication } from "@/hooks/use-general-application";
+import { AutosaveCircuitBanner } from "@/components/forms/AutosaveCircuitBanner";
 import {
   SECTION_TITLES,
   TOTAL_SECTIONS,
@@ -118,7 +119,13 @@ export function GeneralApplicationTab() {
       {/* ── Content ─────────────────────────────── */}
       <div ref={formContainerRef}>
         <div className="max-w-4xl w-full mx-auto px-4 sm:px-6 py-6">
+          <AutosaveCircuitBanner
+            open={autosave.circuitOpen}
+            reason={autosave.circuitReason}
+            onRetry={autosave.retry}
+          />
           <div className="card-elevated p-6 space-y-6">
+
             {/* Error summary banner */}
             {Object.keys(errors).length > 0 && (
               <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-4 flex gap-3" role="alert" aria-live="assertive">
