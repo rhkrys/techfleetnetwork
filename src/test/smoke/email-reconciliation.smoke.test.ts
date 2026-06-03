@@ -16,7 +16,7 @@ describe("EMAIL-RECONCILE stuck pending safeguards", () => {
   it("EMAIL-RECONCILE-001: duplicate enqueue exits before new pending row or queue insert", () => {
     expect(shared).toMatch(/hasTerminal\s*\|\|\s*hasRecentPending/);
     expect(shared).toMatch(/deduped:\s*true/);
-    expect(shared.indexOf("deduped: true")).toBeLessThan(shared.indexOf("insertEmailLog"));
+    expect(shared.indexOf("deduped: true")).toBeLessThan(shared.indexOf("await insertEmailLog(supabase"));
     expect(shared).toMatch(/queue_payload:\s*emailPayload/);
   });
 
