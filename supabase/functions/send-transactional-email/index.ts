@@ -90,7 +90,7 @@ Deno.serve(withAuditWrapper("send-transactional-email", async (req) => {
   }
 
   return new Response(
-    JSON.stringify({ success: true, queued: true, messageId: result.messageId }),
+    JSON.stringify({ success: true, queued: true, messageId: result.messageId, deduped: result.deduped === true }),
     {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

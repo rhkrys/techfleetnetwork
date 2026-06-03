@@ -90,7 +90,7 @@ export interface EmailPipelineHealth {
 export interface EmailReconcilerStatus {
   stuck_pending: number;
   last_run_at: string | null;
-  last_run: { reconciled_terminal: number; marked_dlq: number; left_in_queue: number; checked: number } | null;
+  last_run: { reconciled_terminal: number; requeued: number; dlq_lost: number; marked_dlq?: number; left_in_queue: number; checked: number } | null;
   last_severity: "info" | "warn" | "error" | null;
 }
 

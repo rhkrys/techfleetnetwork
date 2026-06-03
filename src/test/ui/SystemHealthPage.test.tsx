@@ -3,14 +3,20 @@ import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithRouter } from "./test-utils";
 
-const { mockGetEmailPipelineHealth } = vi.hoisted(() => ({
+const { mockGetEmailPipelineHealth, mockGetEmailReconcilerStatus } = vi.hoisted(() => ({
   mockGetEmailPipelineHealth: vi.fn(),
+  mockGetEmailReconcilerStatus: vi.fn(),
 }));
 
 vi.mock("@/services/system-health.service", () => ({
   SystemHealthService: {
     getEmailPipelineHealth: mockGetEmailPipelineHealth,
+    getEmailReconcilerStatus: mockGetEmailReconcilerStatus,
   },
+}));
+
+vi.mock("@/hooks/use-system-health-realtime", () => ({
+  useSystemHealthRealtime: vi.fn(),
 }));
 
 import SystemHealthPage from "@/pages/SystemHealthPage";
@@ -42,6 +48,12 @@ describe("SystemHealthPage", () => {
         { message_id: "msg-1", template_name: "recovery", recipient_email: "member@example.com", status: "failed", error_message: "Provider rejected the sender domain", created_at: new Date().toISOString() },
       ],
     });
+    mockGetEmailReconcilerStatus.mockResolvedValue({
+      stuck_pending: 0,
+      last_run_at: new Date().toISOString(),
+      last_run: { reconciled_terminal: 0, requeued: 0, dlq_lost: 0, left_in_queue: 0, checked: 0 },
+      last_severity: "info",
+    });
   });
 
   it("SYS-HEALTH-EMAIL-PIPELINE-001: shows admin email pipeline status, queues, delivery, and errors", async () => {
@@ -51,6 +63,7 @@ describe("SystemHealthPage", () => {
     expect(await screen.findByRole("heading", { name: "System Health" })).toBeInTheDocument();
     expect(screen.getByText("Recent email failures need admin review.")).toBeInTheDocument();
     expect(screen.getByText("Unique Emails")).toBeInTheDocument();
+    expect(screen.getByText("Stuck pending (>10 min)")).toBeInTheDocument();
     expect(screen.getByText("Failure Rate")).toBeInTheDocument();
     expect(screen.getByText("auth emails")).toBeInTheDocument();
     expect(screen.getByText("transactional emails")).toBeInTheDocument();

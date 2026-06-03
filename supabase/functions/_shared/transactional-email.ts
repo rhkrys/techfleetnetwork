@@ -68,6 +68,7 @@ export type QueueTransactionalEmailResult =
       queued: true
       messageId: string
       suppressed: boolean
+      deduped?: boolean
       reason?: 'email_suppressed'
     }
   | {
@@ -106,6 +107,7 @@ async function insertEmailLog(
     recipient_email: string
     status: string
     error_message?: string
+    metadata?: JsonRecord
   }
 ) {
   const { error } = await supabase.from('email_send_log').insert(payload)
@@ -468,16 +470,10 @@ export async function queueTransactionalEmail({
         queued: true,
         messageId,
         suppressed: false,
+        deduped: true,
       }
     }
   }
-
-  await insertEmailLog(supabase, {
-    message_id: messageId,
-    template_name: templateName,
-    recipient_email: effectiveRecipient,
-    status: 'pending',
-  })
 
   // Bulk-sender headers required by Gmail/Yahoo (RFC 8058) + inbox-trust signals.
   const unsubscribeUrl = `https://techfleet.network/unsubscribe?token=${unsubscribeToken}`
@@ -499,26 +495,43 @@ export async function queueTransactionalEmail({
   const targetQueue = BULK_TEMPLATES.has(templateName)
     ? 'bulk_emails'
     : 'transactional_emails'
+  const queuedAtIso = new Date().toISOString()
+  const emailPayload = {
+    message_id: messageId,
+    to: effectiveRecipient,
+    from: `${SITE_NAME} <${FROM_MAILBOX}@${FROM_DOMAIN}>`,
+    reply_to: REPLY_TO,
+    sender_domain: SENDER_DOMAIN,
+    subject: resolvedSubject,
+    html,
+    text: plainText,
+    headers: customHeaders,
+    purpose: 'transactional',
+    label: templateName,
+    idempotency_key: requestIdempotencyKey,
+    unsubscribe_token: unsubscribeToken,
+    queued_at: queuedAtIso,
+    bypass_frequency_cap: bypassFrequencyCap,
+  }
+
+  await insertEmailLog(supabase, {
+    message_id: messageId,
+    template_name: templateName,
+    recipient_email: effectiveRecipient,
+    status: 'pending',
+    metadata: {
+      templateData,
+      idempotency_key: requestIdempotencyKey,
+      bypass_frequency_cap: bypassFrequencyCap,
+      queued_at: queuedAtIso,
+      queue_name: targetQueue,
+      queue_payload: emailPayload,
+    },
+  })
 
   const { error: enqueueError } = await supabase.rpc('enqueue_email', {
     queue_name: targetQueue,
-    payload: {
-      message_id: messageId,
-      to: effectiveRecipient,
-      from: `${SITE_NAME} <${FROM_MAILBOX}@${FROM_DOMAIN}>`,
-      reply_to: REPLY_TO,
-      sender_domain: SENDER_DOMAIN,
-      subject: resolvedSubject,
-      html,
-      text: plainText,
-      headers: customHeaders,
-      purpose: 'transactional',
-      label: templateName,
-      idempotency_key: requestIdempotencyKey,
-      unsubscribe_token: unsubscribeToken,
-      queued_at: new Date().toISOString(),
-      bypass_frequency_cap: bypassFrequencyCap,
-    },
+    payload: emailPayload,
   })
 
   if (enqueueError) {

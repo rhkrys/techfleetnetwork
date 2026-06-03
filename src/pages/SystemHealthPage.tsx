@@ -216,7 +216,7 @@ export default function SystemHealthPage() {
           value={reconciler?.stuck_pending ?? 0}
           detail={
             reconciler?.last_run_at
-              ? `Reconciler last ran ${relativeTime(reconciler.last_run_at)} · terminal ${reconciler.last_run?.reconciled_terminal ?? 0} · dlq ${reconciler.last_run?.marked_dlq ?? 0}`
+              ? `Reconciler last ran ${relativeTime(reconciler.last_run_at)} · terminal ${reconciler.last_run?.reconciled_terminal ?? 0} · requeued ${reconciler.last_run?.requeued ?? 0} · dlq ${reconciler.last_run?.dlq_lost ?? reconciler.last_run?.marked_dlq ?? 0}`
               : "Reconciler runs every 5 min"
           }
           generatedAt={generatedAt}
