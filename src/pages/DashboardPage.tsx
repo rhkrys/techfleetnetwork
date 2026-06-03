@@ -17,6 +17,7 @@ import { ApplicationStatusBadge } from "@/components/ApplicationStatusBadge";
 import { BadgesDisplay } from "@/components/BadgesDisplay";
 import { DashboardCustomizer } from "@/components/DashboardCustomizer";
 import { DiscordInviteBanner } from "@/components/DiscordInviteBanner";
+import { ResumeApplicationBanner } from "@/components/ResumeApplicationBanner";
 import { DashboardEmptyState } from "@/components/DashboardEmptyState";
 import { GettingStartedChecklist, type ChecklistItem } from "@/components/GettingStartedChecklist";
 import { SectionEmptyState } from "@/components/SectionEmptyState";
