@@ -2722,6 +2722,7 @@ export type Database = {
           previous_engagement: string
           previous_engagement_ways: string[]
           psychological_safety: string
+          resume_reminder_sent_at: string | null
           service_leadership_actions: string
           service_leadership_challenges: string
           service_leadership_definition: string
@@ -2750,6 +2751,7 @@ export type Database = {
           previous_engagement?: string
           previous_engagement_ways?: string[]
           psychological_safety?: string
+          resume_reminder_sent_at?: string | null
           service_leadership_actions?: string
           service_leadership_challenges?: string
           service_leadership_definition?: string
@@ -2778,6 +2780,7 @@ export type Database = {
           previous_engagement?: string
           previous_engagement_ways?: string[]
           psychological_safety?: string
+          resume_reminder_sent_at?: string | null
           service_leadership_actions?: string
           service_leadership_challenges?: string
           service_leadership_definition?: string
