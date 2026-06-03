@@ -437,6 +437,41 @@ export async function queueTransactionalEmail({
     resolvedSubject = sanitizeBulkSubject(resolvedSubject)
   }
 
+  // Server-side dedup guard (Layer 1 of EMAIL-RECONCILE).
+  // If a row already exists for this messageId — terminal (sent/failed/dlq/
+  // suppressed/rate_limited/frequency_capped) OR recent pending (<5 min) —
+  // skip the enqueue entirely. Prevents the duplicate-pending artifact that
+  // made isabelle's community-agreement email show as "pending" forever even
+  // though it was actually delivered. The worker's own `alreadySent` guard
+  // is now a second line of defense.
+  {
+    const fiveMinAgoIso = new Date(Date.now() - 5 * 60 * 1000).toISOString()
+    const { data: existingRows } = await supabase
+      .from('email_send_log')
+      .select('id,status,created_at')
+      .eq('message_id', messageId)
+      .order('created_at', { ascending: false })
+      .limit(5)
+    const TERMINAL = new Set([
+      'sent', 'failed', 'dlq', 'suppressed', 'rate_limited', 'frequency_capped',
+    ])
+    const hasTerminal = (existingRows ?? []).some((r) => TERMINAL.has(r.status))
+    const hasRecentPending = (existingRows ?? []).some(
+      (r) => r.status === 'pending' && r.created_at > fiveMinAgoIso
+    )
+    if (hasTerminal || hasRecentPending) {
+      console.log('Duplicate enqueue skipped at source', {
+        messageId, templateName, hasTerminal, hasRecentPending,
+      })
+      return {
+        ok: true,
+        queued: true,
+        messageId,
+        suppressed: false,
+      }
+    }
+  }
+
   await insertEmailLog(supabase, {
     message_id: messageId,
     template_name: templateName,
