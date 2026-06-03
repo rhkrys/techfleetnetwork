@@ -163,12 +163,20 @@ export default function LoginPage() {
 
   // Auto-heal stale device-side lockouts on mount. Users should never have
   // to clear sessionStorage by hand — see auth-lockout.ts for the security
-  // rationale (server bucket is the real brute-force defense).
+  // rationale (server bucket is the real brute-force defense). If the user
+  // just completed a password reset, drop ANY remaining lockout — they
+  // proved identity via the recovery email.
   useEffect(() => {
-    maybeAutoHealAuthLockout();
+    const params = new URLSearchParams(location.search);
+    if (params.get("from") === "password-reset") {
+      clearAuthLockout();
+    } else {
+      maybeAutoHealAuthLockout();
+    }
     setLockoutState(getAuthLockoutState());
     flushPendingStaleChunkEvent();
-  }, []);
+  }, [location.search]);
+
 
   // Track which email the device counter is currently associated with.
   // Switching accounts = different rate-limit context, so clear silently.
