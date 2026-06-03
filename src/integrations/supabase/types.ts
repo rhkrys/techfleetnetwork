@@ -7344,6 +7344,12 @@ export type Database = {
         Returns: Json
       }
       drain_notification_outbox: { Args: { p_limit?: number }; Returns: Json }
+      email_message_ids_in_queue: {
+        Args: { p_message_ids: string[] }
+        Returns: {
+          message_id: string
+        }[]
+      }
       email_send_log_latest_failed: {
         Args: { p_since: string; p_template_name: string }
         Returns: {
@@ -7852,6 +7858,10 @@ export type Database = {
         Returns: Json
       }
       get_stakeholder_context: { Args: { p_id: string }; Returns: Json }
+      get_stuck_pending_email_count: {
+        Args: { p_age_minutes?: number }
+        Returns: number
+      }
       get_support_monthly_report: {
         Args: { _from?: string }
         Returns: {
@@ -8067,6 +8077,7 @@ export type Database = {
       recompute_all_stats_lock_key: { Args: never; Returns: number }
       reconcile_account_orphans: { Args: never; Returns: Json }
       reconcile_course_badge_parity: { Args: never; Returns: Json }
+      reconcile_stuck_emails: { Args: never; Returns: Json }
       record_event: {
         Args: {
           p_actor?: string
