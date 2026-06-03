@@ -1,0 +1,1 @@
+DELETE FROM public.rate_limits WHERE action = 'password_reset';
