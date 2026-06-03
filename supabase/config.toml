@@ -23,6 +23,8 @@ project_id = "iqsjhrhsjlgjiaedzmtz"
     verify_jwt = true
   [functions.freescout-provision-admin]
     verify_jwt = true
+  [functions.freescout-provision-customer]
+    verify_jwt = true
   [functions.gumroad-webhook]
     verify_jwt = false
   [functions.gumroad-reconcile]
