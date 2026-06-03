@@ -25,6 +25,7 @@ import { toast } from "sonner";
 import { CommunityAgreementPanel } from "@/components/CommunityAgreementPanel";
 import { LegalPolicyPanel } from "@/components/LegalPolicyPanel";
 import { DiscordInviteBanner } from "@/components/DiscordInviteBanner";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 interface Task {
   id: string;
