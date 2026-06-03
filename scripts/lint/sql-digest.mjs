@@ -42,6 +42,11 @@ function stripNoise(src) {
 // Reject newlines in the captured expression so a multi-statement block
 // can't trick the regex into reporting the wrong line number.
 const VIOLATION_RE = /\bdigest\s*\(\s*([^,)\n]+?)\s*,/gi;
+// Catch the additional Issue D (2026-06-02 audit) failure mode: bare `digest(`
+// without the `extensions.` schema qualifier. `pgcrypto` lives in `extensions`
+// after the security-hardening pass; anon/authenticated callers cannot resolve
+// the unqualified name → 42883 floods.
+const UNQUALIFIED_RE = /(?<![\w.])digest\s*\(/g;
 const OK_CAST_RE = /::\s*(text|bytea)\s*$/i;
 const ALLOWLIST_RE = /digest-cast-ok:/;
 
@@ -76,10 +81,30 @@ for (const file of files) {
     );
     violations += 1;
   }
+
+  // Pass 2 (Issue D, 2026-06-02 audit) — unqualified `digest(` after extensions
+  // schema move. Allowlist via ALLOWLIST_RE on the preceding line or the
+  // BASELINE_ALLOWLIST above.
+  let q;
+  while ((q = UNQUALIFIED_RE.exec(content)) !== null) {
+    const upTo = content.slice(0, q.index);
+    const lineNum = upTo.split("\n").length;
+    const prevLine = lines[lineNum - 2] ?? "";
+    if (ALLOWLIST_RE.test(prevLine)) continue;
+    if (BASELINE_ALLOWLIST.has(`${file}:${lineNum}`)) continue;
+    // Skip if it's already qualified inside the same expression
+    // (regex lookbehind already excludes `.digest(`, but be defensive).
+    const charBefore = content[q.index - 1] ?? "";
+    if (charBefore === ".") continue;
+    console.error(
+      `${file}:${lineNum} bare digest( — must be schema-qualified as extensions.digest( per Issue D.`,
+    );
+    violations += 1;
+  }
 }
 
 if (violations > 0) {
-  console.error(`\n✗ ${violations} digest() call(s) without ::text cast — see plan PART B-15.`);
+  console.error(`\n✗ ${violations} digest() call(s) failed lint — see plan PART B-15 and Issue D.`);
   process.exit(1);
 }
-console.log("✓ sql-digest: all digest() calls cast explicitly.");
+console.log("✓ sql-digest: all digest() calls cast explicitly and schema-qualified.");
