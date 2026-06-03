@@ -190,12 +190,6 @@ export function HelpDeskTab() {
                     </td>
                   </tr>
                 ))}
-                    <td className="py-2 pr-2 font-mono text-xs">{r.freescout_id ?? "—"}</td>
-                    <td className="py-2 pr-2 text-muted-foreground text-xs max-w-[24rem] truncate" title={r.last_error ?? ""}>
-                      {r.last_error ?? "—"}
-                    </td>
-                  </tr>
-                ))}
               </tbody>
             </table>
           )}
