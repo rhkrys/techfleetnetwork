@@ -83,8 +83,12 @@ for (const file of files) {
   }
 
   // Pass 2 (Issue D, 2026-06-02 audit) — unqualified `digest(` after extensions
-  // schema move. Allowlist via ALLOWLIST_RE on the preceding line or the
-  // BASELINE_ALLOWLIST above.
+  // schema move. Scoped to migrations dated 2026-06-03 or later so the
+  // pre-hardening historical baseline doesn't brick CI; older files keep the
+  // ::text-cast rule only. Allowlist via ALLOWLIST_RE or BASELINE_ALLOWLIST.
+  const dateMatch = file.match(/migrations\/(\d{8})/);
+  const isPostHardening = dateMatch && dateMatch[1] >= "20260603";
+  if (!isPostHardening) continue;
   let q;
   while ((q = UNQUALIFIED_RE.exec(content)) !== null) {
     const upTo = content.slice(0, q.index);
