@@ -15,6 +15,7 @@ import { IdleTimeoutGuard } from "@/components/IdleTimeoutGuard";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ScopedErrorBoundary } from "@/components/ScopedErrorBoundary";
 import { AuthRedirectHandler } from "@/components/AuthRedirectHandler";
+import { RouteTitle } from "@/components/RouteTitle";
 import { IdleMount } from "@/components/IdleMount";
 import { Suspense } from "react";
 import { lazyWithRetry as lazy } from "@/lib/lazy-with-retry";
@@ -201,6 +202,7 @@ const App = () => (
               {/* AuthRedirectHandler stays eager — it gates routing decisions and
                   must run on first paint. The rest are non-critical and deferred. */}
               <AuthRedirectHandler />
+              <RouteTitle />
               <IdleMount>
                 <Suspense fallback={null}>
                   <RouteChangeReloader />
