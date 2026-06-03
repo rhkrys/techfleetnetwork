@@ -505,6 +505,19 @@ export default function FirstStepsPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* §2B1: verb+object confirm before uncompleting a finished onboarding task */}
+      <ConfirmDialog
+        open={pendingUncomplete !== null}
+        onOpenChange={(o) => { if (!o) setPendingUncomplete(null); }}
+        title="Mark this task incomplete?"
+        consequence="Your progress for this step will be cleared. You can complete it again anytime."
+        actionLabel="Mark incomplete"
+        cancelLabel="Keep it complete"
+        destructive
+        loading={loadingId === pendingUncomplete}
+        onConfirm={confirmUncomplete}
+      />
     </div>
   );
 }
