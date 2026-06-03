@@ -10,7 +10,8 @@ interface SEOProps {
 const BASE_URL = "https://techfleet.network";
 
 export function SEO({ title, description, canonicalPath, ogType = "website" }: SEOProps) {
-  const fullTitle = title.includes("Tech Fleet") ? title : `${title} | Tech Fleet`;
+  const SUFFIX = " | Tech Fleet Network Platform | Agile Practice and Teamwork For All";
+  const fullTitle = title.includes("Tech Fleet Network Platform") ? title : `${title}${SUFFIX}`;
   const canonical = canonicalPath ? `${BASE_URL}${canonicalPath}` : BASE_URL;
 
   return (
