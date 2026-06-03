@@ -236,7 +236,13 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
       continue
     }
     // Adaptive send delay: if this queue is recovering from 429s, slow down.
-    const sendDelayMs = baseDelayByQueue[queue] * Math.pow(2, Math.min(consecutive[queue] ?? 0, 4))
+    let sendDelayMs = baseDelayByQueue[queue] * Math.pow(2, Math.min(consecutive[queue] ?? 0, 4))
+    // Plan §1.H: when the bulk lane is at ≥80% of its hourly cap, double the
+    // delay for the rest of this run so we glide under the cap instead of
+    // racing into a 429.
+    if (queue === 'bulk_emails' && bulkHourlyCap > 0 && bulkSentLastHour >= 0.8 * bulkHourlyCap) {
+      sendDelayMs = sendDelayMs * 2
+    }
     const batchSize = batchSizeByQueue[queue]
 
     const { data: messages, error: readError } = await supabase.rpc('read_email_batch', {
