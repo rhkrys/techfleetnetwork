@@ -129,17 +129,23 @@ export function MemberWorldMap() {
         <PageTitle>Member Locations</PageTitle>
         <div className="flex gap-4 text-sm text-muted-foreground flex-wrap">
           <span>
-            <strong className="text-foreground">{totalMembers}</strong> members
+            <strong className="text-foreground">{totalMembers.toLocaleString()}</strong> all-time signups
           </span>
           <span>
             <strong className="text-foreground">{countriesRepresented}</strong> countries
           </span>
+          {totalExternal > 0 && (
+            <span className="text-xs">
+              ({totalPlatform.toLocaleString()} platform members + {totalExternal.toLocaleString()} historical)
+            </span>
+          )}
           {unspecifiedCount > 0 && (
             <span>
               <strong className="text-foreground">{unspecifiedCount}</strong> not specified
             </span>
           )}
         </div>
+
       </div>
 
       <div className="relative w-full overflow-hidden rounded-lg bg-muted/20 border border-border">
