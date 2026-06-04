@@ -105,10 +105,10 @@ async function ensureCustomerForUser(userId: string): Promise<{ customerId: stri
   if (!customer) customer = await createCustomer(email, firstName, lastName);
   const id = String(customer.id);
   if (prof) {
-    await admin.from("profiles").update({ freescout_customer_id: id }).eq("id", userId);
+    await admin.from("profiles").update({ freescout_customer_id: id }).eq("user_id", userId);
   }
   await admin.from("support_provisioning_log").insert({
-    user_id: userId, kind: "customer", freescout_id: id, status: "success", attempts: 1,
+    user_id: prof?.id ?? userId, kind: "customer", freescout_id: id, status: "success", attempts: 1,
   });
   return { customerId: id, email, firstName, lastName };
 }
