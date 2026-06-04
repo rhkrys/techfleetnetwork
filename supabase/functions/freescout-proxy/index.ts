@@ -76,7 +76,7 @@ async function ensureCustomerForUser(userId: string): Promise<{ customerId: stri
   const { data: prof, error } = await admin
     .from("profiles")
     .select("id, email, first_name, last_name, freescout_customer_id")
-    .eq("id", userId)
+    .eq("user_id", userId)
     .maybeSingle();
   if (error) {
     console.error(JSON.stringify({ level: "error", fn: "freescout-proxy", code: "profile_lookup_failed", userId, msg: error.message }));
