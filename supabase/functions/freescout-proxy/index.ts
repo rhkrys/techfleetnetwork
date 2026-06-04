@@ -217,7 +217,7 @@ Deno.serve(async (req) => {
         // Fetch profile email so we can also filter by customerEmail — covers legacy
         // conversations that Freescout linked by email to a different customer id.
         const { data: profEmail } = await getAdminClient()
-          .from("profiles").select("email").eq("id", auth.userId).maybeSingle();
+          .from("profiles").select("email").eq("user_id", auth.userId).maybeSingle();
         const data = await freescoutFetch<{ _embedded?: { conversations?: unknown[] } }>({
           path: "/api/conversations",
           query: {
