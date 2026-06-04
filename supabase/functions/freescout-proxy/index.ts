@@ -206,7 +206,7 @@ Deno.serve(async (req) => {
     switch (input.action) {
       case "listMine": {
         const { data: prof } = await getAdminClient()
-          .from("profiles").select("freescout_customer_id").eq("id", auth.userId).maybeSingle();
+          .from("profiles").select("freescout_customer_id").eq("user_id", auth.userId).maybeSingle();
         if (!prof?.freescout_customer_id) {
           const body = { items: [] };
           const k = (input as { _cacheKey?: string })._cacheKey;
