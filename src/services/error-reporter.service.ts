@@ -399,6 +399,21 @@ export function reportError(
   const options: ReportOptions = typeof optionsOrUserId === "string"
     ? { userId: optionsOrUserId }
     : optionsOrUserId;
+  // Tag Postgres "column reference ... is ambiguous" errors with a stable
+  // fingerprint keyed by the offending function so regressions of the
+  // plpgsql OUT-param shadowing class group instantly in Triage.
+  const ambiguous = /column reference "([^"]+)" is ambiguous/i.exec(msg);
+  if (ambiguous) {
+    const col = ambiguous[1];
+    const fnMatch = /\b(get_[a-z0-9_]+|[a-z0-9_]+_(?:summary|dashboard|status|distribution|fingerprints))\b/i.exec(`${source} ${msg}`);
+    const fn = fnMatch ? fnMatch[1] : "unknown_fn";
+    options.extraFields = [
+      ...(options.extraFields ?? []),
+      `fingerprint:pg.column_ambiguous:${fn}:${col}`,
+      `pg_error:column_ambiguous`,
+    ];
+    options.severity = "error";
+  }
   void reportToAuditLog(msg, source, options);
 
 }
