@@ -129,7 +129,7 @@ async function ownsConversation(userId: string, conversationId: number): Promise
     });
     const custId = conv?.customer?.id ? String(conv.customer.id) : null;
     if (!custId) return false;
-    const { data: prof } = await admin.from("profiles").select("freescout_customer_id").eq("id", userId).maybeSingle();
+    const { data: prof } = await admin.from("profiles").select("freescout_customer_id").eq("user_id", userId).maybeSingle();
     return prof?.freescout_customer_id === custId;
   } catch {
     return false;
