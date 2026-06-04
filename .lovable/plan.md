@@ -1,67 +1,62 @@
-# Add historical Fillout signups to the Member World Map
+# Permanent fix: eliminate OUT-param/column ambiguity in plpgsql RETURNS TABLE functions
 
-## Data from the uploaded CSV
+## What happened
 
-Parsed 1,457 rows, deduped by email → **75 countries, ~1,400 unique signups**. Top: US 541, Nigeria 362, Canada 92, UK 84, India 54, Kenya 34, Germany 20, Ghana 17, Spain 12, South Africa 10, Pakistan 10, …
+`get_refactor_kpis(p_days)` declares OUT columns named `metric_key`, `current_value`, `trend`, etc. — the exact same names as columns in `refactor_kpi_daily` / `refactor_kpi_catalog`. Inside `RETURN QUERY`, Postgres can't tell whether `metric_key` refers to the OUT parameter (a plpgsql variable) or a table column, so it raises `column reference "metric_key" is ambiguous`. Last turn's hotfix added `#variable_conflict use_column` to that single function. That stops the bleeding but doesn't prevent the next function from shipping the same bug.
 
-## What exists today
+## Goal
 
-- `public.profiles.country` is the live source of truth (members who sign up on the platform).
-- RPC `get_member_country_distribution()` returns `{country, count}` from `profiles` only.
-- `src/components/MemberWorldMap.tsx` consumes that RPC and shades countries on a d3-geo world map.
-- No table currently stores external/historical signups.
+Make this class of bug structurally impossible: any new or edited SECURITY DEFINER / RETURNS TABLE plpgsql function must either prefix-namespace its OUT columns OR opt into `#variable_conflict use_column`, and CI must fail otherwise.
 
-## Approach
+## Plan
 
-Keep live tracking (profiles) intact. Add a second, additive source for historical/external signups so the map shows an **all-time** number = `platform members + external signups`.
+### 1. Audit + fix every existing offender
 
-### 1. New table: `public.external_country_signups`
+- Query `pg_proc` for all `public.*` plpgsql functions where `RETURNS TABLE` OUT-column names overlap with any column in tables referenced in the function body.
+- For each hit, apply the same one-line fix: insert `#variable_conflict use_column` at the top of the function body.
+- Ship as a single SQL migration `fix_plpgsql_column_ambiguity.sql`.
 
-Columns: `country` (canonical name, unique with `source`), `unique_signups` (int), `source` (text, e.g. `fillout_community_signup_2026_06`), `notes`, timestamps. RLS: admin write, authenticated read. GRANTs included.
+Likely candidates to inspect first (same pattern — RETURNS TABLE with column-style names): `get_refactor_kpis` (done), `get_member_country_distribution`, `get_email_lane_status`, `get_triage_summary`, `discover_audit_fingerprints`, `get_web_vitals_summary`, plus any `*_summary` / `*_dashboard` RPC.
 
-Designed to accept future imports (additional Fillout exports, partner lists, etc.) — not a one-off dump.
+### 2. CI guard: forbid silent re-introduction
 
-### 2. Seed migration
+Add `scripts/ci/check-plpgsql-variable-conflict.mjs` to the existing `quality` job. It:
+- Walks `supabase/migrations/**/*.sql`.
+- Parses every `CREATE OR REPLACE FUNCTION ... RETURNS TABLE (...) LANGUAGE plpgsql ... AS $$ ... $$`.
+- Fails the build if the body references any OUT-column name unqualified **and** the body does NOT contain `#variable_conflict use_column`.
+- Allow-list escape hatch: a `-- @safe-variable-conflict` comment immediately above the function for cases where the author proves there's no shadowing.
 
-Insert all 75 country rows from the CSV with `source='fillout_community_signup_2026_06'`. Country names normalized to match `COUNTRY_NAME_TO_ID` keys (e.g. "United States of America" → "United States", "Republic of Korea (South Korea)" → "South Korea", "Syria, Syrian Arab Republic" → "Syria"). Unmapped names are kept verbatim and still counted in totals (will surface as "Not specified" only if the map can't resolve them — we'll log any).
+### 3. Author convention (memory + lint message)
 
-### 3. RPC update: `get_member_country_distribution()`
+- Add a Core memory line: *"Every plpgsql `RETURNS TABLE` function must start with `#variable_conflict use_column` OR rename OUT params with an `o_` prefix. Enforced by `scripts/ci/check-plpgsql-variable-conflict.mjs`."*
+- Make the CI failure message actionable, e.g. `Function get_foo: OUT column 'metric_key' shadows a referenced table column. Add '#variable_conflict use_column' as the first line of the function body.`
 
-Replace body with a UNION ALL + SUM:
+### 4. Runtime safety net (defense in depth)
 
-```sql
-SELECT country, SUM(cnt)::int AS cnt, SUM(platform_cnt)::int, SUM(external_cnt)::int
-FROM (
-  SELECT COALESCE(NULLIF(country,''),'Not specified') AS country,
-         count(*)::int AS cnt, count(*)::int AS platform_cnt, 0 AS external_cnt
-  FROM public.profiles GROUP BY 1
-  UNION ALL
-  SELECT country, unique_signups, 0, unique_signups
-  FROM public.external_country_signups
-) u
-GROUP BY country
-ORDER BY cnt DESC;
-```
+- In `src/integrations/supabase` client error handling (or the shared `auditedInvoke` wrapper), tag any Postgres error matching `/column reference ".+" is ambiguous/i` as `severity:"error"` with fingerprint `pg.column_ambiguous:<fn_name>` so a regression instantly surfaces in System Health → Triage with the offending function in the title.
 
-Return shape extended to `{country, count, platform_count, external_count}` — backward compatible (existing `count` field preserved).
+### 5. BDD coverage
 
-### 4. UI update: `MemberWorldMap.tsx`
+Add scenarios `KPI-DASH-030..032`:
+- KPI-DASH-030 — admin loads Refactor KPIs and sees rows (no error toast). [UI][DB][Code]
+- KPI-DASH-031 — `select get_refactor_kpis(30)` returns >0 rows in DB. [DB]
+- KPI-DASH-032 — CI guard fails when a new function with shadowing OUT param lands without the directive. [Code]
 
-- Header stat changes from "N members" → **"N all-time signups"** with a sub-line "M platform members · K historical signups".
-- Tooltip per country: `"{name}: {total} all-time ({platform} platform + {external} historical)"` when external > 0, else current copy.
-- Legend unchanged otherwise.
+### 6. Memory update
 
-### 5. Ongoing tracking
+- Replace the existing **Refactor KPIs Dashboard** memory note with one extra sentence noting the `#variable_conflict use_column` requirement.
+- New memory entry **plpgsql OUT-param Shadowing Guard** under `mem://constraints/plpgsql-variable-conflict`.
 
-Nothing to wire up — `profiles.country` is already captured at signup (Register / Welcome Wizard / Profile setup). The external table is purely additive for historical data; future Fillout exports can be re-imported via an admin migration or a small `/admin/ingest` action (out of scope for this turn unless requested).
+## Files touched
 
-## Files / migrations
+- 1 migration (audit + fix all current offenders)
+- `scripts/ci/check-plpgsql-variable-conflict.mjs` (new)
+- `.github/workflows/*.yml` quality job (wire in the new check)
+- `src/lib/errors/*` or `auditedInvoke` (add ambiguous-column tag)
+- `bdd_scenarios` rows (3 new)
+- `mem://index.md` + `mem://constraints/plpgsql-variable-conflict.md`
 
-- **New migration**: create `external_country_signups` + GRANTs + RLS + seed 75 rows + replace `get_member_country_distribution()`.
-- **Edit** `src/components/MemberWorldMap.tsx`: new fields in `CountryCount` type, updated header + tooltip copy.
-- **BDD**: add scenarios `MAP-LOC-001..003` covering (a) external rows surface on map, (b) totals = platform+external, (c) ongoing profile inserts still increment counts.
-- **Memory**: short note under `mem://features/network-stats-v4` pointing to the new additive source.
+## Out of scope
 
-## Open question
-
-Should I also dedupe CSV emails against existing `profiles.email` so members who later signed up on the platform aren't double-counted? Default: **no dedupe** (user said "all time number should include both"), but happy to add a `seeded_email_hashes` column + subtract overlap if you'd prefer accurate uniques.
+- Renaming OUT params project-wide (purely cosmetic; the directive is sufficient and less churn).
+- Changes to the React UI — `RefactorKPIsTab.tsx` already handles the success path; once the RPC stops throwing, the dashboard loads.
