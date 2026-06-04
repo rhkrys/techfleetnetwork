@@ -89,7 +89,16 @@ export default function CohortFormPage() {
         </div>
       )}
 
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+      <form
+        onSubmit={(e) => {
+          // Guard: react-hook-form's async zodResolver can reject as an
+          // unhandledrejection on some submit paths; swallow here (the form
+          // already renders field errors) so it never leaks to the global
+          // error reporter as a severity=error client_error.
+          void form.handleSubmit(onSubmit)(e).catch(() => {});
+        }}
+        className="space-y-4"
+      >
         <div>
           <Label htmlFor="label">Label</Label>
           <Input id="label" placeholder="e.g. Spring 2026" {...form.register("label")} />

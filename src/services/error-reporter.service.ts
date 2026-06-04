@@ -43,12 +43,16 @@ const NON_ACTIONABLE_EVENT_TYPES: ReadonlySet<string> = new Set([
   // never actionable code bugs — bad URL/short password is the user's input,
   // not a regression. Stays in audit_log; blocked from triage queue.
   "validation_rejected",
-  // Email queue guardrails (frequency cap + TTL/DLQ): healthy deliverability
+  // Email queue guardrails + benign lifecycle events: healthy deliverability
   // protections, audited via audit_log + email_send_log + System Health, but
-  // never an actionable code defect. Mirrors v_non_actionable in the DB
-  // trigger and v_excluded_events in discover_audit_fingerprints.
+  // never an actionable code defect. Mirrors v_excluded_events in
+  // discover_audit_fingerprints and the DB trigger.
   "email_capped",
   "email_dlq",
+  "email_reconciled",
+  "email_rate_limited",
+  "email_frequency_capped",
+  "email_suppressed",
 ]);
 
 
