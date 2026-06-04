@@ -1,87 +1,63 @@
-## Goal
+## Activity-log audit (May 1 – Jun 4, 2026) — honest delta
 
-Stop three benign / already-fixed signals from ever re-entering the Triage queue, and resolve the existing rows.
+### What I previously proposed is ALREADY shipped
 
-## Root causes (verified in DB)
+Cross-checked against memory + codebase + DB. All of the following are live and need no work:
 
-1. **"Reconciled — original sent at …"** — `audit_email_send_log` trigger writes ANY `email_send_log` insert (including the benign `status='reconciled'` reconciliation note) to `audit_log` with `error_message=NEW.error_message` populated and no `severity:info` tag. `discover_audit_fingerprints` then promotes it to `agent_fix_queue` as `severity='error'`. Same fall-through applies to `rate_limited`, `frequency_capped`, `suppressed`.
-2. **`ZodError: [ … "registration_url" … "Registration URL is required" ]`** — react-hook-form's async zodResolver path lets a ZodError leak to `window.unhandledrejection`. The global reporter classifies it as `client_error severity=error` and routes it to Triage. `reportValidationRejection`'s required-only filter is bypassed because nobody calls it from the unhandledrejection path.
-3. **`column reference "metric_key" is ambiguous`** — function fixed last turn (`#variable_conflict use_column` + DB-wide backfill + CI guard). Only the historical fingerprints remain in `agent_fix_queue`.
+| Item | Where it lives |
+|---|---|
+| `lazyWithRetry` + ESLint rule + UpdateBanner + multi-layer stale-chunk guard | `src/lib/lazyWithRetry.ts`, `scripts/lint/eslint-plugin-lazy-requires-retry.mjs`, [Stale chunk prevention] |
+| Chunk-load → `severity:warn`, blocked from Triage at 8 layers | [Triage Noise Suppression] |
+| Duplicate generic audit triggers dropped on profiles / general_applications / project_applications / projects | Verified via `pg_trigger` — only targeted `audit_table_change_filtered` + lifecycle triggers remain. [Audit Sink Tri-Partite] |
+| Audit sink CI guard | `scripts/ci/check-audit-sink-coverage.mjs` |
+| Workspace email token bucket consumed inside fan-out | [Email Workspace Token Bucket] |
+| Bulk vs auth/transactional lane isolation + per-lane cooldown | [Email Queue Per-Lane Cooldown] |
+| `freescout-proxy invoke_error` → `severity:warn` + retry contract | [Edge CORS Trace Header], [Get Help Scale Contract] |
+| ZodError unhandled-rejection classifier | last turn |
+| Benign email lifecycle events (`reconciled`/`rate_limited`/`frequency_capped`/`suppressed`) reclassified to `severity:info` | last turn |
+| `metric_key` ambiguous + DB-wide `#variable_conflict use_column` backfill + CI guard | last turn |
+| No-auto-reload on deploy | [No Auto-Reload On Deploy] |
 
-## Changes
+The `profile_updated` (2,617) vs `profiles_update` (927) counts I flagged are NOT duplicates — `profile_updated` is a `record_event` call from `profile.service.ts`, `profiles_update` is the targeted privileged-column trigger. Different events on different rows. Withdrawing that finding.
 
-### A. Benign email-lifecycle events never reach Triage
+### What stopped occurring after the May refactor (no action needed)
 
-**Migration** — rewrite `audit_email_send_log` so benign statuses (`reconciled`, `rate_limited`, `frequency_capped`, `suppressed`) write to `audit_log` with:
-- `error_message = NULL` (the human note moves into `changed_fields` as `note:<truncated>`),
-- `changed_fields` includes `severity:info`.
+Latest occurrence dates from the CSV confirm these were already fixed by later migrations:
 
-This makes `discover_audit_fingerprints` skip them via the existing `has_severity_tag AND NOT any_error` branch.
+| Issue | Last seen | Status |
+|---|---|---|
+| `permission denied for get_announcement_view_counts` / `get_course_completion_counts` / `get_community_events_health` | May 13–14 | GRANTed — verified `has_function_privilege('authenticated', …) = true` for all three |
+| `column pr.user_id does not exist` | May 13 | Code path fixed |
+| `column email_domain_health.window_days does not exist` | May 26 | Schema/caller aligned |
+| `missing_unsubscribe` (transactional 400s) | May 13 | Unsubscribe token wiring fixed |
+| CookieYes "URL has changed" | May 16 | Domain re-registered |
+| `permission denied for get_community_events_health` | May 14 | Granted |
 
-**Defense in depth** — extend `discover_audit_fingerprints.v_excluded_events` with `'email_reconciled'`, `'email_rate_limited'`, `'email_frequency_capped'`, `'email_suppressed'`.
+No need to re-fix; just keep monitoring for recurrence in the next 30 days.
 
-**Client mirror** — add the same four event types to `NON_ACTIONABLE_EVENT_TYPES` in `src/services/error-reporter.service.ts` so any client-side echo also stays out of the queue.
+### What IS still live (the actual fix list)
 
-**Backlog purge** — in the same migration:
-```sql
-UPDATE public.agent_fix_queue
-SET status='resolved', resolution_note='Auto-resolved: benign email lifecycle event reclassified',
-    updated_at=now()
-WHERE status IN ('pending','triaged','proposed')
-  AND event_type IN ('email_reconciled','email_rate_limited','email_frequency_capped','email_suppressed');
-```
+Only three signals from late May / early June, narrowly scoped:
 
-### B. ZodError unhandled rejections classified, never severity=error
+1. **`use-autosave` Error: [object Object]** (40 hits, last seen **May 28**)
+   - Root cause: `useAutosave` catch passes the raw Error object to `report()` instead of using `serializeError`. Stringification yields `[object Object]`.
+   - Fix: replace `String(err)` / `${err}` with `serializeError(err)` (already exists project-wide) in `src/hooks/use-autosave.ts` + add an ESLint rule banning bare `String(err)` / `${err}` inside `catch (err)` blocks.
 
-**`src/services/error-reporter.service.ts`**:
-- Add `isZodErrorMessage(msg)` classifier (matches `^ZodError:` plus a parseable JSON issues array).
-- Add `classifyZodError(msg)`: parses the issues; if every issue is `too_small` / `invalid_type` / required-text → return `"required"` (drop silently with `recordSuppression('__zod_required__')`); otherwise return `"meaningful"` and route via `reportToAuditLog` with `eventType:"validation_rejected"`, `severity:"warn"`.
-- Hook the classifier at the top of `chunkAwareReport` and at `reportError` entrypoints, BEFORE the default `client_error severity=error` path.
+2. **"We couldn't save your application. Refresh and try again."** (51 hits, last **May 28**)
+   - Same root cause family as #1 — `general-application.service.ts` autosave wraps a generic Error around an unserialized cause. Fix is the same `serializeError` swap + propagating the underlying status code so the toast can offer a real recovery hint.
 
-This converts the registration_url case (all `too_small` + required) into a silent drop (with aggregate `client_error_suppressed` flush) and keeps real schema/regex regressions visible at `warn` in System Health.
+3. **`function digest(text, unknown) does not exist` (code 42883)** (16+4 hits, last **May 28**)
+   - Caller passes `digest(text, text)` where the qualified `extensions.digest(bytea, text)` is required after the security-hardening extension move.
+   - Fix: grep for all `digest(` callsites in SQL functions/migrations; convert to `extensions.digest(convert_to(<text>, 'UTF8'), 'sha256')`; pin `extensions` into the function's `SET search_path`; add a one-line CI grep guard in `scripts/lint/sql-digest.mjs` (file already exists — extend it).
 
-**Form hardening (defense in depth)** — wrap `form.handleSubmit(onSubmit)` in `CohortFormPage.tsx` so a rejected promise from the resolver can't escape:
-```tsx
-<form onSubmit={(e) => { void form.handleSubmit(onSubmit)(e).catch(() => {}); }}>
-```
-Apply the same pattern to any other page that uses an async zodResolver with `handleSubmit` directly inline.
+### Out of scope / not justified by the data
 
-**Backlog purge** — same migration:
-```sql
-UPDATE public.agent_fix_queue
-SET status='resolved', resolution_note='Auto-resolved: ZodError reclassified as validation_rejected'
-WHERE status IN ('pending','triaged','proposed')
-  AND error_message ILIKE 'ZodError:%';
-```
+- New `lazyWithRetry` work — already shipped.
+- Duplicate-audit dedup work — false alarm.
+- Email pacing / DLQ overhaul — token bucket + lane isolation are recent and the log shows the 06:58 burst completed without provider 429s on Jun 3–4 (the 29 × 429s clustered May 13).
+- RPC-GRANT CI guard — current GRANTs are correct and the 42501 errors stopped 3 weeks ago. Will revisit only if a recurrence shows up.
+- Health-check repetition — these are `audit_log` rows tagged `severity:info` already; they don't reach Triage.
 
-### C. metric_key ambiguity backlog
+### Shipment
 
-```sql
-UPDATE public.agent_fix_queue
-SET status='resolved', resolution_note='Auto-resolved: fixed by plpgsql variable_conflict guard + DB backfill'
-WHERE status IN ('pending','triaged','proposed')
-  AND error_message ILIKE '%column reference "metric_key" is ambiguous%';
-```
-
-### D. BDD + memory
-
-Append scenarios to `bdd_scenarios`:
-- `EMAIL-RECON-NOISE-001` — reconcile_stuck_emails appends a reconciled row → audit_log has severity:info, agent_fix_queue unchanged.
-- `TRIAGE-NOISE-013` — unhandledrejection ZodError with only required-field issues → no audit_log row, suppression counter increments.
-- `TRIAGE-NOISE-014` — unhandledrejection ZodError with a regex/refine failure → audit_log row event_type=validation_rejected severity=warn, agent_fix_queue unchanged.
-
-Memory: update `mem://features/triage-noise-suppression.md` with the four new benign email event types and the ZodError classifier; update `mem://index.md` Core line on triage noise suppression to mention "ZodError unhandled rejections classified as validation_rejected (warn) or dropped when required-only".
-
-## Files
-
-- `supabase/migrations/<ts>_silence_benign_email_and_zod_triage.sql` — trigger rewrite, discover exclusion list, backlog purge.
-- `src/services/error-reporter.service.ts` — ZodError classifier + NON_ACTIONABLE additions.
-- `src/pages/CohortFormPage.tsx` — `void … .catch(() => {})` wrap.
-- BDD scenarios insert.
-- `mem://features/triage-noise-suppression.md`, `mem://index.md`.
-
-## Out of scope
-
-- Changing reconciler behavior (it's correct; only its audit shape is wrong).
-- Touching `get_refactor_kpis` again (already fixed).
-- Rewriting Zod schema for `registration_url` (the schema is correct; the leak is at the reporter layer).
+Single migration + service edit + ESLint rule, covering only the three live items above.
