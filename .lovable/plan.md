@@ -1,98 +1,67 @@
-# Permanent fix: eliminate `rate_limit:workspace:email_send` 429s
+# Add historical Fillout signups to the Member World Map
 
-## What's happening today
+## Data from the uploaded CSV
 
-The only 429 in the last 14 days fired on **2026-05-31 19:00 UTC** (`occurrence_count=1`, already auto-resolved by the cooldown). The Triage row the user is seeing is stale.
+Parsed 1,457 rows, deduped by email → **75 countries, ~1,400 unique signups**. Top: US 541, Nigeria 362, Canada 92, UK 84, India 54, Kenya 34, Germany 20, Ghana 17, Spain 12, South Africa 10, Pakistan 10, …
 
-But the root cause is real: the provider key is **workspace-scoped** (`rate_limit:workspace:email_send:9wtSoOwS1AHHNpYNTGKb`), and every lane (`auth_emails`, `transactional_emails`, `bulk_emails`) plus every concurrent edge isolate shares it. Today we only react **after** a 429:
+## What exists today
 
-- per-lane exponential cooldown ✓ (works, but lossy — 62s pause)
-- adaptive `send_delay_ms` doubling ✓ (only kicks in after the first 429)
-- bulk hourly cap ✓ (per-lane, not workspace)
+- `public.profiles.country` is the live source of truth (members who sign up on the platform).
+- RPC `get_member_country_distribution()` returns `{country, count}` from `profiles` only.
+- `src/components/MemberWorldMap.tsx` consumes that RPC and shades countries on a d3-geo world map.
+- No table currently stores external/historical signups.
 
-There is **no proactive throttle** across lanes/isolates. A NOTIFY-burst + a cron tick can put 3 isolates side-by-side, each respecting their own per-lane pace, and collectively breach the workspace cap.
+## Approach
 
-## Fix (permanent, no band-aid)
+Keep live tracking (profiles) intact. Add a second, additive source for historical/external signups so the map shows an **all-time** number = `platform members + external signups`.
 
-Introduce a **workspace-wide token bucket** that every send must claim a token from. Tokens regenerate at a rate strictly below the provider cap, and self-tune downward on 429s / upward on sustained success. The cooldown logic stays as a second line of defense, but in steady state it never fires.
+### 1. New table: `public.external_country_signups`
 
-### 1. DB: atomic token bucket
+Columns: `country` (canonical name, unique with `source`), `unique_signups` (int), `source` (text, e.g. `fillout_community_signup_2026_06`), `notes`, timestamps. RLS: admin write, authenticated read. GRANTs included.
 
-New table + 3 SECURITY DEFINER RPCs:
+Designed to accept future imports (additional Fillout exports, partner lists, etc.) — not a one-off dump.
+
+### 2. Seed migration
+
+Insert all 75 country rows from the CSV with `source='fillout_community_signup_2026_06'`. Country names normalized to match `COUNTRY_NAME_TO_ID` keys (e.g. "United States of America" → "United States", "Republic of Korea (South Korea)" → "South Korea", "Syria, Syrian Arab Republic" → "Syria"). Unmapped names are kept verbatim and still counted in totals (will surface as "Not specified" only if the map can't resolve them — we'll log any).
+
+### 3. RPC update: `get_member_country_distribution()`
+
+Replace body with a UNION ALL + SUM:
 
 ```sql
-create table public.email_workspace_throttle (
-  id            int primary key default 1,
-  tokens        numeric not null default 5,     -- current bucket level
-  capacity      numeric not null default 5,     -- burst size
-  refill_per_s  numeric not null default 2.0,   -- steady-state cap (req/sec)
-  min_refill    numeric not null default 0.5,
-  max_refill    numeric not null default 4.0,
-  last_refill_at timestamptz not null default now(),
-  last_429_at   timestamptz,
-  successes_since_429 int not null default 0,
-  check (id = 1)
-);
-
--- Returns wait_ms (0 if a token was consumed, >0 if caller should wait).
-create function public.consume_workspace_email_token(p_count int default 1)
-returns int language plpgsql security definer ...;
-
-create function public.record_workspace_email_429()
-returns void language plpgsql security definer ...;  -- halves refill_per_s, clamped to min_refill
-
-create function public.record_workspace_email_success()
-returns void language plpgsql security definer ...;  -- after N=500 wins, +10% up to max_refill
+SELECT country, SUM(cnt)::int AS cnt, SUM(platform_cnt)::int, SUM(external_cnt)::int
+FROM (
+  SELECT COALESCE(NULLIF(country,''),'Not specified') AS country,
+         count(*)::int AS cnt, count(*)::int AS platform_cnt, 0 AS external_cnt
+  FROM public.profiles GROUP BY 1
+  UNION ALL
+  SELECT country, unique_signups, 0, unique_signups
+  FROM public.external_country_signups
+) u
+GROUP BY country
+ORDER BY cnt DESC;
 ```
 
-Singleton row, `FOR UPDATE` lock → atomic across all isolates and lanes. No app-side coordination needed.
+Return shape extended to `{country, count, platform_count, external_count}` — backward compatible (existing `count` field preserved).
 
-### 2. Worker: claim before send
+### 4. UI update: `MemberWorldMap.tsx`
 
-In `supabase/functions/process-email-queue/index.ts`, immediately before every `fetch(EMAIL_API)` call:
+- Header stat changes from "N members" → **"N all-time signups"** with a sub-line "M platform members · K historical signups".
+- Tooltip per country: `"{name}: {total} all-time ({platform} platform + {external} historical)"` when external > 0, else current copy.
+- Legend unchanged otherwise.
 
-```ts
-const { data: waitMs } = await supabase.rpc('consume_workspace_email_token');
-if ((waitMs ?? 0) > 0) {
-  // Bucket empty — leave message in queue, exit the lane cleanly.
-  // Cron will retry; NOTIFY trigger debounced to >= 1s.
-  break;
-}
-```
+### 5. Ongoing tracking
 
-On 200 from the provider → `record_workspace_email_success()`.
-On 429 → `record_workspace_email_429()` **in addition to** the existing per-lane cooldown.
+Nothing to wire up — `profiles.country` is already captured at signup (Register / Welcome Wizard / Profile setup). The external table is purely additive for historical data; future Fillout exports can be re-imported via an admin migration or a small `/admin/ingest` action (out of scope for this turn unless requested).
 
-Net effect: the worker can never out-run the bucket, regardless of how many isolates are warm.
+## Files / migrations
 
-### 3. Calm the fan-out
+- **New migration**: create `external_country_signups` + GRANTs + RLS + seed 75 rows + replace `get_member_country_distribution()`.
+- **Edit** `src/components/MemberWorldMap.tsx`: new fields in `CountryCount` type, updated header + tooltip copy.
+- **BDD**: add scenarios `MAP-LOC-001..003` covering (a) external rows surface on map, (b) totals = platform+external, (c) ongoing profile inserts still increment counts.
+- **Memory**: short note under `mem://features/network-stats-v4` pointing to the new additive source.
 
-- `trg_notify_email_worker_tx` already pokes the worker on every enqueue. Add a 500 ms debounce key in `email_send_state.last_notify_at`; skip NOTIFY if fired within the window.
-- Drop default `batch_size` 5 → **3** for transactional, keep bulk at 3. Token bucket is the real cap now; batch size just controls work-per-tick.
+## Open question
 
-### 4. Clean up the stale alert + harden Triage
-
-- Resolve the May-31 `email_rate_limited` row with `dismissed_reason="superseded by workspace token bucket EMAIL-RL-010"`.
-- `discover_audit_fingerprints` already honors `severity:*` tags — emit `severity:warn` on workspace-throttle waits (so they never reach Triage) and keep `severity:error` only for actual provider 429s.
-
-### 5. BDD + memory
-
-- New scenarios `EMAIL-RL-010..014`:
-  - 010 — bucket empty, worker exits cleanly, message stays queued
-  - 011 — 200 streak ratchets `refill_per_s` up to ceiling
-  - 012 — 429 halves `refill_per_s` down to floor
-  - 013 — concurrent isolates cannot exceed `refill_per_s + capacity`
-  - 014 — NOTIFY debounce prevents thundering-herd
-- Update `mem://features/email-queue-per-lane-cooldown` and `mem://features/email-lane-isolation` with the new §workspace token bucket section; bump index Core line.
-
-## Files touched
-
-- **New migration** — `email_workspace_throttle` table + 3 RPCs + grants + seed row + 5 BDD scenarios + cleanup of stale Triage row + NOTIFY debounce column.
-- `supabase/functions/process-email-queue/index.ts` — token claim before each send, success/429 hooks, NOTIFY debounce check, default batch_size 3.
-- `supabase/functions/_shared/transactional-email.ts` — no change (routing unchanged).
-- `mem://features/email-queue-per-lane-cooldown`, `mem://features/email-lane-isolation`, `mem://index.md`.
-- Redeploy `process-email-queue`.
-
-## Why this is the root-cause fix
-
-The current system **recovers** from 429s. This change makes 429s structurally impossible under normal traffic: every request goes through a single atomic gate whose rate is provably below the provider cap, and that rate self-corrects if the provider ever tightens. The existing per-lane cooldown becomes a belt-and-suspenders fallback that should stay at `consecutive_rate_limits = 0` indefinitely.
+Should I also dedupe CSV emails against existing `profiles.email` so members who later signed up on the platform aren't double-counted? Default: **no dedupe** (user said "all time number should include both"), but happy to add a `seeded_email_hashes` column + subtract overlap if you'd prefer accurate uniques.
