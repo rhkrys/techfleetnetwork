@@ -304,7 +304,9 @@ Deno.serve(async (req) => {
         if (!admin && !(await ownsConversation(auth.userId, input.conversationId))) {
           return jsonResponse({ error: "Forbidden" }, 403);
         }
-        const adminUserId = admin ? await resolveAdminFreescoutUserId(auth.userId) : null;
+        const adminUserId = admin
+          ? await resolveAdminFreescoutUserId(auth.userId, { traceId: req.headers.get("x-trace-id") })
+          : null;
         const cust = admin ? null : await ensureCustomerForUser(auth.userId);
         await freescoutFetch({
           method: "POST",
@@ -339,7 +341,7 @@ Deno.serve(async (req) => {
       }
       case "assign": {
         const assigneeId = input.assigneeUserId === "self"
-          ? await resolveAdminFreescoutUserId(auth.userId)
+          ? await resolveAdminFreescoutUserId(auth.userId, { traceId: req.headers.get("x-trace-id") })
           : input.assigneeUserId;
         await freescoutFetch({
           method: "PUT",

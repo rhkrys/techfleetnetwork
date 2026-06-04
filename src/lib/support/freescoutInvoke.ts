@@ -27,6 +27,12 @@ export async function invokeFreescout<T = unknown>(body: FreescoutActionBody, si
     } as Parameters<typeof supabase.functions.invoke>[1]);
     if (result.error) {
       const extras: string[] = [`action:${safeField(action)}`, `reason:invoke_error`];
+      // Known-recoverable upstream codes self-heal on the next call (e.g.
+      // freescout-admin.ts materializes a missing profile row from auth.users
+      // and the next click succeeds). Emit them as `info` so they show up in
+      // forensics but never bubble into Triage. See HELP-DESK-067.
+      const SELF_HEALING_UPSTREAM_CODES = new Set(["Profile_not_found"]);
+      let severity: "info" | "warn" | "error" = "warn";
       // Best-effort: peek upstream error body for actionable triage detail.
       let sawContext = false;
       try {
@@ -38,7 +44,11 @@ export async function invokeFreescout<T = unknown>(body: FreescoutActionBody, si
           if (status) extras.push(`upstream:${safeField(String(status))}`);
           if (body && typeof body === "object") {
             const upstreamCode = (body as { error?: unknown }).error;
-            if (upstreamCode) extras.push(`upstream_code:${safeField(String(upstreamCode))}`);
+            if (upstreamCode) {
+              const safeCode = safeField(String(upstreamCode));
+              extras.push(`upstream_code:${safeCode}`);
+              if (SELF_HEALING_UPSTREAM_CODES.has(safeCode)) severity = "info";
+            }
           }
         }
       } catch { /* best-effort only */ }
@@ -55,7 +65,7 @@ export async function invokeFreescout<T = unknown>(body: FreescoutActionBody, si
         "edge_invoke_failed",
         "edge.freescout-proxy",
         `freescout-proxy ${action} invoke_error`,
-        { severity: "warn", traceId, extraFields: extras },
+        { severity, traceId, extraFields: extras },
       );
     }
     return result;
