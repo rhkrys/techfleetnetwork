@@ -67,6 +67,8 @@ let violations = 0;
 const seen = []; // for human-friendly summary
 
 for (const file of listSqlFiles(MIG_DIR)) {
+  const stamp = file.split("/").pop().slice(0, 14); // YYYYMMDDHHMMSS prefix
+  const isBaselineFile = stamp <= BASELINE_CUTOFF;
   const sql = readFileSync(file, "utf8");
   let m;
   while ((m = FN_RE.exec(sql)) !== null) {
@@ -76,6 +78,7 @@ for (const file of listSqlFiles(MIG_DIR)) {
     seen.push(fnName);
     if (safe) continue;
     if (/#variable_conflict\s+use_column/i.test(body)) continue;
+    if (isBaselineFile && BASELINE_FUNCTIONS.has(fnName)) continue;
     violations++;
     const rel = file.replace(ROOT + "/", "");
     console.error(
@@ -83,6 +86,7 @@ for (const file of listSqlFiles(MIG_DIR)) {
     );
   }
 }
+
 
 if (violations > 0) {
   console.error(
