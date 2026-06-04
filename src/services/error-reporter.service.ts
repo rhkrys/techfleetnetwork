@@ -395,11 +395,58 @@ export function reportError(
   const msg = formatThrowable(err);
   if (isOpaqueScriptErrorMessage(msg)) return;
   if (isSuppressed(msg)) return;
+  if (handleZodErrorMessage(msg, source)) return;
   const options: ReportOptions = typeof optionsOrUserId === "string"
     ? { userId: optionsOrUserId }
     : optionsOrUserId;
   void reportToAuditLog(msg, source, options);
 
+}
+
+/**
+ * Classify a leaked ZodError (e.g. from react-hook-form's async resolver
+ * surfacing as an unhandledrejection). Required-field / type rejections are
+ * normal UX and dropped silently with an aggregate suppression counter;
+ * regex/refine failures route to `validation_rejected` (warn) so admins can
+ * still spot false-positive validators. Returns true if handled.
+ */
+function handleZodErrorMessage(msg: string, source: string): boolean {
+  const m = /ZodError:\s*(\[[\s\S]*\])/.exec(msg);
+  if (!m) return false;
+  let issues: Array<{ path?: PropertyKey[]; message?: string; code?: string }> = [];
+  try {
+    const parsed = JSON.parse(m[1]);
+    if (Array.isArray(parsed)) issues = parsed;
+  } catch {
+    // Truncated/non-JSON payload — treat as silent UX rejection.
+    recordSuppression("__zod_unparseable__");
+    return true;
+  }
+  if (issues.length === 0) {
+    recordSuppression("__zod_empty__");
+    return true;
+  }
+  const REQUIRED_RX = /required|cannot be empty|must not be empty/i;
+  const meaningful = issues.filter((i) => {
+    const code = String(i?.code ?? "");
+    if (code === "too_small" || code === "invalid_type") return false;
+    if (i?.message && REQUIRED_RX.test(i.message)) return false;
+    return true;
+  });
+  if (meaningful.length === 0) {
+    recordSuppression("__zod_required__");
+    return true;
+  }
+  reportValidationRejection(
+    "unhandled-zod",
+    meaningful.map((i) => ({
+      path: (i.path ?? []) as PropertyKey[],
+      message: String(i.message ?? "validation failed"),
+      code: i.code,
+    })),
+    source,
+  );
+  return true;
 }
 
 /**
