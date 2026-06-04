@@ -76,7 +76,7 @@ async function ensureCustomerForUser(userId: string): Promise<{ customerId: stri
   const { data: prof, error } = await admin
     .from("profiles")
     .select("id, email, first_name, last_name, freescout_customer_id")
-    .eq("id", userId)
+    .eq("user_id", userId)
     .maybeSingle();
   if (error) {
     console.error(JSON.stringify({ level: "error", fn: "freescout-proxy", code: "profile_lookup_failed", userId, msg: error.message }));
@@ -105,10 +105,10 @@ async function ensureCustomerForUser(userId: string): Promise<{ customerId: stri
   if (!customer) customer = await createCustomer(email, firstName, lastName);
   const id = String(customer.id);
   if (prof) {
-    await admin.from("profiles").update({ freescout_customer_id: id }).eq("id", userId);
+    await admin.from("profiles").update({ freescout_customer_id: id }).eq("user_id", userId);
   }
   await admin.from("support_provisioning_log").insert({
-    user_id: userId, kind: "customer", freescout_id: id, status: "success", attempts: 1,
+    user_id: prof?.id ?? userId, kind: "customer", freescout_id: id, status: "success", attempts: 1,
   });
   return { customerId: id, email, firstName, lastName };
 }
@@ -129,7 +129,7 @@ async function ownsConversation(userId: string, conversationId: number): Promise
     });
     const custId = conv?.customer?.id ? String(conv.customer.id) : null;
     if (!custId) return false;
-    const { data: prof } = await admin.from("profiles").select("freescout_customer_id").eq("id", userId).maybeSingle();
+    const { data: prof } = await admin.from("profiles").select("freescout_customer_id").eq("user_id", userId).maybeSingle();
     return prof?.freescout_customer_id === custId;
   } catch {
     return false;
@@ -206,7 +206,7 @@ Deno.serve(async (req) => {
     switch (input.action) {
       case "listMine": {
         const { data: prof } = await getAdminClient()
-          .from("profiles").select("freescout_customer_id").eq("id", auth.userId).maybeSingle();
+          .from("profiles").select("freescout_customer_id").eq("user_id", auth.userId).maybeSingle();
         if (!prof?.freescout_customer_id) {
           const body = { items: [] };
           const k = (input as { _cacheKey?: string })._cacheKey;
@@ -217,7 +217,7 @@ Deno.serve(async (req) => {
         // Fetch profile email so we can also filter by customerEmail — covers legacy
         // conversations that Freescout linked by email to a different customer id.
         const { data: profEmail } = await getAdminClient()
-          .from("profiles").select("email").eq("id", auth.userId).maybeSingle();
+          .from("profiles").select("email").eq("user_id", auth.userId).maybeSingle();
         const data = await freescoutFetch<{ _embedded?: { conversations?: unknown[] } }>({
           path: "/api/conversations",
           query: {
