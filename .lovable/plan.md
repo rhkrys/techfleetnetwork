@@ -1,42 +1,34 @@
-# Fix ticket creation for morgandenner1@gmail.com (and everyone else)
+# Investigation: have signups actually stopped today?
 
-## Root cause
+## Evidence — signups are NOT stopped
 
-`supabase/functions/freescout-proxy/index.ts` looks up the caller's profile with `.eq("id", userId)` in 4 places (lines 77, 108, 132, 209, 220). But `userId` is `auth.uid()`, and on `public.profiles` the auth uid lives in the `user_id` column — `id` is the row PK. I verified: across all 628 profile rows, `id` never equals `user_id`.
+Pulled signup volume from `auth.users.created_at` for the last 72h:
 
-So for **every** member without a pre-existing `freescout_customer_id`, the proxy:
-1. Fails to find their profile row (`prof = null`)
-2. Falls through to auth-admin email lookup, creates a Freescout customer
-3. Skips writing `freescout_customer_id` back to the profile (`if (prof)` guard is false)
-4. Returns 500/400 or creates an orphan customer on subsequent calls
+| Date (UTC) | Signups |
+|---|---|
+| 2026-06-01 | 21 |
+| 2026-06-02 | 10 |
+| 2026-06-03 | **25** |
+| 2026-06-04 (first 16 min) | 0 |
 
-Morgan (`profile.id=9ed919…`, `user_id=cd9cad…`, `freescout_customer_id=NULL`) hits this every time she tries to open a ticket.
+Today (Jun 3 UTC) is the **highest** signup day of the week. The most recent confirmed signup is `efonseca318@gmail.com` at **23:48 UTC** — about 30 minutes before this investigation. Hourly cadence on Jun 3 looked normal: 21:00=3, 22:00=1, 23:00=2.
 
-## Fix (single file: `supabase/functions/freescout-proxy/index.ts`)
+## Health checks — everything green
 
-Change all 4 profile lookups + the update to key on `user_id`:
+- `auth.users` count = `profiles` count = 628 (0 users without a profile → the `handle_new_user` trigger is firing on every signup)
+- Auth logs in the last 12h show no 5xx, no signup endpoint errors — only the routine `bad_jwt` 403s from anonymous page loads (expected, harmless)
+- All 15 most-recent signups are `confirmed_at` populated → email confirmation hook is delivering
+- No correlation with the freescout-proxy fix shipped 30 min ago (that path is post-signup, not blocking)
 
-```text
-L77   .eq("id", userId)       → .eq("user_id", userId)
-L108  .eq("id", userId)       → .eq("user_id", userId)
-L132  .eq("id", userId)       → .eq("user_id", userId)
-L209  .eq("id", auth.userId)  → .eq("user_id", auth.userId)
-L220  .eq("id", auth.userId)  → .eq("user_id", auth.userId)
-```
+## Conclusion
 
-Also normalize the `support_provisioning_log` insert in `ensureCustomerForUser` (L110) to use `prof.id` (profile PK) when present, matching the convention used by the DB trigger and `support-provisioning-retry` (which both key the log on `profiles.id`, not auth uid).
+There is no signup outage to fix. Shipping a "permanent fix" without a real root cause would be a band-aid against an imaginary failure, which violates the no-band-aid rule.
 
-## One-shot backfill for Morgan
+## What I need from you before changing anything
 
-After deploying the fix, the next time she opens Get Help her customer record will auto-provision. No DB migration required for her specifically — the fix alone unblocks her.
+Can you share the specific signal that made you think signups stopped? For example:
+- A member who told you they tried to sign up and got a specific error message (and roughly when)
+- A dashboard/report you're looking at that shows zero
+- A specific email domain or path (e.g. Google sign-in vs email/password)
 
-## Out of scope (noted, not fixed here)
-
-- 653 rows in `support_provisioning_log` are stuck `status='retry'` (backfill queued 2026-06-03, plus 25 "Bad Request" failures). The retry worker keys correctly on `profiles.id`, so it's a separate issue — likely Freescout API throttling or a payload bug. Worth a follow-up task, but not blocking morgan's ticket.
-- The same `.eq("id", userId)` pattern exists in other edge functions (`freescout-provision-customer`, `freescout-provision-admin`, `support-provisioning-retry`, `_shared/freescout-admin.ts`, `process-freescout-events`). Those functions are called with `profiles.id` (not auth uid) from the trigger/retry paths, so they happen to be consistent. Leaving them as-is to avoid breaking the retry pipeline.
-
-## Verification
-
-1. Redeploy `freescout-proxy`.
-2. Impersonation test via SQL: confirm `select * from profiles where user_id = 'cd9cad81-…'` returns the row (already verified).
-3. Ask user to retry Get Help → new ticket should create and `freescout_customer_id` should populate on her profile.
+With one concrete failing case (email + approximate time, or screenshot of the error), I can trace it through `auth_logs` → `handle_new_user` trigger → `auth-email-hook` → `process-email-queue` and ship the real root-cause fix in one turn. Without it, there's nothing broken to fix.
