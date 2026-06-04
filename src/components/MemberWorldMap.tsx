@@ -60,32 +60,47 @@ export function MemberWorldMap() {
     load();
   }, []);
 
-  // Map country name → count AND numeric id → count
-  const { countById, maxCount, totalMembers, countriesRepresented, unspecifiedCount } = useMemo(() => {
+  // Map country name → count AND numeric id → counts
+  const { countById, platformById, externalById, maxCount, totalMembers, totalPlatform, totalExternal, countriesRepresented, unspecifiedCount } = useMemo(() => {
     const byId = new Map<string, number>();
+    const platById = new Map<string, number>();
+    const extById = new Map<string, number>();
     let max = 1;
     let total = 0;
+    let totalPlat = 0;
+    let totalExt = 0;
     let unspecified = 0;
 
     data.forEach((d) => {
       total += d.count;
+      totalPlat += d.platform_count ?? d.count;
+      totalExt += d.external_count ?? 0;
       if (d.country === "Not specified") {
         unspecified = d.count;
         return;
       }
       const id = COUNTRY_NAME_TO_ID[d.country];
-      if (id) byId.set(id, d.count);
+      if (id) {
+        byId.set(id, d.count);
+        platById.set(id, d.platform_count ?? d.count);
+        extById.set(id, d.external_count ?? 0);
+      }
       if (d.count > max) max = d.count;
     });
 
     return {
       countById: byId,
+      platformById: platById,
+      externalById: extById,
       maxCount: max,
       totalMembers: total,
+      totalPlatform: totalPlat,
+      totalExternal: totalExt,
       countriesRepresented: data.filter((d) => d.country !== "Not specified").length,
       unspecifiedCount: unspecified,
     };
   }, [data]);
+
 
   // Get fill opacity for a country based on member count
   function getFillOpacity(id: string): number {
