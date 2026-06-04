@@ -11,7 +11,10 @@ import { PageTitle } from "@/components/ui/typography";
 interface CountryCount {
   country: string;
   count: number;
+  platform_count?: number;
+  external_count?: number;
 }
+
 
 interface GeoFeature {
   type: "Feature";
