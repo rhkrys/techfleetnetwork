@@ -1765,6 +1765,45 @@ export type Database = {
         }
         Relationships: []
       }
+      email_workspace_throttle: {
+        Row: {
+          capacity: number
+          id: number
+          last_429_at: string | null
+          last_refill_at: string
+          max_refill: number
+          min_refill: number
+          refill_per_s: number
+          successes_since_429: number
+          tokens: number
+          updated_at: string
+        }
+        Insert: {
+          capacity?: number
+          id?: number
+          last_429_at?: string | null
+          last_refill_at?: string
+          max_refill?: number
+          min_refill?: number
+          refill_per_s?: number
+          successes_since_429?: number
+          tokens?: number
+          updated_at?: string
+        }
+        Update: {
+          capacity?: number
+          id?: number
+          last_429_at?: string | null
+          last_refill_at?: string
+          max_refill?: number
+          min_refill?: number
+          refill_per_s?: number
+          successes_since_429?: number
+          tokens?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       error_digest_log: {
         Row: {
           audit_pressure: string | null
@@ -7328,6 +7367,10 @@ export type Database = {
         Args: { p_event: string; p_msg: string; p_table: string }
         Returns: string
       }
+      consume_workspace_email_token: {
+        Args: { p_count?: number }
+        Returns: number
+      }
       count_classes_pending_review: { Args: never; Returns: number }
       decrypt_pii: { Args: { cipher: string }; Returns: string }
       delete_email: {
@@ -8158,6 +8201,8 @@ export type Database = {
         }
         Returns: string
       }
+      record_workspace_email_429: { Args: never; Returns: undefined }
+      record_workspace_email_success: { Args: never; Returns: undefined }
       redact_sensitive_text: { Args: { input: string }; Returns: string }
       refresh_email_health_snapshot: { Args: never; Returns: undefined }
       refresh_framework_overview: { Args: never; Returns: undefined }
