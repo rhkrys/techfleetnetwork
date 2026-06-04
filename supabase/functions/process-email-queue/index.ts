@@ -551,6 +551,16 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
             error_message: errorMsg.slice(0, 1000),
           })
 
+          // Proactively halve the workspace-wide refill rate so subsequent
+          // ticks pace below the provider's current ceiling. Auto-recovers
+          // via record_workspace_email_success after 500 consecutive wins.
+          if (isWorkspaceQuota) {
+            await supabase.rpc('record_workspace_email_429').catch((e) =>
+              console.warn('record_workspace_email_429 failed', { err: String(e) })
+            )
+          }
+
+
           // Exponential backoff per consecutive 429 for the OFFENDER lane:
           // 60s → 120s → 240s …, cap 900s. Honor provider Retry-After when
           // present; otherwise grow exponentially from a 60s base.
