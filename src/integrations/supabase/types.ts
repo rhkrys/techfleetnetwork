@@ -1888,6 +1888,36 @@ export type Database = {
         }
         Relationships: []
       }
+      external_country_signups: {
+        Row: {
+          country: string
+          created_at: string
+          id: string
+          notes: string | null
+          source: string
+          unique_signups: number
+          updated_at: string
+        }
+        Insert: {
+          country: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          source: string
+          unique_signups: number
+          updated_at?: string
+        }
+        Update: {
+          country?: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          source?: string
+          unique_signups?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       failed_login_attempts: {
         Row: {
           attempted_at: string

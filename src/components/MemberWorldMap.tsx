@@ -11,7 +11,10 @@ import { PageTitle } from "@/components/ui/typography";
 interface CountryCount {
   country: string;
   count: number;
+  platform_count?: number;
+  external_count?: number;
 }
+
 
 interface GeoFeature {
   type: "Feature";
@@ -57,32 +60,47 @@ export function MemberWorldMap() {
     load();
   }, []);
 
-  // Map country name → count AND numeric id → count
-  const { countById, maxCount, totalMembers, countriesRepresented, unspecifiedCount } = useMemo(() => {
+  // Map country name → count AND numeric id → counts
+  const { countById, platformById, externalById, maxCount, totalMembers, totalPlatform, totalExternal, countriesRepresented, unspecifiedCount } = useMemo(() => {
     const byId = new Map<string, number>();
+    const platById = new Map<string, number>();
+    const extById = new Map<string, number>();
     let max = 1;
     let total = 0;
+    let totalPlat = 0;
+    let totalExt = 0;
     let unspecified = 0;
 
     data.forEach((d) => {
       total += d.count;
+      totalPlat += d.platform_count ?? d.count;
+      totalExt += d.external_count ?? 0;
       if (d.country === "Not specified") {
         unspecified = d.count;
         return;
       }
       const id = COUNTRY_NAME_TO_ID[d.country];
-      if (id) byId.set(id, d.count);
+      if (id) {
+        byId.set(id, d.count);
+        platById.set(id, d.platform_count ?? d.count);
+        extById.set(id, d.external_count ?? 0);
+      }
       if (d.count > max) max = d.count;
     });
 
     return {
       countById: byId,
+      platformById: platById,
+      externalById: extById,
       maxCount: max,
       totalMembers: total,
+      totalPlatform: totalPlat,
+      totalExternal: totalExt,
       countriesRepresented: data.filter((d) => d.country !== "Not specified").length,
       unspecifiedCount: unspecified,
     };
   }, [data]);
+
 
   // Get fill opacity for a country based on member count
   function getFillOpacity(id: string): number {
@@ -111,17 +129,23 @@ export function MemberWorldMap() {
         <PageTitle>Member Locations</PageTitle>
         <div className="flex gap-4 text-sm text-muted-foreground flex-wrap">
           <span>
-            <strong className="text-foreground">{totalMembers}</strong> members
+            <strong className="text-foreground">{totalMembers.toLocaleString()}</strong> all-time signups
           </span>
           <span>
             <strong className="text-foreground">{countriesRepresented}</strong> countries
           </span>
+          {totalExternal > 0 && (
+            <span className="text-xs">
+              ({totalPlatform.toLocaleString()} platform members + {totalExternal.toLocaleString()} historical)
+            </span>
+          )}
           {unspecifiedCount > 0 && (
             <span>
               <strong className="text-foreground">{unspecifiedCount}</strong> not specified
             </span>
           )}
         </div>
+
       </div>
 
       <div className="relative w-full overflow-hidden rounded-lg bg-muted/20 border border-border">
@@ -162,8 +186,13 @@ export function MemberWorldMap() {
                 {isHovered && hasMembers && name && (() => {
                   const centroid = pathGenerator.centroid(feat as unknown as GeoJSON.Feature);
                   if (!centroid || isNaN(centroid[0])) return null;
-                  const label = `${name}: ${count} ${count === 1 ? "member" : "members"}`;
-                  const labelWidth = Math.max(120, label.length * 6.5);
+                  const plat = platformById.get(id) || 0;
+                  const ext = externalById.get(id) || 0;
+                  const label = ext > 0
+                    ? `${name}: ${count} all-time (${plat} platform + ${ext} historical)`
+                    : `${name}: ${count} ${count === 1 ? "signup" : "signups"}`;
+                  const labelWidth = Math.max(140, label.length * 6.5);
+
                   return (
                     <g className="pointer-events-none">
                       <rect
