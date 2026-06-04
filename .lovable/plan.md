@@ -1,68 +1,98 @@
+# Permanent fix: eliminate `rate_limit:workspace:email_send` 429s
 
-## What's actually happening
+## What's happening today
 
-The opaque cross-origin `"Script error."` row you're looking at is **not new**. The DB query confirms:
+The only 429 in the last 14 days fired on **2026-05-31 19:00 UTC** (`occurrence_count=1`, already auto-resolved by the cooldown). The Triage row the user is seeing is stale.
 
-- All 4 matching rows in `agent_fix_queue` are dated **2026-06-02 16:23 UTC or earlier**, all `status='resolved'`.
-- The permanent `reject_opaque_script_error` BEFORE-INSERT trigger on `audit_log` and `agent_fix_queue` was deployed at **2026-06-02 19:43 UTC**.
-- **Zero new `Script error.` rows have hit either table since the trigger shipped.** The backstop works.
+But the root cause is real: the provider key is **workspace-scoped** (`rate_limit:workspace:email_send:9wtSoOwS1AHHNpYNTGKb`), and every lane (`auth_emails`, `transactional_emails`, `bulk_emails`) plus every concurrent edge isolate shares it. Today we only react **after** a 429:
 
-What you saw in the UI ("triaged less than a minute ago") is the **AI triage stamp**, not the error timestamp. Something (or someone) ran `triage-error` on an old, already-resolved opaque row, which:
+- per-lane exponential cooldown ✓ (works, but lossy — 62s pause)
+- adaptive `send_delay_ms` doubling ✓ (only kicks in after the first 429)
+- bulk hourly cap ✓ (per-lane, not workspace)
 
-1. Spent ~$0.001 of the 20-call/day AI budget on a row that's already permanently silenced.
-2. Re-surfaced the row in the Triage view via the `triaged_at` sort, making it look like a live incident.
-3. Convinced you the bug is back.
+There is **no proactive throttle** across lanes/isolates. A NOTIFY-burst + a cron tick can put 3 isolates side-by-side, each respecting their own per-lane pace, and collectively breach the workspace cap.
 
-## Permanent fix — close the four remaining gaps
+## Fix (permanent, no band-aid)
 
-### 1. `triage-error` refuses opaque / known-issue rows server-side
+Introduce a **workspace-wide token bucket** that every send must claim a token from. Tokens regenerate at a rate strictly below the provider cap, and self-tune downward on 429s / upward on sustained success. The cooldown logic stays as a second line of defense, but in steady state it never fires.
 
-In `supabase/functions/triage-error/index.ts`, after loading the `agent_fix_queue` row and before claiming the budget:
+### 1. DB: atomic token bucket
 
-- Reject (HTTP 409 `auto_silenced`) if `row.error_message` first non-empty line matches `^(error:\s*)?script error\.?$`.
-- Reject if a matching active `known_issue_catalog` entry covers the message (substring or regex, scoped to `event_type_filter` when set).
-- On reject, auto-flip the row to `status='resolved'` with `dismissed_reason='[auto] silenced by known_issue_catalog at triage time'` so it disappears from the active queue, and skip the AI call entirely.
+New table + 3 SECURITY DEFINER RPCs:
 
-This makes the AI budget physically unreachable for any pattern the backstop already silences, regardless of how the row got into the queue historically.
+```sql
+create table public.email_workspace_throttle (
+  id            int primary key default 1,
+  tokens        numeric not null default 5,     -- current bucket level
+  capacity      numeric not null default 5,     -- burst size
+  refill_per_s  numeric not null default 2.0,   -- steady-state cap (req/sec)
+  min_refill    numeric not null default 0.5,
+  max_refill    numeric not null default 4.0,
+  last_refill_at timestamptz not null default now(),
+  last_429_at   timestamptz,
+  successes_since_429 int not null default 0,
+  check (id = 1)
+);
 
-### 2. Hard-purge legacy opaque rows (one-time migration)
+-- Returns wait_ms (0 if a token was consumed, >0 if caller should wait).
+create function public.consume_workspace_email_token(p_count int default 1)
+returns int language plpgsql security definer ...;
 
-Single migration that deletes (not just resolves) every `agent_fix_queue` row whose `error_message` first non-empty line matches the opaque regex. Mirrors the same delete on residual `audit_log` rows older than the trigger so discovery can't re-promote them. Logs the deletion count into `audit_log` (severity:info, event_type:`maintenance_cleanup`) for traceability.
+create function public.record_workspace_email_429()
+returns void language plpgsql security definer ...;  -- halves refill_per_s, clamped to min_refill
 
-### 3. CI guard against regressions
+create function public.record_workspace_email_success()
+returns void language plpgsql security definer ...;  -- after N=500 wins, +10% up to max_refill
+```
 
-Add `scripts/ci/check-no-opaque-script-error.mjs` to the existing `quality` CI job:
+Singleton row, `FOR UPDATE` lock → atomic across all isolates and lanes. No app-side coordination needed.
 
-- Queries `agent_fix_queue` and `audit_log` for any row matching the opaque regex created in the last 24h.
-- Exits non-zero with the row IDs if any are found.
+### 2. Worker: claim before send
 
-A failing build is then the canary the moment another reporter path or third-party script regresses past the filter.
+In `supabase/functions/process-email-queue/index.ts`, immediately before every `fetch(EMAIL_API)` call:
 
-### 4. Lock down the production entry script's `crossorigin` attribute
+```ts
+const { data: waitMs } = await supabase.rpc('consume_workspace_email_token');
+if ((waitMs ?? 0) > 0) {
+  // Bucket empty — leave message in queue, exit the lane cleanly.
+  // Cron will retry; NOTIFY trigger debounced to >= 1s.
+  break;
+}
+```
 
-Confirm Vite preserves `crossorigin="anonymous"` on the emitted `assets/index-*.js` tag (it does for `<script type="module" crossorigin>` in `index.html`, but the current attribute is the explicit `crossorigin="anonymous"` value — verify the build output and add a `src/test/smoke/index-html-crossorigin.smoke.test.ts` that parses `dist/index.html` post-build and asserts every `<script>` carries `crossorigin`). This guarantees future bundles surface real stack frames instead of the opaque message, so when something legitimately breaks we get a debuggable error.
+On 200 from the provider → `record_workspace_email_success()`.
+On 429 → `record_workspace_email_429()` **in addition to** the existing per-lane cooldown.
 
-## BDD scenarios
+Net effect: the worker can never out-run the bucket, regardless of how many isolates are warm.
 
-Insert into `bdd_scenarios`:
+### 3. Calm the fan-out
 
-- `TRIAGE-NOISE-030` — `triage-error` returns 409 `auto_silenced` and resolves the row when invoked on an opaque `Script error.` fingerprint; AI call counter does not increment.
-- `TRIAGE-NOISE-031` — `triage-error` returns 409 `auto_silenced` for any active `known_issue_catalog` match; row flipped to resolved with `dismissed_reason` set.
-- `TRIAGE-NOISE-032` — One-time cleanup migration deletes all pre-trigger opaque rows from `agent_fix_queue` and `audit_log` and records a single maintenance audit row.
-- `TRIAGE-NOISE-033` — CI script `check-no-opaque-script-error.mjs` exits non-zero when an opaque row exists in the last 24h, zero when none.
-- `TRIAGE-NOISE-034` — Production `dist/index.html` `<script>` tags all carry `crossorigin`; smoke test fails the build otherwise.
+- `trg_notify_email_worker_tx` already pokes the worker on every enqueue. Add a 500 ms debounce key in `email_send_state.last_notify_at`; skip NOTIFY if fired within the window.
+- Drop default `batch_size` 5 → **3** for transactional, keep bulk at 3. Token bucket is the real cap now; batch size just controls work-per-tick.
 
-## Files
+### 4. Clean up the stale alert + harden Triage
 
-- `supabase/functions/triage-error/index.ts` — pre-AI silencer (regex + known_issue_catalog lookup + auto-resolve).
-- New migration `purge_legacy_opaque_script_error_rows.sql` — one-time delete + audit row.
-- `scripts/ci/check-no-opaque-script-error.mjs` + wire into `.github/workflows` (or existing quality job runner).
-- `src/test/smoke/index-html-crossorigin.smoke.test.ts` — post-build assertion.
-- `bdd_scenarios` insert.
-- Memory updates: extend `mem://features/triage-noise-suppression` with the new server-side gate + CI guard; bump the index Core line.
+- Resolve the May-31 `email_rate_limited` row with `dismissed_reason="superseded by workspace token bucket EMAIL-RL-010"`.
+- `discover_audit_fingerprints` already honors `severity:*` tags — emit `severity:warn` on workspace-throttle waits (so they never reach Triage) and keep `severity:error` only for actual provider 429s.
 
-## What this is NOT
+### 5. BDD + memory
 
-- Not a new client-side filter (already in place at every reporter entrypoint).
-- Not a new DB trigger (already in place since 2026-06-02 19:43).
-- Not a band-aid resolve of the visible row — the migration hard-deletes the class so it cannot be re-triaged and cannot reappear in any UI sort.
+- New scenarios `EMAIL-RL-010..014`:
+  - 010 — bucket empty, worker exits cleanly, message stays queued
+  - 011 — 200 streak ratchets `refill_per_s` up to ceiling
+  - 012 — 429 halves `refill_per_s` down to floor
+  - 013 — concurrent isolates cannot exceed `refill_per_s + capacity`
+  - 014 — NOTIFY debounce prevents thundering-herd
+- Update `mem://features/email-queue-per-lane-cooldown` and `mem://features/email-lane-isolation` with the new §workspace token bucket section; bump index Core line.
+
+## Files touched
+
+- **New migration** — `email_workspace_throttle` table + 3 RPCs + grants + seed row + 5 BDD scenarios + cleanup of stale Triage row + NOTIFY debounce column.
+- `supabase/functions/process-email-queue/index.ts` — token claim before each send, success/429 hooks, NOTIFY debounce check, default batch_size 3.
+- `supabase/functions/_shared/transactional-email.ts` — no change (routing unchanged).
+- `mem://features/email-queue-per-lane-cooldown`, `mem://features/email-lane-isolation`, `mem://index.md`.
+- Redeploy `process-email-queue`.
+
+## Why this is the root-cause fix
+
+The current system **recovers** from 429s. This change makes 429s structurally impossible under normal traffic: every request goes through a single atomic gate whose rate is provably below the provider cap, and that rate self-corrects if the provider ever tightens. The existing per-lane cooldown becomes a belt-and-suspenders fallback that should stay at `consecutive_rate_limits = 0` indefinitely.

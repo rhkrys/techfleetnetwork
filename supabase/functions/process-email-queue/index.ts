@@ -437,15 +437,31 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
 
 
       try {
-        // Global workspace pacer: enforce minimum gap between provider calls
-        // across ALL lanes. Sized to the shared per-workspace email_send
-        // quota. Lane priority is preserved (auth drains first → grabs
-        // tokens first), but bursts within a lane can no longer trip the
-        // shared rate limit and mis-attribute to whichever lane reads the
-        // 429 next. Per-lane cooldowns remain as a second line of defense.
-        const gapSinceLastSend = Date.now() - lastGlobalSendAt
-        if (lastGlobalSendAt > 0 && gapSinceLastSend < MIN_GLOBAL_GAP_MS) {
-          await new Promise((r) => setTimeout(r, MIN_GLOBAL_GAP_MS - gapSinceLastSend))
+        // Workspace-level token bucket: atomic DB pacer shared across ALL
+        // lanes and ALL concurrent isolates. Sized strictly below the
+        // provider's per-workspace email_send quota and auto-tunes
+        // (halves on 429, +10% per 500 successes). When the bucket is
+        // empty, exit the lane cleanly — the cron tick reruns us. This
+        // makes workspace-quota 429s structurally impossible under normal
+        // traffic; the per-lane cooldown below remains as a second line
+        // of defense for provider regressions.
+        const { data: waitMs, error: tokenErr } = await supabase.rpc(
+          'consume_workspace_email_token'
+        )
+        if (tokenErr) {
+          console.warn('Workspace token RPC failed — falling back to in-process gap', {
+            err: String(tokenErr),
+          })
+          const gap = Date.now() - lastGlobalSendAt
+          if (lastGlobalSendAt > 0 && gap < MIN_GLOBAL_GAP_MS) {
+            await new Promise((r) => setTimeout(r, MIN_GLOBAL_GAP_MS - gap))
+          }
+        } else if ((waitMs ?? 0) > 0) {
+          console.log('Workspace token bucket empty — deferring lane', {
+            queue,
+            wait_ms: waitMs,
+          })
+          break
         }
         lastGlobalSendAt = Date.now()
 
@@ -465,9 +481,6 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
             unsubscribe_token: payload.unsubscribe_token,
             message_id: payload.message_id,
           },
-          // sendUrl is optional — when LOVABLE_SEND_URL is not set, the library
-          // falls back to the default Lovable API endpoint (https://api.lovable.dev).
-          // Set LOVABLE_SEND_URL as a Supabase secret to override (e.g. for local dev).
           { apiKey, sendUrl: Deno.env.get('LOVABLE_SEND_URL') }
         )
 
@@ -479,6 +492,11 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
           status: 'sent',
         })
 
+        // Ratchet workspace refill rate up on sustained success (no-op until 500 wins).
+        await supabase.rpc('record_workspace_email_success').catch((e) =>
+          console.warn('record_workspace_email_success failed', { err: String(e) })
+        )
+
         // Delete from queue
         const { error: delError } = await supabase.rpc('delete_email', {
           queue_name: queue,
@@ -489,13 +507,8 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
         }
         if (ALL_BULK_TEMPLATES.has(labelStr)) bulkSentLastHour++
         totalProcessed++
-        // Record this lane as the last successful sender. Used to attribute
-        // a subsequent shared-workspace 429 to the actual offender rather
-        // than to whichever lane happens to receive the error next.
         lastSentLane = queue
 
-        // Success-reset: clear this queue's consecutive 429 counter on first
-        // successful send. Only writes when there's something to clear.
         if ((consecutive[queue] ?? 0) > 0) {
           await supabase
             .from('email_send_state')
@@ -503,6 +516,7 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
             .eq('id', 1)
           consecutive[queue] = 0
         }
+
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error)
         console.error('Email send failed', {
@@ -536,6 +550,16 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
             status: 'rate_limited',
             error_message: errorMsg.slice(0, 1000),
           })
+
+          // Proactively halve the workspace-wide refill rate so subsequent
+          // ticks pace below the provider's current ceiling. Auto-recovers
+          // via record_workspace_email_success after 500 consecutive wins.
+          if (isWorkspaceQuota) {
+            await supabase.rpc('record_workspace_email_429').catch((e) =>
+              console.warn('record_workspace_email_429 failed', { err: String(e) })
+            )
+          }
+
 
           // Exponential backoff per consecutive 429 for the OFFENDER lane:
           // 60s → 120s → 240s …, cap 900s. Honor provider Retry-After when
