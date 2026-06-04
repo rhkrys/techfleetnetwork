@@ -186,8 +186,13 @@ export function MemberWorldMap() {
                 {isHovered && hasMembers && name && (() => {
                   const centroid = pathGenerator.centroid(feat as unknown as GeoJSON.Feature);
                   if (!centroid || isNaN(centroid[0])) return null;
-                  const label = `${name}: ${count} ${count === 1 ? "member" : "members"}`;
-                  const labelWidth = Math.max(120, label.length * 6.5);
+                  const plat = platformById.get(id) || 0;
+                  const ext = externalById.get(id) || 0;
+                  const label = ext > 0
+                    ? `${name}: ${count} all-time (${plat} platform + ${ext} historical)`
+                    : `${name}: ${count} ${count === 1 ? "signup" : "signups"}`;
+                  const labelWidth = Math.max(140, label.length * 6.5);
+
                   return (
                     <g className="pointer-events-none">
                       <rect
