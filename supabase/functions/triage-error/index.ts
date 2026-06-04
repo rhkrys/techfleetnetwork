@@ -111,6 +111,57 @@ Deno.serve(withAuditWrapper("triage-error", async (req) => {
     .maybeSingle<FixQueueRow>();
   if (rowErr || !row) return jsonResponse({ error: "not_found" }, 404);
 
+  // --- Pre-AI silencer (TRIAGE-NOISE-030/031) ------------------------------
+  // Refuse to spend AI budget on rows the permanent backstop already silences:
+  //   (a) Opaque cross-origin "Script error." (first non-empty line regex).
+  //   (b) Any active known_issue_catalog match (substring/regex/fingerprint),
+  //       optionally scoped by event_type_filter.
+  // On match: auto-resolve the row, skip the AI call, return 409.
+  const firstLine = (row.error_message ?? "")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .find((l) => l.length > 0) ?? "";
+  const isOpaqueScriptError = /^(error:\s*)?script error\.?$/i.test(firstLine);
+
+  let knownIssueMatch: { pattern: string } | null = null;
+  if (!isOpaqueScriptError) {
+    const { data: kicRows } = await admin
+      .from("known_issue_catalog")
+      .select("pattern,match_kind,event_type_filter")
+      .eq("is_active", true);
+    type Kic = { pattern: string; match_kind: string; event_type_filter: string | null };
+    for (const k of (kicRows ?? []) as Kic[]) {
+      if (k.event_type_filter && k.event_type_filter !== row.event_type) continue;
+      const msg = row.error_message ?? "";
+      let hit = false;
+      if (k.match_kind === "substring") hit = msg.includes(k.pattern);
+      else if (k.match_kind === "regex") { try { hit = new RegExp(k.pattern, "i").test(msg); } catch { hit = false; } }
+      else if (k.match_kind === "fingerprint") hit = row.fingerprint === k.pattern;
+      if (hit) { knownIssueMatch = { pattern: k.pattern }; break; }
+    }
+  }
+
+  if (isOpaqueScriptError || knownIssueMatch) {
+    const reason = isOpaqueScriptError
+      ? "[auto] silenced at triage: opaque cross-origin Script error (permanent DB backstop)"
+      : `[auto] silenced at triage: known_issue_catalog match (${knownIssueMatch!.pattern.slice(0, 80)})`;
+    await admin
+      .from("agent_fix_queue")
+      .update({
+        status: "resolved",
+        resolved_at: new Date().toISOString(),
+        dismissed_reason: reason,
+      })
+      .eq("id", fixId);
+    return jsonResponse({
+      ok: true,
+      auto_silenced: true,
+      reason: isOpaqueScriptError ? "opaque_script_error" : "known_issue_catalog_match",
+      pattern: knownIssueMatch?.pattern ?? "Script error.",
+      ai_call_skipped: true,
+    }, 409);
+  }
+
   // --- Claim daily budget --------------------------------------------------
   const { data: claimed, error: claimErr } = await admin.rpc("claim_triage_budget", {
     p_cap: DAILY_CAP,

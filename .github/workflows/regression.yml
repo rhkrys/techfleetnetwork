@@ -149,6 +149,10 @@ jobs:
       - name: Verify every edge function is pinned in config.toml
         run: node scripts/ci/check-edge-function-coverage.mjs
 
+      - name: Verify no opaque "Script error." rows landed in last 24h
+        if: ${{ env.PGHOST != '' }}
+        run: node scripts/ci/check-no-opaque-script-error.mjs
+
       - name: Security headers smoke (OWASP A02 — non-blocking)
         continue-on-error: true
         env:
