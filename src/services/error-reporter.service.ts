@@ -716,6 +716,7 @@ export function reportValidationRejection(
  * `audit_log` for observability but are blocked from `agent_fix_queue`.
  */
 function chunkAwareReport(msg: string, source: string) {
+  if (handleZodErrorMessage(msg, source)) return;
   if (isChunkLoadMessage(msg)) {
     void reportToAuditLog(msg, source, {
       eventType: "ui_chunk_load_failed",
