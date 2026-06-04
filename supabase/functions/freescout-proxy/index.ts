@@ -341,7 +341,7 @@ Deno.serve(async (req) => {
       }
       case "assign": {
         const assigneeId = input.assigneeUserId === "self"
-          ? await resolveAdminFreescoutUserId(auth.userId)
+          ? await resolveAdminFreescoutUserId(auth.userId, { traceId: req.headers.get("x-trace-id") })
           : input.assigneeUserId;
         await freescoutFetch({
           method: "PUT",
