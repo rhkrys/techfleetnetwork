@@ -14,6 +14,40 @@ import { join } from "node:path";
 const ROOT = process.cwd();
 const MIG_DIR = join(ROOT, "supabase", "migrations");
 
+// Grandfathered: functions retrofitted at runtime by the 2026-06-04
+// plpgsql_variable_conflict_backfill migration. The ORIGINAL historical
+// CREATE statements for these functions are excused; any *new* migration
+// redefining one of them must include `#variable_conflict use_column`.
+const BASELINE_FUNCTIONS = new Set([
+  "public._upsert_kpi","public.block_non_actionable_fix_queue_inserts",
+  "public.bump_kb_version","public.claim_idempotency_key",
+  "public.compute_error_fingerprint","public.discover_audit_fingerprints",
+  "public.email_message_ids_in_queue","public.email_send_log_latest_stuck",
+  "public.encrypt_pii","public.enqueue_email","public.evaluate_system_health",
+  "public.fleety_cache_lookup","public.fleety_cache_semantic_lookup",
+  "public.fleety_cost_guard_step","public.fleety_cost_projection",
+  "public.fleety_match_canned_answers","public.fleety_match_playbooks",
+  "public.fn_emit_badge","public.freescout_enqueue_event",
+  "public.fw_emit_edges_for_entity","public.fw_entity_key_to_type",
+  "public.fw_rename_jsonb_keys","public.fw_replay_staging",
+  "public.get_community_events_health","public.get_project_internal_links",
+  "public.get_refactor_kpis","public.get_support_monthly_report",
+  "public.get_top_silent_failures","public.list_admin_email_recipients",
+  "public.notify_project_opening","public.pgmq_read_archive",
+  "public.policy_versions_block_delete","public.prune_cron_job_run_details",
+  "public.read_email_batch","public.refresh_support_monthly_report",
+  "public.replay_frequency_capped","public.run_refactor_kpis_snapshot_now",
+  "public.search_framework","public.snapshot_refactor_kpis",
+  "public.support_check_rate_limit","public.tg_hash_chain",
+  "public.trg_notify_class_status_change","public.validate_invitation",
+  "public.verify_admin_promotion_token","public.web_vitals_p75",
+]);
+
+// Migration files at or before this stamp are part of the baseline. Anything
+// newer must comply regardless of whether the function is grandfathered.
+const BASELINE_CUTOFF = "20260604170800";
+
+
 function listSqlFiles(dir) {
   const out = [];
   for (const name of readdirSync(dir)) {
