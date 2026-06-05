@@ -228,12 +228,46 @@ async function handleWebhook(req: Request): Promise<Response> {
     )
   }
 
+  // AUTH-RESET-020..023: For recovery emails, rewrite the link from the
+  // default GoTrue /auth/v1/verify URL (which redirects with #access_token
+  // hash and is auto-consumed by AuthContext's detectSessionInUrl before
+  // ResetPasswordPage can subscribe) to a direct `?token_hash=...&type=recovery`
+  // URL that lands on /reset-password. The page then calls verifyOtp
+  // explicitly. This works cross-device, in incognito, and survives
+  // double-clicks until the OTP is consumed/expired.
+  let confirmationUrl: string = payload.data.url
+  if (emailType === 'recovery') {
+    try {
+      const verifyUrl = new URL(payload.data.url)
+      const tokenHash =
+        verifyUrl.searchParams.get('token_hash') ||
+        verifyUrl.searchParams.get('token') ||
+        payload.data.token_hash ||
+        payload.data.token
+      const redirectTo =
+        verifyUrl.searchParams.get('redirect_to') ||
+        payload.data.redirect_to ||
+        `https://${ROOT_DOMAIN}/reset-password`
+      if (tokenHash && redirectTo) {
+        const target = new URL(redirectTo)
+        // Ensure we always land on /reset-password regardless of the
+        // configured redirect (defense-in-depth if Site URL is misconfigured).
+        if (!target.pathname.endsWith('/reset-password')) target.pathname = '/reset-password'
+        target.searchParams.set('token_hash', tokenHash)
+        target.searchParams.set('type', 'recovery')
+        confirmationUrl = target.toString()
+      }
+    } catch (rewriteErr) {
+      console.error('Recovery URL rewrite failed, falling back to default', { error: rewriteErr, run_id })
+    }
+  }
+
   // Build template props from payload.data (HookData structure)
   const templateProps = {
     siteName: SITE_NAME,
     siteUrl: `https://${ROOT_DOMAIN}`,
     recipient: payload.data.email,
-    confirmationUrl: payload.data.url,
+    confirmationUrl,
     token: payload.data.token,
     email: payload.data.email,
     newEmail: payload.data.new_email,
