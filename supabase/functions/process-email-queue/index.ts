@@ -44,6 +44,19 @@ function getRetryAfterSeconds(error: unknown): number {
   return 60
 }
 
+async function safeRpc(
+  supabase: ReturnType<typeof createClient>,
+  name: string,
+  args: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    const { error } = await supabase.rpc(name, args)
+    if (error) console.warn(`${name} failed`, { error })
+  } catch (error) {
+    console.warn(`${name} failed`, { error: String(error) })
+  }
+}
+
 // (Service-role bearer parsing moved to _shared/service-role-auth.ts so
 // every cron worker stays in lockstep on key-format support.)
 
@@ -493,9 +506,7 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
         })
 
         // Ratchet workspace refill rate up on sustained success (no-op until 500 wins).
-        await supabase.rpc('record_workspace_email_success').catch((e) =>
-          console.warn('record_workspace_email_success failed', { err: String(e) })
-        )
+        await safeRpc(supabase, 'record_workspace_email_success')
 
         // Delete from queue
         const { error: delError } = await supabase.rpc('delete_email', {
@@ -555,9 +566,7 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
           // ticks pace below the provider's current ceiling. Auto-recovers
           // via record_workspace_email_success after 500 consecutive wins.
           if (isWorkspaceQuota) {
-            await supabase.rpc('record_workspace_email_429').catch((e) =>
-              console.warn('record_workspace_email_429 failed', { err: String(e) })
-            )
+            await safeRpc(supabase, 'record_workspace_email_429')
           }
 
 

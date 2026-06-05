@@ -3,6 +3,7 @@ import { renderAsync } from 'npm:@react-email/components@0.0.22'
 import { parseEmailWebhookPayload } from 'npm:@lovable.dev/email-js'
 import { WebhookError, verifyWebhookRequest } from 'npm:@lovable.dev/webhooks-js'
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { withAuditWrapper } from "../_shared/audit.ts";
 import { SignupEmail } from '../_shared/email-templates/signup.tsx'
 import { InviteEmail } from '../_shared/email-templates/invite.tsx'
 import { MagicLinkEmail } from '../_shared/email-templates/magic-link.tsx'
@@ -10,21 +11,19 @@ import { RecoveryEmail } from '../_shared/email-templates/recovery.tsx'
 import { EmailChangeEmail } from '../_shared/email-templates/email-change.tsx'
 import { ReauthenticationEmail } from '../_shared/email-templates/reauthentication.tsx'
 
-import { withAuditWrapper } from "../_shared/audit.ts";
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type, x-lovable-signature, x-lovable-timestamp, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+    'authorization, x-client-info, apikey, content-type, x-request-id, x-trace-id, x-lovable-signature, x-lovable-timestamp, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 }
 
-// Short, sentence-case, spam-classifier-safe subjects. Keep under 50 chars.
 const EMAIL_SUBJECTS: Record<string, string> = {
-  signup: 'Confirm your email',
+  signup: 'Confirm your Tech Fleet email',
   invite: 'You were invited to Tech Fleet',
   magiclink: 'Sign in to Tech Fleet',
   recovery: 'Reset your Tech Fleet password',
   email_change: 'Confirm your new email',
-  reauthentication: "Verify it's you",
+  reauthentication: 'Your verification code',
 }
 
 // Template mapping
@@ -37,27 +36,27 @@ const EMAIL_TEMPLATES: Record<string, React.ComponentType<any>> = {
   reauthentication: ReauthenticationEmail,
 }
 
-// Configuration — From: uses root domain mailbox (onboarding@) for inbox trust;
-// DKIM signs SENDER_DOMAIN (relaxed DMARC alignment on techfleet.org).
+// Configuration
 const SITE_NAME = "Tech Fleet"
+const APP_ORIGIN = "https://techfleet.network"
 const SENDER_DOMAIN = "notify.techfleet.org"
-const ROOT_DOMAIN = "techfleet.org"
-const FROM_DOMAIN = "techfleet.org"
+const ROOT_DOMAIN = "techfleet.network"
+const FROM_DOMAIN = "techfleet.org" // Domain shown in From address (may be root or sender subdomain)
 const FROM_MAILBOX = "onboarding"
 const REPLY_TO = "onboarding@techfleet.org"
-
-// Cooldowns: suppress duplicate auth sends to protect sender reputation.
-// A double-click on "Reset password" or rapid magic-link requests would
-// otherwise burn quota and look like spammy behavior to Gmail.
 const DEDUP_WINDOW_SECONDS = 60
-const MAGIC_LINK_COOLDOWN_SECONDS = 300
+const ALLOWED_RESET_ORIGINS = new Set([
+  "https://techfleet.network",
+  "https://www.techfleet.network",
+  "https://techfleetnetwork.lovable.app",
+])
 
 // Sample data for preview mode ONLY (not used in actual email sending).
 // URLs are baked in at scaffold time from the project's real data.
 // The sample email uses a fixed placeholder (RFC 6761 .test TLD) so the Go backend
 // can always find-and-replace it with the actual recipient when sending test emails,
 // even if the project's domain has changed since the template was scaffolded.
-const SAMPLE_PROJECT_URL = "https://techfleet.network"
+const SAMPLE_PROJECT_URL = APP_ORIGIN
 const SAMPLE_EMAIL = "user@example.test"
 const SAMPLE_DATA: Record<string, object> = {
   signup: {
@@ -81,6 +80,7 @@ const SAMPLE_DATA: Record<string, object> = {
   },
   email_change: {
     siteName: SITE_NAME,
+    oldEmail: SAMPLE_EMAIL,
     email: SAMPLE_EMAIL,
     newEmail: SAMPLE_EMAIL,
     confirmationUrl: SAMPLE_PROJECT_URL,
@@ -228,13 +228,6 @@ async function handleWebhook(req: Request): Promise<Response> {
     )
   }
 
-  // AUTH-RESET-020..023: For recovery emails, rewrite the link from the
-  // default GoTrue /auth/v1/verify URL (which redirects with #access_token
-  // hash and is auto-consumed by AuthContext's detectSessionInUrl before
-  // ResetPasswordPage can subscribe) to a direct `?token_hash=...&type=recovery`
-  // URL that lands on /reset-password. The page then calls verifyOtp
-  // explicitly. This works cross-device, in incognito, and survives
-  // double-clicks until the OTP is consumed/expired.
   let confirmationUrl: string = payload.data.url
   if (emailType === 'recovery') {
     try {
@@ -244,15 +237,11 @@ async function handleWebhook(req: Request): Promise<Response> {
         verifyUrl.searchParams.get('token') ||
         payload.data.token_hash ||
         payload.data.token
-      const redirectTo =
-        verifyUrl.searchParams.get('redirect_to') ||
-        payload.data.redirect_to ||
-        `https://${ROOT_DOMAIN}/reset-password`
-      if (tokenHash && redirectTo) {
-        const target = new URL(redirectTo)
-        // Ensure we always land on /reset-password regardless of the
-        // configured redirect (defense-in-depth if Site URL is misconfigured).
-        if (!target.pathname.endsWith('/reset-password')) target.pathname = '/reset-password'
+      const rawRedirectTo = verifyUrl.searchParams.get('redirect_to') || payload.data.redirect_to || `${APP_ORIGIN}/reset-password`
+      const redirectTo = new URL(rawRedirectTo)
+      const origin = ALLOWED_RESET_ORIGINS.has(redirectTo.origin) ? redirectTo.origin : APP_ORIGIN
+      if (tokenHash) {
+        const target = new URL('/reset-password', origin)
         target.searchParams.set('token_hash', tokenHash)
         target.searchParams.set('type', 'recovery')
         confirmationUrl = target.toString()
@@ -265,11 +254,12 @@ async function handleWebhook(req: Request): Promise<Response> {
   // Build template props from payload.data (HookData structure)
   const templateProps = {
     siteName: SITE_NAME,
-    siteUrl: `https://${ROOT_DOMAIN}`,
+    siteUrl: APP_ORIGIN,
     recipient: payload.data.email,
     confirmationUrl,
     token: payload.data.token,
     email: payload.data.email,
+    oldEmail: payload.data.old_email,
     newEmail: payload.data.new_email,
   }
 
@@ -286,22 +276,13 @@ async function handleWebhook(req: Request): Promise<Response> {
   )
 
   const messageId = crypto.randomUUID()
-
-  // Lovable's transactional email gateway requires an unsubscribe_token on
-  // every send. Look up an existing token for this recipient (or mint+upsert
-  // a fresh one) BEFORE enqueueing — without this the dispatcher would 400
-  // with `missing_unsubscribe` and the message would dead-letter.
   const normalizedEmail = (payload.data.email || '').trim().toLowerCase()
+  let unsubscribeToken: string | null = null
 
-  // Dedup: drop repeat sends of the same (email, type) within DEDUP_WINDOW_SECONDS.
-  // For magic-link, enforce a longer cooldown to prevent abuse / reputation drag.
-  const cooldownSecs = emailType === 'magiclink'
-    ? MAGIC_LINK_COOLDOWN_SECONDS
-    : DEDUP_WINDOW_SECONDS
-  const cooldownSinceIso = new Date(Date.now() - cooldownSecs * 1000).toISOString()
+  const cooldownSinceIso = new Date(Date.now() - DEDUP_WINDOW_SECONDS * 1000).toISOString()
   const { data: recent } = await supabase
     .from('email_send_log')
-    .select('id, created_at')
+    .select('id')
     .eq('recipient_email', payload.data.email)
     .eq('template_name', emailType)
     .in('status', ['pending', 'sent'])
@@ -309,64 +290,33 @@ async function handleWebhook(req: Request): Promise<Response> {
     .limit(1)
 
   if (recent && recent.length > 0) {
-    console.log('Auth email dedup hit — dropping duplicate send', {
-      emailType,
-      email: payload.data.email,
-      cooldownSecs,
+    console.log('Auth email dedup hit — dropping duplicate send', { emailType, email: payload.data.email })
+    return new Response(JSON.stringify({ success: true, deduped: true }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
-    return new Response(
-      JSON.stringify({ success: true, deduped: true }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
   }
 
-  // Skip if recipient is on the suppression list.
-  const { data: suppressedRow } = await supabase
-    .from('suppressed_emails')
-    .select('id')
+  const { data: existingToken } = await supabase
+    .from('email_unsubscribe_tokens')
+    .select('token')
     .eq('email', normalizedEmail)
-    .maybeSingle()
-  if (suppressedRow) {
-    await supabase.from('email_send_log').insert({
-      message_id: messageId,
-      template_name: emailType,
-      recipient_email: payload.data.email,
-      status: 'suppressed',
-    })
-    return new Response(
-      JSON.stringify({ success: true, suppressed: true }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
-  }
-  let unsubscribeToken: string | null = null
-  try {
-    const { data: existing } = await supabase
+    .limit(1)
+  unsubscribeToken = existingToken?.[0]?.token ?? null
+  if (!unsubscribeToken) {
+    const fresh = crypto.getRandomValues(new Uint8Array(32))
+    unsubscribeToken = Array.from(fresh).map((b) => b.toString(16).padStart(2, '0')).join('')
+    const { error: tokenError } = await supabase
       .from('email_unsubscribe_tokens')
-      .select('token')
-      .eq('email', normalizedEmail)
-      .order('used_at', { ascending: true })
-      .order('created_at', { ascending: true })
-      .limit(1)
-    if (existing && existing.length > 0) {
-      unsubscribeToken = existing[0].token as string
-    } else {
-      const fresh = crypto.getRandomValues(new Uint8Array(32))
-      unsubscribeToken = Array.from(fresh).map((b) => b.toString(16).padStart(2, '0')).join('')
-      const { error: upsertErr } = await supabase
+      .upsert({ email: normalizedEmail, token: unsubscribeToken }, { onConflict: 'email', ignoreDuplicates: true })
+    if (tokenError) {
+      const { data: raceRow } = await supabase
         .from('email_unsubscribe_tokens')
-        .upsert({ email: normalizedEmail, token: unsubscribeToken }, { onConflict: 'email', ignoreDuplicates: true })
-      if (upsertErr) {
-        // Race: another concurrent send already inserted a row. Re-read.
-        const { data: raceRow } = await supabase
-          .from('email_unsubscribe_tokens')
-          .select('token')
-          .eq('email', normalizedEmail)
-          .limit(1)
-        if (raceRow && raceRow.length > 0) unsubscribeToken = raceRow[0].token as string
-      }
+        .select('token')
+        .eq('email', normalizedEmail)
+        .limit(1)
+      unsubscribeToken = raceRow?.[0]?.token ?? null
     }
-  } catch (tokenErr) {
-    console.error('Failed to resolve unsubscribe token for auth email', { error: tokenErr, run_id, emailType })
   }
 
   if (!unsubscribeToken) {

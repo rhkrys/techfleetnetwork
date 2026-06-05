@@ -119,6 +119,7 @@ export default function ResetPasswordPage() {
       supabase.auth.verifyOtp({ type: "recovery", token_hash: tokenHash! })
         .then(({ error }) => {
           if (error) {
+            stripSensitiveParams();
             settleFromSession("token_hash_invalid");
           } else {
             stripSensitiveParams();
