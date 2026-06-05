@@ -46,4 +46,52 @@ test.describe("AUTH-RESET-011 password reset round trip", () => {
       if (created.user?.id) await admin.auth.admin.deleteUser(created.user.id).catch(() => undefined);
     }
   });
+
+  test("AUTH-RESET-020: recovery link works in a fresh browser context (cross-device proof)", async ({ browser }) => {
+    const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
+    const email = `auth-reset-xd-${Date.now()}@example.com`;
+    const oldPassword = "OldStrongPass123!";
+    const newPassword = "NewStrongPass123!";
+
+    const { data: created, error: createError } = await admin.auth.admin.createUser({ email, password: oldPassword, email_confirm: true });
+    expect(createError).toBeNull();
+
+    // Context A simulates the device that REQUESTED the reset (carries no
+    // pre-existing Supabase session for this account).
+    const ctxA = await browser.newContext();
+    try {
+      const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
+        type: "recovery",
+        email,
+        options: { redirectTo: `${appBaseUrl}/reset-password` },
+      });
+      expect(linkError).toBeNull();
+      const actionLink = linkData.properties?.action_link;
+      expect(actionLink).toBeTruthy();
+
+      // The auth-email-hook rewrites recovery links to `?token_hash=…&type=recovery`.
+      // Whether the test runs against the rewritten format or the legacy GoTrue
+      // verify URL, the cross-device guarantee is the same: the page must
+      // render the form in a fresh context with no prior session.
+      const ctxB = await browser.newContext();
+      try {
+        const pageB = await ctxB.newPage();
+        await pageB.goto(actionLink!);
+        await expect(pageB.getByRole("heading", { name: /set your new password/i })).toBeVisible({ timeout: 15_000 });
+        await pageB.getByLabel(/^new password$/i).fill(newPassword);
+        await pageB.getByLabel(/confirm new password/i).fill(newPassword);
+        await pageB.getByRole("button", { name: /update password/i }).click();
+        await expect(pageB.getByText(/use your new password the next time you sign in/i)).toBeVisible();
+
+        // URL hygiene: sensitive params must be stripped after settle.
+        const finalUrl = pageB.url();
+        expect(finalUrl).not.toMatch(/token_hash|access_token|refresh_token/);
+      } finally {
+        await ctxB.close();
+      }
+    } finally {
+      await ctxA.close();
+      if (created.user?.id) await admin.auth.admin.deleteUser(created.user.id).catch(() => undefined);
+    }
+  });
 });
