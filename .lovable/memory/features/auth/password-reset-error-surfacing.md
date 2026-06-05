@@ -11,7 +11,9 @@ The `auth-email-hook` edge function REWRITES the recovery email link before rend
 - Emits `${redirect_to_origin}/reset-password?token_hash=<hash>&type=recovery` instead.
 - Forces pathname to `/reset-password` even if `redirect_to` is misconfigured (defense-in-depth).
 
-**Why:** Default GoTrue verify URL redirects to `/reset-password#access_token=…&type=recovery`. The Supabase client has `detectSessionInUrl: true` (default), so `AuthContext`'s mount-time `getSession()` consumes the hash BEFORE `ResetPasswordPage`'s `onAuthStateChange` subscriber attaches. Result: hash stripped, no `PASSWORD_RECOVERY` event reaches the page, page falls into invalid-link branch. DB evidence: 37 recovery emails delivered, zero password updates over 7 days.
+**Why:** Default GoTrue verify URL redirects to `/reset-password#access_token=…&type=recovery`. With `detectSessionInUrl: true`, `AuthContext`'s mount-time `getSession()` consumed the hash BEFORE `ResetPasswordPage`'s `onAuthStateChange` subscriber attached. Result: hash stripped, no `PASSWORD_RECOVERY` event, page fell into invalid-link branch. DB evidence: 37 recovery emails delivered, zero password updates over 7 days.
+
+**Permanent fix (2026-06-05):** `src/integrations/supabase/client.ts` sets `detectSessionInUrl: false`. ResetPasswordPage now consumes recovery params explicitly. Google OAuth is unaffected because the Lovable wrapper (`src/integrations/lovable/index.ts`) calls `supabase.auth.setSession(result.tokens)` directly — it never relied on URL auto-detection. **Required Supabase Auth redirect allowlist entries:** `https://techfleet.network/reset-password`, `https://www.techfleet.network/reset-password`, `https://techfleetnetwork.lovable.app/reset-password`.
 
 ## ResetPasswordPage settle order
 

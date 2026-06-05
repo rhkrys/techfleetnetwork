@@ -13,5 +13,12 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     storage: localStorage,
     persistSession: true,
     autoRefreshToken: true,
+    // AUTH-RESET fix: prevent AuthContext's bootstrap getSession() from
+    // auto-consuming the recovery hash/code before ResetPasswordPage's
+    // onAuthStateChange subscriber attaches. ResetPasswordPage now consumes
+    // recovery params explicitly via verifyOtp/exchangeCodeForSession.
+    // Google OAuth still works because we drive it via exchangeCodeForSession
+    // on the callback route, not via auto-detect.
+    detectSessionInUrl: false,
   }
 });
