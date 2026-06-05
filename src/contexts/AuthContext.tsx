@@ -355,7 +355,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfile(null);
         setProfileLoaded(true);
       })
-      .finally(() => setLoading(false));
+      .finally(() => setLoading(false)));
 
 
     return () => subscription.unsubscribe();
