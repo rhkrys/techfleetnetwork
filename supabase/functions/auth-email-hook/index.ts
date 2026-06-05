@@ -10,21 +10,19 @@ import { RecoveryEmail } from '../_shared/email-templates/recovery.tsx'
 import { EmailChangeEmail } from '../_shared/email-templates/email-change.tsx'
 import { ReauthenticationEmail } from '../_shared/email-templates/reauthentication.tsx'
 
-import { withAuditWrapper } from "../_shared/audit.ts";
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers':
     'authorization, x-client-info, apikey, content-type, x-lovable-signature, x-lovable-timestamp, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 }
 
-// Short, sentence-case, spam-classifier-safe subjects. Keep under 50 chars.
 const EMAIL_SUBJECTS: Record<string, string> = {
   signup: 'Confirm your email',
-  invite: 'You were invited to Tech Fleet',
-  magiclink: 'Sign in to Tech Fleet',
-  recovery: 'Reset your Tech Fleet password',
+  invite: "You've been invited",
+  magiclink: 'Your login link',
+  recovery: 'Reset your password',
   email_change: 'Confirm your new email',
-  reauthentication: "Verify it's you",
+  reauthentication: 'Your verification code',
 }
 
 // Template mapping
@@ -37,27 +35,18 @@ const EMAIL_TEMPLATES: Record<string, React.ComponentType<any>> = {
   reauthentication: ReauthenticationEmail,
 }
 
-// Configuration — From: uses root domain mailbox (onboarding@) for inbox trust;
-// DKIM signs SENDER_DOMAIN (relaxed DMARC alignment on techfleet.org).
-const SITE_NAME = "Tech Fleet"
+// Configuration
+const SITE_NAME = "techfleetnetwork"
 const SENDER_DOMAIN = "notify.techfleet.org"
 const ROOT_DOMAIN = "techfleet.org"
-const FROM_DOMAIN = "techfleet.org"
-const FROM_MAILBOX = "onboarding"
-const REPLY_TO = "onboarding@techfleet.org"
-
-// Cooldowns: suppress duplicate auth sends to protect sender reputation.
-// A double-click on "Reset password" or rapid magic-link requests would
-// otherwise burn quota and look like spammy behavior to Gmail.
-const DEDUP_WINDOW_SECONDS = 60
-const MAGIC_LINK_COOLDOWN_SECONDS = 300
+const FROM_DOMAIN = "techfleet.org" // Domain shown in From address (may be root or sender subdomain)
 
 // Sample data for preview mode ONLY (not used in actual email sending).
 // URLs are baked in at scaffold time from the project's real data.
 // The sample email uses a fixed placeholder (RFC 6761 .test TLD) so the Go backend
 // can always find-and-replace it with the actual recipient when sending test emails,
 // even if the project's domain has changed since the template was scaffolded.
-const SAMPLE_PROJECT_URL = "https://techfleet.network"
+const SAMPLE_PROJECT_URL = "https://techfleetnetwork.lovable.app"
 const SAMPLE_EMAIL = "user@example.test"
 const SAMPLE_DATA: Record<string, object> = {
   signup: {
@@ -81,6 +70,7 @@ const SAMPLE_DATA: Record<string, object> = {
   },
   email_change: {
     siteName: SITE_NAME,
+    oldEmail: SAMPLE_EMAIL,
     email: SAMPLE_EMAIL,
     newEmail: SAMPLE_EMAIL,
     confirmationUrl: SAMPLE_PROJECT_URL,
@@ -228,48 +218,15 @@ async function handleWebhook(req: Request): Promise<Response> {
     )
   }
 
-  // AUTH-RESET-020..023: For recovery emails, rewrite the link from the
-  // default GoTrue /auth/v1/verify URL (which redirects with #access_token
-  // hash and is auto-consumed by AuthContext's detectSessionInUrl before
-  // ResetPasswordPage can subscribe) to a direct `?token_hash=...&type=recovery`
-  // URL that lands on /reset-password. The page then calls verifyOtp
-  // explicitly. This works cross-device, in incognito, and survives
-  // double-clicks until the OTP is consumed/expired.
-  let confirmationUrl: string = payload.data.url
-  if (emailType === 'recovery') {
-    try {
-      const verifyUrl = new URL(payload.data.url)
-      const tokenHash =
-        verifyUrl.searchParams.get('token_hash') ||
-        verifyUrl.searchParams.get('token') ||
-        payload.data.token_hash ||
-        payload.data.token
-      const redirectTo =
-        verifyUrl.searchParams.get('redirect_to') ||
-        payload.data.redirect_to ||
-        `https://${ROOT_DOMAIN}/reset-password`
-      if (tokenHash && redirectTo) {
-        const target = new URL(redirectTo)
-        // Ensure we always land on /reset-password regardless of the
-        // configured redirect (defense-in-depth if Site URL is misconfigured).
-        if (!target.pathname.endsWith('/reset-password')) target.pathname = '/reset-password'
-        target.searchParams.set('token_hash', tokenHash)
-        target.searchParams.set('type', 'recovery')
-        confirmationUrl = target.toString()
-      }
-    } catch (rewriteErr) {
-      console.error('Recovery URL rewrite failed, falling back to default', { error: rewriteErr, run_id })
-    }
-  }
-
   // Build template props from payload.data (HookData structure)
   const templateProps = {
     siteName: SITE_NAME,
     siteUrl: `https://${ROOT_DOMAIN}`,
     recipient: payload.data.email,
-    confirmationUrl,
+    confirmationUrl: payload.data.url,
     token: payload.data.token,
     email: payload.data.email,
+    oldEmail: payload.data.old_email,
     newEmail: payload.data.new_email,
   }
 
@@ -287,102 +244,6 @@ async function handleWebhook(req: Request): Promise<Response> {
 
   const messageId = crypto.randomUUID()
 
-  // Lovable's transactional email gateway requires an unsubscribe_token on
-  // every send. Look up an existing token for this recipient (or mint+upsert
-  // a fresh one) BEFORE enqueueing — without this the dispatcher would 400
-  // with `missing_unsubscribe` and the message would dead-letter.
-  const normalizedEmail = (payload.data.email || '').trim().toLowerCase()
-
-  // Dedup: drop repeat sends of the same (email, type) within DEDUP_WINDOW_SECONDS.
-  // For magic-link, enforce a longer cooldown to prevent abuse / reputation drag.
-  const cooldownSecs = emailType === 'magiclink'
-    ? MAGIC_LINK_COOLDOWN_SECONDS
-    : DEDUP_WINDOW_SECONDS
-  const cooldownSinceIso = new Date(Date.now() - cooldownSecs * 1000).toISOString()
-  const { data: recent } = await supabase
-    .from('email_send_log')
-    .select('id, created_at')
-    .eq('recipient_email', payload.data.email)
-    .eq('template_name', emailType)
-    .in('status', ['pending', 'sent'])
-    .gte('created_at', cooldownSinceIso)
-    .limit(1)
-
-  if (recent && recent.length > 0) {
-    console.log('Auth email dedup hit — dropping duplicate send', {
-      emailType,
-      email: payload.data.email,
-      cooldownSecs,
-    })
-    return new Response(
-      JSON.stringify({ success: true, deduped: true }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
-  }
-
-  // Skip if recipient is on the suppression list.
-  const { data: suppressedRow } = await supabase
-    .from('suppressed_emails')
-    .select('id')
-    .eq('email', normalizedEmail)
-    .maybeSingle()
-  if (suppressedRow) {
-    await supabase.from('email_send_log').insert({
-      message_id: messageId,
-      template_name: emailType,
-      recipient_email: payload.data.email,
-      status: 'suppressed',
-    })
-    return new Response(
-      JSON.stringify({ success: true, suppressed: true }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
-  }
-  let unsubscribeToken: string | null = null
-  try {
-    const { data: existing } = await supabase
-      .from('email_unsubscribe_tokens')
-      .select('token')
-      .eq('email', normalizedEmail)
-      .order('used_at', { ascending: true })
-      .order('created_at', { ascending: true })
-      .limit(1)
-    if (existing && existing.length > 0) {
-      unsubscribeToken = existing[0].token as string
-    } else {
-      const fresh = crypto.getRandomValues(new Uint8Array(32))
-      unsubscribeToken = Array.from(fresh).map((b) => b.toString(16).padStart(2, '0')).join('')
-      const { error: upsertErr } = await supabase
-        .from('email_unsubscribe_tokens')
-        .upsert({ email: normalizedEmail, token: unsubscribeToken }, { onConflict: 'email', ignoreDuplicates: true })
-      if (upsertErr) {
-        // Race: another concurrent send already inserted a row. Re-read.
-        const { data: raceRow } = await supabase
-          .from('email_unsubscribe_tokens')
-          .select('token')
-          .eq('email', normalizedEmail)
-          .limit(1)
-        if (raceRow && raceRow.length > 0) unsubscribeToken = raceRow[0].token as string
-      }
-    }
-  } catch (tokenErr) {
-    console.error('Failed to resolve unsubscribe token for auth email', { error: tokenErr, run_id, emailType })
-  }
-
-  if (!unsubscribeToken) {
-    await supabase.from('email_send_log').insert({
-      message_id: messageId,
-      template_name: emailType,
-      recipient_email: payload.data.email,
-      status: 'failed',
-      error_message: 'Failed to mint unsubscribe token',
-    })
-    return new Response(JSON.stringify({ error: 'Failed to mint unsubscribe token' }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  }
-
   // Log pending BEFORE enqueue so we have a record even if enqueue crashes
   await supabase.from('email_send_log').insert({
     message_id: messageId,
@@ -397,15 +258,13 @@ async function handleWebhook(req: Request): Promise<Response> {
       run_id,
       message_id: messageId,
       to: payload.data.email,
-      from: `${SITE_NAME} <${FROM_MAILBOX}@${FROM_DOMAIN}>`,
-      reply_to: REPLY_TO,
+      from: `${SITE_NAME} <noreply@${FROM_DOMAIN}>`,
       sender_domain: SENDER_DOMAIN,
       subject: EMAIL_SUBJECTS[emailType] || 'Notification',
       html,
       text,
       purpose: 'transactional',
       label: emailType,
-      unsubscribe_token: unsubscribeToken,
       queued_at: new Date().toISOString(),
     },
   })
@@ -433,7 +292,7 @@ async function handleWebhook(req: Request): Promise<Response> {
   )
 }
 
-Deno.serve(withAuditWrapper("auth-email-hook", async (req) => {
+Deno.serve(async (req) => {
   const url = new URL(req.url)
 
   // Handle CORS preflight for main endpoint
@@ -457,4 +316,4 @@ Deno.serve(withAuditWrapper("auth-email-hook", async (req) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
-}))
+})
