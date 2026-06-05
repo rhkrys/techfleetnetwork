@@ -112,6 +112,53 @@ project_id = "iqsjhrhsjlgjiaedzmtz"
     # service-role bearer in code (same pattern as process-email-queue).
     verify_jwt = false
 
+  # ---- Auth-critical functions ----
+  # AUTH-PIN-001: every function invoked from the auth/signup/login/reset flows
+  # MUST be pinned here. Unpinned auth functions silently inherit platform
+  # defaults and stop deploying — causing the "We couldn't update your
+  # password" generic-message incident (2026-06-05). See
+  # mem://constraints/edge-function-config-pinning.
+  [functions.update-password-confirmed]
+    # Authenticated: recovery session. Uses requireAuthenticatedRequest in code.
+    verify_jwt = true
+  [functions.login-with-captcha]
+    # Pre-auth: user is signing in. Authorization is the Turnstile token.
+    verify_jwt = false
+  [functions.send-magic-link]
+    # Pre-auth: magic-link fallback when Turnstile is blocked.
+    verify_jwt = false
+  [functions.verify-turnstile]
+    # Pre-auth: browser captcha verification.
+    verify_jwt = false
+  [functions.validate-email-domain]
+    # Pre-auth: signup email-domain MX check.
+    verify_jwt = false
+  [functions.resend-signup-confirmations]
+    # Cron-poked safety-net for unconfirmed signups. Bearer validated in code.
+    verify_jwt = false
+  [functions.sign-out-all-devices]
+    # Authenticated: self-serve session revocation. Manual JWT check in code.
+    verify_jwt = false
+  [functions.revoke-user-sessions]
+    # Admin-only: requires fresh 2fa step-up. Manual JWT check in code.
+    verify_jwt = false
+  [functions.delete-account]
+    # Authenticated: self-serve account deletion. Manual JWT check in code.
+    verify_jwt = false
+  [functions.admin-purge-auth-user]
+    # Admin-only: manual JWT + admin check in code.
+    verify_jwt = false
+  [functions.admin-sign-out-all-users]
+    # Admin-only: manual JWT + admin check in code.
+    verify_jwt = false
+  [functions.record-consent]
+    # Can be called pre-auth (cookie banner before sign-in).
+    verify_jwt = false
+  [functions.record-policy-acknowledgment]
+    # Authenticated: signed-in policy acceptance.
+    verify_jwt = true
+
+
 
 
 
