@@ -449,6 +449,15 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
       }
 
 
+      // Tracks whether the provider already accepted this message in the
+      // current iteration. If true, any later exception MUST NOT write a
+      // 'failed' row (the message was sent) and MUST NOT skip queue
+      // deletion (otherwise the message is re-read and produces a
+      // "Duplicate enqueue reconciled" row). Root cause of triage-flood
+      // 2026-06-05: a post-send RPC TypeError caused a spurious failed
+      // row AND stranded the pgmq message.
+      let sentInIteration = false
+
       try {
         // Workspace-level token bucket: atomic DB pacer shared across ALL
         // lanes and ALL concurrent isolates. Sized strictly below the
@@ -497,6 +506,10 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
           { apiKey, sendUrl: Deno.env.get('LOVABLE_SEND_URL') }
         )
 
+        // Provider accepted. From this point any thrown exception is a
+        // post-send bookkeeping failure, NOT a send failure.
+        sentInIteration = true
+
         // Log success
         await supabase.from('email_send_log').insert({
           message_id: payload.message_id,
@@ -505,10 +518,9 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
           status: 'sent',
         })
 
-        // Ratchet workspace refill rate up on sustained success (no-op until 500 wins).
-        await safeRpc(supabase, 'record_workspace_email_success')
-
-        // Delete from queue
+        // Delete from queue FIRST (before any other post-send RPC) so a
+        // downstream RPC TypeError cannot strand the message in pgmq and
+        // cause "Duplicate enqueue reconciled" rows on the next tick.
         const { error: delError } = await supabase.rpc('delete_email', {
           queue_name: queue,
           message_id: msg.msg_id,
@@ -516,19 +528,50 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
         if (delError) {
           console.error('Failed to delete sent message from queue', { queue, msg_id: msg.msg_id, error: delError })
         }
+
+        // Ratchet workspace refill rate up on sustained success (no-op until 500 wins).
+        // safeRpc swallows internal errors, but wrap defensively in case
+        // the helper itself ever regresses (this was the 2026-06-05 root
+        // cause path that produced "supabase.rpc(...).catch is not a function").
+        try {
+          await safeRpc(supabase, 'record_workspace_email_success')
+        } catch (rpcErr) {
+          console.warn('record_workspace_email_success threw — ignored', { err: String(rpcErr) })
+        }
+
         if (ALL_BULK_TEMPLATES.has(labelStr)) bulkSentLastHour++
         totalProcessed++
         lastSentLane = queue
 
         if ((consecutive[queue] ?? 0) > 0) {
-          await supabase
-            .from('email_send_state')
-            .update({ [counterCols[queue]]: 0, updated_at: new Date().toISOString() })
-            .eq('id', 1)
-          consecutive[queue] = 0
+          try {
+            await supabase
+              .from('email_send_state')
+              .update({ [counterCols[queue]]: 0, updated_at: new Date().toISOString() })
+              .eq('id', 1)
+            consecutive[queue] = 0
+          } catch (resetErr) {
+            console.warn('Failed to reset consecutive counter — non-fatal', { err: String(resetErr) })
+          }
         }
 
       } catch (error) {
+        // Post-send cleanup exception: message already delivered to the
+        // provider. Emit a single audit event for triage and continue —
+        // do NOT write a 'failed' email_send_log row (would spam triage
+        // and mislead operators into thinking the send failed).
+        if (sentInIteration) {
+          const errMsg = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+          console.warn('Post-send bookkeeping failed (send already succeeded)', {
+            queue,
+            msg_id: msg.msg_id,
+            message_id: payload.message_id,
+            error: errMsg,
+          })
+          continue
+        }
+
+        const errorMsg = error instanceof Error ? error.message : String(error)
         const errorMsg = error instanceof Error ? error.message : String(error)
         console.error('Email send failed', {
           queue,
