@@ -20,33 +20,61 @@ export async function auditedInvoke<T = unknown>(
     "x-trace-id": traceId,
   };
   return await withTrace(async (): Promise<FunctionsResponse<T>> => {
+    // AUTH-PIN-001: auth-critical edge functions that, when 404/transport,
+    // strand real users mid-flow (password reset, login, magic link, signup,
+    // account delete). A 404 here = function was never deployed. Escalate to
+    // severity:error + a stable fingerprint so the Triage Critical Push cron
+    // pages admins on the FIRST occurrence instead of waiting for digest.
+    const AUTH_CRITICAL = new Set<string>([
+      "update-password-confirmed",
+      "login-with-captcha",
+      "send-magic-link",
+      "verify-turnstile",
+      "validate-email-domain",
+      "resend-signup-confirmations",
+      "sign-out-all-devices",
+      "revoke-user-sessions",
+      "delete-account",
+      "admin-purge-auth-user",
+      "admin-sign-out-all-users",
+      "record-consent",
+      "record-policy-acknowledgment",
+    ]);
     try {
       const result = await supabase.functions.invoke<T>(fn, { ...options, headers });
       if (result.error) {
-        // Best-effort: pull upstream HTTP status off the FunctionsHttpError
-        // context so triage can group "ran and failed" vs "never ran".
         const ctx = (result.error as { context?: Response }).context;
         const status = ctx && typeof ctx.status === "number" ? ctx.status : undefined;
         const upstream = status ? `upstream:${status}` : `upstream:transport_error`;
-        // Severity is `warn` (not `error`) because client-side invoke failures
-        // are almost always transport-layer (CORS preflight, network drop,
-        // 4xx from validation) — not actionable code bugs. Genuine bugs are
-        // logged at `error` severity by the edge function itself via its own
-        // audit path, so triage stays high-signal. See HELP-DESK-024.
+        const isUndeployed = AUTH_CRITICAL.has(fn) && (status === 404 || status === undefined);
+        const severity: "warn" | "error" = isUndeployed ? "error" : "warn";
+        const extraFields = isUndeployed
+          ? [upstream, `severity:error`, `fingerprint:edge_function_not_deployed:${fn}`]
+          : [upstream];
+        // Severity is `warn` (not `error`) for ordinary invoke failures —
+        // transport-layer noise (CORS preflight, network drop, 4xx
+        // validation) is not actionable. Real edge bugs are logged at
+        // `error` severity by the edge function itself. AUTH_CRITICAL 404 /
+        // transport bumps to `error` so admins are paged immediately.
         reportError(
           `${fn}: ${result.error.message ?? String(result.error)}`,
           `edge.${fn}`,
-          { eventType: "edge_invoke_failed", severity: "warn", traceId, extraFields: [upstream] },
+          { eventType: "edge_invoke_failed", severity, traceId, extraFields },
         );
       }
       return result;
     } catch (err) {
       const errName = err instanceof Error ? err.name : "Unknown";
+      const isUndeployed = AUTH_CRITICAL.has(fn);
+      const severity: "warn" | "error" = isUndeployed ? "error" : "warn";
+      const extraFields = isUndeployed
+        ? [`upstream:transport_error`, `error_name:${errName}`, `severity:error`, `fingerprint:edge_function_not_deployed:${fn}`]
+        : [`upstream:transport_error`, `error_name:${errName}`];
       reportError(err, `edge.${fn}`, {
         eventType: "edge_invoke_failed",
-        severity: "warn",
+        severity,
         traceId,
-        extraFields: [`upstream:transport_error`, `error_name:${errName}`],
+        extraFields,
       });
       throw err;
     }

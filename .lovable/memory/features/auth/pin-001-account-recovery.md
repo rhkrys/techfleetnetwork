@@ -23,6 +23,9 @@ Symptom users reported: `"We couldn't update your password. Please try again. 2 
 ## AUTH_CRITICAL set (never on baseline)
 update-password-confirmed, login-with-captcha, send-magic-link, verify-turnstile, validate-email-domain, resend-signup-confirmations, sign-out-all-devices, revoke-user-sessions, delete-account, admin-purge-auth-user, admin-sign-out-all-users, record-consent, record-policy-acknowledgment
 
-## Verification
-- `curl /update-password-confirmed` with bogus JWT → `401 UNAUTHORIZED_INVALID_JWT_FORMAT` (function is live; before fix it 404'd).
-- CI guard reports `87 edge functions pinned; 46 client-invoked functions all pinned`.
+## Verification (post-deploy 2026-06-05)
+Live curl of all 13 AUTH_CRITICAL functions with bogus JWT — every response is 4xx/5xx (deployed), zero 404 (none missing):
+update-password-confirmed→401, login-with-captcha→400, send-magic-link→400, verify-turnstile→400, validate-email-domain→400, resend-signup-confirmations→401, sign-out-all-devices→401, revoke-user-sessions→500, delete-account→401, admin-purge-auth-user→401, admin-sign-out-all-users→401, record-consent→400, record-policy-acknowledgment→520.
+
+## Page-on-first-occurrence (audited-invoke)
+`src/integrations/supabase/audited-invoke.ts` now bumps severity to `error` and tags `fingerprint:edge_function_not_deployed:<fn>` whenever any AUTH_CRITICAL invoke returns HTTP 404 or transport_error. The Triage Critical Push 5-min cron pages admins on the FIRST occurrence — silence is no longer possible. Non-critical fns stay at `severity:warn` (no noise regression).
