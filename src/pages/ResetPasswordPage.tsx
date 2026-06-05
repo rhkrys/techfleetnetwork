@@ -46,9 +46,30 @@ export default function ResetPasswordPage() {
 
   useEffect(() => {
     let settled = false;
-    const settle = (valid: boolean) => {
+
+    // Severity-tagged diagnostics so a future failure surfaces the exact
+    // branch in audit_log without reaching Triage (severity:info).
+    const recordSettle = (branch: string, ok: boolean) => {
+      try {
+        supabase.rpc("write_audit_log", {
+          p_event_type: ok ? `reset_settle_${branch}_ok` : `reset_settle_${branch}_fail`,
+          p_table_name: "auth.users",
+          p_record_id: null,
+          p_user_id: null,
+          p_changed_fields: [
+            "severity:info",
+            `path:${window.location.pathname}`,
+            `has_hash:${Boolean(window.location.hash)}`,
+          ],
+          p_error_message: null,
+        });
+      } catch { /* diagnostics must never block recovery */ }
+    };
+
+    const settle = (valid: boolean, branch: string) => {
       if (settled) return;
       settled = true;
+      recordSettle(branch, valid);
       setValidRecovery(valid);
       setChecking(false);
       if (valid) {
@@ -63,7 +84,7 @@ export default function ResetPasswordPage() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") {
-        settle(true);
+        settle(true, "session");
       }
     });
 
@@ -85,10 +106,10 @@ export default function ResetPasswordPage() {
       } catch { /* noop */ }
     };
 
-    const settleFromSession = () => {
+    const settleFromSession = (branch: string = "invalid") => {
       supabase.auth.getSession().then(({ data: { session } }) => {
-        settle(!!session);
-      }).catch(() => settle(false));
+        settle(!!session, session ? "session" : branch);
+      }).catch(() => settle(false, branch));
     };
 
     // PRIMARY: token_hash recovery link (new format from auth-email-hook,
@@ -98,30 +119,30 @@ export default function ResetPasswordPage() {
       supabase.auth.verifyOtp({ type: "recovery", token_hash: tokenHash! })
         .then(({ error }) => {
           if (error) {
-            settleFromSession();
+            settleFromSession("token_hash_invalid");
           } else {
             stripSensitiveParams();
-            settle(true);
+            settle(true, "token_hash");
           }
         })
-        .catch(settleFromSession);
+        .catch(() => settleFromSession("token_hash_invalid"));
     } else if (!hasRecoveryInHash && !hasRecoveryInQuery) {
-      settleFromSession();
+      settleFromSession("no_params");
     } else if (code && typeof supabase.auth.exchangeCodeForSession === "function") {
       supabase.auth.exchangeCodeForSession(code)
         .then(({ error }) => {
-          if (error) settleFromSession();
-          else { stripSensitiveParams(); settle(true); }
+          if (error) settleFromSession("code_invalid");
+          else { stripSensitiveParams(); settle(true, "code"); }
         })
-        .catch(settleFromSession);
+        .catch(() => settleFromSession("code_invalid"));
     } else {
       // Legacy `#access_token=…&type=recovery` hash fallback.
       const timeout = setTimeout(async () => {
         try {
           const { data } = await supabase.auth.getSession();
-          if (data.session) { stripSensitiveParams(); return settle(true); }
+          if (data.session) { stripSensitiveParams(); return settle(true, "hash"); }
         } catch { /* fall through */ }
-        settleFromSession();
+        settle(false, "timeout");
       }, 8000);
       return () => {
         clearTimeout(timeout);
