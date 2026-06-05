@@ -257,7 +257,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // getSession() so we don't burn a round-trip on a guaranteed failure.
     ensureClientFingerprint();
 
-    AuthService.getSession()
+    // OAUTH-HASH-CONSUME: With detectSessionInUrl:false the SDK will not
+    // auto-consume `#access_token=…&refresh_token=…` fragments that Supabase
+    // GoTrue places on the redirect URL after a Google OAuth bounce. Without
+    // this, users land back on `/` still logged out and the hash is wasted.
+    // Recovery hashes (`type=recovery`) are owned by ResetPasswordPage — skip
+    // those here so we don't burn the one-time recovery session.
+    const consumeOAuthHashIfPresent = async () => {
+      try {
+        if (typeof window === "undefined" || !window.location.hash) return;
+        const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+        const at = hash.get("access_token");
+        const rt = hash.get("refresh_token");
+        const type = hash.get("type");
+        if (!at || !rt) return;
+        if (type === "recovery") return;
+        const { error } = await supabase.auth.setSession({ access_token: at, refresh_token: rt });
+        if (!error) {
+          // Strip hash so a refresh doesn't re-consume (and to keep the URL clean).
+          window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+        }
+      } catch {
+        // Fall through to normal bootstrap.
+      }
+    };
+
+    void consumeOAuthHashIfPresent().finally(() => AuthService.getSession()
       .then(async (initialSession) => {
         sessionRestoreSettledRef.current = true;
         const freshEventSession = authEventSessionRef.current;
