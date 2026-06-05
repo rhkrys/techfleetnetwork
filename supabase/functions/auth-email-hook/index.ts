@@ -226,12 +226,35 @@ async function handleWebhook(req: Request): Promise<Response> {
     )
   }
 
+  let confirmationUrl: string = payload.data.url
+  if (emailType === 'recovery') {
+    try {
+      const verifyUrl = new URL(payload.data.url)
+      const tokenHash =
+        verifyUrl.searchParams.get('token_hash') ||
+        verifyUrl.searchParams.get('token') ||
+        payload.data.token_hash ||
+        payload.data.token
+      const rawRedirectTo = verifyUrl.searchParams.get('redirect_to') || payload.data.redirect_to || `${APP_ORIGIN}/reset-password`
+      const redirectTo = new URL(rawRedirectTo)
+      const origin = ALLOWED_RESET_ORIGINS.has(redirectTo.origin) ? redirectTo.origin : APP_ORIGIN
+      if (tokenHash) {
+        const target = new URL('/reset-password', origin)
+        target.searchParams.set('token_hash', tokenHash)
+        target.searchParams.set('type', 'recovery')
+        confirmationUrl = target.toString()
+      }
+    } catch (rewriteErr) {
+      console.error('Recovery URL rewrite failed, falling back to default', { error: rewriteErr, run_id })
+    }
+  }
+
   // Build template props from payload.data (HookData structure)
   const templateProps = {
     siteName: SITE_NAME,
-    siteUrl: `https://${ROOT_DOMAIN}`,
+    siteUrl: APP_ORIGIN,
     recipient: payload.data.email,
-    confirmationUrl: payload.data.url,
+    confirmationUrl,
     token: payload.data.token,
     email: payload.data.email,
     oldEmail: payload.data.old_email,
@@ -266,7 +289,8 @@ async function handleWebhook(req: Request): Promise<Response> {
       run_id,
       message_id: messageId,
       to: payload.data.email,
-      from: `${SITE_NAME} <noreply@${FROM_DOMAIN}>`,
+      from: `${SITE_NAME} <${FROM_MAILBOX}@${FROM_DOMAIN}>`,
+      reply_to: REPLY_TO,
       sender_domain: SENDER_DOMAIN,
       subject: EMAIL_SUBJECTS[emailType] || 'Notification',
       html,
