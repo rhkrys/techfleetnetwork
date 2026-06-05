@@ -136,7 +136,26 @@ export default function ResetPasswordPage() {
         })
         .catch(() => settleFromSession("code_invalid"));
     } else {
-      // Legacy `#access_token=…&type=recovery` hash fallback.
+      // Legacy `#access_token=…&refresh_token=…&type=recovery` hash fallback.
+      // With detectSessionInUrl disabled, the SDK will no longer consume this
+      // automatically, so the page must install the recovery session itself.
+      const hashParams = new URLSearchParams(hash.replace(/^#/, ""));
+      const accessToken = hashParams.get("access_token");
+      const refreshToken = hashParams.get("refresh_token");
+
+      if (hasRecoveryInHash && accessToken && refreshToken) {
+        supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+          .then(({ error }) => {
+            if (error) settleFromSession("hash_invalid");
+            else { stripSensitiveParams(); settle(true, "hash"); }
+          })
+          .catch(() => settleFromSession("hash_invalid"));
+
+        return () => subscription.unsubscribe();
+      }
+
+      // If the hash is incomplete, give any already-running auth state change a
+      // short chance to settle before showing the expired-link branch.
       const timeout = setTimeout(async () => {
         try {
           const { data } = await supabase.auth.getSession();
