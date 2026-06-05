@@ -100,4 +100,19 @@ describe("ResetPasswordPage UI (BDD 20.1)", () => {
     expect(await screen.findByText(/invalid or expired link/i)).toBeInTheDocument();
     window.history.replaceState({}, "", "/reset-password");
   });
+
+  it("AUTH-RESET-023: legacy hash recovery sets the session manually", async () => {
+    vi.mocked(supabase.auth.setSession).mockResolvedValue({ data: { session: { user: { id: "u" } } }, error: null } as never);
+    const replaceState = vi.spyOn(window.history, "replaceState");
+    window.history.replaceState({}, "", "/reset-password#access_token=access.jwt&refresh_token=refresh.jwt&type=recovery");
+
+    renderWithRouter(<ResetPasswordPage />);
+
+    await screen.findByRole("heading", { name: /set your new password/i });
+    expect(supabase.auth.setSession).toHaveBeenCalledWith({ access_token: "access.jwt", refresh_token: "refresh.jwt" });
+    expect(replaceState).toHaveBeenCalled();
+    expect(window.location.hash).not.toContain("access_token");
+    replaceState.mockRestore();
+    window.history.replaceState({}, "", "/reset-password");
+  });
 });
