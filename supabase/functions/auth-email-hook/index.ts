@@ -43,6 +43,7 @@ const ROOT_DOMAIN = "techfleet.network"
 const FROM_DOMAIN = "techfleet.org" // Domain shown in From address (may be root or sender subdomain)
 const FROM_MAILBOX = "onboarding"
 const REPLY_TO = "onboarding@techfleet.org"
+const DEDUP_WINDOW_SECONDS = 60
 const ALLOWED_RESET_ORIGINS = new Set([
   "https://techfleet.network",
   "https://www.techfleet.network",
@@ -274,6 +275,62 @@ async function handleWebhook(req: Request): Promise<Response> {
   )
 
   const messageId = crypto.randomUUID()
+  const normalizedEmail = (payload.data.email || '').trim().toLowerCase()
+  let unsubscribeToken: string | null = null
+
+  const cooldownSinceIso = new Date(Date.now() - DEDUP_WINDOW_SECONDS * 1000).toISOString()
+  const { data: recent } = await supabase
+    .from('email_send_log')
+    .select('id')
+    .eq('recipient_email', payload.data.email)
+    .eq('template_name', emailType)
+    .in('status', ['pending', 'sent'])
+    .gte('created_at', cooldownSinceIso)
+    .limit(1)
+
+  if (recent && recent.length > 0) {
+    console.log('Auth email dedup hit — dropping duplicate send', { emailType, email: payload.data.email })
+    return new Response(JSON.stringify({ success: true, deduped: true }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+
+  const { data: existingToken } = await supabase
+    .from('email_unsubscribe_tokens')
+    .select('token')
+    .eq('email', normalizedEmail)
+    .limit(1)
+  unsubscribeToken = existingToken?.[0]?.token ?? null
+  if (!unsubscribeToken) {
+    const fresh = crypto.getRandomValues(new Uint8Array(32))
+    unsubscribeToken = Array.from(fresh).map((b) => b.toString(16).padStart(2, '0')).join('')
+    const { error: tokenError } = await supabase
+      .from('email_unsubscribe_tokens')
+      .upsert({ email: normalizedEmail, token: unsubscribeToken }, { onConflict: 'email', ignoreDuplicates: true })
+    if (tokenError) {
+      const { data: raceRow } = await supabase
+        .from('email_unsubscribe_tokens')
+        .select('token')
+        .eq('email', normalizedEmail)
+        .limit(1)
+      unsubscribeToken = raceRow?.[0]?.token ?? null
+    }
+  }
+
+  if (!unsubscribeToken) {
+    await supabase.from('email_send_log').insert({
+      message_id: messageId,
+      template_name: emailType,
+      recipient_email: payload.data.email,
+      status: 'failed',
+      error_message: 'Failed to mint unsubscribe token',
+    })
+    return new Response(JSON.stringify({ error: 'Failed to mint unsubscribe token' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
 
   // Log pending BEFORE enqueue so we have a record even if enqueue crashes
   await supabase.from('email_send_log').insert({
@@ -297,6 +354,7 @@ async function handleWebhook(req: Request): Promise<Response> {
       text,
       purpose: 'transactional',
       label: emailType,
+      unsubscribe_token: unsubscribeToken,
       queued_at: new Date().toISOString(),
     },
   })
