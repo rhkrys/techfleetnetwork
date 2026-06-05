@@ -572,7 +572,6 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
         }
 
         const errorMsg = error instanceof Error ? error.message : String(error)
-        const errorMsg = error instanceof Error ? error.message : String(error)
         console.error('Email send failed', {
           queue,
           msg_id: msg.msg_id,
