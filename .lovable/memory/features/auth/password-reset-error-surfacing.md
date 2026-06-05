@@ -35,3 +35,18 @@ All successful branches call `stripSensitiveParams()` via `history.replaceState`
 
 ## Supabase Auth redirect allowlist requirement
 Must include `https://techfleet.network/reset-password`, `https://www.techfleet.network/reset-password`, `https://techfleetnetwork.lovable.app/reset-password`. Without these, GoTrue silently rewrites `redirect_to` to the project Site URL and the link lands on the wrong page.
+
+## Settle-branch diagnostics (audit_log, severity:info)
+
+ResetPasswordPage writes one `reset_settle_<branch>_(ok|fail)` audit_log row per page mount via `write_audit_log` RPC with `changed_fields = ['severity:info', 'path:...', 'has_hash:...']`. Branches:
+- `token_hash` — primary verifyOtp success
+- `token_hash_invalid` — verifyOtp rejected the OTP
+- `code` — PKCE exchange success
+- `code_invalid` — PKCE exchange rejected
+- `hash` — legacy `#access_token` fallback success
+- `session` — PASSWORD_RECOVERY/SIGNED_IN event from subscription
+- `no_params` — page loaded with no recovery markers
+- `timeout` — 8s legacy-hash wait elapsed without a session
+- `invalid` — generic getSession failure
+
+severity:info keeps these out of Triage; next outage can be diagnosed without instrumenting fresh.
