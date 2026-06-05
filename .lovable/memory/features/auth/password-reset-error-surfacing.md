@@ -13,7 +13,7 @@ The `auth-email-hook` edge function REWRITES the recovery email link before rend
 
 **Why:** Default GoTrue verify URL redirects to `/reset-password#access_token=…&type=recovery`. With `detectSessionInUrl: true`, `AuthContext`'s mount-time `getSession()` consumed the hash BEFORE `ResetPasswordPage`'s `onAuthStateChange` subscriber attached. Result: hash stripped, no `PASSWORD_RECOVERY` event, page fell into invalid-link branch. DB evidence: 37 recovery emails delivered, zero password updates over 7 days.
 
-**Permanent fix (2026-06-05):** `src/integrations/supabase/client.ts` sets `detectSessionInUrl: false`. ResetPasswordPage now consumes recovery params explicitly. Google OAuth is unaffected because the Lovable wrapper (`src/integrations/lovable/index.ts`) calls `supabase.auth.setSession(result.tokens)` directly — it never relied on URL auto-detection. **Required Supabase Auth redirect allowlist entries:** `https://techfleet.network/reset-password`, `https://www.techfleet.network/reset-password`, `https://techfleetnetwork.lovable.app/reset-password`.
+**Permanent fix (2026-06-05):** `src/integrations/supabase/client.ts` sets `detectSessionInUrl: false`. ResetPasswordPage now consumes recovery params explicitly. The managed `auth-email-hook` is registered/deployed and rewrites recovery emails to direct app URLs (`/reset-password?token_hash=…&type=recovery`) before queueing, so members never have to land on the backend `/verify` URL first. The email queue worker must not call `.catch()` on `supabase.rpc()` results; use safe RPC handling so sent recovery emails are deleted from the queue instead of reprocessed into duplicate stale-link sends. Google OAuth is unaffected because the Lovable wrapper (`src/integrations/lovable/index.ts`) calls `supabase.auth.setSession(result.tokens)` directly — it never relied on URL auto-detection. **Required Supabase Auth redirect allowlist entries:** `https://techfleet.network/reset-password`, `https://www.techfleet.network/reset-password`, `https://techfleetnetwork.lovable.app/reset-password`.
 
 ## ResetPasswordPage settle order
 
@@ -33,7 +33,7 @@ All successful branches call `stripSensitiveParams()` via `history.replaceState`
 ## Out of scope of this fix
 - OAuth/PKCE flow (uses `?code=` exchange, untouched).
 - Signup confirmation or magic link email shape.
-- AuthContext or detectSessionInUrl client config.
+- AuthContext bootstrap behavior.
 
 ## Supabase Auth redirect allowlist requirement
 Must include `https://techfleet.network/reset-password`, `https://www.techfleet.network/reset-password`, `https://techfleetnetwork.lovable.app/reset-password`. Without these, GoTrue silently rewrites `redirect_to` to the project Site URL and the link lands on the wrong page.
