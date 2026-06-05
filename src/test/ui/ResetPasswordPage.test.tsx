@@ -19,10 +19,13 @@ vi.mock("@/integrations/supabase/client", () => ({
       getSession: vi.fn(() => Promise.resolve({ data: { session: null }, error: null })),
       getUser: vi.fn(() => Promise.resolve({ data: { user: null }, error: null })),
       exchangeCodeForSession: vi.fn(() => Promise.resolve({ data: { session: null }, error: null })),
+      verifyOtp: vi.fn(() => Promise.resolve({ data: { session: null }, error: null })),
+      setSession: vi.fn(() => Promise.resolve({ data: { session: null }, error: null })),
       onAuthStateChange: vi.fn(() => ({
         data: { subscription: { unsubscribe: vi.fn() } },
       })),
     },
+    rpc: vi.fn(() => Promise.resolve({ data: null, error: null })),
   },
 }));
 
