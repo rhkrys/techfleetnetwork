@@ -438,9 +438,11 @@ export const AuthService = {
         // FunctionsHttpError surfaces the response body via .context.response
         let serverCode: string | undefined;
         let serverMessage: string | undefined;
+        let httpStatus: number | undefined;
         try {
           const resp = (error as { context?: { response?: Response } }).context?.response;
           if (resp) {
+            httpStatus = resp.status;
             const cloned = resp.clone();
             const body = await cloned.json().catch(() => null) as { error?: string; code?: string } | null;
             serverCode = body?.code;
@@ -449,11 +451,29 @@ export const AuthService = {
         } catch {
           // Ignore parse failures — fall through to generic message.
         }
+        // AUTH-PIN-001 (2026-06-05): if the edge function is unreachable
+        // (404 / network / empty body) treat it as a transient service
+        // outage, NOT as a wrong-password rejection. ResetPasswordPage
+        // checks this code and refuses to decrement the 3-strike counter.
+        const isUnreachable =
+          httpStatus === 404 ||
+          httpStatus === 503 ||
+          httpStatus === 502 ||
+          (!serverMessage && !serverCode);
+        if (isUnreachable) {
+          log.error("updatePassword", `Password service unreachable [http=${httpStatus ?? "transport"}]`, { errorCode: httpStatus });
+          const wrapped = new Error(
+            "We're briefly unable to reach the password service. Please try again in a moment.",
+          ) as Error & { code?: string };
+          wrapped.code = "service_unavailable";
+          throw wrapped;
+        }
         log.error("updatePassword", `Password update failed: ${serverMessage || error.message} [${serverCode || "unknown"}]`, { errorCode: serverCode || error.status });
         const wrapped = new Error(serverMessage || "We couldn't update your password. Please try again.") as Error & { code?: string };
         wrapped.code = serverCode || "unknown";
         throw wrapped;
       }
+
       log.info("updatePassword", "Password updated successfully");
       void logAccountActivity("password_updated", { details: { confirmed: true } });
       return { otherDevicesRevoked: Boolean((data as { other_devices_revoked?: boolean } | null)?.other_devices_revoked) };

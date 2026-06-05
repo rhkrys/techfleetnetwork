@@ -112,7 +112,115 @@ project_id = "iqsjhrhsjlgjiaedzmtz"
     # service-role bearer in code (same pattern as process-email-queue).
     verify_jwt = false
 
+  # ---- Auth-critical functions ----
+  # AUTH-PIN-001: every function invoked from the auth/signup/login/reset flows
+  # MUST be pinned here. Unpinned auth functions silently inherit platform
+  # defaults and stop deploying — causing the "We couldn't update your
+  # password" generic-message incident (2026-06-05). See
+  # mem://constraints/edge-function-config-pinning.
+  [functions.update-password-confirmed]
+    # Authenticated: recovery session. Uses requireAuthenticatedRequest in code.
+    verify_jwt = true
+  [functions.login-with-captcha]
+    # Pre-auth: user is signing in. Authorization is the Turnstile token.
+    verify_jwt = false
+  [functions.send-magic-link]
+    # Pre-auth: magic-link fallback when Turnstile is blocked.
+    verify_jwt = false
+  [functions.verify-turnstile]
+    # Pre-auth: browser captcha verification.
+    verify_jwt = false
+  [functions.validate-email-domain]
+    # Pre-auth: signup email-domain MX check.
+    verify_jwt = false
+  [functions.resend-signup-confirmations]
+    # Cron-poked safety-net for unconfirmed signups. Bearer validated in code.
+    verify_jwt = false
+  [functions.sign-out-all-devices]
+    # Authenticated: self-serve session revocation. Manual JWT check in code.
+    verify_jwt = false
+  [functions.revoke-user-sessions]
+    # Admin-only: requires fresh 2fa step-up. Manual JWT check in code.
+    verify_jwt = false
+  [functions.delete-account]
+    # Authenticated: self-serve account deletion. Manual JWT check in code.
+    verify_jwt = false
+  [functions.admin-purge-auth-user]
+    # Admin-only: manual JWT + admin check in code.
+    verify_jwt = false
+  [functions.admin-sign-out-all-users]
+    # Admin-only: manual JWT + admin check in code.
+    verify_jwt = false
+  [functions.record-consent]
+    # Can be called pre-auth (cookie banner before sign-in).
+    verify_jwt = false
+  [functions.record-policy-acknowledgment]
+    # Authenticated: signed-in policy acceptance.
+    verify_jwt = true
 
 
 
 
+
+
+
+  # ---- Client-invoked functions (pin-for-deploy-guarantee) ----
+  # AUTH-PIN-001 second wave: every function the SPA calls via
+  # supabase.functions.invoke must be pinned, even when verify_jwt matches
+  # the platform default. Unpinned drift caused the update-password-confirmed
+  # outage (2026-06-05). verify_jwt = false because each handles its own
+  # auth check in code (requireAuth / admin step-up / public route).
+  [functions.fetch-class-certifications]
+    verify_jwt = false
+  [functions.fetch-project-certifications]
+    verify_jwt = false
+  [functions.manage-discord-roles]
+    verify_jwt = false
+  [functions.notify-applicant-status]
+    verify_jwt = false
+  [functions.fill-content-gaps]
+    verify_jwt = false
+  [functions.scrape-figma-workshops]
+    verify_jwt = false
+  [functions.fleety-bulk-draft-playbooks]
+    verify_jwt = false
+  [functions.send-community-agreement-trigger]
+    verify_jwt = false
+  [functions.grant-observer-role]
+    verify_jwt = false
+  [functions.get-community-events]
+    verify_jwt = false
+  [functions.send-project-blast]
+    verify_jwt = false
+  [functions.replay-dlq-emails]
+    verify_jwt = false
+  [functions.repair-discord-username]
+    verify_jwt = false
+  [functions.gumroad-backfill]
+    verify_jwt = false
+  [functions.translate-bundle]
+    verify_jwt = false
+  [functions.translate-strings]
+    verify_jwt = false
+  [functions.framework-csv-fetch]
+    verify_jwt = false
+  [functions.ingest-reference-csv]
+    verify_jwt = false
+  [functions.dsar-submit]
+    verify_jwt = false
+  [functions.mark-interview-scheduled]
+    verify_jwt = false
+  [functions.discord-project-update]
+    verify_jwt = false
+  [functions.screen-sanctions]
+    verify_jwt = false
+  [functions.promote-to-teacher]
+    verify_jwt = false
+  [functions.revoke-teacher-role]
+    verify_jwt = false
+  [functions.send-announcement-email]
+    verify_jwt = false
+  [functions.write-exploration-cache]
+    verify_jwt = false
+  [functions.firecrawl-search]
+    verify_jwt = false

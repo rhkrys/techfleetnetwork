@@ -1,89 +1,76 @@
-# Permanent fix: triage errors from the last 3 days
+## Root cause
 
-Two distinct fingerprints account for every open `agent_fix_queue` row in the last 3 days:
+Deep dive through `email_send_log`, `audit_log`, `auth_logs`, edge logs and code paths surfaces **one shared root cause** behind every "account issue" report — including the exact error the user pasted (`"We couldn't update your password. Please try again. 2 attempts remaining before you'll need a new link."`):
 
-| # | Fingerprint | Count | Source |
-|---|---|---|---|
-| 1 | `supabase.rpc(...).catch is not a function` | 16 | `process-email-queue` post-send path |
-| 2 | `Duplicate enqueue reconciled — original sent at …` | 15 | `audit_email_send_log` trigger |
+**Multiple auth-critical edge functions exist in `supabase/functions/<name>/` but have no `[functions.<name>]` block in `supabase/config.toml`. They are silently parked on the CI guard's `BASELINE_DEFAULT_FUNCTIONS` allow-list, so they inherit platform defaults — which today means they do not deploy. They have never booted in production.**
 
-Issue 2 is a downstream symptom of Issue 1, but it also needs its own guard so future regressions don't flood triage.
+Evidence:
+- `update-password-confirmed`: `supabase--edge_function_logs` returns *No logs found* (never booted). Audit table has **zero** `password_update_rejected`, `password_updated`, or `authn_unauthorized` rows from it across 3 days, yet users are clearly hitting "Update password". `supabase.functions.invoke` 404s, supabase-js raises `FunctionsHttpError` with no parseable body, `auth.service.ts` line 453 falls through to the generic message, and `ResetPasswordPage` counts it as a rejection and decrements "attempts remaining" — even though the password and the recovery session were both fine.
+- The same allow-list also contains: `login-with-captcha` (email login), `send-magic-link` (magic-link login), `verify-turnstile` (signup captcha), `validate-email-domain` (signup), `resend-signup-confirmations` (signup retry), `sign-out-all-devices` (post-reset cleanup), `revoke-user-sessions`, `delete-account`, plus ~40 ops/admin/cron functions. The auth-critical subset explains the breadth of "signup / email login / magic link / password reset" reports.
+- GoTrue itself is clean: 213/213 emails delivered, **zero** 4xx/5xx on `/recover`, `/verify`, `/signup`, `/token`, `/callback` in 3 days. The TypeError + duplicate-enqueue noise from the last 3 days was already permanently fixed. The current outage is the unpinned-function class.
+- Google OAuth: no failures observed in `auth_logs`; reports here are almost certainly the same symptom — users falling back to email/password or password reset after one OAuth flake, and getting bricked by the broken `update-password-confirmed` / `login-with-captcha`.
 
----
+This is the **exact failure mode** documented in `mem://constraints/edge-function-config-pinning` (Get Help / freescout-proxy, June 2026) — the guard exists but the baseline list was used as a parking lot instead of a true zero entry.
 
-## Issue 1 — Stale `.catch` TypeError in `process-email-queue`
+## The fix (one shipment, no band-aids)
 
-### Root cause
+### 1. Pin every auth-critical edge function and deploy
 
-Forensic trace for one message (`xzhao489@gatech.edu`, recovery, 2026-06-05 17:53):
+Add `[functions.<name>]` blocks (with `verify_jwt = true`, since every one of these is called by an authenticated client) to `supabase/config.toml` and remove the same names from the CI guard's `BASELINE_DEFAULT_FUNCTIONS` set:
 
-```text
-17:53:04.283  pending   (auth-email-hook enqueued)
-17:53:08.355  sent      (process-email-queue → sendLovableEmail success)
-17:53:08.407  failed    "supabase.rpc(...).catch is not a function"   ← +52ms
-17:53:42.744  sent      "Duplicate enqueue reconciled — original sent at 17:53:08.355"
-```
+- `update-password-confirmed`
+- `login-with-captcha`
+- `send-magic-link`
+- `verify-turnstile`
+- `validate-email-domain`
+- `resend-signup-confirmations`
+- `sign-out-all-devices`
+- `revoke-user-sessions`
+- `delete-account`
+- `admin-purge-auth-user`
+- `admin-sign-out-all-users`
+- `record-consent`, `record-policy-acknowledgment` (gating signup completion)
 
-- The exception fires **after** `sendLovableEmail` succeeds and the `sent` row is written (line 501 of `supabase/functions/process-email-queue/index.ts`).
-- Current source no longer contains `supabase.rpc(...).catch(...)`; it uses the `safeRpc(...)` helper with `try/catch`. The runtime error therefore comes from a **stale deployed bundle** of `process-email-queue` — the helper edit shipped in source but the function image was not re-deployed.
-- Because the exception is thrown before `delete_email` (line 512), the pgmq message is never deleted. ~30s later the visibility timeout expires, the next worker tick re-reads it, the duplicate-send guard at line 357 triggers, and a reconciliation row is written — which is Issue 2.
+Deploy all of them in a single `supabase--deploy_edge_functions` call and verify each boots via edge logs.
 
-### Fix
+### 2. Make the client message honest when the function is unreachable
 
-1. **Force redeploy** `process-email-queue` via `supabase--deploy_edge_functions` so the current `safeRpc`-based code is live. This alone removes the recurring TypeError.
-2. **Harden the catch block at line 531** so a post-send exception cannot:
-   - Write a spurious `failed` row when a `sent` row was already written in the same iteration. Track a local `sentInIteration` boolean; if true, downgrade the catch to a warning log + audit `edge_function_error` event only, **no `email_send_log` insert**.
-   - Skip the queue cleanup. Move the `delete_email` call into a `finally`-style block that always runs after a successful `sent` write, so a downstream RPC exception cannot strand the message in the queue.
-3. **Audit signal**: emit a single `edge_function_error` audit row when this path trips, so we still get triage signal without polluting `email_send_log` or producing reconciliation rows.
+In `src/services/auth.service.ts` (`updatePassword`, and the parallel paths in `signInWithPassword`, `sendMagicLink`, `verifyCaptcha`, `validateEmailDomain`, `resendSignupConfirmation`, `deleteAccount`):
 
-### Files
+- When `supabase.functions.invoke` errors AND the response body is empty/unparsable OR HTTP status is 404/503, throw a dedicated error with `code: "service_unavailable"`.
+- `ResetPasswordPage` (and the matching login / signup pages) treats `service_unavailable` as a non-counting failure: show "We're briefly unable to reach the password service. Please try again in a moment." and **do not** decrement attempts or trip the 3-strike form lock.
 
-- `supabase/functions/process-email-queue/index.ts` — restructure the try/catch around lines 452–650 per (2) and (3).
-- No DB schema change needed for Issue 1.
+### 3. Surface this class of incident immediately, not days later
 
----
+- In `_shared/request-auth.ts` and `_shared/http.ts`, when an auth-critical fn name returns 404/transport error at the edge gateway, fan out to `agent_fix_queue` with `severity:'error'` and `fingerprint:'edge_function_not_deployed:<fn>'` so the Triage Critical Push cron (5-min) pages admins on the FIRST occurrence. Today the silence makes this invisible.
 
-## Issue 2 — Reconciliation rows surfacing in triage as `error`
+### 4. Close the guard hole that allowed this
 
-### Root cause
+`scripts/ci/check-edge-function-coverage.mjs`:
+- Shrink `BASELINE_DEFAULT_FUNCTIONS` to functions that genuinely don't need pinning (cron-only, no client invocation).
+- Add a second check: every function imported by `src/` via `supabase.functions.invoke("<name>")` MUST be pinned (no allow-list escape) — string-scan `src/**/*.{ts,tsx}` for invoke names and assert each appears in `config.toml`.
+- Fail the CI quality job on either violation.
 
-`public.audit_email_send_log()` marks an `email_send_log` row benign only when `status IN ('reconciled','rate_limited','frequency_capped','suppressed')`. Reconciliation rows written by the duplicate guard (line 368) use `status='sent'` with `error_message` starting with `Duplicate enqueue reconciled —`. The trigger therefore emits `email_sent` with the error_message attached, and `discover_audit_fingerprints` (which scans `error_message`) lifts it into `agent_fix_queue` as `severity=error`.
+### 5. Post-deploy verification (in-shipment)
 
-### Fix (single migration)
+- Curl each pinned function with a bogus token → expect 401 (not 404). Anything that 404s is still not deployed.
+- Run a real password-reset flow end-to-end on a test account and confirm a `password_updated` row appears in `audit_log` with the trace id propagated.
+- Query `agent_fix_queue` after 10 minutes to confirm no `edge_function_not_deployed:*` events have fired.
 
-Update `public.audit_email_send_log()` so a row is also treated as benign when `NEW.error_message LIKE 'Duplicate enqueue reconciled%%'`, regardless of status. Apply the same `severity:info` + `note:` field move as the existing benign branch, and pass `NULL` for `p_error_message`. This permanently keeps reconciliation rows out of triage even if Issue 1 ever regresses.
+### 6. Memory + BDD
 
-Plus a one-time housekeeping update to resolve the 15 already-queued reconciliation rows + the 16 stale TypeError rows in `agent_fix_queue`:
-
-```sql
-UPDATE public.agent_fix_queue
-SET status = 'resolved',
-    resolved_at = now(),
-    dismissed_reason = 'fixed_by_permanent_redeploy_and_trigger_guard_2026_06_05'
-WHERE status = 'pending'
-  AND (error_message LIKE 'Duplicate enqueue reconciled%%'
-       OR error_message = 'supabase.rpc(...).catch is not a function');
-```
-
-### Files
-
-- New migration: update `public.audit_email_send_log()` + housekeeping UPDATE above.
-
----
-
-## Verification
-
-After deploy + migration:
-
-1. `SELECT COUNT(*) FROM email_send_log WHERE error_message = 'supabase.rpc(...).catch is not a function' AND created_at > now() - interval '10 min'` → expect `0` after first cron tick.
-2. `SELECT msg_id, vt FROM pgmq.q_auth_emails ORDER BY enqueued_at DESC LIMIT 5` → no messages stuck past their VT.
-3. `SELECT COUNT(*) FROM agent_fix_queue WHERE status = 'pending' AND last_seen_at > now() - interval '1 hour'` → 0 new rows from either fingerprint.
-4. Trigger a real password reset → exactly one `sent` row, no `failed` row, no reconciliation row.
-
----
+- Update `mem://features/auth/password-reset-error-surfacing` with the new `service_unavailable` branch.
+- Extend `mem://constraints/edge-function-config-pinning` to spell out the "any function invoked from `src/` must be pinned" rule and the new CI scan.
+- Add BDD scenarios AUTH-PIN-001..006 covering: function 404 → friendly message, no attempt decrement, triage page fires once, password reset succeeds end-to-end after pin, login-with-captcha + send-magic-link reachable post-deploy.
 
 ## Out of scope
 
-- Password reset flow (already permanently fixed in prior turn).
-- Email lane prioritization, workspace token bucket, bulk caps — all functioning correctly.
-- The `support-monthly-report` `.catch(() => null)` pattern — that one is on a `Promise` so it's safe.
+- Email queue / lane / TypeError fixes — already permanently shipped.
+- Auth wedge / session revocation behavior — already permanently shipped.
+- GoTrue rate-limit fairness — already permanently shipped.
+
+## Expected outcome
+
+The exact paste from the user ("We couldn't update your password…2 attempts remaining…") becomes impossible:
+- Either the function now exists and returns a classified message (`same_password`, `weak_password`, `session_expired`, `rate_limited`),
+- Or, if the function is ever unreachable again, the UI says "briefly unavailable" without burning attempts, and admins are paged within 5 minutes by the triage push.
