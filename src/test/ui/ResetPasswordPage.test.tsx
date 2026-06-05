@@ -72,6 +72,8 @@ describe("ResetPasswordPage UI (BDD 20.1)", () => {
 
     expect(AuthService.updatePassword).toHaveBeenCalledWith({ password: "StrongPass123!", confirmPassword: "StrongPass123!" });
     expect(await screen.findByText(/use your new password the next time you sign in/i)).toBeInTheDocument();
+  });
+
   it("AUTH-RESET-020: token_hash query settles to valid recovery via verifyOtp", async () => {
     vi.mocked(supabase.auth.verifyOtp).mockResolvedValue({ data: { session: { user: { id: "u" } } }, error: null } as never);
     const replaceState = vi.spyOn(window.history, "replaceState");
