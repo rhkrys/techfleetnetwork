@@ -17,10 +17,10 @@ const corsHeaders = {
 }
 
 const EMAIL_SUBJECTS: Record<string, string> = {
-  signup: 'Confirm your email',
-  invite: "You've been invited",
-  magiclink: 'Your login link',
-  recovery: 'Reset your password',
+  signup: 'Confirm your Tech Fleet email',
+  invite: 'You were invited to Tech Fleet',
+  magiclink: 'Sign in to Tech Fleet',
+  recovery: 'Reset your Tech Fleet password',
   email_change: 'Confirm your new email',
   reauthentication: 'Your verification code',
 }
@@ -36,17 +36,25 @@ const EMAIL_TEMPLATES: Record<string, React.ComponentType<any>> = {
 }
 
 // Configuration
-const SITE_NAME = "techfleetnetwork"
+const SITE_NAME = "Tech Fleet"
+const APP_ORIGIN = "https://techfleet.network"
 const SENDER_DOMAIN = "notify.techfleet.org"
-const ROOT_DOMAIN = "techfleet.org"
+const ROOT_DOMAIN = "techfleet.network"
 const FROM_DOMAIN = "techfleet.org" // Domain shown in From address (may be root or sender subdomain)
+const FROM_MAILBOX = "onboarding"
+const REPLY_TO = "onboarding@techfleet.org"
+const ALLOWED_RESET_ORIGINS = new Set([
+  "https://techfleet.network",
+  "https://www.techfleet.network",
+  "https://techfleetnetwork.lovable.app",
+])
 
 // Sample data for preview mode ONLY (not used in actual email sending).
 // URLs are baked in at scaffold time from the project's real data.
 // The sample email uses a fixed placeholder (RFC 6761 .test TLD) so the Go backend
 // can always find-and-replace it with the actual recipient when sending test emails,
 // even if the project's domain has changed since the template was scaffolded.
-const SAMPLE_PROJECT_URL = "https://techfleetnetwork.lovable.app"
+const SAMPLE_PROJECT_URL = APP_ORIGIN
 const SAMPLE_EMAIL = "user@example.test"
 const SAMPLE_DATA: Record<string, object> = {
   signup: {
