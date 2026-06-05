@@ -19,10 +19,13 @@ vi.mock("@/integrations/supabase/client", () => ({
       getSession: vi.fn(() => Promise.resolve({ data: { session: null }, error: null })),
       getUser: vi.fn(() => Promise.resolve({ data: { user: null }, error: null })),
       exchangeCodeForSession: vi.fn(() => Promise.resolve({ data: { session: null }, error: null })),
+      verifyOtp: vi.fn(() => Promise.resolve({ data: { session: null }, error: null })),
+      setSession: vi.fn(() => Promise.resolve({ data: { session: null }, error: null })),
       onAuthStateChange: vi.fn(() => ({
         data: { subscription: { unsubscribe: vi.fn() } },
       })),
     },
+    rpc: vi.fn(() => Promise.resolve({ data: null, error: null })),
   },
 }));
 
@@ -69,5 +72,32 @@ describe("ResetPasswordPage UI (BDD 20.1)", () => {
 
     expect(AuthService.updatePassword).toHaveBeenCalledWith({ password: "StrongPass123!", confirmPassword: "StrongPass123!" });
     expect(await screen.findByText(/use your new password the next time you sign in/i)).toBeInTheDocument();
+  });
+
+  it("AUTH-RESET-020: token_hash query settles to valid recovery via verifyOtp", async () => {
+    vi.mocked(supabase.auth.verifyOtp).mockResolvedValue({ data: { session: { user: { id: "u" } } }, error: null } as never);
+    const replaceState = vi.spyOn(window.history, "replaceState");
+    window.history.replaceState({}, "", "/reset-password?token_hash=abc123&type=recovery");
+
+    renderWithRouter(<ResetPasswordPage />);
+
+    await screen.findByRole("heading", { name: /set your new password/i });
+    expect(supabase.auth.verifyOtp).toHaveBeenCalledWith({ type: "recovery", token_hash: "abc123" });
+    // URL hygiene: sensitive params stripped from address bar.
+    expect(replaceState).toHaveBeenCalled();
+    expect(window.location.search).not.toContain("token_hash");
+    replaceState.mockRestore();
+    window.history.replaceState({}, "", "/reset-password");
+  });
+
+  it("AUTH-RESET-022: invalid token_hash falls back to invalid-link message", async () => {
+    vi.mocked(supabase.auth.verifyOtp).mockResolvedValue({ data: { session: null }, error: { message: "expired" } } as never);
+    vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: null }, error: null } as never);
+    window.history.replaceState({}, "", "/reset-password?token_hash=expired&type=recovery");
+
+    renderWithRouter(<ResetPasswordPage />);
+
+    expect(await screen.findByText(/invalid or expired link/i)).toBeInTheDocument();
+    window.history.replaceState({}, "", "/reset-password");
   });
 });
