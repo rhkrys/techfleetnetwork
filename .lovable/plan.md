@@ -1,63 +1,58 @@
-## Activity-log audit (May 1 – Jun 4, 2026) — honest delta
+# Permanent Fix: Password Reset Flow
 
-### What I previously proposed is ALREADY shipped
+## Root cause (confirmed)
 
-Cross-checked against memory + codebase + DB. All of the following are live and need no work:
+`AuthContext` mounts at app root and the Supabase client has `detectSessionInUrl: true` (default). When the recovery email link lands on `/reset-password`, the SDK consumes the `#access_token=…&type=recovery` hash during `AuthContext`'s initial `getSession()` — often **before** `ResetPasswordPage`'s `onAuthStateChange` subscriber attaches. The hash is stripped, no `PASSWORD_RECOVERY` event reaches the page, and the page falls into `settleFromSession()` → "Invalid or expired link". This matches the DB evidence: 37 recovery emails delivered, zero password updates.
 
-| Item | Where it lives |
-|---|---|
-| `lazyWithRetry` + ESLint rule + UpdateBanner + multi-layer stale-chunk guard | `src/lib/lazyWithRetry.ts`, `scripts/lint/eslint-plugin-lazy-requires-retry.mjs`, [Stale chunk prevention] |
-| Chunk-load → `severity:warn`, blocked from Triage at 8 layers | [Triage Noise Suppression] |
-| Duplicate generic audit triggers dropped on profiles / general_applications / project_applications / projects | Verified via `pg_trigger` — only targeted `audit_table_change_filtered` + lifecycle triggers remain. [Audit Sink Tri-Partite] |
-| Audit sink CI guard | `scripts/ci/check-audit-sink-coverage.mjs` |
-| Workspace email token bucket consumed inside fan-out | [Email Workspace Token Bucket] |
-| Bulk vs auth/transactional lane isolation + per-lane cooldown | [Email Queue Per-Lane Cooldown] |
-| `freescout-proxy invoke_error` → `severity:warn` + retry contract | [Edge CORS Trace Header], [Get Help Scale Contract] |
-| ZodError unhandled-rejection classifier | last turn |
-| Benign email lifecycle events (`reconciled`/`rate_limited`/`frequency_capped`/`suppressed`) reclassified to `severity:info` | last turn |
-| `metric_key` ambiguous + DB-wide `#variable_conflict use_column` backfill + CI guard | last turn |
-| No-auto-reload on deploy | [No Auto-Reload On Deploy] |
+## The fix
 
-The `profile_updated` (2,617) vs `profiles_update` (927) counts I flagged are NOT duplicates — `profile_updated` is a `record_event` call from `profile.service.ts`, `profiles_update` is the targeted privileged-column trigger. Different events on different rows. Withdrawing that finding.
+### 1. `src/integrations/supabase/client.ts`
+Set `detectSessionInUrl: false` on the auth client. We will detect and consume the recovery hash explicitly on `/reset-password` only. OAuth (Google) uses `?code=` query exchange via `exchangeCodeForSession` already, so disabling auto-detect does not break it.
 
-### What stopped occurring after the May refactor (no action needed)
+### 2. `src/pages/ResetPasswordPage.tsx`
+Rewrite the recovery-detection effect:
+- Parse `window.location.hash` for `access_token` + `refresh_token` + `type=recovery`. If present, call `supabase.auth.setSession({ access_token, refresh_token })` and treat success as `validRecovery=true`.
+- Parse `?token_hash=…&type=recovery` query (used when we switch the email link to a token_hash URL — see step 3). Call `supabase.auth.verifyOtp({ type: 'recovery', token_hash })`.
+- Keep `?code=` PKCE branch as fallback.
+- Strip sensitive params from URL via `history.replaceState` after successful settle.
+- Subscribe to `onAuthStateChange` for `PASSWORD_RECOVERY` as a defense-in-depth catch.
 
-Latest occurrence dates from the CSV confirm these were already fixed by later migrations:
+### 3. `supabase/functions/auth-email-hook/index.ts`
+For `email_action_type === 'recovery'`, build the link manually from `payload.email_data.token_hash` + `redirect_to`:
+```
+https://techfleet.network/reset-password?token_hash=<hash>&type=recovery
+```
+instead of relying on the default GoTrue `/auth/v1/verify?...` URL. This avoids the PKCE detour entirely and works cross-device, in incognito, and when clicked twice (verifyOtp is idempotent until consumed/expired).
 
-| Issue | Last seen | Status |
-|---|---|---|
-| `permission denied for get_announcement_view_counts` / `get_course_completion_counts` / `get_community_events_health` | May 13–14 | GRANTed — verified `has_function_privilege('authenticated', …) = true` for all three |
-| `column pr.user_id does not exist` | May 13 | Code path fixed |
-| `column email_domain_health.window_days does not exist` | May 26 | Schema/caller aligned |
-| `missing_unsubscribe` (transactional 400s) | May 13 | Unsubscribe token wiring fixed |
-| CookieYes "URL has changed" | May 16 | Domain re-registered |
-| `permission denied for get_community_events_health` | May 14 | Granted |
+### 4. Supabase Auth redirect allowlist
+Add `https://techfleet.network/reset-password`, `https://www.techfleet.network/reset-password`, and `https://techfleetnetwork.lovable.app/reset-password` to the allowlist via `configure_auth` or instruct user to add in Cloud → Auth → URL Configuration. **Will surface to user as a checklist item — cannot read current allowlist programmatically.**
 
-No need to re-fix; just keep monitoring for recurrence in the next 30 days.
+### 5. Diagnostics
+Add severity-tagged audit rows at every settle branch (`reset_settle_hash_ok`, `reset_settle_token_hash_ok`, `reset_settle_code_ok`, `reset_settle_session_ok`, `reset_settle_invalid`, `reset_settle_timeout`) via the existing audit helper. severity:info so they don't reach Triage. Next failure will pinpoint the exact branch in `audit_log`.
 
-### What IS still live (the actual fix list)
+### 6. Tests
+- Update `src/test/ui/ResetPasswordPage.test.tsx`: add cases for hash-token settle and token_hash query settle.
+- Extend `e2e/auth/password-reset-roundtrip.e2e.ts`: open the generated link in a **fresh browser context** (different from the one that requested the reset) to prove cross-device works.
 
-Only three signals from late May / early June, narrowly scoped:
+### 7. BDD scenarios (`bdd_scenarios` table)
+- `AUTH-RESET-020` cross-device recovery (link clicked on different device than request).
+- `AUTH-RESET-021` incognito recovery.
+- `AUTH-RESET-022` recovery link clicked twice — second click still lands on the form until OTP consumed; after password set, second click shows "expired".
+- `AUTH-RESET-023` URL params stripped after settle.
 
-1. **`use-autosave` Error: [object Object]** (40 hits, last seen **May 28**)
-   - Root cause: `useAutosave` catch passes the raw Error object to `report()` instead of using `serializeError`. Stringification yields `[object Object]`.
-   - Fix: replace `String(err)` / `${err}` with `serializeError(err)` (already exists project-wide) in `src/hooks/use-autosave.ts` + add an ESLint rule banning bare `String(err)` / `${err}` inside `catch (err)` blocks.
+Each with tri-layer [UI]/[DB]/[Code] Then-clauses.
 
-2. **"We couldn't save your application. Refresh and try again."** (51 hits, last **May 28**)
-   - Same root cause family as #1 — `general-application.service.ts` autosave wraps a generic Error around an unserialized cause. Fix is the same `serializeError` swap + propagating the underlying status code so the toast can offer a real recovery hint.
+### 8. Memory
+- Update `mem://features/auth/password-reset-error-surfacing` with the new contract (detectSessionInUrl off, token_hash link, page handles recovery exclusively).
+- Add core rule to `mem://index.md`: "Recovery emails use `?token_hash=…&type=recovery` URL; `detectSessionInUrl=false` so only `ResetPasswordPage` consumes recovery params."
 
-3. **`function digest(text, unknown) does not exist` (code 42883)** (16+4 hits, last **May 28**)
-   - Caller passes `digest(text, text)` where the qualified `extensions.digest(bytea, text)` is required after the security-hardening extension move.
-   - Fix: grep for all `digest(` callsites in SQL functions/migrations; convert to `extensions.digest(convert_to(<text>, 'UTF8'), 'sha256')`; pin `extensions` into the function's `SET search_path`; add a one-line CI grep guard in `scripts/lint/sql-digest.mjs` (file already exists — extend it).
+### 9. Deploy
+`auth-email-hook` edge function.
 
-### Out of scope / not justified by the data
+## Out of scope
+- Changing OAuth/PKCE flow.
+- Re-touching `update-password-confirmed`, lockout heal, or `AuthService.updatePassword` — those are correct; nobody was reaching them.
+- Signup confirmation / magic link email shape.
 
-- New `lazyWithRetry` work — already shipped.
-- Duplicate-audit dedup work — false alarm.
-- Email pacing / DLQ overhaul — token bucket + lane isolation are recent and the log shows the 06:58 burst completed without provider 429s on Jun 3–4 (the 29 × 429s clustered May 13).
-- RPC-GRANT CI guard — current GRANTs are correct and the 42501 errors stopped 3 weeks ago. Will revisit only if a recurrence shows up.
-- Health-check repetition — these are `audit_log` rows tagged `severity:info` already; they don't reach Triage.
-
-### Shipment
-
-Single migration + service edit + ESLint rule, covering only the three live items above.
+## User action required
+Confirm (or I'll add via `configure_auth`) that the Supabase Auth redirect allowlist includes the three `/reset-password` URLs above. Without this, GoTrue silently rewrites the link to the Site URL and the fix is moot.

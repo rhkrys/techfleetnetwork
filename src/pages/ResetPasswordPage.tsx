@@ -70,8 +70,20 @@ export default function ResetPasswordPage() {
     const url = new URL(window.location.href);
     const hash = window.location.hash;
     const code = url.searchParams.get("code");
+    const tokenHash = url.searchParams.get("token_hash");
+    const typeParam = url.searchParams.get("type");
     const hasRecoveryInHash = hash.includes("type=recovery");
-    const hasRecoveryInQuery = url.searchParams.get("type") === "recovery" || Boolean(code);
+    const hasTokenHashRecovery = Boolean(tokenHash) && typeParam === "recovery";
+    const hasRecoveryInQuery = typeParam === "recovery" || Boolean(code);
+
+    const stripSensitiveParams = () => {
+      try {
+        const clean = new URL(window.location.href);
+        ["token_hash", "type", "code", "access_token", "refresh_token", "expires_in", "expires_at", "token_type"].forEach((k) => clean.searchParams.delete(k));
+        const newUrl = clean.pathname + (clean.search ? clean.search : "") + (clean.hash && !clean.hash.includes("access_token") && !clean.hash.includes("type=recovery") ? clean.hash : "");
+        window.history.replaceState({}, "", newUrl);
+      } catch { /* noop */ }
+    };
 
     const settleFromSession = () => {
       supabase.auth.getSession().then(({ data: { session } }) => {
@@ -79,22 +91,35 @@ export default function ResetPasswordPage() {
       }).catch(() => settle(false));
     };
 
-    if (!hasRecoveryInHash && !hasRecoveryInQuery) {
+    // PRIMARY: token_hash recovery link (new format from auth-email-hook,
+    // AUTH-RESET-020). verifyOtp is idempotent until the OTP is consumed or
+    // expires, so cross-device / incognito / second-click all work.
+    if (hasTokenHashRecovery) {
+      supabase.auth.verifyOtp({ type: "recovery", token_hash: tokenHash! })
+        .then(({ error }) => {
+          if (error) {
+            settleFromSession();
+          } else {
+            stripSensitiveParams();
+            settle(true);
+          }
+        })
+        .catch(settleFromSession);
+    } else if (!hasRecoveryInHash && !hasRecoveryInQuery) {
       settleFromSession();
     } else if (code && typeof supabase.auth.exchangeCodeForSession === "function") {
       supabase.auth.exchangeCodeForSession(code)
         .then(({ error }) => {
           if (error) settleFromSession();
-          else settle(true);
+          else { stripSensitiveParams(); settle(true); }
         })
         .catch(settleFromSession);
     } else {
-      // Wait up to 8s for the SDK to process the recovery hash. If we
-      // time out, try one refreshSession() before giving up.
+      // Legacy `#access_token=…&type=recovery` hash fallback.
       const timeout = setTimeout(async () => {
         try {
           const { data } = await supabase.auth.getSession();
-          if (data.session) return settle(true);
+          if (data.session) { stripSensitiveParams(); return settle(true); }
         } catch { /* fall through */ }
         settleFromSession();
       }, 8000);
