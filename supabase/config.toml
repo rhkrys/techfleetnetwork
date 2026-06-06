@@ -182,7 +182,7 @@ project_id = "iqsjhrhsjlgjiaedzmtz"
   [functions.manage-discord-roles]
     verify_jwt = false
   [functions.notify-applicant-status]
-    verify_jwt = false
+    verify_jwt = true
   [functions.fill-content-gaps]
     verify_jwt = false
   [functions.scrape-figma-workshops]

@@ -1,128 +1,68 @@
-## Do I know what the issue is?
+## Root cause
 
-Yes. This is not one bug; it is a chain of weak guarantees across reset-link delivery, recovery-session proof, and observability.
+The DB is being updated correctly — `notify-applicant-status` writes `project_applications.applicant_status` (verified: 71 non-default rows across 4 statuses, last write 2026-06-06 01:46). The bug is purely on the client read path:
 
-## What actually went wrong
+- Global React Query `staleTime` is **5 minutes** (`src/App.tsx:155`).
+- `MyProjectApplicationsPage` and `ProjectApplicationStatusPage` each have a 30s `setInterval` that calls `invalidateQueries` — but this only runs while that page is mounted.
+- `ApplicationsPage`'s count badge (`my-project-apps-count`), `DashboardPage`'s status widget, and `QuestRoadmap` have **no polling and no realtime**, so they show stale `applicant_status` for up to 5 minutes after an admin moves an applicant.
+- Realtime was disabled project-wide (`use-notifications.ts:93` "removed for security") even though RLS already scopes `project_applications` to `auth.uid() = user_id` — so the security concern doesn't apply here.
+- Net effect: an applicant gets the in-app notification "You've been invited to interview" but the Applications list keeps showing "Pending Review" until they hard-refresh or wait 5 minutes.
 
-- The reset email path was mostly working: recovery emails were accepted and sent.
-- The repeated user-facing failure happens later, on `/reset-password`, when the page lets a member reach `updateUser()` without proving there is a fresh recovery session.
-- The code currently treats `verifyOtp()` / `exchangeCodeForSession()` / `setSession()` success as valid if there is no error, but it does not require a real returned session or a successful `getUser()` check before showing the password form.
-- The logs did not catch it because reset-page diagnostics use `write_audit_log`, which requires an authenticated session; when the reset session is missing or broken, the diagnostic write silently fails.
-- Earlier fixes missed it because they targeted the reset-email/rate-limit layer and then the retired edge-function dependency, while the failing branch was the client recovery-session handoff.
+## Permanent fix (one shipment)
 
-## Hotfix plan
+### 1. Re-enable Realtime on the two tables that drive this UX
 
-### 1. Make recovery proof a hard invariant
+Migration: `ALTER PUBLICATION supabase_realtime ADD TABLE public.project_applications, public.notifications;` plus `ALTER TABLE ... REPLICA IDENTITY FULL` on both. RLS already protects row visibility per subscriber.
 
-Build one reset-session gate used by `ResetPasswordPage`:
+### 2. New hook `useProjectApplicationsRealtime(userId)`
 
-```text
-recovery URL proof -> establish session -> validate current user -> unlock form
-anything else      -> expired/invalid link -> do not call updateUser()
-```
+`src/hooks/use-project-applications-realtime.ts` — subscribes to `postgres_changes` on `public.project_applications` filtered by `user_id=eq.<userId>` and, on any event, invalidates:
 
-Implementation details:
-- Add a helper like `establishPasswordRecoverySession()`.
-- For `token_hash`, require `verifyOtp({ type: 'recovery', token_hash })` to return a session or produce one visible to `getSession()`.
-- For PKCE `code`, require `exchangeCodeForSession(code)` to return a session or produce one visible to `getSession()`.
-- For legacy hash, require `setSession()` plus `getUser()` success.
-- If any branch has no verified session, show “Reset link expired” and never render the update form.
-- In `handleSubmit`, add a second guard: if the recovery proof flag is not true, block and route to expired-link recovery.
+- `["my-project-applications", userId]`
+- `["my-project-apps-count", userId]`
+- `["my-project-app-status", *]`
+- `["dashboard-overview", userId]`
+- `["quest-roadmap", userId]`
 
-### 2. Stop mislabeling missing sessions as service outages
+Mount it once inside `AppLayout` (authenticated branch) so every page benefits, not just the list page.
 
-Tighten `AuthService.updatePassword()` error classification:
-- Missing/invalid auth session -> `session_expired`.
-- Network/5xx only -> `service_unavailable`.
-- Add exact mappings for common backend strings: `Auth session missing`, `Session not found`, `User from sub claim in JWT does not exist`, `JWT expired`, `invalid claim`.
+### 3. Notification-bridge fallback in `useNotifications`
 
-Result: members get the right recovery action instead of “password service unavailable.”
+Re-enable a minimal `useNotificationRealtime()` (still RLS-scoped to `user_id`). When a new notification with `type` in `{status_change, applicant_status_invited_to_interview, applicant_status_interview_scheduled, applicant_status_active_participant, applicant_status_not_selected, applicant_status_left_the_project}` arrives, run the same invalidation set as #2. This is the belt-and-suspenders path for any tab where the Postgres-changes channel drops (mobile background, network blip).
 
-### 3. Add reset observability that works before auth exists
+### 4. Right-size cache windows for `project_applications` reads
 
-Replace swallowed client-only diagnostics with a public, no-PII recovery telemetry path:
-- Add `record-auth-recovery-event` as an explicitly public edge function.
-- It accepts only safe fields: branch, outcome, error_class, URL shape booleans, app version, and trace id.
-- It never accepts email, password, token, token hash, full URL, or user-entered text.
-- It writes to `ops_events` / `record_event`, not raw console-only logs.
-- Mount it on every reset branch: token_hash success/fail, code success/fail, hash success/fail, missing session, update error class, update success.
+Apply `CACHE_USER_MUTABLE` (60s staleTime, already defined in `src/lib/query-config.ts`) + `refetchOnWindowFocus: true` + `refetchOnMount: 'always'` to:
 
-This is why logs were empty before; the page could not write auth-bound audit rows when auth was the broken thing.
+- `useQuery(["my-project-applications", ...])` in `MyProjectApplicationsPage`
+- `useQuery(["my-project-apps-count", ...])` in `ApplicationsPage`
+- `useQuery(["my-project-app-status", ...])` in `ProjectApplicationStatusPage`
+- The `dashboard-overview` and `quest-roadmap` reads that surface `applicant_status`
 
-### 4. Fix email status visibility so pending rows do not mislead us again
+Delete the two 30s `setInterval` blocks — realtime + focus refetch replace them.
 
-The email log is append-only: `pending` rows remain even after a later `sent` row, so raw counts looked scary while the pgmq queue was empty.
+### 5. Fix the misclassified magic comment
 
-Hotfix:
-- Add a latest-status query/view/RPC for email health that collapses by `message_id`.
-- Update System Health / diagnostics to show terminal status, not raw append-only row counts.
-- Add a recovery-email health assertion: if `pgmq.q_auth_emails` has aged recovery messages or latest status is failed/dlq, alert; old append-only pending rows alone should not page anyone.
+`notify-applicant-status/index.ts` was auto-tagged `// @edge-cron` by the recent backfill. It's actually an authenticated client invocation (admin → edge fn → DB write). Change to `// @edge-auth required` and flip `verify_jwt = true` in `config.toml` so the platform validates the JWT before the function runs (the in-function `getUser` + `has_role` check stays as defense-in-depth). This makes 401s loud and triages correctly via the existing `AUTH_CRITICAL` 404 path.
 
-### 5. Make reset-link generation fail loudly if shape is unsafe
+### 6. BDD scenarios `APP-STATUS-LIVE-001..005`
 
-Harden `auth-email-hook` recovery rewriting:
-- Always prefer direct app URL: `/reset-password?token_hash=...&type=recovery`.
-- If the hook cannot extract a token hash, emit a high-signal telemetry event with no token content.
-- Add a smoke assertion that generated recovery links land on `/reset-password` with one supported recovery proof format.
+- 001: Admin moves applicant `pending_review` → `invited_to_interview`; within 3s, applicant's open `/applications/projects` tab shows new badge **[UI]**, `project_applications.applicant_status` reflects new value **[DB]**, `auditedInvoke('notify-applicant-status')` returns `200` **[Code]**.
+- 002: Same as 001 but applicant's tab is on `/dashboard` — widget updates without manual refresh.
+- 003: Realtime channel drops; notification arrives via fallback; invalidation still fires within 1 poll cycle.
+- 004: Applicant returns from background (window focus); list refetches and shows latest.
+- 005: Non-admin cannot subscribe to other users' `project_applications` rows (RLS denies; subscription returns empty).
 
-### 6. Add tests for the actual failure mode
+### 7. Memory update
 
-Add targeted tests that would have caught this days ago:
-- `verifyOtp` returns no error but no usable session -> form stays locked and `updatePassword` is not called.
-- `exchangeCodeForSession` returns no session -> expired-link recovery.
-- `setSession` succeeds but `getUser` fails -> expired-link recovery.
-- `updateUser` missing-session error -> `session_expired`, not `service_unavailable`.
-- reset telemetry fires on every branch, including pre-auth failures.
-- `check-account-identity` uses `identity_check`, not `login_attempt`.
-- `auth-email-hook` rewrites recovery links to the expected shape.
+Add `mem://features/applications/realtime-status-bridge` describing the realtime + notification-bridge contract and the deleted setInterval polls.
 
-### 7. Add a production smoke monitor for the full reset path
+## Out of scope
 
-Create a safe smoke route/job that checks the chain without changing a real member password:
+- Admin-side roster freshness (already uses targeted `invalidateKeys` after the mutation).
+- Email/Discord notification delivery (independent path, working today).
+- Broader staleTime tuning beyond `project_applications`-shaped queries.
 
-```text
-identity gate reachable
-recovery email hook link shape valid
-email queue worker healthy
-reset page can reject invalid/no-session links correctly
-telemetry rows appear for each branch
-```
+## Expected outcome
 
-If any part fails, it should create a System Health/Triage item within minutes.
-
-### 8. Hotfix rollout verification
-
-After implementation:
-- Run targeted unit/UI/edge tests.
-- Deploy affected edge functions.
-- Verify live recovery-email latest status, not raw pending counts.
-- Verify reset branch telemetry appears for an invalid/no-session probe.
-- Verify no active `password_reset` or polluted `login_attempt` lockouts remain.
-- Publish immediately after the checks pass.
-
-## Files likely touched
-
-- `src/pages/ResetPasswordPage.tsx`
-- `src/services/auth.service.ts`
-- `src/test/ui/ResetPasswordPage.test.tsx`
-- `src/test/services/auth.service.test.ts`
-- `supabase/functions/auth-email-hook/index.ts`
-- New public safe telemetry edge function for reset diagnostics
-- Email health SQL/view/RPC and BDD scenarios
-
-## Success criteria
-
-- The password update form is impossible to reach without a verified recovery session.
-- “Password service unavailable” only appears for real network/5xx auth-service failures.
-- Missing/expired recovery sessions show the reset-link recovery path.
-- Logs show the exact reset branch even when auth is missing.
-- Email health can no longer be misread from stale append-only `pending` rows.
-- Regression tests cover the exact failure chain.
-
-<presentation-actions>
-  <presentation-open-history>View History</presentation-open-history>
-</presentation-actions>
-
-<presentation-actions>
-<presentation-link url="https://docs.lovable.dev/tips-tricks/troubleshooting">Troubleshooting docs</presentation-link>
-</presentation-actions>
+When an admin changes an applicant's status, the applicant sees the new badge in every open tab (Applications list, count badge, dashboard widget, quest roadmap, per-application status page) within ~1 second — without polling, without hard-refresh, without the 5-minute stale window.

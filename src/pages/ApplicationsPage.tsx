@@ -52,6 +52,9 @@ export default function ApplicationsPage() {
       return data ?? [];
     },
     enabled: !!user,
+    staleTime: 60_000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 
   const projAppCount = myProjectApps?.length ?? 0;

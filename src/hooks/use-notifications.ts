@@ -90,12 +90,53 @@ export function useMarkAllNotificationsRead() {
 }
 
 /**
- * Notifications realtime was removed for security (prevents unauthorized channel subscriptions).
- * The useNotifications hook already polls via refetchInterval with adaptive intervals.
- * This hook is kept as a no-op for backward compatibility.
+ * Notifications realtime — subscribes to public.notifications scoped to the
+ * current user. RLS restricts the table to `auth.uid() = user_id`, so the
+ * channel only delivers the caller's own rows.
+ *
+ * On INSERT: invalidate the notifications cache so the bell/sheet updates
+ * instantly. When the new notification represents an applicant_status change
+ * (status_change or applicant_status_*), also invalidate the project-
+ * applications caches as a belt-and-suspenders fallback in case the
+ * dedicated project_applications channel dropped (mobile background, blip).
  */
 export function useNotificationRealtime() {
-  // No-op: polling handles freshness; realtime removed for security
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel(`notifications-self-${user.id}`)
+      .on(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        "postgres_changes" as any,
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload: { new?: { type?: string } }) => {
+          queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY });
+          const type = payload?.new?.type ?? "";
+          if (type === "status_change" || type.startsWith("applicant_status_")) {
+            queryClient.invalidateQueries({ queryKey: ["my-project-applications", user.id] });
+            queryClient.invalidateQueries({ queryKey: ["my-project-apps-count", user.id] });
+            queryClient.invalidateQueries({ queryKey: ["my-project-app-status"] });
+            queryClient.invalidateQueries({ queryKey: ["dashboard-overview", user.id] });
+            queryClient.invalidateQueries({ queryKey: ["quest-roadmap", user.id] });
+            queryClient.invalidateQueries({ queryKey: ["my-active-projects", user.id] });
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, queryClient]);
 }
 
 export type { AppNotification };
