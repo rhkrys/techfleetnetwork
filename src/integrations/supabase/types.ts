@@ -7035,6 +7035,19 @@ export type Database = {
         }
         Relationships: []
       }
+      email_send_log_latest: {
+        Row: {
+          created_at: string | null
+          error_message: string | null
+          id: string | null
+          message_id: string | null
+          metadata: Json | null
+          recipient_email: string | null
+          status: string | null
+          template_name: string | null
+        }
+        Relationships: []
+      }
       failed_login_attempts_decrypted: {
         Row: {
           attempted_at: string | null
@@ -7866,6 +7879,22 @@ export type Database = {
         Returns: Json
       }
       get_email_reconciler_status: { Args: never; Returns: Json }
+      get_email_send_latest: {
+        Args: {
+          p_limit?: number
+          p_since?: string
+          p_status?: string
+          p_template?: string
+        }
+        Returns: {
+          created_at: string
+          error_message: string
+          message_id: string
+          recipient_email: string
+          status: string
+          template_name: string
+        }[]
+      }
       get_email_send_latest_status: {
         Args: { p_hours?: number }
         Returns: {
@@ -7935,6 +7964,10 @@ export type Database = {
           discord_role_name: string
           notion_repository_url: string
         }[]
+      }
+      get_recovery_email_health: {
+        Args: { p_window_minutes?: number }
+        Returns: Json
       }
       get_refactor_kpis: {
         Args: { p_days?: number }
