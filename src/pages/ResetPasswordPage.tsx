@@ -83,7 +83,7 @@ export default function ResetPasswordPage() {
     };
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") {
+      if (event === "PASSWORD_RECOVERY") {
         settle(true, "session");
       }
     });
@@ -106,11 +106,7 @@ export default function ResetPasswordPage() {
       } catch { /* noop */ }
     };
 
-    const settleFromSession = (branch: string = "invalid") => {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        settle(!!session, session ? "session" : branch);
-      }).catch(() => settle(false, branch));
-    };
+    const settleInvalid = (branch: string = "invalid") => settle(false, branch);
 
     // PRIMARY: token_hash recovery link (new format from auth-email-hook,
     // AUTH-RESET-020). verifyOtp is idempotent until the OTP is consumed or
@@ -120,22 +116,22 @@ export default function ResetPasswordPage() {
         .then(({ error }) => {
           if (error) {
             stripSensitiveParams();
-            settleFromSession("token_hash_invalid");
+            settleInvalid("token_hash_invalid");
           } else {
             stripSensitiveParams();
             settle(true, "token_hash");
           }
         })
-        .catch(() => settleFromSession("token_hash_invalid"));
+        .catch(() => settleInvalid("token_hash_invalid"));
     } else if (!hasRecoveryInHash && !hasRecoveryInQuery) {
-      settleFromSession("no_params");
+      settleInvalid("no_params");
     } else if (code && typeof supabase.auth.exchangeCodeForSession === "function") {
       supabase.auth.exchangeCodeForSession(code)
         .then(({ error }) => {
-          if (error) settleFromSession("code_invalid");
+          if (error) settleInvalid("code_invalid");
           else { stripSensitiveParams(); settle(true, "code"); }
         })
-        .catch(() => settleFromSession("code_invalid"));
+        .catch(() => settleInvalid("code_invalid"));
     } else {
       // Legacy `#access_token=…&refresh_token=…&type=recovery` hash fallback.
       // With detectSessionInUrl disabled, the SDK will no longer consume this
@@ -158,10 +154,6 @@ export default function ResetPasswordPage() {
       // If the hash is incomplete, give any already-running auth state change a
       // short chance to settle before showing the expired-link branch.
       const timeout = setTimeout(async () => {
-        try {
-          const { data } = await supabase.auth.getSession();
-          if (data.session) { stripSensitiveParams(); return settle(true, "hash"); }
-        } catch { /* fall through */ }
         settle(false, "timeout");
       }, 8000);
       return () => {
