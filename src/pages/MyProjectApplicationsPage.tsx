@@ -84,14 +84,10 @@ export default function MyProjectApplicationsPage() {
   const [view, setView] = useState<"card" | "table">("card");
   const queryClient = useQueryClient();
 
-  /* ── poll for status updates (realtime removed for security) ── */
-  useEffect(() => {
-    if (!user) return;
-    const interval = setInterval(() => {
-      queryClient.invalidateQueries({ queryKey: ["my-project-applications", user.id] });
-    }, 30_000);
-    return () => clearInterval(interval);
-  }, [user, queryClient]);
+  /* Realtime invalidation is mounted globally in AppLayout
+   * (useProjectApplicationsRealtime + useNotificationRealtime), so we no
+   * longer need a 30s setInterval here. CACHE_USER_MUTABLE + focus refetch
+   * cover the cold-tab case. */
 
   const { data: apps, isLoading } = useQuery({
     queryKey: ["my-project-applications", user?.id],
@@ -105,6 +101,9 @@ export default function MyProjectApplicationsPage() {
       return (data ?? []) as unknown as ProjectApp[];
     },
     enabled: !!user,
+    staleTime: 60_000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 
   const projectIds = useMemo(() => [...new Set((apps ?? []).map((a) => a.project_id))], [apps]);
