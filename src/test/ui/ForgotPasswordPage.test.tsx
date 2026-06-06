@@ -29,6 +29,8 @@ vi.mock("@/components/auth/TurnstileChallenge", () => ({
 
 describe("ForgotPasswordPage UI (BDD 19.1)", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(RateLimitService.peek).mockResolvedValue({ allowed: true, remaining: 5, retry_after: 0 });
     renderWithRouter(<ForgotPasswordPage />);
   });
 
