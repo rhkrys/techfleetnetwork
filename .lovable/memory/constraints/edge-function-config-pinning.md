@@ -41,14 +41,37 @@ trail. Removing the allow-list makes that class of incident structurally
 impossible; the smoke cron is the safety net for the next platform change.
 
 ## How to add a new edge function
-1. `mkdir supabase/functions/<name>` + write `index.ts`.
-2. `git commit` — pre-commit auto-pins it with `verify_jwt = true`.
-3. If it's a webhook/cron, flip to `false` in `config.toml`.
-4. Manifest + smoke cron pick it up automatically.
+1. `mkdir supabase/functions/<name>` + write `index.ts` starting with one of:
+   - `// @edge-auth required` → critical auth flow (pages admins on 404)
+   - `// @edge-auth` → standard JWT-verified
+   - `// @edge-public` → webhook/public, must validate HMAC/captcha in body
+   - `// @edge-cron` → cron-poked, must call `authorizeServiceRoleRequest`
+2. `git commit` — pre-commit auto-pins it with `verify_jwt = true` (override
+   to `false` in `config.toml` for public/cron).
+3. Manifest (`supabase/functions.manifest.json` + mirrored
+   `src/generated/edge-functions.manifest.json` + smoke
+   `_manifest.json`) regenerates with `{name, verify_jwt, kind, critical, declared}`.
+4. `auditedInvoke` derives AUTH_CRITICAL from `manifest.functions[].critical`
+   — no hand-edit. Until every dir carries `@edge-auth required`, a
+   `CRITICAL_FALLBACK` set in the generator backstops the original 13.
+5. Smoke cron picks the new fn up next 10-min tick.
 
-## BDD EDGE-PIN-001..005
-- New dir without pin → pre-commit auto-pins and stages.
-- Unpinned dir reaches CI → red build.
-- Function returns 404 from smoke → severity:error audit row, admin paged < 15 min.
-- Manifest drift → CI regenerates and stages on commit.
-- `src/` invokes unpinned dir → CI fails.
+## Magic-comment contract
+- Detected in first 15 lines of `index.ts`.
+- Contradiction (`@edge-public` + `verify_jwt=true`, or `@edge-auth` +
+  `verify_jwt=false`) FAILS CI.
+- Missing comment WARNS (109 dirs currently undeclared; backfill incremental).
+  Promote to FAIL via `--strict` flag once backfilled.
+
+## System Health surface
+`/admin/system-health` → "Edge functions" tab lists every manifest entry
+(name, kind, verify_jwt, critical, declared) with a "Probe now" button that
+invokes `edge-deploy-smoke` and shows OK / 404 per row.
+
+## BDD EDGE-PIN-001..006
+- 001 Unpinned dir → pre-commit auto-pins.
+- 002 Missing `@edge-*` comment → warn non-strict / fail strict.
+- 003 Comment contradicts verify_jwt → CI fails.
+- 004 Smoke 404 → severity:error audit row → Critical Push pages < 5 min.
+- 005 AUTH_CRITICAL derived from manifest (no hand-edit).
+- 006 Removing a dir auto-removes manifest entry on next run.
