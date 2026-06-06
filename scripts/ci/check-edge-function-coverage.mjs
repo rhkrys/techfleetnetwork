@@ -116,7 +116,6 @@ function readKind(name) {
 // scan. To add a new critical function, add `// @edge-auth required` to its
 // index.ts — the generator will pick it up and you can remove it from here.
 const CRITICAL_FALLBACK = new Set([
-  "update-password-confirmed",
   "login-with-captcha",
   "send-magic-link",
   "verify-turnstile",

@@ -7375,6 +7375,10 @@ export type Database = {
         Args: { p_email: string }
         Returns: undefined
       }
+      clear_own_auth_rate_limits_after_password_reset: {
+        Args: never
+        Returns: undefined
+      }
       clear_rate_limits_for_email: {
         Args: { p_email: string }
         Returns: number

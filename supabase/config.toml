@@ -118,9 +118,6 @@ project_id = "iqsjhrhsjlgjiaedzmtz"
   # defaults and stop deploying — causing the "We couldn't update your
   # password" generic-message incident (2026-06-05). See
   # mem://constraints/edge-function-config-pinning.
-  [functions.update-password-confirmed]
-    # Authenticated: recovery session. Uses requireAuthenticatedRequest in code.
-    verify_jwt = true
   [functions.login-with-captcha]
     # Pre-auth: user is signing in. Authorization is the Turnstile token.
     verify_jwt = false
@@ -167,8 +164,8 @@ project_id = "iqsjhrhsjlgjiaedzmtz"
   # ---- Client-invoked functions (pin-for-deploy-guarantee) ----
   # AUTH-PIN-001 second wave: every function the SPA calls via
   # supabase.functions.invoke must be pinned, even when verify_jwt matches
-  # the platform default. Unpinned drift caused the update-password-confirmed
-  # outage (2026-06-05). verify_jwt = false because each handles its own
+  # the platform default. Unpinned drift caused the 2026-06-05 auth-function
+  # outage. verify_jwt = false because each handles its own
   # auth check in code (requireAuth / admin step-up / public route).
   [functions.fetch-class-certifications]
     verify_jwt = false

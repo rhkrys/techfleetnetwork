@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-06T00:43:30.309Z",
+  "generated_at": "2026-06-06T01:04:32.694Z",
   "functions": [
     {
       "name": "admin-purge-auth-user",
@@ -734,13 +734,6 @@
       "verify_jwt": true,
       "kind": "auth",
       "critical": false,
-      "declared": false
-    },
-    {
-      "name": "update-password-confirmed",
-      "verify_jwt": true,
-      "kind": "auth",
-      "critical": true,
       "declared": false
     },
     {

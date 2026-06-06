@@ -26,6 +26,14 @@ export const GOOGLE_ONLY_ACCOUNT_MESSAGE = "This account uses Google sign-in. Us
 
 type AuthSession = NonNullable<Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]>;
 
+type PasswordUpdateRejectCode =
+  | "same_password"
+  | "weak_password"
+  | "session_expired"
+  | "rate_limited"
+  | "service_unavailable"
+  | "unknown";
+
 interface SessionMarker {
   version: number;
   userId: string;
@@ -189,6 +197,35 @@ async function readFunctionError(error: unknown): Promise<{ status?: number; mes
     message,
     code,
   };
+}
+
+function classifyPasswordUpdateError(err: { message?: string; code?: string; status?: number }): { code: PasswordUpdateRejectCode; message: string } {
+  const code = (err.code || "").toLowerCase();
+  const msg = (err.message || "").toLowerCase();
+
+  if (code === "same_password" || msg.includes("should be different from") || msg.includes("same as the old")) {
+    return { code: "same_password", message: "Pick a password you haven't used here before." };
+  }
+  if (code === "weak_password" || msg.includes("pwned") || msg.includes("breach") || msg.includes("weak password")) {
+    return { code: "weak_password", message: "This password appeared in a known data breach. Choose a different one." };
+  }
+  if (
+    code === "session_not_found" ||
+    code === "no_authorization" ||
+    code === "bad_jwt" ||
+    err.status === 401 ||
+    (msg.includes("session") && (msg.includes("expired") || msg.includes("not found"))) ||
+    msg.includes("jwt expired")
+  ) {
+    return { code: "session_expired", message: "Your password reset link expired. Request a new one to continue." };
+  }
+  if (code === "over_request_rate_limit" || err.status === 429 || msg.includes("rate limit")) {
+    return { code: "rate_limited", message: "Too many attempts in a short time. Please wait a minute and try again." };
+  }
+  if (!err.status || err.status >= 500 || msg.includes("failed to fetch") || msg.includes("network")) {
+    return { code: "service_unavailable", message: "We're briefly unable to reach the password service. Please try again in a moment." };
+  }
+  return { code: "unknown", message: "We couldn't update your password. Please try again or request a new reset link." };
 }
 
 
@@ -485,55 +522,27 @@ export const AuthService = {
         throw err;
       }
 
-      const { data, error } = await supabase.functions.invoke("update-password-confirmed", {
-        body: {
-          password: passwordSet.password,
-          confirmPassword: passwordSet.confirmPassword,
-        },
-      });
+      const { data, error } = await supabase.auth.updateUser({ password: passwordSet.password });
       if (error) {
-        // FunctionsHttpError surfaces the response body via .context.response
-        let serverCode: string | undefined;
-        let serverMessage: string | undefined;
-        let httpStatus: number | undefined;
-        try {
-          const resp = (error as { context?: { response?: Response } }).context?.response;
-          if (resp) {
-            httpStatus = resp.status;
-            const cloned = resp.clone();
-            const body = await cloned.json().catch(() => null) as { error?: string; code?: string } | null;
-            serverCode = body?.code;
-            serverMessage = body?.error;
-          }
-        } catch {
-          // Ignore parse failures — fall through to generic message.
-        }
-        // AUTH-PIN-001 (2026-06-05): if the edge function is unreachable
-        // (404 / network / empty body) treat it as a transient service
-        // outage, NOT as a wrong-password rejection. ResetPasswordPage
-        // checks this code and refuses to decrement the 3-strike counter.
-        const isUnreachable =
-          httpStatus === 404 ||
-          httpStatus === 503 ||
-          httpStatus === 502 ||
-          (!serverMessage && !serverCode);
-        if (isUnreachable) {
-          log.error("updatePassword", `Password service unreachable [http=${httpStatus ?? "transport"}]`, { errorCode: httpStatus });
-          const wrapped = new Error(
-            "We're briefly unable to reach the password service. Please try again in a moment.",
-          ) as Error & { code?: string };
-          wrapped.code = "service_unavailable";
-          throw wrapped;
-        }
-        log.error("updatePassword", `Password update failed: ${serverMessage || error.message} [${serverCode || "unknown"}]`, { errorCode: serverCode || error.status });
-        const wrapped = new Error(serverMessage || "We couldn't update your password. Please try again.") as Error & { code?: string };
-        wrapped.code = serverCode || "unknown";
+        const classified = classifyPasswordUpdateError(error as { message?: string; code?: string; status?: number });
+        log.error("updatePassword", `Password update failed: ${error.message} [${classified.code}]`, { errorCode: classified.code || error.status });
+        const wrapped = new Error(classified.message) as Error & { code?: string };
+        wrapped.code = classified.code;
         throw wrapped;
       }
 
       log.info("updatePassword", "Password updated successfully");
       void logAccountActivity("password_updated", { details: { confirmed: true } });
-      return { otherDevicesRevoked: Boolean((data as { other_devices_revoked?: boolean } | null)?.other_devices_revoked) };
+      await (async () => {
+        const { error: cleanupError } = await supabase.rpc("clear_own_auth_rate_limits_after_password_reset");
+        if (cleanupError) {
+          log.warn("updatePassword", `Rate-limit cleanup after reset failed: ${cleanupError.message}`);
+        }
+      })().catch((err) => {
+        log.warn("updatePassword", `Rate-limit cleanup after reset failed: ${(err as Error)?.message ?? String(err)}`);
+      });
+      const revoke = await AuthService.signOutAllDevices({ keepCurrent: true, reason: "self_password_changed" });
+      return { otherDevicesRevoked: revoke.revocationRecorded };
     });
   },
 

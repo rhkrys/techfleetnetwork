@@ -24,9 +24,11 @@ The `auth-email-hook` edge function REWRITES the recovery email link before rend
 
 All successful branches call `stripSensitiveParams()` via `history.replaceState` to clear `token_hash`, `type`, `code`, `access_token`, etc. from the address bar.
 
-## Error mapping (unchanged)
+## Password update path (root cause fix, 2026-06-06)
 
-`update-password-confirmed` maps GoTrue errors to `{same_password|weak_password|session_expired|rate_limited}` with actionable copy; 3-strike form lock via `tfn:reset-attempts`; successful reset clears device + server login lockout via `clear_login_rate_limit_for_email` RPC; LoginPage honors `?from=password-reset` to drop residual lockout.
+Password reset completion MUST NOT depend on `update-password-confirmed` or any other extra deployable edge function. `update-password-confirmed` is retired. `AuthService.updatePassword` calls `supabase.auth.updateUser({ password })` directly from the verified recovery session, maps GoTrue errors client-side to `{same_password|weak_password|session_expired|rate_limited|service_unavailable}`, then runs cleanup best-effort: `clear_own_auth_rate_limits_after_password_reset()` and `signOutAllDevices({ keepCurrent: true, reason: "self_password_changed" })`. This removes the outage class where an unpinned or unavailable reset-update function shows "We're briefly unable to reach the password service" even though the member has a valid recovery session. Transient update transport failures still do not count against `tfn:reset-attempts`.
+
+3-strike form lock via `tfn:reset-attempts`; successful reset clears device + server auth lockouts; LoginPage honors `?from=password-reset` to drop residual lockout.
 
 ## Google-only accounts (root cause fix, 2026-06-06)
 
