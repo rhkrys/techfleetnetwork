@@ -9,7 +9,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { authorizeServiceRoleRequest } from "../_shared/service-role-auth.ts";
-import manifest from "../functions.manifest.json" with { type: "json" };
+import manifest from "./_manifest.json" with { type: "json" };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
