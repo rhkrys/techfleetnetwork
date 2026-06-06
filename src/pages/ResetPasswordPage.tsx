@@ -9,6 +9,7 @@ import { reportValidationRejection } from "@/services/error-reporter.service";
 import { PasswordSetFields } from "@/components/auth/PasswordSetFields";
 import { validatePasswordSet } from "@/lib/auth/password-set";
 import { clearAuthLockout } from "@/lib/auth-lockout";
+import { recordResetTelemetry, type ResetBranch, type ResetOutcome } from "@/lib/auth/reset-telemetry";
 
 // Hard cap on rejected submits before we stop the user from hammering
 // the form. Lifts only when they explicitly request a new reset link.
@@ -30,6 +31,30 @@ function clearAttempts() {
   try { window.sessionStorage.removeItem(RESET_ATTEMPTS_KEY); } catch { /* noop */ }
 }
 
+/**
+ * HARD RECOVERY-SESSION INVARIANT (AUTH-RESET-SESSION-003):
+ *
+ * The password form must NEVER render unless we hold an active Supabase
+ * session that was produced by a fresh recovery proof. Earlier code
+ * treated "no error" from verifyOtp/exchangeCodeForSession/setSession as
+ * sufficient — but those can succeed without returning a usable session
+ * (SDK quirks, partial PKCE state), which left `updateUser()` with no
+ * JWT and the user with a misleading "service unavailable" toast.
+ *
+ * The page now verifies that `getUser()` returns a real user after the
+ * proof completes; otherwise we route to the expired-link branch and
+ * never reveal the form.
+ */
+async function confirmActiveRecoverySession(): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.auth.getUser();
+    if (error) return false;
+    return Boolean(data?.user?.id);
+  } catch {
+    return false;
+  }
+}
+
 export default function ResetPasswordPage() {
   const [passwordSet, setPasswordSet] = useState({ password: "", confirmPassword: "" });
   const [touched, setTouched] = useState({ password: false, confirmPassword: false });
@@ -47,46 +72,9 @@ export default function ResetPasswordPage() {
   useEffect(() => {
     let settled = false;
 
-    // Severity-tagged diagnostics so a future failure surfaces the exact
-    // branch in audit_log without reaching Triage (severity:info).
-    const recordSettle = (branch: string, ok: boolean) => {
-      try {
-        supabase.rpc("write_audit_log", {
-          p_event_type: ok ? `reset_settle_${branch}_ok` : `reset_settle_${branch}_fail`,
-          p_table_name: "auth.users",
-          p_record_id: null,
-          p_user_id: null,
-          p_changed_fields: [
-            "severity:info",
-            `path:${window.location.pathname}`,
-            `has_hash:${Boolean(window.location.hash)}`,
-          ],
-          p_error_message: null,
-        });
-      } catch { /* diagnostics must never block recovery */ }
+    const beacon = (branch: ResetBranch, outcome: ResetOutcome, shape: { has_token_hash?: boolean; has_code?: boolean; has_hash?: boolean }) => {
+      recordResetTelemetry({ branch, outcome, ...shape });
     };
-
-    const settle = (valid: boolean, branch: string) => {
-      if (settled) return;
-      settled = true;
-      recordSettle(branch, valid);
-      setValidRecovery(valid);
-      setChecking(false);
-      if (valid) {
-        // Member proved identity via the email link — wipe any stale device
-        // lockout from prior login attempts and any prior failed-reset cap.
-        clearAuthLockout();
-        clearAttempts();
-        setAttempts(0);
-        recoveredRef.current = true;
-      }
-    };
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY") {
-        settle(true, "session");
-      }
-    });
 
     const url = new URL(window.location.href);
     const hash = window.location.hash;
@@ -96,6 +84,45 @@ export default function ResetPasswordPage() {
     const hasRecoveryInHash = hash.includes("type=recovery");
     const hasTokenHashRecovery = Boolean(tokenHash) && typeParam === "recovery";
     const hasRecoveryInQuery = typeParam === "recovery" || Boolean(code);
+    const shape = {
+      has_token_hash: Boolean(tokenHash),
+      has_code: Boolean(code),
+      has_hash: Boolean(hash),
+    };
+
+    const settle = async (valid: boolean, branch: ResetBranch, outcome: ResetOutcome) => {
+      if (settled) return;
+      // For the "valid" path, confirm we ACTUALLY hold a session before
+      // unlocking the form. If not — downgrade to expired-link branch.
+      if (valid) {
+        const sessionOk = await confirmActiveRecoverySession();
+        if (!sessionOk) {
+          settled = true;
+          beacon(branch, "no_session_returned", shape);
+          setValidRecovery(false);
+          setChecking(false);
+          return;
+        }
+      }
+      settled = true;
+      beacon(branch, outcome, shape);
+      setValidRecovery(valid);
+      setChecking(false);
+      if (valid) {
+        clearAuthLockout();
+        clearAttempts();
+        setAttempts(0);
+        recoveredRef.current = true;
+      }
+    };
+
+    const settleInvalid = (branch: ResetBranch, outcome: ResetOutcome) => settle(false, branch, outcome);
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        void settle(true, "session_event", "ok");
+      }
+    });
 
     const stripSensitiveParams = () => {
       try {
@@ -106,36 +133,28 @@ export default function ResetPasswordPage() {
       } catch { /* noop */ }
     };
 
-    const settleInvalid = (branch: string = "invalid") => settle(false, branch);
-
-    // PRIMARY: token_hash recovery link (new format from auth-email-hook,
-    // AUTH-RESET-020). verifyOtp is idempotent until the OTP is consumed or
-    // expires, so cross-device / incognito / second-click all work.
     if (hasTokenHashRecovery) {
       supabase.auth.verifyOtp({ type: "recovery", token_hash: tokenHash! })
         .then(({ error }) => {
           if (error) {
             stripSensitiveParams();
-            settleInvalid("token_hash_invalid");
+            void settleInvalid("token_hash", "verify_error");
           } else {
             stripSensitiveParams();
-            settle(true, "token_hash");
+            void settle(true, "token_hash", "ok");
           }
         })
-        .catch(() => settleInvalid("token_hash_invalid"));
+        .catch(() => void settleInvalid("token_hash", "verify_error"));
     } else if (!hasRecoveryInHash && !hasRecoveryInQuery) {
-      settleInvalid("no_params");
+      void settleInvalid("no_params", "missing_proof_blocked");
     } else if (code && typeof supabase.auth.exchangeCodeForSession === "function") {
       supabase.auth.exchangeCodeForSession(code)
         .then(({ error }) => {
-          if (error) settleInvalid("code_invalid");
-          else { stripSensitiveParams(); settle(true, "code"); }
+          if (error) void settleInvalid("code", "exchange_error");
+          else { stripSensitiveParams(); void settle(true, "code", "ok"); }
         })
-        .catch(() => settleInvalid("code_invalid"));
+        .catch(() => void settleInvalid("code", "exchange_error"));
     } else {
-      // Legacy `#access_token=…&refresh_token=…&type=recovery` hash fallback.
-      // With detectSessionInUrl disabled, the SDK will no longer consume this
-      // automatically, so the page must install the recovery session itself.
       const hashParams = new URLSearchParams(hash.replace(/^#/, ""));
       const accessToken = hashParams.get("access_token");
       const refreshToken = hashParams.get("refresh_token");
@@ -143,18 +162,16 @@ export default function ResetPasswordPage() {
       if (hasRecoveryInHash && accessToken && refreshToken) {
         supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
           .then(({ error }) => {
-            if (error) settleInvalid("hash_invalid");
-            else { stripSensitiveParams(); settle(true, "hash"); }
+            if (error) void settleInvalid("hash", "set_session_error");
+            else { stripSensitiveParams(); void settle(true, "hash", "ok"); }
           })
-          .catch(() => settleInvalid("hash_invalid"));
+          .catch(() => void settleInvalid("hash", "set_session_error"));
 
         return () => subscription.unsubscribe();
       }
 
-      // If the hash is incomplete, give any already-running auth state change a
-      // short chance to settle before showing the expired-link branch.
-      const timeout = setTimeout(async () => {
-        settle(false, "timeout");
+      const timeout = setTimeout(() => {
+        void settleInvalid("timeout", "missing_proof_blocked");
       }, 8000);
       return () => {
         clearTimeout(timeout);
@@ -170,8 +187,6 @@ export default function ResetPasswordPage() {
 
   useEffect(() => {
     if (!success) return;
-    // Redirect with marker so LoginPage knows to fully clear any
-    // residual device lockout — see AUTH-RESET-005.
     const t = setTimeout(() => navigate("/dashboard?from=password-reset", { replace: true }), 4000);
     return () => clearTimeout(t);
   }, [success, navigate]);
@@ -188,6 +203,24 @@ export default function ResetPasswordPage() {
     }
     if (attempts >= MAX_REJECTIONS) return;
 
+    // DEFENSE IN DEPTH: even if validRecovery somehow becomes true without a
+    // session, re-confirm before calling updateUser. This guarantees the
+    // user cannot see "service unavailable" when the real problem is a
+    // missing recovery session.
+    if (!recoveredRef.current) {
+      recordResetTelemetry({ branch: "update_submit", outcome: "missing_proof_blocked" });
+      setLinkExpired(true);
+      setValidRecovery(false);
+      return;
+    }
+    const sessionOk = await confirmActiveRecoverySession();
+    if (!sessionOk) {
+      recordResetTelemetry({ branch: "update_submit", outcome: "update_session_expired" });
+      setLinkExpired(true);
+      setValidRecovery(false);
+      return;
+    }
+
     setError("");
     setErrorCode("");
     setLoading(true);
@@ -197,14 +230,14 @@ export default function ResetPasswordPage() {
       setOtherDevicesRevoked(revoked);
       clearAttempts();
       clearAuthLockout();
+      recordResetTelemetry({ branch: "update_submit", outcome: "update_success" });
       setSuccess(true);
     } catch (err) {
       const e = err as Error & { code?: string };
       const code = e.code || "unknown";
 
       if (code === "session_expired") {
-        // The recovery session lapsed mid-form. Don't punish the user —
-        // route them to request a new link.
+        recordResetTelemetry({ branch: "update_submit", outcome: "update_session_expired" });
         setLinkExpired(true);
         setValidRecovery(false);
         return;
@@ -213,16 +246,19 @@ export default function ResetPasswordPage() {
       setErrorCode(code);
       setError(e.message);
 
-      // service_unavailable means the auth service/network is temporarily
-      // unreachable. Do NOT count it as a rejected attempt — the user's
-      // password and recovery session may still be fine.
+      const outcomeMap: Record<string, ResetOutcome> = {
+        service_unavailable: "update_service_unavailable",
+        rate_limited: "update_rate_limited",
+        same_password: "update_same_password",
+        weak_password: "update_weak_password",
+        unknown: "update_unknown_error",
+      };
+      recordResetTelemetry({ branch: "update_submit", outcome: outcomeMap[code] ?? "update_unknown_error" });
+
       if (code === "service_unavailable") {
         return;
       }
 
-      // Only count server-side auth-layer rejections (same_password,
-      // weak_password, rate_limited, unknown). Client-side weak-password
-      // checks already block submission above.
       if (code === "same_password" || code === "weak_password" || code === "unknown" || code === "rate_limited") {
         const next = attempts + 1;
         setAttempts(next);
