@@ -26,6 +26,14 @@ export const GOOGLE_ONLY_ACCOUNT_MESSAGE = "This account uses Google sign-in. Us
 
 type AuthSession = NonNullable<Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]>;
 
+type PasswordUpdateRejectCode =
+  | "same_password"
+  | "weak_password"
+  | "session_expired"
+  | "rate_limited"
+  | "service_unavailable"
+  | "unknown";
+
 interface SessionMarker {
   version: number;
   userId: string;
@@ -189,6 +197,35 @@ async function readFunctionError(error: unknown): Promise<{ status?: number; mes
     message,
     code,
   };
+}
+
+function classifyPasswordUpdateError(err: { message?: string; code?: string; status?: number }): { code: PasswordUpdateRejectCode; message: string } {
+  const code = (err.code || "").toLowerCase();
+  const msg = (err.message || "").toLowerCase();
+
+  if (code === "same_password" || msg.includes("should be different from") || msg.includes("same as the old")) {
+    return { code: "same_password", message: "Pick a password you haven't used here before." };
+  }
+  if (code === "weak_password" || msg.includes("pwned") || msg.includes("breach") || msg.includes("weak password")) {
+    return { code: "weak_password", message: "This password appeared in a known data breach. Choose a different one." };
+  }
+  if (
+    code === "session_not_found" ||
+    code === "no_authorization" ||
+    code === "bad_jwt" ||
+    err.status === 401 ||
+    (msg.includes("session") && (msg.includes("expired") || msg.includes("not found"))) ||
+    msg.includes("jwt expired")
+  ) {
+    return { code: "session_expired", message: "Your password reset link expired. Request a new one to continue." };
+  }
+  if (code === "over_request_rate_limit" || err.status === 429 || msg.includes("rate limit")) {
+    return { code: "rate_limited", message: "Too many attempts in a short time. Please wait a minute and try again." };
+  }
+  if (!err.status || err.status >= 500 || msg.includes("failed to fetch") || msg.includes("network")) {
+    return { code: "service_unavailable", message: "We're briefly unable to reach the password service. Please try again in a moment." };
+  }
+  return { code: "unknown", message: "We couldn't update your password. Please try again or request a new reset link." };
 }
 
 
