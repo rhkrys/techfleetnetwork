@@ -6,7 +6,6 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp
 import { ShieldCheck, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { MfaService, type TotpFactor } from "@/services/mfa.service";
-import { supabase } from "@/integrations/supabase/client";
 
 interface Props {
   open: boolean;
@@ -78,14 +77,17 @@ export function MfaChallengeDialog({ open, onSuccess, onCancel }: Props) {
   };
 
   const handleCancel = async () => {
-    // Session is only AAL1 — sign out to prevent half-authenticated state.
-    await supabase.auth.signOut({ scope: "local" });
     onCancel();
   };
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) void handleCancel(); }}>
-      <DialogContent className="max-w-md" onInteractOutside={(e) => e.preventDefault()}>
+    <Dialog open={open}>
+      <DialogContent
+        className="max-w-md"
+        hideCloseButton
+        onEscapeKeyDown={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">Two-Factor Verification
           </DialogTitle>
