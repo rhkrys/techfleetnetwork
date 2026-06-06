@@ -1,4 +1,9 @@
 # Husky pre-commit
 # Runs lint-staged: eslint --fix + prettier on staged files only.
+# Then ensures every edge function dir is pinned in config.toml (auto-fix +
+# stage the change so committers never have to think about it).
 # Bypass with `git commit --no-verify` if absolutely needed.
 npx lint-staged
+node scripts/ci/check-edge-function-coverage.mjs --fix
+git add supabase/config.toml supabase/functions.manifest.json 2>/dev/null || true
+node scripts/ci/check-edge-function-coverage.mjs
