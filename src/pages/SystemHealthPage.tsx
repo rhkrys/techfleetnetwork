@@ -28,6 +28,7 @@ import { EmailDlqPanel } from "@/components/system-health/EmailDlqPanel";
 import { EmailBulkThrottleCard } from "@/components/system-health/EmailBulkThrottleCard";
 import { DiscordRepairTab } from "@/components/system-health/DiscordRepairTab";
 import { LoginHealthTab } from "@/components/system-health/LoginHealthTab";
+import { ResetHealthTab } from "@/components/system-health/ResetHealthTab";
 import { TranslationsTab } from "@/components/admin/system-health/TranslationsTab";
 import { HelpDeskTab } from "@/components/system-health/HelpDeskTab";
 import { RefactorKpisTab } from "@/components/system-health/RefactorKpisTab";
