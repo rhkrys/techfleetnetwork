@@ -3,7 +3,7 @@ import { createLogger } from "@/services/logger.service";
 import { logAccountActivity } from "@/lib/account-activity";
 import { getSessionPolicyFailureReason } from "@/lib/security";
 import { clearOAuthUiMarker, hasFreshOAuthUiMarker, isRootOAuthCallback, stripRootOAuthCallbackUrl } from "@/lib/oauth-ui-guard";
-import { emailInputSchema, passwordSchema } from "@/lib/validators/auth";
+import { emailInputSchema, loginPasswordSchema, passwordSchema } from "@/lib/validators/auth";
 import { validatePasswordSet, type PasswordSetValue } from "@/lib/auth/password-set";
 import { createAuthThrottleCaptchaError, isAuthThrottleCaptchaError } from "@/lib/auth-throttle-captcha";
 import { validateEmailDomainExists } from "@/lib/email-domain-validation";
@@ -21,6 +21,8 @@ const SESSION_STARTED_AT_KEY = "session_started_at";
 const SESSION_MARKER_VERSION = 1;
 const AUTH_STORAGE_KEY_PATTERN = /^sb-.*-auth-token$/;
 const blockedAuthInputError = new Error("Enter a valid email address.");
+export const GOOGLE_ONLY_ACCOUNT_CODE = "GOOGLE_ONLY_ACCOUNT";
+export const GOOGLE_ONLY_ACCOUNT_MESSAGE = "This account uses Google sign-in. Use Google to continue; password reset is not available for this account.";
 
 type AuthSession = NonNullable<Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]>;
 
@@ -169,11 +171,31 @@ async function singleFlightSetSession(tokens: { access_token: string; refresh_to
   }
 }
 
+async function readFunctionError(error: unknown): Promise<{ status?: number; message: string; code?: string }> {
+  const fallback = error instanceof Error ? error.message : String((error as { message?: string } | null | undefined)?.message ?? "Unknown error");
+  const directStatus = (error as { status?: unknown } | null | undefined)?.status;
+  const response = (error as { context?: { response?: Response } } | null | undefined)?.context?.response;
+  let message = fallback;
+  let code: string | undefined;
+  try {
+    const body = response ? await response.clone().json().catch(() => null) as { error?: string; message?: string; code?: string } | null : null;
+    message = body?.error || body?.message || fallback;
+    code = body?.code;
+  } catch {
+    // Use fallback message.
+  }
+  return {
+    status: response?.status ?? (typeof directStatus === "number" ? directStatus : undefined),
+    message,
+    code,
+  };
+}
+
 
 export const AuthService = {
   async signInWithPassword(email: string, password: string, captchaToken?: string, attemptId?: string) {
     const parsedEmail = emailInputSchema.safeParse(email);
-    if (!parsedEmail.success || !passwordSchema.safeParse(password).success) {
+    if (!parsedEmail.success || !loginPasswordSchema.safeParse(password).success) {
       throw blockedAuthInputError;
     }
     if (!captchaToken?.trim()) {
@@ -201,9 +223,20 @@ export const AuthService = {
         return { data: null, error: new Error("Invalid login response") };
       });
       if (error) {
-        log.error("signInWithPassword", `Authentication failed for ${safeEmail}: ${error.message}`, { email: safeEmail, errorCode: error.status }, error);
-        void logAccountActivity("login_failed", { email: safeEmail, errorMessage: error.message, errorCode: error.status });
-        if (error.status === 429 || error.message.toLowerCase().includes("too many rapid auth attempts")) throw createAuthThrottleCaptchaError();
+        const fnError = await readFunctionError(error);
+        log.error("signInWithPassword", `Authentication failed for ${safeEmail}: ${fnError.message}`, { email: safeEmail, errorCode: fnError.status ?? fnError.code }, error);
+        void logAccountActivity("login_failed", { email: safeEmail, errorMessage: fnError.message, errorCode: fnError.status ?? fnError.code });
+        if (fnError.status === 429 || fnError.message.toLowerCase().includes("too many rapid auth attempts")) throw createAuthThrottleCaptchaError();
+        if (typeof fnError.status === "number" && fnError.status >= 500) {
+          const serviceError = new Error("The sign-in service hit a snag. Please try again in a moment.") as Error & { status?: number };
+          serviceError.status = fnError.status;
+          throw serviceError;
+        }
+        if (fnError.code === "CAPTCHA_REQUIRED" || fnError.message.toLowerCase().includes("human verification")) {
+          const captchaError = new Error("Complete the human verification below before signing in.") as Error & { status?: number };
+          captchaError.status = fnError.status;
+          throw captchaError;
+        }
         throw new Error("Invalid email or password. Please try again.");
       }
       // LCL-FIX-004 (revised): Post-setSession round-trip validation is
@@ -404,6 +437,14 @@ export const AuthService = {
     const domainCheck = await validateEmailDomainExists(safeEmail);
     if (!domainCheck.valid) throw new Error(domainCheck.message ?? "Use an email address with a real domain.");
     return log.track("resetPassword", `Sending password reset for ${safeEmail}`, { email: safeEmail }, async () => {
+      const identity = await AuthService.checkAccountIdentity(safeEmail, safeCaptchaToken);
+      if (identity.has_google && !identity.has_password) {
+        void logAccountActivity("password_reset_google_only_blocked", { email: safeEmail });
+        const err = new Error(GOOGLE_ONLY_ACCOUNT_MESSAGE) as Error & { code?: string };
+        err.code = GOOGLE_ONLY_ACCOUNT_CODE;
+        throw err;
+      }
+
       const { error } = await supabase.auth.resetPasswordForEmail(safeEmail, {
         redirectTo,
         ...(safeCaptchaToken ? { captchaToken: safeCaptchaToken } : {}),
@@ -417,6 +458,22 @@ export const AuthService = {
       log.info("resetPassword", `Password reset email sent for ${safeEmail}`, { email: safeEmail });
       void logAccountActivity("password_reset_requested", { email: safeEmail });
     });
+  },
+
+  async checkAccountIdentity(email: string, captchaToken?: string): Promise<{ has_password: boolean; has_google: boolean }> {
+    const parsedEmail = emailInputSchema.safeParse(email);
+    if (!parsedEmail.success) return { has_password: false, has_google: false };
+    try {
+      const body: Record<string, string> = { email: parsedEmail.data };
+      const safeCaptchaToken = captchaToken?.trim();
+      if (safeCaptchaToken) body.captchaToken = safeCaptchaToken;
+      const { data, error } = await supabase.functions.invoke("check-account-identity", { body });
+      if (error || !data) return { has_password: true, has_google: false };
+      const r = data as { has_password?: boolean; has_google?: boolean };
+      return { has_password: r.has_password === true, has_google: r.has_google === true };
+    } catch {
+      return { has_password: true, has_google: false };
+    }
   },
 
   async updatePassword(passwordSet: PasswordSetValue): Promise<{ otherDevicesRevoked: boolean }> {

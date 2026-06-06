@@ -30,6 +30,7 @@ export type AccountActivity =
   | "auth_captcha_fetch_blocked"
   | "password_reset_requested"
   | "password_reset_failed"
+  | "password_reset_google_only_blocked"
   | "password_updated"
   | "signout_local"
   | "signout_global"
@@ -50,6 +51,7 @@ interface ActivityPayload {
 const EMAIL_VISIBLE_EVENTS = new Set<AccountActivity>([
   "password_reset_requested",
   "password_reset_failed",
+  "password_reset_google_only_blocked",
 ]);
 
 /** Hash an email so we never store raw PII in audit logs that admins query frequently. */

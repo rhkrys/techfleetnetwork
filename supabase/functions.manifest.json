@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-06T00:21:34.249Z",
+  "generated_at": "2026-06-06T00:43:30.309Z",
   "functions": [
     {
       "name": "admin-purge-auth-user",
@@ -48,7 +48,7 @@
       "verify_jwt": false,
       "kind": "public",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "client-rate-limit-log",

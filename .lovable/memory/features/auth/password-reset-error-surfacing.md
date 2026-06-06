@@ -28,7 +28,11 @@ All successful branches call `stripSensitiveParams()` via `history.replaceState`
 
 `update-password-confirmed` maps GoTrue errors to `{same_password|weak_password|session_expired|rate_limited}` with actionable copy; 3-strike form lock via `tfn:reset-attempts`; successful reset clears device + server login lockout via `clear_login_rate_limit_for_email` RPC; LoginPage honors `?from=password-reset` to drop residual lockout.
 
-## BDD: AUTH-RESET-001..006, AUTH-RESET-010..012, AUTH-RESET-020..023.
+## Google-only accounts (root cause fix, 2026-06-06)
+
+Forgot-password must call `check-account-identity` before `resetPasswordForEmail`. If an account has Google identity and no password identity, show Google sign-in guidance and do **not** call the password-reset service or record a password-reset failure. The helper must resolve by immutable `profiles.email -> user_id -> auth.admin.getUserById`; do not use `/auth/v1/admin/users?filter=email eq ...`, which silently returned no identities for Google-only accounts and caused repeated reset attempts to hit the backend 60-minute limiter.
+
+## BDD: AUTH-RESET-001..006, AUTH-RESET-010..012, AUTH-RESET-020..023, AUTH-RESET-GOOGLE-ONLY-001.
 
 ## Out of scope of this fix
 - OAuth/PKCE flow (uses `?code=` exchange, untouched).

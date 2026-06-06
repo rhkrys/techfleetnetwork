@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Mail, CheckCircle2 } from "lucide-react";
-import { AuthService } from "@/services/auth.service";
+import { AuthService, GOOGLE_ONLY_ACCOUNT_CODE, GOOGLE_ONLY_ACCOUNT_MESSAGE } from "@/services/auth.service";
 import { RateLimitService } from "@/services/rate-limit.service";
 import techFleetLogo from "@/assets/tech-fleet-logo.svg";
 import { emailInputSchema } from "@/lib/validators/auth";
@@ -89,6 +89,11 @@ export default function ForgotPasswordPage() {
       clearAuthLockout();
       setSubmitted(true);
     } catch (err) {
+      const code = (err as { code?: string } | null | undefined)?.code;
+      if (code === GOOGLE_ONLY_ACCOUNT_CODE) {
+        setError(GOOGLE_ONLY_ACCOUNT_MESSAGE);
+        return;
+      }
       if (isAuthThrottleCaptchaError(err)) {
         logCaptchaTelemetry("auth_captcha_fetch_blocked", { surface: "forgot_password", reason: "client_auth_throttle_429" });
         setCaptchaState(refreshLoginCaptcha());

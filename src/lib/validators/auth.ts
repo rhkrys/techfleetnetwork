@@ -75,9 +75,14 @@ export const passwordSchema = z
   .regex(/[0-9]/, "One number required")
   .regex(/[^A-Za-z0-9]/, "One special character required");
 
+export const loginPasswordSchema = z
+  .string()
+  .min(1, "Password is required")
+  .max(4096, "Password is too long");
+
 export const loginSchema = z.object({
   email: emailInputSchema,
-  password: passwordSchema,
+  password: loginPasswordSchema,
 });
 
 /**

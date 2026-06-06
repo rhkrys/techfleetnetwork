@@ -1,3 +1,4 @@
+// @edge-public
 // check-account-identity
 // Returns whether a given email has a password identity, a Google identity, or neither.
 // Used by LoginPage to surface a helpful "use Google sign-in" hint after a failed
@@ -135,25 +136,29 @@ Deno.serve(withAuditWrapper("check-account-identity", async (req) => {
       return jsonResponse({ has_password: false, has_google: false }, 200);
     }
 
-    // Look up identities. Use the admin REST API rather than a SQL query to keep
-    // this scoped to a single email and avoid touching auth schema directly.
-    const listRes = await fetch(
-      `${supabaseUrl}/auth/v1/admin/users?filter=${encodeURIComponent(`email eq "${email}"`)}`,
-      {
-        headers: {
-          apikey: serviceRole,
-          Authorization: `Bearer ${serviceRole}`,
-        },
-      },
-    );
-    if (!listRes.ok) {
-      log.warn("lookup", `admin users lookup failed [${requestId}]: ${listRes.status}`, { requestId });
+    // Resolve the account by immutable profile email first. The prior admin
+    // `/users?filter=email eq ...` call silently returned no identities for
+    // Google-only accounts, which made password reset hit GoTrue until its
+    // 60-minute limiter fired. Profile → user_id → getUserById is exact.
+    const { data: profile, error: profileErr } = await admin
+      .from("profiles")
+      .select("user_id")
+      .eq("email", email)
+      .maybeSingle();
+    if (profileErr) {
+      log.warn("lookup", `profile lookup failed [${requestId}]: ${profileErr.message}`, { requestId });
       return jsonResponse({ has_password: false, has_google: false }, 200);
     }
-    const body = (await listRes.json().catch(() => ({}))) as {
-      users?: Array<{ email?: string; identities?: Array<{ provider?: string }> }>;
-    };
-    const user = (body.users ?? []).find((u) => (u.email ?? "").toLowerCase() === email);
+
+    const userId = (profile as { user_id?: string } | null)?.user_id;
+    if (!userId) return jsonResponse({ has_password: false, has_google: false }, 200);
+
+    const { data: authUser, error: authErr } = await admin.auth.admin.getUserById(userId);
+    if (authErr) {
+      log.warn("lookup", `auth user lookup failed [${requestId}]: ${authErr.message}`, { requestId });
+      return jsonResponse({ has_password: false, has_google: false }, 200);
+    }
+    const user = authUser?.user as { email?: string; identities?: Array<{ provider?: string }> } | null | undefined;
 
     let has_password = false;
     let has_google = false;
