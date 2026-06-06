@@ -26,7 +26,7 @@ async function hashIdentifier(value: string): Promise<string> {
     .join("");
 }
 
-const VALID_ACTIONS = new Set(["login_attempt", "signup_attempt", "signup_resend", "password_reset"]);
+const VALID_ACTIONS = new Set(["login_attempt", "signup_attempt", "signup_resend", "password_reset", "identity_check"]);
 
 /**
  * RateLimitService — calls `check_rate_limit` directly via PostgREST RPC.
