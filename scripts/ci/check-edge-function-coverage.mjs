@@ -15,7 +15,7 @@
 //      sync with config.toml (kind = auth | public | cron).
 //
 // Run with --fix to auto-append missing [functions.<name>] blocks.
-import { readdirSync, readFileSync, writeFileSync, statSync, appendFileSync, existsSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync, statSync, appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 const ROOT = process.cwd();
