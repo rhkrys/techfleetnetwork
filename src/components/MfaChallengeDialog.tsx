@@ -12,7 +12,7 @@ interface Props {
   /** Called once the user successfully completes MFA — session is now AAL2. */
   onSuccess: () => void;
   /** Called if the user cancels — we sign them out, since the session is only AAL1. */
-  onCancel: () => void;
+  onCancel: () => void | Promise<void>;
 }
 
 /**
@@ -77,7 +77,7 @@ export function MfaChallengeDialog({ open, onSuccess, onCancel }: Props) {
   };
 
   const handleCancel = async () => {
-    onCancel();
+    await onCancel();
   };
 
   return (
