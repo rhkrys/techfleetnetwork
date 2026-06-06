@@ -142,6 +142,14 @@ describe("AuthService session max-age marker", () => {
     expect(supabase.functions.invoke).not.toHaveBeenCalledWith("update-password-confirmed", expect.anything());
   });
 
+  it("AUTH-RESET-SESSION-002: maps missing recovery session to expired link", async () => {
+    vi.mocked(supabase.auth.updateUser).mockResolvedValue({ data: { user: null }, error: { message: "Auth session missing", status: 400 } });
+
+    await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).rejects.toMatchObject({ code: "session_expired" });
+
+    expect(supabase.functions.invoke).not.toHaveBeenCalledWith("update-password-confirmed", expect.anything());
+  });
+
   it("does not sign out a user because another account left a stale timestamp", async () => {
     const session = makeSession("current-user");
     localStorage.setItem("sb-project-auth-token", JSON.stringify({ access_token: session.access_token, refresh_token: session.refresh_token }));

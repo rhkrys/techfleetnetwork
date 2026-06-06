@@ -214,6 +214,9 @@ function classifyPasswordUpdateError(err: { message?: string; code?: string; sta
     code === "no_authorization" ||
     code === "bad_jwt" ||
     err.status === 401 ||
+    msg.includes("auth session missing") ||
+    msg.includes("missing auth session") ||
+    msg.includes("not authenticated") ||
     (msg.includes("session") && (msg.includes("expired") || msg.includes("not found"))) ||
     msg.includes("jwt expired")
   ) {

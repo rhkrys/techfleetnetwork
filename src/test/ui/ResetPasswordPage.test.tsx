@@ -32,19 +32,30 @@ vi.mock("@/integrations/supabase/client", () => ({
 describe("ResetPasswordPage UI (BDD 20.1)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: null }, error: null } as never);
+    vi.mocked(supabase.auth.verifyOtp).mockResolvedValue({ data: { session: null }, error: null } as never);
+    vi.mocked(supabase.auth.setSession).mockResolvedValue({ data: { session: null }, error: null } as never);
+    window.history.replaceState({}, "", "/reset-password");
   });
 
   it("20.1: shows invalid/expired link message when no recovery session", async () => {
     renderWithRouter(<ResetPasswordPage />);
-    // Component starts in `checking` state, then asynchronously resolves to
-    // the invalid-link branch once `supabase.auth.getSession()` settles with
-    // no session. Use `findByText` to await that microtask.
     expect(await screen.findByText(/invalid or expired link/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /request a new link/i })).toBeInTheDocument();
   });
 
-  it("AUTH-RESET-010: blocks mismatched password confirmation before service call", async () => {
+  it("AUTH-RESET-SESSION-001: ordinary signed-in sessions do not unlock password reset", async () => {
     vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: { user: { id: "user-1" } } }, error: null } as never);
+
+    renderWithRouter(<ResetPasswordPage />);
+
+    expect(await screen.findByText(/invalid or expired link/i)).toBeInTheDocument();
+    expect(AuthService.updatePassword).not.toHaveBeenCalled();
+  });
+
+  it("AUTH-RESET-010: blocks mismatched password confirmation before service call", async () => {
+    vi.mocked(supabase.auth.verifyOtp).mockResolvedValue({ data: { session: { user: { id: "user-1" } } }, error: null } as never);
+    window.history.replaceState({}, "", "/reset-password?token_hash=abc123&type=recovery");
     const user = userEvent.setup();
 
     renderWithRouter(<ResetPasswordPage />);
@@ -59,8 +70,9 @@ describe("ResetPasswordPage UI (BDD 20.1)", () => {
   });
 
   it("AUTH-RESET-011: submits only matching confirmed passwords", async () => {
-    vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: { user: { id: "user-1" } } }, error: null } as never);
+    vi.mocked(supabase.auth.verifyOtp).mockResolvedValue({ data: { session: { user: { id: "user-1" } } }, error: null } as never);
     vi.mocked(AuthService.updatePassword).mockResolvedValue({ otherDevicesRevoked: true });
+    window.history.replaceState({}, "", "/reset-password?token_hash=abc123&type=recovery");
     const user = userEvent.setup();
 
     renderWithRouter(<ResetPasswordPage />);
