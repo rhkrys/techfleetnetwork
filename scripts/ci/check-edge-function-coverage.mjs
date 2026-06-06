@@ -1,19 +1,21 @@
 #!/usr/bin/env node
-// Zero-tolerance edge-function pin guard.
+// Zero-tolerance edge-function pin guard + manifest generator.
 //
-// EVERY directory under supabase/functions/ (except _shared) MUST have an
-// explicit [functions.<name>] block in supabase/config.toml. No allow-list,
-// no baseline, no escape hatch.
+// Rules:
+//   1. EVERY dir under supabase/functions/ (except _shared) MUST have a
+//      [functions.<name>] block in supabase/config.toml.
+//   2. The first ~10 lines of every index.ts SHOULD declare intent via a
+//      magic comment: `// @edge-auth required`, `// @edge-public`, or
+//      `// @edge-cron`. Missing comments are warned (not failed) so we can
+//      backfill incrementally; contradictions with config.toml verify_jwt
+//      ARE failures.
+//   3. Every function invoked from src/ must be pinned.
+//   4. The manifest at supabase/functions.manifest.json + the runtime copy
+//      at supabase/functions/edge-deploy-smoke/_manifest.json are kept in
+//      sync with config.toml (kind = auth | public | cron).
 //
-// History: the previous BASELINE_DEFAULT_FUNCTIONS allow-list grew over months
-// into a parking lot of ~21 names, including auth-critical functions like
-// update-password-confirmed. The platform tightened deploy behavior and every
-// unpinned function silently stopped shipping, surfacing as the
-// "We couldn't update your password" outage (2026-06-05). Removing the
-// allow-list makes that failure mode structurally impossible.
-//
-// Run with --fix to auto-append missing blocks (verify_jwt = true default).
-import { readdirSync, readFileSync, writeFileSync, statSync, appendFileSync } from "node:fs";
+// Run with --fix to auto-append missing [functions.<name>] blocks.
+import { readdirSync, readFileSync, writeFileSync, statSync, appendFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 const ROOT = process.cwd();
@@ -21,6 +23,7 @@ const FN_DIR = join(ROOT, "supabase", "functions");
 const CONFIG = join(ROOT, "supabase", "config.toml");
 const SRC_DIR = join(ROOT, "src");
 const FIX = process.argv.includes("--fix");
+const STRICT = process.argv.includes("--strict");
 
 const config = readFileSync(CONFIG, "utf8");
 const pinned = new Set(
@@ -92,24 +95,59 @@ if (invokedMissing.length > 0) {
   failed = true;
 }
 
+// Magic-comment contract. We classify each function as auth | public | cron.
+// Source order: explicit `// @edge-*` comment > verify_jwt heuristic.
+function readKind(name) {
+  const idx = join(FN_DIR, name, "index.ts");
+  if (!existsSync(idx)) return { kind: null, hasComment: false };
+  const head = readFileSync(idx, "utf8").split("\n").slice(0, 15).join("\n");
+  if (/\/\/\s*@edge-cron\b/.test(head)) return { kind: "cron", hasComment: true };
+  if (/\/\/\s*@edge-public\b/.test(head)) return { kind: "public", hasComment: true };
+  if (/\/\/\s*@edge-auth\b/.test(head)) return { kind: "auth", hasComment: true };
+  return { kind: null, hasComment: false };
+}
+
+const contradictions = [];
+const undeclared = [];
+const functionsManifest = dirs.sort().map((name) => {
+  const block = config.match(
+    new RegExp(`\\[functions\\.${name}\\]\\s*\\n\\s*verify_jwt\\s*=\\s*(true|false)`, "i")
+  );
+  const verify_jwt = block ? block[1] === "true" : true;
+  const { kind, hasComment } = readKind(name);
+  // Contradiction: @edge-auth but verify_jwt=false, or @edge-public/cron but verify_jwt=true.
+  if (hasComment) {
+    if (kind === "auth" && !verify_jwt) contradictions.push(`${name}: @edge-auth but verify_jwt=false`);
+    if ((kind === "public" || kind === "cron") && verify_jwt) {
+      contradictions.push(`${name}: @edge-${kind} but verify_jwt=true`);
+    }
+  } else {
+    undeclared.push(name);
+  }
+  const resolvedKind = kind ?? (verify_jwt ? "auth" : "public");
+  return { name, verify_jwt, kind: resolvedKind, declared: hasComment };
+});
+
+if (contradictions.length > 0) {
+  console.error("\nMagic-comment / verify_jwt contradictions:\n" +
+    contradictions.map((c) => `  - ${c}`).join("\n") + "\n");
+  failed = true;
+}
+if (undeclared.length > 0) {
+  const msg = `\n${undeclared.length} function(s) missing // @edge-auth|public|cron comment in first 15 lines of index.ts:\n` +
+    undeclared.slice(0, 10).map((n) => `  - ${n}`).join("\n") +
+    (undeclared.length > 10 ? `\n  … and ${undeclared.length - 10} more` : "") + "\n";
+  if (STRICT) { console.error(msg); failed = true; } else { console.warn(msg); }
+}
+
 if (failed) process.exit(1);
 
-// Emit the manifest as a side-effect — single source of truth consumed by
-// audited-invoke and the deploy-smoke cron.
 const manifest = {
   generated_at: new Date().toISOString(),
-  functions: dirs.sort().map((name) => {
-    const block = config.match(
-      new RegExp(`\\[functions\\.${name}\\]\\s*\\n\\s*verify_jwt\\s*=\\s*(true|false)`, "i")
-    );
-    const verify_jwt = block ? block[1] === "true" : true;
-    return { name, verify_jwt };
-  }),
+  functions: functionsManifest,
 };
 const manifestJson = JSON.stringify(manifest, null, 2) + "\n";
 writeFileSync(join(ROOT, "supabase", "functions.manifest.json"), manifestJson);
-// Mirror into the smoke function dir so it can import the manifest at runtime
-// (edge runtime cannot import from parent dirs).
 try {
   writeFileSync(
     join(FN_DIR, "edge-deploy-smoke", "_manifest.json"),
@@ -117,4 +155,4 @@ try {
   );
 } catch { /* dir may not exist yet on first run */ }
 
-console.log(`OK: ${dirs.length} edge functions all pinned; manifest written.`);
+console.log(`OK: ${dirs.length} edge functions all pinned; manifest written (${undeclared.length} undeclared kind).`);
