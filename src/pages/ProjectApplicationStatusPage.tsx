@@ -380,15 +380,8 @@ export default function ProjectApplicationStatusPage() {
     }
   }, [searchParams, setSearchParams]);
 
-  /* ── poll for status updates (realtime removed for security) ── */
-  useEffect(() => {
-    if (!applicationId) return;
-    const interval = setInterval(() => {
-      queryClient.invalidateQueries({ queryKey: ["my-project-app-status", applicationId] });
-      queryClient.invalidateQueries({ queryKey: ["my-project-applications"] });
-    }, 30_000);
-    return () => clearInterval(interval);
-  }, [applicationId, queryClient]);
+  /* Realtime invalidation is mounted globally in AppLayout
+   * (useProjectApplicationsRealtime + useNotificationRealtime). */
 
   /* ── fetch application ──────────────────────────────────── */
   const { data: app, isLoading: appLoading } = useQuery({
@@ -404,6 +397,9 @@ export default function ProjectApplicationStatusPage() {
       return data as Record<string, unknown>;
     },
     enabled: !!applicationId && !!user,
+    staleTime: 60_000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 
   /* ── fetch project ──────────────────────────────────────── */
