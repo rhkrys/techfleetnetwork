@@ -99,13 +99,37 @@ if (invokedMissing.length > 0) {
 // Source order: explicit `// @edge-*` comment > verify_jwt heuristic.
 function readKind(name) {
   const idx = join(FN_DIR, name, "index.ts");
-  if (!existsSync(idx)) return { kind: null, hasComment: false };
+  if (!existsSync(idx)) return { kind: null, hasComment: false, critical: false };
   const head = readFileSync(idx, "utf8").split("\n").slice(0, 15).join("\n");
-  if (/\/\/\s*@edge-cron\b/.test(head)) return { kind: "cron", hasComment: true };
-  if (/\/\/\s*@edge-public\b/.test(head)) return { kind: "public", hasComment: true };
-  if (/\/\/\s*@edge-auth\b/.test(head)) return { kind: "auth", hasComment: true };
-  return { kind: null, hasComment: false };
+  if (/\/\/\s*@edge-cron\b/.test(head)) return { kind: "cron", hasComment: true, critical: false };
+  if (/\/\/\s*@edge-public\b/.test(head)) return { kind: "public", hasComment: true, critical: false };
+  if (/\/\/\s*@edge-auth\b/.test(head)) {
+    const critical = /@edge-auth\s+required\b/.test(head);
+    return { kind: "auth", hasComment: true, critical };
+  }
+  return { kind: null, hasComment: false, critical: false };
 }
+
+// Single source of truth for AUTH-CRITICAL functions (404 strands real users
+// mid-flow → page admins immediately via Triage Critical Push). Until every
+// function carries `// @edge-auth required`, this list backstops the comment
+// scan. To add a new critical function, add `// @edge-auth required` to its
+// index.ts — the generator will pick it up and you can remove it from here.
+const CRITICAL_FALLBACK = new Set([
+  "update-password-confirmed",
+  "login-with-captcha",
+  "send-magic-link",
+  "verify-turnstile",
+  "validate-email-domain",
+  "resend-signup-confirmations",
+  "sign-out-all-devices",
+  "revoke-user-sessions",
+  "delete-account",
+  "admin-purge-auth-user",
+  "admin-sign-out-all-users",
+  "record-consent",
+  "record-policy-acknowledgment",
+]);
 
 const contradictions = [];
 const undeclared = [];
