@@ -533,7 +533,12 @@ export const AuthService = {
 
       log.info("updatePassword", "Password updated successfully");
       void logAccountActivity("password_updated", { details: { confirmed: true } });
-      void supabase.rpc("clear_own_auth_rate_limits_after_password_reset").catch((err) => {
+      void (async () => {
+        const { error: cleanupError } = await supabase.rpc("clear_own_auth_rate_limits_after_password_reset");
+        if (cleanupError) {
+          log.warn("updatePassword", `Rate-limit cleanup after reset failed: ${cleanupError.message}`);
+        }
+      })().catch((err) => {
         log.warn("updatePassword", `Rate-limit cleanup after reset failed: ${(err as Error)?.message ?? String(err)}`);
       });
       void AuthService.signOutAllDevices({ keepCurrent: true, reason: "self_password_changed" });
