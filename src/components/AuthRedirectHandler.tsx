@@ -26,10 +26,11 @@ export function AuthRedirectHandler() {
   useEffect(() => {
     if (loading || !user) return;
     const storedRedirect = readStoredRedirect();
-    if (!storedRedirect) return;
+    const isAuthLandingPage = location.pathname === "/" || location.pathname === "/login";
+    if (!storedRedirect && !isAuthLandingPage) return;
 
-    clearStoredRedirect();
-    const target = normalizeSafeRedirectTarget(storedRedirect);
+    if (storedRedirect) clearStoredRedirect();
+    const target = normalizeSafeRedirectTarget(storedRedirect || "/dashboard");
     const current = `${location.pathname}${location.search}${location.hash}`;
     if (target !== current) navigate(target, { replace: true });
   }, [loading, user, navigate, location.pathname, location.search, location.hash]);

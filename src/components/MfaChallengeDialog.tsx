@@ -3,17 +3,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
-import { ShieldCheck, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { MfaService, type TotpFactor } from "@/services/mfa.service";
-import { supabase } from "@/integrations/supabase/client";
 
 interface Props {
   open: boolean;
   /** Called once the user successfully completes MFA — session is now AAL2. */
   onSuccess: () => void;
   /** Called if the user cancels — we sign them out, since the session is only AAL1. */
-  onCancel: () => void;
+  onCancel: () => void | Promise<void>;
 }
 
 /**
@@ -78,14 +77,17 @@ export function MfaChallengeDialog({ open, onSuccess, onCancel }: Props) {
   };
 
   const handleCancel = async () => {
-    // Session is only AAL1 — sign out to prevent half-authenticated state.
-    await supabase.auth.signOut({ scope: "local" });
-    onCancel();
+    await onCancel();
   };
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) void handleCancel(); }}>
-      <DialogContent className="max-w-md" onInteractOutside={(e) => e.preventDefault()}>
+    <Dialog open={open}>
+      <DialogContent
+        className="max-w-md"
+        hideCloseButton
+        onEscapeKeyDown={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">Two-Factor Verification
           </DialogTitle>

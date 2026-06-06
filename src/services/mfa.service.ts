@@ -33,6 +33,18 @@ const FACTOR_CACHE_TTL_MS = 60_000;
 let factorCache: { at: number; value: TotpFactor[] } | null = null;
 let factorCacheInflight: Promise<TotpFactor[]> | null = null;
 function invalidateFactorCache() { factorCache = null; factorCacheInflight = null; }
+function decodeAalFromToken(token: string | undefined | null): string | null {
+  if (!token) return null;
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return null;
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(payload.length / 4) * 4, "=");
+    const decoded = JSON.parse(atob(normalized));
+    return typeof decoded?.aal === "string" ? decoded.aal : null;
+  } catch {
+    return null;
+  }
+}
 /** Test-only: reset module caches between cases. Not for production callers. */
 export function __resetMfaServiceCachesForTests() { invalidateFactorCache(); }
 
@@ -147,14 +159,7 @@ export const MfaService = {
     let currentAal: string | null = null;
     try {
       const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token;
-      if (token) {
-        const payload = token.split(".")[1];
-        if (payload) {
-          const decoded = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
-          if (typeof decoded?.aal === "string") currentAal = decoded.aal;
-        }
-      }
+      currentAal = decodeAalFromToken(data.session?.access_token);
     } catch {
       currentAal = null;
     }
@@ -193,7 +198,7 @@ export const MfaService = {
   async verifyChallenge(factorId: string, challengeId: string, code: string): Promise<void> {
     const normalizedCode = code.replace(/\s/g, "");
     if (!isValidTotpCode(normalizedCode)) throw new Error("Enter the 6-digit code from your authenticator app.");
-    const { error } = await supabase.auth.mfa.verify({
+    const { data, error } = await supabase.auth.mfa.verify({
       factorId,
       challengeId,
       code: normalizedCode,
@@ -203,14 +208,19 @@ export const MfaService = {
       throw new Error("Invalid verification code. Please try again.");
     }
     log.info("verifyChallenge", "2FA challenge passed — session elevated to AAL2");
-    // Force the SDK to pull the freshly-minted AAL2 token into its cache + storage
-    // BEFORE any downstream gate/RPC reads `session.access_token`. Without this
-    // the focus/TOKEN_REFRESHED handlers race the JWT propagation and re-prompt
-    // (the "2FA loop" — AUTH-2FA-LOOP-001).
-    try {
-      await supabase.auth.refreshSession();
-    } catch (e) {
-      log.warn("verifyChallenge", `refreshSession after verify failed (non-blocking): ${e instanceof Error ? e.message : String(e)}`);
+    const aalFromVerify = decodeAalFromToken(data?.access_token);
+    if (data?.access_token && data?.refresh_token && aalFromVerify === "aal2") {
+      const { error: setSessionError } = await supabase.auth.setSession({
+        access_token: data.access_token,
+        refresh_token: data.refresh_token,
+      });
+      if (setSessionError) {
+        log.error("verifyChallenge", `Failed to persist AAL2 session: ${setSessionError.message}`, undefined, setSessionError);
+        throw new Error("We verified your code, but could not finish sign-in. Please try again.");
+      }
+    } else {
+      log.error("verifyChallenge", "2FA verification did not return an AAL2 session");
+      throw new Error("We verified your code, but could not finish sign-in. Please try again.");
     }
     await this.markCurrentSessionVerified();
   },

@@ -320,7 +320,6 @@ export function AppLayout({ children }: AppLayoutProps) {
           {children}
         </main>
         <ProfileSetupDialog />
-        <MfaEnforcementGuard />
         <LiveAnnouncer />
         <CookieConsentBanner />
         <UpdateAvailableBanner />
