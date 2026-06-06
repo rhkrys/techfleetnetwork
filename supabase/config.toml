@@ -266,3 +266,5 @@ project_id = "iqsjhrhsjlgjiaedzmtz"
     verify_jwt = true
   [functions.sync-airtable-network-stats]
     verify_jwt = false
+  [functions.edge-deploy-smoke]
+    verify_jwt = false
