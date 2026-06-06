@@ -103,6 +103,7 @@ describe("AuthService session max-age marker", () => {
 
   it("AUTH-RESET-011: updates confirmed recovery passwords without the extra edge-function dependency", async () => {
     vi.mocked(supabase.auth.updateUser).mockResolvedValue({ data: { user: null }, error: null });
+    vi.mocked(supabase.functions.invoke).mockResolvedValue({ data: { revocation_recorded: true, gotrue_signed_out: false }, error: null });
 
     await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).resolves.toEqual({ otherDevicesRevoked: true });
 
