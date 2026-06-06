@@ -291,6 +291,7 @@ export default function SystemHealthPage() {
           <PerformanceByBrowserTab />
         </TabsContent>
         <TabsContent value="login"><LoginHealthTab /></TabsContent>
+        <TabsContent value="reset"><ResetHealthTab /></TabsContent>
         <TabsContent value="fleety"><FleetyHealthTab /></TabsContent>
         <TabsContent value="content"><ContentGapsTab /></TabsContent>
         <TabsContent value="translations"><TranslationsTab /></TabsContent>
