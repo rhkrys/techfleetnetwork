@@ -1,7 +1,6 @@
 // edge-deploy-smoke
 // Probes every edge function listed in supabase/functions.manifest.json with
-// an OPTIONS request. A 404 means the platform stopped shipping it (the exact
-// failure that bricked update-password-confirmed). On 404 we write a
+// an OPTIONS request. A 404 means the platform stopped shipping it. On 404 we write a
 // severity:error row to audit_log which the existing Triage Critical Push
 // (5-min cron) pages admins on within minutes.
 //
