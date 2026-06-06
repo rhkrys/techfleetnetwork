@@ -1,3 +1,4 @@
+// @edge-public
 // freescout-webhook — receives Freescout HMAC-signed events.
 // Hot path: HMAC verify → dedupe → enqueue → 200 (target <100ms).
 // All heavy work (pointer upsert, notifications, fan-out) runs in the

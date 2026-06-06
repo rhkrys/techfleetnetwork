@@ -1,3 +1,4 @@
+// @edge-cron
 // One-shot bootstrap: reads bundled MD files and upserts policy_versions.
 // Auth: service-role key required (admin-only ops).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";

@@ -1,3 +1,4 @@
+// @edge-auth required
 // Admin-only utility: hard-delete an auth.users row by email (and any cascading
 // public-schema records). Solves the "ghost account" problem where a manual
 // SQL wipe of public.profiles cannot touch auth.users (no SQL grant on the auth

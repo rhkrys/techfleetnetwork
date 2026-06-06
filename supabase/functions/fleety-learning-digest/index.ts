@@ -1,3 +1,4 @@
+// @edge-cron
 // Fleety Learning Digest
 // ----------------------------------------------------------------------------
 // Nightly cron-able function. Scans the last 7 days of fleety_turn_signals,

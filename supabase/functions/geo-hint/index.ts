@@ -1,3 +1,4 @@
+// @edge-cron
 // geo-hint — public endpoint, returns visitor country code only.
 import { withAuditWrapper } from "../_shared/audit.ts";
 const corsHeaders = {

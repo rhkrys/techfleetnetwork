@@ -1,3 +1,4 @@
+// @edge-auth
 // Public edge function: serves curated i18n bundles from i18n_translations.
 // No auth — returns only non-PII translation strings. ETag + SWR caching keep
 // it CDN-cheap. See mem://features/i18n-runtime-translator + db-first-content.

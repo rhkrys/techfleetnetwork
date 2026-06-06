@@ -1,3 +1,4 @@
+// @edge-auth required
 import { withAuditWrapper } from "../_shared/audit.ts";
 /**
  * record-policy-acknowledgment — server-side audit of policy acceptance.

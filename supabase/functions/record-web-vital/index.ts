@@ -1,3 +1,4 @@
+// @edge-auth
 import { withAuditWrapper } from "../_shared/audit.ts";
 /**
  * record-web-vital — RUM beacon ingestion endpoint.

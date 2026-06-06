@@ -1,3 +1,4 @@
+// @edge-cron
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { applyWaf } from "../_shared/waf.ts";
 import { scrubJson } from "../_shared/dlp.ts";

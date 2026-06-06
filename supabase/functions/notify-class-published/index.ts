@@ -1,3 +1,4 @@
+// @edge-cron
 // notify-class-published
 // Called by the app (admin-only) right after approve_and_publish_class succeeds.
 // Sends an in-app notification to every follower of the class. Idempotent per

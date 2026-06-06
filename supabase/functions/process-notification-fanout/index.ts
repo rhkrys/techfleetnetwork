@@ -1,3 +1,4 @@
+// @edge-cron
 // process-notification-fanout
 // Drains pending public.notification_fanout_jobs in 500-row chunks.
 // Audit 2026-04-18: replaces the in-transaction fanout in notify_project_opening

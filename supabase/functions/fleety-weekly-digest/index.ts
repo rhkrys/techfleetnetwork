@@ -1,3 +1,4 @@
+// @edge-cron
 // Weekly Fleety Coach digest — emails admins a summary of the past 7 days:
 // signal totals, thumbs balance, top playbook gaps, drafts awaiting review.
 // Triggered via pg_cron weekly. Auth: service-role required.

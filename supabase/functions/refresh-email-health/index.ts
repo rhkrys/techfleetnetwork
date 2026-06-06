@@ -1,3 +1,4 @@
+// @edge-cron
 // Refreshes the email_health_snapshot materialized view and rolls up
 // 7-day complaint / bounce rates into email_domain_health. Auto-pauses
 // bulk sending if complaint rate > 0.1% or bounce rate > 2% (Phase 3.3 / 5.3).

@@ -1,3 +1,4 @@
+// @edge-cron
 import { withAuditWrapper } from "../_shared/audit.ts";
 /**
  * notify-applicant-status — Enterprise-grade Edge Function

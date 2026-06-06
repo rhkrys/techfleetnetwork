@@ -1,54 +1,54 @@
 {
-  "generated_at": "2026-06-06T01:49:51.016Z",
+  "generated_at": "2026-06-06T01:50:42.967Z",
   "functions": [
     {
       "name": "admin-purge-auth-user",
       "verify_jwt": true,
       "kind": "auth",
       "critical": true,
-      "declared": false
+      "declared": true
     },
     {
       "name": "admin-sign-out-all-users",
       "verify_jwt": true,
       "kind": "auth",
       "critical": true,
-      "declared": false
+      "declared": true
     },
     {
       "name": "airtable-diag",
       "verify_jwt": true,
       "kind": "auth",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "auth-email-hook",
       "verify_jwt": false,
       "kind": "public",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "auth-reset-smoke",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "backfill-discord-usernames",
       "verify_jwt": true,
       "kind": "auth",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "bump-email-warmup",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "check-account-identity",
@@ -60,716 +60,716 @@
     {
       "name": "client-rate-limit-log",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "confirm-admin-role",
       "verify_jwt": false,
       "kind": "public",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "confirm-teacher-role",
       "verify_jwt": false,
       "kind": "public",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "delete-account",
       "verify_jwt": true,
       "kind": "auth",
       "critical": true,
-      "declared": false
+      "declared": true
     },
     {
       "name": "discord-interactions",
       "verify_jwt": false,
       "kind": "public",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "discord-notify",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "discord-project-update",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "dsar-submit",
       "verify_jwt": false,
       "kind": "public",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "edge-deploy-smoke",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "email-pipeline-health",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "fetch-class-certifications",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "fetch-project-certifications",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "fill-content-gaps",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "firecrawl-search",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "fleety-bulk-draft-playbooks",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "fleety-embed",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "fleety-learning-digest",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "fleety-weekly-digest",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "framework-csv-fetch",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "freescout-provision-admin",
       "verify_jwt": true,
       "kind": "auth",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "freescout-provision-customer",
       "verify_jwt": true,
       "kind": "auth",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "freescout-proxy",
       "verify_jwt": true,
       "kind": "auth",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "freescout-sync-customer",
       "verify_jwt": true,
       "kind": "auth",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "freescout-validate-secret",
       "verify_jwt": true,
       "kind": "auth",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "freescout-webhook",
       "verify_jwt": false,
       "kind": "public",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "generate-discord-invite",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "geo-hint",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "get-community-events",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "get-discord-member-count",
       "verify_jwt": true,
       "kind": "auth",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "get-i18n-bundle",
       "verify_jwt": true,
       "kind": "auth",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "grant-observer-role",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "gumroad-backfill",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "gumroad-reconcile",
       "verify_jwt": true,
       "kind": "auth",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "gumroad-webhook",
       "verify_jwt": false,
       "kind": "public",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "handle-email-suppression",
       "verify_jwt": false,
       "kind": "public",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "handle-email-unsubscribe",
       "verify_jwt": false,
       "kind": "public",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "ingest-csv-knowledge",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "ingest-reference-csv",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "ingest-workshop-docs",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "login-with-captcha",
       "verify_jwt": true,
       "kind": "auth",
       "critical": true,
-      "declared": false
+      "declared": true
     },
     {
       "name": "manage-discord-roles",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "mark-interview-scheduled",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "notify-applicant-status",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "notify-class-published",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "notify-critical-fix",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "preview-transactional-email",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "prewarm-ugc-worker",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "process-email-queue",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "process-freescout-events",
       "verify_jwt": true,
       "kind": "auth",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "process-notification-fanout",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "promote-to-admin",
       "verify_jwt": false,
       "kind": "public",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "promote-to-teacher",
       "verify_jwt": false,
       "kind": "public",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "public-classes",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "public-project-detail",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "public-project-openings",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "push-config",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "quest-nudge",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "rate-limit",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "reconcile-stuck-emails",
       "verify_jwt": true,
       "kind": "auth",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "record-auth-recovery",
       "verify_jwt": true,
       "kind": "auth",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "record-auth-wedge",
       "verify_jwt": true,
       "kind": "auth",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "record-consent",
       "verify_jwt": true,
       "kind": "auth",
       "critical": true,
-      "declared": false
+      "declared": true
     },
     {
       "name": "record-policy-acknowledgment",
       "verify_jwt": true,
       "kind": "auth",
       "critical": true,
-      "declared": false
+      "declared": true
     },
     {
       "name": "record-web-vital",
       "verify_jwt": true,
       "kind": "auth",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "refresh-community-events",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "refresh-email-health",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "register-fleety-command",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "repair-discord-username",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "replay-dlq-emails",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "replay-email-dlq",
       "verify_jwt": true,
       "kind": "auth",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "resend-signup-confirmations",
       "verify_jwt": true,
       "kind": "auth",
       "critical": true,
-      "declared": false
+      "declared": true
     },
     {
       "name": "resolve-discord-id",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "resume-application-reminder",
       "verify_jwt": true,
       "kind": "auth",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "revoke-recording-consent",
       "verify_jwt": true,
       "kind": "auth",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "revoke-teacher-role",
       "verify_jwt": false,
       "kind": "public",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "revoke-user-sessions",
       "verify_jwt": true,
       "kind": "auth",
       "critical": true,
-      "declared": false
+      "declared": true
     },
     {
       "name": "save-form-draft",
       "verify_jwt": true,
       "kind": "auth",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "scrape-figma-workshops",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "scrape-knowledge",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "screen-sanctions",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "seed-content",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "send-announcement-email",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "send-community-agreement-trigger",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "send-magic-link",
       "verify_jwt": true,
       "kind": "auth",
       "critical": true,
-      "declared": false
+      "declared": true
     },
     {
       "name": "send-project-blast",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "send-push-notification",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "send-transactional-email",
       "verify_jwt": true,
       "kind": "auth",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "sign-out-all-devices",
       "verify_jwt": true,
       "kind": "auth",
       "critical": true,
-      "declared": false
+      "declared": true
     },
     {
       "name": "submit-dispute",
       "verify_jwt": true,
       "kind": "auth",
-      "critical": false,
-      "declared": false
+      "critical": true,
+      "declared": true
     },
     {
       "name": "support-monthly-report",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "support-provisioning-retry",
       "verify_jwt": false,
-      "kind": "public",
+      "kind": "cron",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "sync-airtable",
       "verify_jwt": true,
       "kind": "auth",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "sync-airtable-network-stats",
       "verify_jwt": false,
       "kind": "public",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "sync-airtable-roster",
       "verify_jwt": false,
       "kind": "public",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "techfleet-chat",
       "verify_jwt": false,
       "kind": "public",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "translate-bundle",
       "verify_jwt": false,
       "kind": "public",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "translate-strings",
       "verify_jwt": false,
       "kind": "public",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "triage-digest-builder",
       "verify_jwt": false,
       "kind": "public",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "triage-error",
       "verify_jwt": true,
       "kind": "auth",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "validate-email-domain",
       "verify_jwt": true,
       "kind": "auth",
       "critical": true,
-      "declared": false
+      "declared": true
     },
     {
       "name": "verify-turnstile",
       "verify_jwt": true,
       "kind": "auth",
       "critical": true,
-      "declared": false
+      "declared": true
     },
     {
       "name": "write-exploration-cache",
       "verify_jwt": false,
       "kind": "public",
       "critical": false,
-      "declared": false
+      "declared": true
     }
   ]
 }

@@ -1,3 +1,4 @@
+// @edge-cron
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1'
 
 import { withAuditWrapper } from "../_shared/audit.ts";

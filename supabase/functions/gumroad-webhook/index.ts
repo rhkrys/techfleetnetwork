@@ -1,3 +1,4 @@
+// @edge-public
 import { withAuditWrapper } from "../_shared/audit.ts";
 /**
  * Gumroad Ping webhook receiver.

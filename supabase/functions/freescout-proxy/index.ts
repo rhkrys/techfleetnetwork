@@ -1,3 +1,4 @@
+// @edge-auth
 // freescout-proxy — Get Help member/admin actions
 // Constants-based config (see _shared/freescout.ts). No runtime config branch.
 // Layered cache (see _shared/freescoutCache.ts) collapses fan-out on read.

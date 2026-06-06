@@ -1,3 +1,4 @@
+// @edge-auth required
 /**
  * send-magic-link
  *

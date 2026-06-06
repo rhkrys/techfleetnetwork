@@ -1,3 +1,4 @@
+// @edge-auth required
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { requireFreshAdmin2fa } from "../_shared/admin-step-up.ts";
 

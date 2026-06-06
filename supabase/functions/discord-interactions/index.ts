@@ -1,3 +1,4 @@
+// @edge-public
 import nacl from "npm:tweetnacl@1.0.3";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { createEdgeLogger } from "../_shared/logger.ts";

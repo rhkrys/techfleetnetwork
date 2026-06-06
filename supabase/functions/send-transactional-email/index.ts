@@ -1,3 +1,4 @@
+// @edge-auth
 import { queueTransactionalEmail } from '../_shared/transactional-email.ts'
 import { z } from 'npm:zod@3.23.8'
 

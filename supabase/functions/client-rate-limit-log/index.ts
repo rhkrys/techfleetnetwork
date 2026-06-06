@@ -1,3 +1,4 @@
+// @edge-cron
 import { createEdgeLogger } from "../_shared/logger.ts";
 
 import { withAuditWrapper } from "../_shared/audit.ts";

@@ -1,3 +1,4 @@
+// @edge-auth
 import { withAuditWrapper } from "../_shared/audit.ts";
 /**
  * revoke-recording-consent — T&C §11. Authenticated user revokes their

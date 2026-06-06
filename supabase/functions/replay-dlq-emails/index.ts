@@ -1,3 +1,4 @@
+// @edge-cron
 /**
  * replay-dlq-emails — Admin-only re-enqueue of dead-lettered transactional emails.
  *

@@ -1,3 +1,4 @@
+// @edge-public
 import { withAuditWrapper } from "../_shared/audit.ts";
 /**
  * dsar-submit — authenticated endpoint. The user submits a Data Subject Access

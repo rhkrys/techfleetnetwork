@@ -1,3 +1,4 @@
+// @edge-public
 import { z } from "npm:zod@4.3.6";
 import { getAdminClient } from "../_shared/admin-client.ts";
 import { errorResponse, handleCors, jsonResponse, parseJsonBody } from "../_shared/http.ts";

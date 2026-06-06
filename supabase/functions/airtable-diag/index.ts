@@ -1,3 +1,4 @@
+// @edge-auth
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 import { withAuditWrapper } from "../_shared/audit.ts";

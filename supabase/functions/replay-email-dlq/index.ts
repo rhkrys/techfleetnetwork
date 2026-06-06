@@ -1,3 +1,4 @@
+// @edge-auth
 // Replay email DLQ — Part 1.3 of refactor plan.
 // Cron-poked every 5 min. Re-enqueues messages stranded in pgmq DLQ archives
 // back onto the live lane queue, tracking a replay_generation counter in the

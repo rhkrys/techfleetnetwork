@@ -1,3 +1,4 @@
+// @edge-auth
 import { withAuditWrapper } from "../_shared/audit.ts";
 /**
  * Gumroad reconciliation — applies any unapplied sales matching the

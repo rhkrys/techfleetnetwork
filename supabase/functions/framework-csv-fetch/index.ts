@@ -1,3 +1,4 @@
+// @edge-cron
 // Admin-only edge function: streams a CSV file from the private
 // `framework-source-csv` bucket and returns its text body. Replaces
 // client-side fetch('/data/*.csv') so the framework source-of-record is

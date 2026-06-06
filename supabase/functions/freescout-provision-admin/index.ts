@@ -1,3 +1,4 @@
+// @edge-auth
 // freescout-provision-admin — auto-create a Freescout user for an admin
 // Called by ConfirmAdminPage after the user_roles row is inserted.
 import { z } from "https://deno.land/x/zod@v3.23.8/mod.ts";

@@ -1,3 +1,4 @@
+// @edge-cron
 /**
  * send-community-agreement-trigger
  *

@@ -1,3 +1,4 @@
+// @edge-cron
 import { applyWaf } from "../_shared/waf.ts";
 import { scrubJson } from "../_shared/dlp.ts";
 import { getAdminClient } from "../_shared/admin-client.ts";

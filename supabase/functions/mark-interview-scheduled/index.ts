@@ -1,3 +1,4 @@
+// @edge-cron
 import { withAuditWrapper } from "../_shared/audit.ts";
 /**
  * mark-interview-scheduled — Edge Function

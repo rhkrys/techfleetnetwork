@@ -1,3 +1,4 @@
+// @edge-cron
 // Admin-only loader: parses a CSV and upserts rows into a reference_* table.
 // Mirrors auth pattern from ingest-csv-knowledge.
 //

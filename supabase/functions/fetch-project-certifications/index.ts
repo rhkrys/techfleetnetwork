@@ -1,3 +1,4 @@
+// @edge-cron
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { extractProjectDisplayTitle } from "../_shared/cert-title-utils.ts";
 

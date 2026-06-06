@@ -1,3 +1,4 @@
+// @edge-cron
 import { withAuditWrapper } from "../_shared/audit.ts";
 /**
  * Gumroad backfill — fetches the caller's historical sales from the

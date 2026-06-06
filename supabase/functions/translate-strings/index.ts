@@ -1,3 +1,4 @@
+// @edge-public
 // translate-strings: AI translator for arbitrary UI strings.
 // Caches per-string translations in i18n_translations using namespace="dom"
 // and key = sha256(source).slice(0,32). Returns a {source -> translation} map.

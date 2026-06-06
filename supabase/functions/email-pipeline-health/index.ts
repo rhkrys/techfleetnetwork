@@ -1,3 +1,4 @@
+// @edge-cron
 // Generic email-pipeline health probe.
 //
 // For every template we care about, count *truly* stuck pending sends and
