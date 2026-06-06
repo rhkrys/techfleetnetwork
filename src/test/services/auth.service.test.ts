@@ -158,6 +158,9 @@ describe("AuthService session max-age marker", () => {
   it("AUTH-RESET-SESSION-006: maps 'JWT expired' to session_expired (not service_unavailable)", async () => {
     vi.mocked(supabase.auth.updateUser).mockResolvedValue({ data: { user: null }, error: { message: "JWT expired", status: 401 } });
     await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).rejects.toMatchObject({ code: "session_expired" });
+  });
+
+
 
   it("does not sign out a user because another account left a stale timestamp", async () => {
     const session = makeSession("current-user");
