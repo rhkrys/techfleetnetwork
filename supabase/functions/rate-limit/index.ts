@@ -36,7 +36,7 @@ Deno.serve(withAuditWrapper("rate-limit", async (req) => {
     }
     const { identifier, action } = parsedBody.data as { identifier?: unknown; action?: unknown };
 
-    const VALID_ACTIONS = ["login_attempt", "signup_attempt", "signup_resend", "password_reset"];
+    const VALID_ACTIONS = ["login_attempt", "signup_attempt", "signup_resend", "password_reset", "identity_check"];
     if (!identifier || typeof identifier !== "string" || identifier.length > 255) {
       log.warn("validate", `Invalid identifier [${requestId}]: type=${typeof identifier}, length=${identifier?.length}`, { requestId });
       return new Response(
@@ -68,9 +68,9 @@ Deno.serve(withAuditWrapper("rate-limit", async (req) => {
     const { data: result, error } = await supabase.rpc("check_rate_limit", {
       p_identifier: hashedIdentifier,
       p_action: action,
-      p_max_attempts: action === "login_attempt" ? 5 : 3,
+      p_max_attempts: action === "login_attempt" ? 6 : action === "identity_check" ? 10 : 3,
       p_window_minutes: 15,
-      p_block_minutes: action === "login_attempt" ? 30 : 60,
+      p_block_minutes: action === "identity_check" ? 5 : 60,
     });
 
     if (error) {
