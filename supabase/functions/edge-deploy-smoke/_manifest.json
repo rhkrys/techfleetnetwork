@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-06T01:04:32.694Z",
+  "generated_at": "2026-06-06T01:49:51.016Z",
   "functions": [
     {
       "name": "admin-purge-auth-user",
@@ -24,6 +24,13 @@
     },
     {
       "name": "auth-email-hook",
+      "verify_jwt": false,
+      "kind": "public",
+      "critical": false,
+      "declared": false
+    },
+    {
+      "name": "auth-reset-smoke",
       "verify_jwt": false,
       "kind": "public",
       "critical": false,
@@ -458,6 +465,13 @@
     },
     {
       "name": "reconcile-stuck-emails",
+      "verify_jwt": true,
+      "kind": "auth",
+      "critical": false,
+      "declared": false
+    },
+    {
+      "name": "record-auth-recovery",
       "verify_jwt": true,
       "kind": "auth",
       "critical": false,
