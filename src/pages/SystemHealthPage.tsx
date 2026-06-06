@@ -28,6 +28,7 @@ import { EmailDlqPanel } from "@/components/system-health/EmailDlqPanel";
 import { EmailBulkThrottleCard } from "@/components/system-health/EmailBulkThrottleCard";
 import { DiscordRepairTab } from "@/components/system-health/DiscordRepairTab";
 import { LoginHealthTab } from "@/components/system-health/LoginHealthTab";
+import { ResetHealthTab } from "@/components/system-health/ResetHealthTab";
 import { TranslationsTab } from "@/components/admin/system-health/TranslationsTab";
 import { HelpDeskTab } from "@/components/system-health/HelpDeskTab";
 import { RefactorKpisTab } from "@/components/system-health/RefactorKpisTab";
@@ -238,6 +239,7 @@ export default function SystemHealthPage() {
           <TabsTrigger value="silent">Silent failures</TabsTrigger>
           <TabsTrigger value="performance">Performance</TabsTrigger>
           <TabsTrigger value="login">Login</TabsTrigger>
+          <TabsTrigger value="reset">Password reset</TabsTrigger>
           <TabsTrigger value="fleety">Fleety</TabsTrigger>
           <TabsTrigger value="content">Content</TabsTrigger>
           <TabsTrigger value="translations">Translations</TabsTrigger>
@@ -289,6 +291,7 @@ export default function SystemHealthPage() {
           <PerformanceByBrowserTab />
         </TabsContent>
         <TabsContent value="login"><LoginHealthTab /></TabsContent>
+        <TabsContent value="reset"><ResetHealthTab /></TabsContent>
         <TabsContent value="fleety"><FleetyHealthTab /></TabsContent>
         <TabsContent value="content"><ContentGapsTab /></TabsContent>
         <TabsContent value="translations"><TranslationsTab /></TabsContent>
