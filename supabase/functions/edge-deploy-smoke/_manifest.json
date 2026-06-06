@@ -1,0 +1,441 @@
+{
+  "generated_at": "2026-06-06T00:03:27.289Z",
+  "functions": [
+    {
+      "name": "admin-purge-auth-user",
+      "verify_jwt": true
+    },
+    {
+      "name": "admin-sign-out-all-users",
+      "verify_jwt": true
+    },
+    {
+      "name": "airtable-diag",
+      "verify_jwt": true
+    },
+    {
+      "name": "auth-email-hook",
+      "verify_jwt": false
+    },
+    {
+      "name": "backfill-discord-usernames",
+      "verify_jwt": true
+    },
+    {
+      "name": "bump-email-warmup",
+      "verify_jwt": false
+    },
+    {
+      "name": "check-account-identity",
+      "verify_jwt": false
+    },
+    {
+      "name": "client-rate-limit-log",
+      "verify_jwt": false
+    },
+    {
+      "name": "confirm-admin-role",
+      "verify_jwt": false
+    },
+    {
+      "name": "confirm-teacher-role",
+      "verify_jwt": false
+    },
+    {
+      "name": "delete-account",
+      "verify_jwt": true
+    },
+    {
+      "name": "discord-interactions",
+      "verify_jwt": false
+    },
+    {
+      "name": "discord-notify",
+      "verify_jwt": false
+    },
+    {
+      "name": "discord-project-update",
+      "verify_jwt": false
+    },
+    {
+      "name": "dsar-submit",
+      "verify_jwt": false
+    },
+    {
+      "name": "edge-deploy-smoke",
+      "verify_jwt": false
+    },
+    {
+      "name": "email-pipeline-health",
+      "verify_jwt": false
+    },
+    {
+      "name": "fetch-class-certifications",
+      "verify_jwt": false
+    },
+    {
+      "name": "fetch-project-certifications",
+      "verify_jwt": false
+    },
+    {
+      "name": "fill-content-gaps",
+      "verify_jwt": false
+    },
+    {
+      "name": "firecrawl-search",
+      "verify_jwt": false
+    },
+    {
+      "name": "fleety-bulk-draft-playbooks",
+      "verify_jwt": false
+    },
+    {
+      "name": "fleety-embed",
+      "verify_jwt": false
+    },
+    {
+      "name": "fleety-learning-digest",
+      "verify_jwt": false
+    },
+    {
+      "name": "fleety-weekly-digest",
+      "verify_jwt": false
+    },
+    {
+      "name": "framework-csv-fetch",
+      "verify_jwt": false
+    },
+    {
+      "name": "freescout-provision-admin",
+      "verify_jwt": true
+    },
+    {
+      "name": "freescout-provision-customer",
+      "verify_jwt": true
+    },
+    {
+      "name": "freescout-proxy",
+      "verify_jwt": true
+    },
+    {
+      "name": "freescout-sync-customer",
+      "verify_jwt": true
+    },
+    {
+      "name": "freescout-validate-secret",
+      "verify_jwt": true
+    },
+    {
+      "name": "freescout-webhook",
+      "verify_jwt": false
+    },
+    {
+      "name": "generate-discord-invite",
+      "verify_jwt": false
+    },
+    {
+      "name": "geo-hint",
+      "verify_jwt": false
+    },
+    {
+      "name": "get-community-events",
+      "verify_jwt": false
+    },
+    {
+      "name": "get-discord-member-count",
+      "verify_jwt": true
+    },
+    {
+      "name": "get-i18n-bundle",
+      "verify_jwt": true
+    },
+    {
+      "name": "grant-observer-role",
+      "verify_jwt": false
+    },
+    {
+      "name": "gumroad-backfill",
+      "verify_jwt": false
+    },
+    {
+      "name": "gumroad-reconcile",
+      "verify_jwt": true
+    },
+    {
+      "name": "gumroad-webhook",
+      "verify_jwt": false
+    },
+    {
+      "name": "handle-email-suppression",
+      "verify_jwt": false
+    },
+    {
+      "name": "handle-email-unsubscribe",
+      "verify_jwt": false
+    },
+    {
+      "name": "ingest-csv-knowledge",
+      "verify_jwt": false
+    },
+    {
+      "name": "ingest-reference-csv",
+      "verify_jwt": false
+    },
+    {
+      "name": "ingest-workshop-docs",
+      "verify_jwt": false
+    },
+    {
+      "name": "login-with-captcha",
+      "verify_jwt": true
+    },
+    {
+      "name": "manage-discord-roles",
+      "verify_jwt": false
+    },
+    {
+      "name": "mark-interview-scheduled",
+      "verify_jwt": false
+    },
+    {
+      "name": "notify-applicant-status",
+      "verify_jwt": false
+    },
+    {
+      "name": "notify-class-published",
+      "verify_jwt": false
+    },
+    {
+      "name": "notify-critical-fix",
+      "verify_jwt": false
+    },
+    {
+      "name": "preview-transactional-email",
+      "verify_jwt": false
+    },
+    {
+      "name": "prewarm-ugc-worker",
+      "verify_jwt": false
+    },
+    {
+      "name": "process-email-queue",
+      "verify_jwt": false
+    },
+    {
+      "name": "process-freescout-events",
+      "verify_jwt": true
+    },
+    {
+      "name": "process-notification-fanout",
+      "verify_jwt": false
+    },
+    {
+      "name": "promote-to-admin",
+      "verify_jwt": false
+    },
+    {
+      "name": "promote-to-teacher",
+      "verify_jwt": false
+    },
+    {
+      "name": "public-classes",
+      "verify_jwt": false
+    },
+    {
+      "name": "public-project-detail",
+      "verify_jwt": false
+    },
+    {
+      "name": "public-project-openings",
+      "verify_jwt": false
+    },
+    {
+      "name": "push-config",
+      "verify_jwt": false
+    },
+    {
+      "name": "quest-nudge",
+      "verify_jwt": false
+    },
+    {
+      "name": "rate-limit",
+      "verify_jwt": false
+    },
+    {
+      "name": "reconcile-stuck-emails",
+      "verify_jwt": true
+    },
+    {
+      "name": "record-auth-wedge",
+      "verify_jwt": true
+    },
+    {
+      "name": "record-consent",
+      "verify_jwt": true
+    },
+    {
+      "name": "record-policy-acknowledgment",
+      "verify_jwt": true
+    },
+    {
+      "name": "record-web-vital",
+      "verify_jwt": true
+    },
+    {
+      "name": "refresh-community-events",
+      "verify_jwt": false
+    },
+    {
+      "name": "refresh-email-health",
+      "verify_jwt": false
+    },
+    {
+      "name": "register-fleety-command",
+      "verify_jwt": false
+    },
+    {
+      "name": "repair-discord-username",
+      "verify_jwt": false
+    },
+    {
+      "name": "replay-dlq-emails",
+      "verify_jwt": false
+    },
+    {
+      "name": "replay-email-dlq",
+      "verify_jwt": true
+    },
+    {
+      "name": "resend-signup-confirmations",
+      "verify_jwt": true
+    },
+    {
+      "name": "resolve-discord-id",
+      "verify_jwt": false
+    },
+    {
+      "name": "resume-application-reminder",
+      "verify_jwt": true
+    },
+    {
+      "name": "revoke-recording-consent",
+      "verify_jwt": true
+    },
+    {
+      "name": "revoke-teacher-role",
+      "verify_jwt": false
+    },
+    {
+      "name": "revoke-user-sessions",
+      "verify_jwt": true
+    },
+    {
+      "name": "save-form-draft",
+      "verify_jwt": true
+    },
+    {
+      "name": "scrape-figma-workshops",
+      "verify_jwt": false
+    },
+    {
+      "name": "scrape-knowledge",
+      "verify_jwt": false
+    },
+    {
+      "name": "screen-sanctions",
+      "verify_jwt": false
+    },
+    {
+      "name": "seed-content",
+      "verify_jwt": false
+    },
+    {
+      "name": "send-announcement-email",
+      "verify_jwt": false
+    },
+    {
+      "name": "send-community-agreement-trigger",
+      "verify_jwt": false
+    },
+    {
+      "name": "send-magic-link",
+      "verify_jwt": true
+    },
+    {
+      "name": "send-project-blast",
+      "verify_jwt": false
+    },
+    {
+      "name": "send-push-notification",
+      "verify_jwt": false
+    },
+    {
+      "name": "send-transactional-email",
+      "verify_jwt": true
+    },
+    {
+      "name": "sign-out-all-devices",
+      "verify_jwt": true
+    },
+    {
+      "name": "submit-dispute",
+      "verify_jwt": true
+    },
+    {
+      "name": "support-monthly-report",
+      "verify_jwt": false
+    },
+    {
+      "name": "support-provisioning-retry",
+      "verify_jwt": false
+    },
+    {
+      "name": "sync-airtable",
+      "verify_jwt": true
+    },
+    {
+      "name": "sync-airtable-network-stats",
+      "verify_jwt": false
+    },
+    {
+      "name": "sync-airtable-roster",
+      "verify_jwt": false
+    },
+    {
+      "name": "techfleet-chat",
+      "verify_jwt": false
+    },
+    {
+      "name": "translate-bundle",
+      "verify_jwt": false
+    },
+    {
+      "name": "translate-strings",
+      "verify_jwt": false
+    },
+    {
+      "name": "triage-digest-builder",
+      "verify_jwt": false
+    },
+    {
+      "name": "triage-error",
+      "verify_jwt": true
+    },
+    {
+      "name": "update-password-confirmed",
+      "verify_jwt": true
+    },
+    {
+      "name": "validate-email-domain",
+      "verify_jwt": true
+    },
+    {
+      "name": "verify-turnstile",
+      "verify_jwt": true
+    },
+    {
+      "name": "write-exploration-cache",
+      "verify_jwt": false
+    }
+  ]
+}

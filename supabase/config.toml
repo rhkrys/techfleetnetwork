@@ -224,3 +224,47 @@ project_id = "iqsjhrhsjlgjiaedzmtz"
     verify_jwt = false
   [functions.firecrawl-search]
     verify_jwt = false
+  [functions.airtable-diag]
+    verify_jwt = true
+  [functions.backfill-discord-usernames]
+    verify_jwt = true
+  [functions.bump-email-warmup]
+    verify_jwt = false
+  [functions.email-pipeline-health]
+    verify_jwt = false
+  [functions.geo-hint]
+    verify_jwt = false
+  [functions.notify-class-published]
+    verify_jwt = false
+  [functions.prewarm-ugc-worker]
+    verify_jwt = false
+  [functions.process-notification-fanout]
+    verify_jwt = false
+  [functions.quest-nudge]
+    verify_jwt = false
+  [functions.rate-limit]
+    verify_jwt = false
+  [functions.refresh-community-events]
+    verify_jwt = false
+  [functions.refresh-email-health]
+    verify_jwt = false
+  [functions.revoke-recording-consent]
+    verify_jwt = true
+  [functions.save-form-draft]
+    verify_jwt = true
+  [functions.seed-content]
+    verify_jwt = false
+  [functions.send-push-notification]
+    verify_jwt = false
+  [functions.submit-dispute]
+    verify_jwt = true
+  [functions.support-monthly-report]
+    verify_jwt = false
+  [functions.support-provisioning-retry]
+    verify_jwt = false
+  [functions.sync-airtable]
+    verify_jwt = true
+  [functions.sync-airtable-network-stats]
+    verify_jwt = false
+  [functions.edge-deploy-smoke]
+    verify_jwt = false

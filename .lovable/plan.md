@@ -1,76 +1,66 @@
-## Root cause
+## Why it broke "magically"
 
-Deep dive through `email_send_log`, `audit_log`, `auth_logs`, edge logs and code paths surfaces **one shared root cause** behind every "account issue" report — including the exact error the user pasted (`"We couldn't update your password. Please try again. 2 attempts remaining before you'll need a new link."`):
+Nothing changed in the code at the moment of the outage. The trap was set months ago and tripped when the Supabase platform tightened deploy behavior so that functions **without** an explicit `[functions.<name>]` block stopped being deployed at all (previously they deployed with platform defaults — `verify_jwt=true`, latest runtime, etc.).
 
-**Multiple auth-critical edge functions exist in `supabase/functions/<name>/` but have no `[functions.<name>]` block in `supabase/config.toml`. They are silently parked on the CI guard's `BASELINE_DEFAULT_FUNCTIONS` allow-list, so they inherit platform defaults — which today means they do not deploy. They have never booted in production.**
+Our CI guard already required every function dir to be pinned **OR** be on a hand-curated `BASELINE_DEFAULT_FUNCTIONS` allow-list. That allow-list was meant for a handful of throwaway cron jobs, but over ~6 months it grew to a parking lot of ~21 names — including (until this turn) auth-critical ones like `update-password-confirmed`, `login-with-captcha`, `send-magic-link`, `delete-account`. CI stayed green, no migration touched these dirs, and the platform silently stopped shipping them. Symptom surfaced only when a member clicked "Update password" and supabase-js got a 404 with no body.
 
-Evidence:
-- `update-password-confirmed`: `supabase--edge_function_logs` returns *No logs found* (never booted). Audit table has **zero** `password_update_rejected`, `password_updated`, or `authn_unauthorized` rows from it across 3 days, yet users are clearly hitting "Update password". `supabase.functions.invoke` 404s, supabase-js raises `FunctionsHttpError` with no parseable body, `auth.service.ts` line 453 falls through to the generic message, and `ResetPasswordPage` counts it as a rejection and decrements "attempts remaining" — even though the password and the recovery session were both fine.
-- The same allow-list also contains: `login-with-captcha` (email login), `send-magic-link` (magic-link login), `verify-turnstile` (signup captcha), `validate-email-domain` (signup), `resend-signup-confirmations` (signup retry), `sign-out-all-devices` (post-reset cleanup), `revoke-user-sessions`, `delete-account`, plus ~40 ops/admin/cron functions. The auth-critical subset explains the breadth of "signup / email login / magic link / password reset" reports.
-- GoTrue itself is clean: 213/213 emails delivered, **zero** 4xx/5xx on `/recover`, `/verify`, `/signup`, `/token`, `/callback` in 3 days. The TypeError + duplicate-enqueue noise from the last 3 days was already permanently fixed. The current outage is the unpinned-function class.
-- Google OAuth: no failures observed in `auth_logs`; reports here are almost certainly the same symptom — users falling back to email/password or password reset after one OAuth flake, and getting bricked by the broken `update-password-confirmed` / `login-with-captcha`.
+Today there are still **21** dirs sitting on that allow-list. They're not auth-critical, but they're the next outage if the platform tightens again.
 
-This is the **exact failure mode** documented in `mem://constraints/edge-function-config-pinning` (Get Help / freescout-proxy, June 2026) — the guard exists but the baseline list was used as a parking lot instead of a true zero entry.
+## Refactor goals
 
-## The fix (one shipment, no band-aids)
+1. Make "function dir exists but is not pinned" literally impossible — not just CI-failable.
+2. Eliminate the allow-list as a concept. Zero parking-lot escape hatches.
+3. Catch a deploy regression in minutes, not days, even if CI is bypassed.
+4. Keep authoring a new edge function a one-step task (no manual TOML editing).
 
-### 1. Pin every auth-critical edge function and deploy
+## Plan
 
-Add `[functions.<name>]` blocks (with `verify_jwt = true`, since every one of these is called by an authenticated client) to `supabase/config.toml` and remove the same names from the CI guard's `BASELINE_DEFAULT_FUNCTIONS` set:
+### 1. Delete the allow-list, full stop
+- Remove `BASELINE_DEFAULT_FUNCTIONS` from `scripts/ci/check-edge-function-coverage.mjs`. The check becomes: every dir under `supabase/functions/` (except `_shared/`) MUST have a `[functions.<name>]` block. No exceptions, no auth-critical sub-list needed (everything is critical now).
+- Pin the 21 currently-unpinned dirs in `supabase/config.toml` in the same migration as the guard tightening, with `verify_jwt = true` unless the function is explicitly webhook/public (cron-only stays `verify_jwt = false` and is invoked with the service-role key — listed explicitly).
 
-- `update-password-confirmed`
-- `login-with-captcha`
-- `send-magic-link`
-- `verify-turnstile`
-- `validate-email-domain`
-- `resend-signup-confirmations`
-- `sign-out-all-devices`
-- `revoke-user-sessions`
-- `delete-account`
-- `admin-purge-auth-user`
-- `admin-sign-out-all-users`
-- `record-consent`, `record-policy-acknowledgment` (gating signup completion)
+### 2. Auto-pin generator + pre-commit hook
+- New script `scripts/ci/pin-edge-functions.mjs`:
+  - Scans `supabase/functions/*/index.ts`.
+  - For each missing dir, appends a `[functions.<name>]` block to `config.toml` with a default of `verify_jwt = true`.
+  - Detects webhook/cron functions by a magic comment at the top of `index.ts` (`// @edge-public` or `// @edge-cron`) and sets `verify_jwt = false` for them.
+  - Sorts blocks alphabetically and rewrites the `[functions]` section deterministically.
+- Wire into Husky `pre-commit` (existing) so anyone creating a new function dir cannot land a commit without the block.
+- `--check` mode runs in CI as the new coverage guard (diff = fail).
 
-Deploy all of them in a single `supabase--deploy_edge_functions` call and verify each boots via edge logs.
+### 3. Magic-comment contract for `verify_jwt`
+- The first ~5 lines of every `supabase/functions/<name>/index.ts` must declare intent:
+  - `// @edge-auth required` → `verify_jwt = true` (default)
+  - `// @edge-public` → `verify_jwt = false`, must be paired with HMAC/captcha/webhook validation in the body (we already do this).
+  - `// @edge-cron` → `verify_jwt = false`, must call `authorizeServiceRoleRequest` (existing helper).
+- Generator reads this and writes the matching block. CI fails if the comment is missing or contradicts the config.
 
-### 2. Make the client message honest when the function is unreachable
+### 4. Post-deploy smoke test (catches platform drift in minutes)
+- New edge fn `edge-deploy-smoke` (or extend `email-pipeline-health`) runs on a 10-min cron:
+  - For every dir in `supabase/functions/`, sends a `OPTIONS` request to the function URL.
+  - A 404 = "not deployed" → write `severity:'error'` row to `agent_fix_queue` with `fingerprint:'edge_function_404:<name>'`.
+  - Triage Critical Push (existing 5-min cron) pages admins on first occurrence.
+- This is the safety net for the next time the platform changes behavior — we find out in <15 min, not after a member complaint.
 
-In `src/services/auth.service.ts` (`updatePassword`, and the parallel paths in `signInWithPassword`, `sendMagicLink`, `verifyCaptcha`, `validateEmailDomain`, `resendSignupConfirmation`, `deleteAccount`):
+### 5. Single source of truth: function manifest
+- Generated file `supabase/functions.manifest.json` (committed, written by the generator) listing every function with `{name, verify_jwt, kind: public|auth|cron}`.
+- `audited-invoke.ts` reads it at build time to populate the `AUTH_CRITICAL` set automatically (today it's a hand-maintained literal — same parking-lot risk).
+- Smoke test, CI guard, and the System Health "Edge Functions" tab all read the same manifest. One file, one truth.
 
-- When `supabase.functions.invoke` errors AND the response body is empty/unparsable OR HTTP status is 404/503, throw a dedicated error with `code: "service_unavailable"`.
-- `ResetPasswordPage` (and the matching login / signup pages) treats `service_unavailable` as a non-counting failure: show "We're briefly unable to reach the password service. Please try again in a moment." and **do not** decrement attempts or trip the 3-strike form lock.
+### 6. Observability surface
+- New System Health > "Edge Functions" tab: lists every function from the manifest with last-seen-deployed timestamp (from edge logs), last invocation, last error, and a "Probe now" button. Green/red badge at a glance.
 
-### 3. Surface this class of incident immediately, not days later
-
-- In `_shared/request-auth.ts` and `_shared/http.ts`, when an auth-critical fn name returns 404/transport error at the edge gateway, fan out to `agent_fix_queue` with `severity:'error'` and `fingerprint:'edge_function_not_deployed:<fn>'` so the Triage Critical Push cron (5-min) pages admins on the FIRST occurrence. Today the silence makes this invisible.
-
-### 4. Close the guard hole that allowed this
-
-`scripts/ci/check-edge-function-coverage.mjs`:
-- Shrink `BASELINE_DEFAULT_FUNCTIONS` to functions that genuinely don't need pinning (cron-only, no client invocation).
-- Add a second check: every function imported by `src/` via `supabase.functions.invoke("<name>")` MUST be pinned (no allow-list escape) — string-scan `src/**/*.{ts,tsx}` for invoke names and assert each appears in `config.toml`.
-- Fail the CI quality job on either violation.
-
-### 5. Post-deploy verification (in-shipment)
-
-- Curl each pinned function with a bogus token → expect 401 (not 404). Anything that 404s is still not deployed.
-- Run a real password-reset flow end-to-end on a test account and confirm a `password_updated` row appears in `audit_log` with the trace id propagated.
-- Query `agent_fix_queue` after 10 minutes to confirm no `edge_function_not_deployed:*` events have fired.
-
-### 6. Memory + BDD
-
-- Update `mem://features/auth/password-reset-error-surfacing` with the new `service_unavailable` branch.
-- Extend `mem://constraints/edge-function-config-pinning` to spell out the "any function invoked from `src/` must be pinned" rule and the new CI scan.
-- Add BDD scenarios AUTH-PIN-001..006 covering: function 404 → friendly message, no attempt decrement, triage page fires once, password reset succeeds end-to-end after pin, login-with-captcha + send-magic-link reachable post-deploy.
+### 7. BDD scenarios EDGE-PIN-001..006
+- New function dir without a pin → pre-commit blocks commit.
+- New function dir without a `@edge-*` comment → pre-commit blocks commit.
+- Function returns 404 from smoke → triage row written, admin paged within 5 min.
+- Manifest drift (dir exists, manifest missing) → CI fails.
+- `audited-invoke` AUTH_CRITICAL list derived from manifest (no hand-edit needed).
+- Removing a dir auto-removes the config block and the manifest entry.
 
 ## Out of scope
-
-- Email queue / lane / TypeError fixes — already permanently shipped.
-- Auth wedge / session revocation behavior — already permanently shipped.
-- GoTrue rate-limit fairness — already permanently shipped.
+- Email/auth wedge/session work (already permanently shipped).
+- Migrating cron functions off `verify_jwt=false` (separate hardening track).
 
 ## Expected outcome
-
-The exact paste from the user ("We couldn't update your password…2 attempts remaining…") becomes impossible:
-- Either the function now exists and returns a classified message (`same_password`, `weak_password`, `session_expired`, `rate_limited`),
-- Or, if the function is ever unreachable again, the UI says "briefly unavailable" without burning attempts, and admins are paged within 5 minutes by the triage push.
+Adding a new edge function is one step (create the dir + `// @edge-auth required` comment). The generator pins it, the manifest lists it, CI enforces it, and the smoke cron tells us within 10 minutes if the platform ever stops shipping it. The exact failure mode that bricked `update-password-confirmed` for an unknown number of weeks becomes structurally impossible — there is no allow-list to hide on.
