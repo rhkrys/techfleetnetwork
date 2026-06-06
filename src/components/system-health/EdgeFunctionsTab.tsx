@@ -70,7 +70,7 @@ export function EdgeFunctionsTab() {
     <Card>
       <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <Heading level={3}>Edge functions</Heading>
+          <SectionTitle>Edge functions</SectionTitle>
           <Body className="text-muted-foreground text-sm">
             Manifest source of truth — {counts.total} pinned ({counts.auth} auth, {counts.public} public,
             {" "}{counts.cron} cron, {counts.critical} critical).
