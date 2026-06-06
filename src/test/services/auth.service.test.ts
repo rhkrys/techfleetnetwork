@@ -33,6 +33,10 @@ vi.mock("@/services/logger.service", () => ({
 
 vi.mock("@/lib/account-activity", () => ({ logAccountActivity: vi.fn() }));
 
+vi.mock("@/lib/email-domain-validation", () => ({
+  validateEmailDomainExists: vi.fn().mockResolvedValue({ valid: true }),
+}));
+
 const makeSession = (userId: string, issuedAgoMs = 60_000) => ({
   access_token: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.signature",
   refresh_token: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJyZWZyZXNoIn0.signature",
@@ -97,15 +101,44 @@ describe("AuthService session max-age marker", () => {
     expect(supabase.auth.updateUser).not.toHaveBeenCalled();
   });
 
-  it("AUTH-RESET-011: sends confirmed password updates through the guarded function", async () => {
-    vi.mocked(supabase.functions.invoke).mockResolvedValue({ data: { success: true, confirmed: true, other_devices_revoked: true }, error: null });
+  it("AUTH-RESET-011: updates confirmed recovery passwords without the extra edge-function dependency", async () => {
+    vi.mocked(supabase.auth.updateUser).mockResolvedValue({ data: { user: null }, error: null });
 
     await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).resolves.toEqual({ otherDevicesRevoked: true });
 
-    expect(supabase.functions.invoke).toHaveBeenCalledWith("update-password-confirmed", {
-      body: { password: "StrongPass123!", confirmPassword: "StrongPass123!" },
-    });
+    expect(supabase.auth.updateUser).toHaveBeenCalledWith({ password: "StrongPass123!" });
+    expect(supabase.functions.invoke).not.toHaveBeenCalledWith("update-password-confirmed", expect.anything());
     expect(logAccountActivity).toHaveBeenCalledWith("password_updated", { details: { confirmed: true } });
+  });
+
+  it("AUTH-RESET-GOOGLE-ONLY-001: blocks Google-only reset before the password reset service", async () => {
+    vi.mocked(supabase.functions.invoke).mockResolvedValue({ data: { has_google: true, has_password: false }, error: null });
+
+    await expect(AuthService.resetPassword("google@example.com", "https://techfleet.network/reset-password", "valid-turnstile-token-with-enough-length")).rejects.toThrow(/Google sign-in/i);
+
+    expect(supabase.auth.resetPasswordForEmail).not.toHaveBeenCalled();
+    expect(logAccountActivity).toHaveBeenCalledWith("password_reset_google_only_blocked", { email: "google@example.com" });
+  });
+
+  it("AUTH-RESET-EMAIL-PASSWORD-001: allows email-password accounts to request a reset", async () => {
+    vi.mocked(supabase.functions.invoke).mockResolvedValue({ data: { has_google: false, has_password: true }, error: null });
+    vi.mocked(supabase.auth.resetPasswordForEmail).mockResolvedValue({ data: {}, error: null });
+
+    await expect(AuthService.resetPassword("member@example.com", "https://techfleet.network/reset-password", "valid-turnstile-token-with-enough-length")).resolves.toBeUndefined();
+
+    expect(supabase.auth.resetPasswordForEmail).toHaveBeenCalledWith("member@example.com", {
+      redirectTo: "https://techfleet.network/reset-password",
+      captchaToken: "valid-turnstile-token-with-enough-length",
+    });
+    expect(logAccountActivity).toHaveBeenCalledWith("password_reset_requested", { email: "member@example.com" });
+  });
+
+  it("AUTH-RESET-TRANSIENT-001: treats password update transport failures as service unavailable", async () => {
+    vi.mocked(supabase.auth.updateUser).mockResolvedValue({ data: { user: null }, error: { message: "Failed to fetch", status: 0 } });
+
+    await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).rejects.toMatchObject({ code: "service_unavailable" });
+
+    expect(supabase.functions.invoke).not.toHaveBeenCalledWith("update-password-confirmed", expect.anything());
   });
 
   it("does not sign out a user because another account left a stale timestamp", async () => {
