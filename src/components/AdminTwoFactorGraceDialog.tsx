@@ -102,12 +102,9 @@ export function AdminTwoFactorGraceDialog() {
     <Dialog open={shouldShow}>
       <DialogContent
         className="max-w-md"
+        hideCloseButton
         onInteractOutside={(e) => e.preventDefault()}
         onEscapeKeyDown={(e) => e.preventDefault()}
-        // Hide the default close button — this dialog is intentionally non-dismissible.
-        // Tailwind: target the radix close affordance.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        {...({ "data-no-close": "true" } as any)}
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">Set up admin 2FA
