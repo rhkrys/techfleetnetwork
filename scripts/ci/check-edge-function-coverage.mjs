@@ -106,9 +106,15 @@ const manifest = {
     return { name, verify_jwt };
   }),
 };
-writeFileSync(
-  join(ROOT, "supabase", "functions.manifest.json"),
-  JSON.stringify(manifest, null, 2) + "\n",
-);
+const manifestJson = JSON.stringify(manifest, null, 2) + "\n";
+writeFileSync(join(ROOT, "supabase", "functions.manifest.json"), manifestJson);
+// Mirror into the smoke function dir so it can import the manifest at runtime
+// (edge runtime cannot import from parent dirs).
+try {
+  writeFileSync(
+    join(FN_DIR, "edge-deploy-smoke", "_manifest.json"),
+    manifestJson,
+  );
+} catch { /* dir may not exist yet on first run */ }
 
 console.log(`OK: ${dirs.length} edge functions all pinned; manifest written.`);
