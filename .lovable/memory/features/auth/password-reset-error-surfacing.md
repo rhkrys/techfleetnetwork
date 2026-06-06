@@ -32,7 +32,11 @@ All successful branches call `stripSensitiveParams()` via `history.replaceState`
 
 Forgot-password must call `check-account-identity` before `resetPasswordForEmail`. If an account has Google identity and no password identity, show Google sign-in guidance and do **not** call the password-reset service or record a password-reset failure. The helper must resolve by immutable `profiles.email -> user_id -> auth.admin.getUserById`; do not use `/auth/v1/admin/users?filter=email eq ...`, which silently returned no identities for Google-only accounts and caused repeated reset attempts to hit the backend 60-minute limiter.
 
-## BDD: AUTH-RESET-001..006, AUTH-RESET-010..012, AUTH-RESET-020..023, AUTH-RESET-GOOGLE-ONLY-001.
+## Reset bucket isolation + transient-error safety (2026-06-06)
+
+`ForgotPasswordPage` now only calls `RateLimitService.recordFailure("password_reset")` on **confirmed backend rate-limit signals** (HTTP 429 or "too many"/"rate limit" messages). Transient 5xx, network blips, identity-lookup fallbacks, and Google-only short-circuits MUST NOT increment the bucket — previously they did, and 3 harmless retries triggered the 60-minute lockout ("Too many requests. Please try again in 60 minutes."). `check-account-identity` uses a dedicated `identity_check` rate-limit action (10/min/identifier) instead of `login_attempt`, so identity probes never poison the login or reset buckets. Valid actions in `check_rate_limit`/`peek_rate_limit`: `login_attempt`, `signup_attempt`, `signup_resend`, `password_reset`, `identity_check`.
+
+## BDD: AUTH-RESET-001..006, AUTH-RESET-010..012, AUTH-RESET-020..023, AUTH-RESET-GOOGLE-ONLY-001..002, AUTH-RESET-TRANSIENT-001, AUTH-IDENTITY-BUCKET-001.
 
 ## Out of scope of this fix
 - OAuth/PKCE flow (uses `?code=` exchange, untouched).
