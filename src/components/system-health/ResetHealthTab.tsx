@@ -16,7 +16,9 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RefreshCw } from "lucide-react";
 import { Icon } from "@/components/ui/icon";
-import { formatTimestamp } from "@/lib/format/date";
+import { formatDateTime } from "@/lib/format/date";
+
+const formatTimestamp = formatDateTime;
 
 type RecoveryHealth = {
   healthy: boolean;
