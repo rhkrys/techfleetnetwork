@@ -229,6 +229,7 @@ async function handleWebhook(req: Request): Promise<Response> {
   }
 
   let confirmationUrl: string = payload.data.url
+  let recoveryRewriteOk = false
   if (emailType === 'recovery') {
     try {
       const verifyUrl = new URL(payload.data.url)
@@ -245,9 +246,35 @@ async function handleWebhook(req: Request): Promise<Response> {
         target.searchParams.set('token_hash', tokenHash)
         target.searchParams.set('type', 'recovery')
         confirmationUrl = target.toString()
+        recoveryRewriteOk = true
       }
     } catch (rewriteErr) {
       console.error('Recovery URL rewrite failed, falling back to default', { error: rewriteErr, run_id })
+    }
+
+    // AUTH-RESET-SESSION-005: fail-loud telemetry when recovery link shape is
+    // unsafe (no token_hash extractable). No PII, no token content.
+    if (!recoveryRewriteOk) {
+      try {
+        const admin = createClient(
+          Deno.env.get('SUPABASE_URL')!,
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+        )
+        await admin.rpc('record_event', {
+          p_sink: 'ops_events',
+          p_kind: 'auth.recovery_link.unsafe_shape',
+          p_actor: null,
+          p_payload: {
+            run_id,
+            email_domain: (payload.data.email || '').split('@')[1] || null,
+            has_url: Boolean(payload.data.url),
+          },
+          p_severity: 'warn',
+          p_source_table: 'auth-email-hook',
+        })
+      } catch (telemetryErr) {
+        console.error('record_event failed for recovery_link.unsafe_shape', { error: telemetryErr, run_id })
+      }
     }
   }
 
