@@ -213,10 +213,13 @@ function classifyPasswordUpdateError(err: { message?: string; code?: string; sta
     code === "session_not_found" ||
     code === "no_authorization" ||
     code === "bad_jwt" ||
+    code === "user_not_found" ||
     err.status === 401 ||
     msg.includes("auth session missing") ||
     msg.includes("missing auth session") ||
     msg.includes("not authenticated") ||
+    msg.includes("user from sub claim in jwt does not exist") ||
+    msg.includes("invalid claim") ||
     (msg.includes("session") && (msg.includes("expired") || msg.includes("not found"))) ||
     msg.includes("jwt expired")
   ) {
