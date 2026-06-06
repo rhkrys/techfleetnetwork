@@ -3,10 +3,10 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Body, Heading } from "@/components/ui/typography";
+import { Body, SectionTitle } from "@/components/ui/typography";
 import { auditedInvoke } from "@/integrations/supabase/audited-invoke";
 import { toast } from "sonner";
-import manifest from "../../../../supabase/functions.manifest.json";
+import manifest from "@/generated/edge-functions.manifest.json";
 
 interface FnEntry {
   name: string;
