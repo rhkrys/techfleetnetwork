@@ -138,8 +138,7 @@ const functionsManifest = dirs.sort().map((name) => {
     new RegExp(`\\[functions\\.${name}\\]\\s*\\n\\s*verify_jwt\\s*=\\s*(true|false)`, "i")
   );
   const verify_jwt = block ? block[1] === "true" : true;
-  const { kind, hasComment } = readKind(name);
-  // Contradiction: @edge-auth but verify_jwt=false, or @edge-public/cron but verify_jwt=true.
+  const { kind, hasComment, critical: commentCritical } = readKind(name);
   if (hasComment) {
     if (kind === "auth" && !verify_jwt) contradictions.push(`${name}: @edge-auth but verify_jwt=false`);
     if ((kind === "public" || kind === "cron") && verify_jwt) {
@@ -149,7 +148,8 @@ const functionsManifest = dirs.sort().map((name) => {
     undeclared.push(name);
   }
   const resolvedKind = kind ?? (verify_jwt ? "auth" : "public");
-  return { name, verify_jwt, kind: resolvedKind, declared: hasComment };
+  const critical = commentCritical || CRITICAL_FALLBACK.has(name);
+  return { name, verify_jwt, kind: resolvedKind, critical, declared: hasComment };
 });
 
 if (contradictions.length > 0) {
