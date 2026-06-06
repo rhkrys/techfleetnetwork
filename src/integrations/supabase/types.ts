@@ -7866,6 +7866,17 @@ export type Database = {
         Returns: Json
       }
       get_email_reconciler_status: { Args: never; Returns: Json }
+      get_email_send_latest_status: {
+        Args: { p_hours?: number }
+        Returns: {
+          out_error_message: string
+          out_last_event_at: string
+          out_message_id: string
+          out_recipient_email: string
+          out_status: string
+          out_template_name: string
+        }[]
+      }
       get_i18n_bundle: {
         Args: { p_locale: string; p_namespace?: string }
         Returns: {

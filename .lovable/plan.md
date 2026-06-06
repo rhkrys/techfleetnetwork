@@ -1,44 +1,128 @@
-## Findings
+## Do I know what the issue is?
 
-- Google-only accounts do not have a platform password to reset. Google owns that password, so the app must never call the platform password reset service for Google-only accounts.
-- Recent recovery emails are being enqueued and sent successfully. The verified sender domain and queue are working.
-- The current risk is before email delivery: account identity checks and password-reset rate limits can still route the wrong account type into the password reset service or poison shared login/reset buckets.
-- The account identity endpoint currently uses the `login_attempt` rate-limit bucket for identity probes. That means harmless “is this Google-only?” checks can count like login failures. That is exactly the kind of cross-contamination that creates “too many requests” and confusing recovery loops.
-- The forgot-password page records a password-reset failure for broad catch paths, even when the failure may be service/identity-resolution noise instead of a confirmed abusive reset attempt.
+Yes. This is not one bug; it is a chain of weak guarantees across reset-link delivery, recovery-session proof, and observability.
 
-## Permanent fix plan
+## What actually went wrong
 
-1. **Separate account identity probing from login attempts**
-   - Add a dedicated backend rate-limit action for account identity lookups.
-   - Update the account identity endpoint to use that bucket, never `login_attempt`.
-   - Keep enumeration protection, but stop identity probes from locking people out of login.
+- The reset email path was mostly working: recovery emails were accepted and sent.
+- The repeated user-facing failure happens later, on `/reset-password`, when the page lets a member reach `updateUser()` without proving there is a fresh recovery session.
+- The code currently treats `verifyOtp()` / `exchangeCodeForSession()` / `setSession()` success as valid if there is no error, but it does not require a real returned session or a successful `getUser()` check before showing the password form.
+- The logs did not catch it because reset-page diagnostics use `write_audit_log`, which requires an authenticated session; when the reset session is missing or broken, the diagnostic write silently fails.
+- Earlier fixes missed it because they targeted the reset-email/rate-limit layer and then the retired edge-function dependency, while the failing branch was the client recovery-session handoff.
 
-2. **Make provider type the reset gate**
-   - For Google-only accounts: show “Use Google sign-in” and do not call password reset.
-   - For email-password accounts: allow platform password reset normally.
-   - For hybrid accounts with both Google and email password: allow password reset, because the platform password exists.
-   - For unknown identity lookup failures: fail safe with generic success only when needed for privacy, but do not burn user-facing reset attempts.
+## Hotfix plan
 
-3. **Fix reset rate-limit accounting**
-   - Only increment the app’s `password_reset` failure bucket on confirmed abuse/rejection.
-   - Do not increment it for service unavailable, network, identity lookup fallback, duplicate submit, or provider mismatch.
-   - Clear stale password-reset rows that were created by the old behavior so affected members are not stuck for 60 minutes.
+### 1. Make recovery proof a hard invariant
 
-4. **Improve user-facing messages without leaking account existence**
-   - Google-only: “This account uses Google sign-in. Use Google to continue.”
-   - Email-password successful request: “If an account exists, we sent a reset link.”
-   - Service unavailable: show a temporary service message without counting it against the member.
-   - Rate-limited: reserve this only for real backend rate limits, not local bookkeeping noise.
+Build one reset-session gate used by `ResetPasswordPage`:
 
-5. **Add regression coverage**
-   - Tests for Google-only reset never calling the reset service.
-   - Tests for email-password reset calling the reset service.
-   - Tests for identity lookup not touching `login_attempt`.
-   - Tests proving transient reset errors do not increment `password_reset` lockout.
-   - BDD scenarios covering UI, database, and code/API expected results.
+```text
+recovery URL proof -> establish session -> validate current user -> unlock form
+anything else      -> expired/invalid link -> do not call updateUser()
+```
 
-6. **Verify live behavior**
-   - Probe a known Google-only account: identity returns Google-only and reset is blocked before service call.
-   - Probe a known email-password account: identity returns password-capable and reset email sends.
-   - Confirm recent recovery email logs still show sent status.
-   - Confirm no active `password_reset` or polluted `login_attempt` blocks remain from this flow.
+Implementation details:
+- Add a helper like `establishPasswordRecoverySession()`.
+- For `token_hash`, require `verifyOtp({ type: 'recovery', token_hash })` to return a session or produce one visible to `getSession()`.
+- For PKCE `code`, require `exchangeCodeForSession(code)` to return a session or produce one visible to `getSession()`.
+- For legacy hash, require `setSession()` plus `getUser()` success.
+- If any branch has no verified session, show “Reset link expired” and never render the update form.
+- In `handleSubmit`, add a second guard: if the recovery proof flag is not true, block and route to expired-link recovery.
+
+### 2. Stop mislabeling missing sessions as service outages
+
+Tighten `AuthService.updatePassword()` error classification:
+- Missing/invalid auth session -> `session_expired`.
+- Network/5xx only -> `service_unavailable`.
+- Add exact mappings for common backend strings: `Auth session missing`, `Session not found`, `User from sub claim in JWT does not exist`, `JWT expired`, `invalid claim`.
+
+Result: members get the right recovery action instead of “password service unavailable.”
+
+### 3. Add reset observability that works before auth exists
+
+Replace swallowed client-only diagnostics with a public, no-PII recovery telemetry path:
+- Add `record-auth-recovery-event` as an explicitly public edge function.
+- It accepts only safe fields: branch, outcome, error_class, URL shape booleans, app version, and trace id.
+- It never accepts email, password, token, token hash, full URL, or user-entered text.
+- It writes to `ops_events` / `record_event`, not raw console-only logs.
+- Mount it on every reset branch: token_hash success/fail, code success/fail, hash success/fail, missing session, update error class, update success.
+
+This is why logs were empty before; the page could not write auth-bound audit rows when auth was the broken thing.
+
+### 4. Fix email status visibility so pending rows do not mislead us again
+
+The email log is append-only: `pending` rows remain even after a later `sent` row, so raw counts looked scary while the pgmq queue was empty.
+
+Hotfix:
+- Add a latest-status query/view/RPC for email health that collapses by `message_id`.
+- Update System Health / diagnostics to show terminal status, not raw append-only row counts.
+- Add a recovery-email health assertion: if `pgmq.q_auth_emails` has aged recovery messages or latest status is failed/dlq, alert; old append-only pending rows alone should not page anyone.
+
+### 5. Make reset-link generation fail loudly if shape is unsafe
+
+Harden `auth-email-hook` recovery rewriting:
+- Always prefer direct app URL: `/reset-password?token_hash=...&type=recovery`.
+- If the hook cannot extract a token hash, emit a high-signal telemetry event with no token content.
+- Add a smoke assertion that generated recovery links land on `/reset-password` with one supported recovery proof format.
+
+### 6. Add tests for the actual failure mode
+
+Add targeted tests that would have caught this days ago:
+- `verifyOtp` returns no error but no usable session -> form stays locked and `updatePassword` is not called.
+- `exchangeCodeForSession` returns no session -> expired-link recovery.
+- `setSession` succeeds but `getUser` fails -> expired-link recovery.
+- `updateUser` missing-session error -> `session_expired`, not `service_unavailable`.
+- reset telemetry fires on every branch, including pre-auth failures.
+- `check-account-identity` uses `identity_check`, not `login_attempt`.
+- `auth-email-hook` rewrites recovery links to the expected shape.
+
+### 7. Add a production smoke monitor for the full reset path
+
+Create a safe smoke route/job that checks the chain without changing a real member password:
+
+```text
+identity gate reachable
+recovery email hook link shape valid
+email queue worker healthy
+reset page can reject invalid/no-session links correctly
+telemetry rows appear for each branch
+```
+
+If any part fails, it should create a System Health/Triage item within minutes.
+
+### 8. Hotfix rollout verification
+
+After implementation:
+- Run targeted unit/UI/edge tests.
+- Deploy affected edge functions.
+- Verify live recovery-email latest status, not raw pending counts.
+- Verify reset branch telemetry appears for an invalid/no-session probe.
+- Verify no active `password_reset` or polluted `login_attempt` lockouts remain.
+- Publish immediately after the checks pass.
+
+## Files likely touched
+
+- `src/pages/ResetPasswordPage.tsx`
+- `src/services/auth.service.ts`
+- `src/test/ui/ResetPasswordPage.test.tsx`
+- `src/test/services/auth.service.test.ts`
+- `supabase/functions/auth-email-hook/index.ts`
+- New public safe telemetry edge function for reset diagnostics
+- Email health SQL/view/RPC and BDD scenarios
+
+## Success criteria
+
+- The password update form is impossible to reach without a verified recovery session.
+- “Password service unavailable” only appears for real network/5xx auth-service failures.
+- Missing/expired recovery sessions show the reset-link recovery path.
+- Logs show the exact reset branch even when auth is missing.
+- Email health can no longer be misread from stale append-only `pending` rows.
+- Regression tests cover the exact failure chain.
+
+<presentation-actions>
+  <presentation-open-history>View History</presentation-open-history>
+</presentation-actions>
+
+<presentation-actions>
+<presentation-link url="https://docs.lovable.dev/tips-tricks/troubleshooting">Troubleshooting docs</presentation-link>
+</presentation-actions>
