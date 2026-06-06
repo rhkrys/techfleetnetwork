@@ -143,10 +143,10 @@ export default function ResetPasswordPage() {
       if (hasRecoveryInHash && accessToken && refreshToken) {
         supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
           .then(({ error }) => {
-            if (error) settleFromSession("hash_invalid");
+            if (error) settleInvalid("hash_invalid");
             else { stripSensitiveParams(); settle(true, "hash"); }
           })
-          .catch(() => settleFromSession("hash_invalid"));
+          .catch(() => settleInvalid("hash_invalid"));
 
         return () => subscription.unsubscribe();
       }
