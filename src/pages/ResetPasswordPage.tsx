@@ -213,9 +213,9 @@ export default function ResetPasswordPage() {
       setErrorCode(code);
       setError(e.message);
 
-      // AUTH-PIN-001: service_unavailable means the edge function itself
-      // is unreachable (404 / network). Do NOT count it as a rejected
-      // attempt — the user's password and recovery session are still fine.
+      // service_unavailable means the auth service/network is temporarily
+      // unreachable. Do NOT count it as a rejected attempt — the user's
+      // password and recovery session may still be fine.
       if (code === "service_unavailable") {
         return;
       }
