@@ -1,3 +1,4 @@
+// @edge-auth
 // freescout-validate-secret — admin-only live probe of a candidate API key.
 // The admin Settings UI calls this BEFORE writing FREESCOUT_API_KEY so a bad
 // key is rejected at the source. Runs ~twice in the secret's lifetime.

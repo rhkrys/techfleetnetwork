@@ -1,3 +1,4 @@
+// @edge-cron
 // supabase/functions/auth-reset-smoke/index.ts
 //
 // AUTH-RESET-SESSION-006: End-to-end password-reset smoke monitor.

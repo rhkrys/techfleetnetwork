@@ -1,3 +1,4 @@
+// @edge-cron
 import { withAuditWrapper } from "../_shared/audit.ts";
 /**
  * screen-sanctions — country-level export-control / sanctions screening

@@ -1,3 +1,4 @@
+// @edge-cron
 // support-provisioning-retry — cron-driven retry of failed Freescout provisioning rows.
 // Drains rows with status='retry' (attempts < 5) at most 25/run.
 import { getAdminClient } from "../_shared/admin-client.ts";

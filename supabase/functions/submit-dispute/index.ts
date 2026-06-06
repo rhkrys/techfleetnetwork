@@ -1,3 +1,4 @@
+// @edge-auth required
 import { withAuditWrapper } from "../_shared/audit.ts";
 /**
  * submit-dispute — T&C §20. Captures an informal-resolution request and

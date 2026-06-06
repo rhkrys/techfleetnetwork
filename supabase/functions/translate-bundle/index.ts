@@ -1,3 +1,4 @@
+// @edge-public
 // translate-bundle: AI fallback translator for any BCP-47 locale.
 // Reads English source bundle, asks Lovable AI Gateway to translate, caches in i18n_translations.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";

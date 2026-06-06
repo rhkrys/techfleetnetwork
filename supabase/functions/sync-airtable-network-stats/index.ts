@@ -1,3 +1,4 @@
+// @edge-public
 // Sync Airtable-derived inputs for Network Stats into network_stats_baselines.
 // Counts (all-time):
 //   1. unique general application submitters from "General Applications"

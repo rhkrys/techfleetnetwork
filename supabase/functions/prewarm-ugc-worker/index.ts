@@ -1,3 +1,4 @@
+// @edge-cron
 // Drains ugc_translation_jobs: translates user-generated content via Lovable AI,
 // runs a lightweight QA pass, and writes results to ugc_translations.
 // Triggered by cron every 30 seconds.

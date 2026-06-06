@@ -1,3 +1,4 @@
+// @edge-cron
 // edge-deploy-smoke
 // Probes every edge function listed in supabase/functions.manifest.json with
 // an OPTIONS request. A 404 means the platform stopped shipping it. On 404 we write a

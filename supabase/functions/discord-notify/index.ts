@@ -1,3 +1,4 @@
+// @edge-cron
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { getAdminClient } from "../_shared/admin-client.ts";
 import { handleCors, jsonResponse, parseJsonBody } from "../_shared/http.ts";

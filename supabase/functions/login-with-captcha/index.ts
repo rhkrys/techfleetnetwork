@@ -1,3 +1,4 @@
+// @edge-auth required
 import { corsHeaders } from "../_shared/http.ts";
 import { z } from "npm:zod@4.3.6";
 import { createEdgeLogger } from "../_shared/logger.ts";

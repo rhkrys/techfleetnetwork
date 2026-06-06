@@ -1,3 +1,4 @@
+// @edge-cron
 import { withAuditWrapper } from "../_shared/audit.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

@@ -1,3 +1,4 @@
+// @edge-auth required
 import { withAuditWrapper } from "../_shared/audit.ts";
 /**
  * record-consent — writes a row to public.cookie_consents whether or not the

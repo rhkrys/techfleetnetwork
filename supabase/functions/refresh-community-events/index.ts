@@ -1,3 +1,4 @@
+// @edge-cron
 /**
  * refresh-community-events
  *

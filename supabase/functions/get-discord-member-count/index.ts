@@ -1,3 +1,4 @@
+// @edge-auth
 // Returns the cached Discord guild member count. Refreshes from Discord at most once every 24h.
 // Public (no auth required) — the value is shown on the logged-out landing page.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";

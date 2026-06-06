@@ -1,3 +1,4 @@
+// @edge-auth
 // freescout-provision-customer — auto-create a Freescout customer record for
 // a new platform member. Idempotent: no-ops if profiles.freescout_customer_id
 // is already set. Called by:

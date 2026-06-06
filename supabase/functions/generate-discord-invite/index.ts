@@ -1,3 +1,4 @@
+// @edge-cron
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { createEdgeLogger } from "../_shared/logger.ts";
 import { discordFetch } from "../_shared/discord-fetch.ts";

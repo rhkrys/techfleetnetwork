@@ -1,3 +1,4 @@
+// @edge-auth
 // freescout-sync-customer — syncs profile changes to the corresponding Freescout customer.
 // Service-role only. Triggered by profile email change / soft-delete flows.
 // OWASP A01 (service-role gated), A03 (Zod), A07 (no client trust), A09 (audited).

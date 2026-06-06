@@ -1,3 +1,4 @@
+// @edge-cron
 // Bumps bulk_hourly_cap on a warm-up schedule (Phase 3.3 of deliverability plan).
 // Day 0–14: 50/hr. Day 15–30: 200/hr. Day 31+: 5000/hr (effectively unlimited).
 // Runs daily 00:05 UTC via pg_cron.

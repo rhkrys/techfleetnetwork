@@ -1,3 +1,4 @@
+// @edge-public
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { z } from 'npm:zod@4.3.6'
 import { requireFreshAdmin2fa } from '../_shared/admin-step-up.ts'

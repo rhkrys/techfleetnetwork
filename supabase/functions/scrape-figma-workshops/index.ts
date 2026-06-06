@@ -1,3 +1,4 @@
+// @edge-cron
 // Admin-only: scrape Tech Fleet Figma Community workshop pages via Firecrawl,
 // fuzzy-match titles to reference_workshops, and update descriptions.
 import { createClient } from "npm:@supabase/supabase-js@2";

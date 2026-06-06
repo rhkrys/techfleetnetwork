@@ -1,3 +1,4 @@
+// @edge-auth required
 // Scheduled job: find users in auth.users who registered shortly ago and never confirmed,
 // generate a fresh signup confirmation link, and email it to them as a reminder.
 // Safeguards: capped reminders, minimum spacing between reminders, hard cutoff at 14 days.

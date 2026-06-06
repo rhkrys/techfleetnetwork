@@ -1,3 +1,4 @@
+// @edge-auth
 // process-freescout-events — drains q_freescout_events, applies the same
 // downstream writes the webhook used to do inline. Cron-poked every 15s.
 // Auth: shared service-role validator (accepts BOTH legacy JWT and opaque

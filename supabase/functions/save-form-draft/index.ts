@@ -1,3 +1,4 @@
+// @edge-auth
 /**
  * save-form-draft — durable beacon target for useServerDraft.
  *

@@ -1,3 +1,4 @@
+// @edge-auth
 // supabase/functions/record-auth-recovery/index.ts
 //
 // Public-by-design beacon for password-reset / recovery telemetry. The whole

@@ -1,3 +1,4 @@
+// @edge-cron
 // support-monthly-report — refreshes the Help Desk monthly MV. Cron-driven.
 // Service-role gated; idempotent; no user input.
 import { getAdminClient } from "../_shared/admin-client.ts";

@@ -1,3 +1,4 @@
+// @edge-cron
 // fill-content-gaps
 // Admin-only. Scans every reference_* table for rows whose description is
 // missing or under 20 chars, and asks Lovable AI to write Tech-Fleet-voice

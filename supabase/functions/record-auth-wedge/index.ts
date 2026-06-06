@@ -1,3 +1,4 @@
+// @edge-auth
 // supabase/functions/record-auth-wedge/index.ts
 //
 // Fire-and-forget counter for client auth-recovery events. The client beacons

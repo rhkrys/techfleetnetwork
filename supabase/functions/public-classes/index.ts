@@ -1,3 +1,4 @@
+// @edge-cron
 // Public, unauthenticated read-only feed of published classes for the
 // Tech Fleet marketing site (Framer). Uses the public RLS policies on
 // `classes` + `cohorts` and serves with CORS + edge cache headers.

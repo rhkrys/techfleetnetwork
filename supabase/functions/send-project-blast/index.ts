@@ -1,3 +1,4 @@
+// @edge-cron
 /**
  * send-project-blast — Admin-only project blast sender
  *

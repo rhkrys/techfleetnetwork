@@ -1,3 +1,4 @@
+// @edge-cron
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { extractClassDisplayTitle } from "../_shared/cert-title-utils.ts";
 import { withAuditWrapper } from "../_shared/audit.ts";

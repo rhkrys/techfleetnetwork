@@ -1,3 +1,4 @@
+// @edge-public
 import { getAdminClient } from "../_shared/admin-client.ts";
 import { withAuditWrapper } from "../_shared/audit.ts";
 import {

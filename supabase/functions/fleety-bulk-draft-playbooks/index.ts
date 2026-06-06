@@ -1,3 +1,4 @@
+// @edge-cron
 // fleety-bulk-draft-playbooks
 // Admin-only edge function that drafts playbooks (is_active=false) for
 // Tech Fleet framework entities (deliverables / milestones / workshops) that

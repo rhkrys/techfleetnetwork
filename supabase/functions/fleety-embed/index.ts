@@ -1,3 +1,4 @@
+// @edge-cron
 // Fleety Embedding service — generates 768-dim vectors for KB, playbooks, examples.
 // Two modes:
 //   POST { text: "..." }                 -> returns { embedding: number[] }   (auth: any signed-in user)
