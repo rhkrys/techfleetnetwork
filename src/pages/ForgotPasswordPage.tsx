@@ -90,7 +90,12 @@ export default function ForgotPasswordPage() {
       setSubmitted(true);
     } catch (err) {
       const code = (err as { code?: string } | null | undefined)?.code;
+      const status = (err as { status?: number } | null | undefined)?.status;
+      const message = (err as { message?: string } | null | undefined)?.message ?? "";
       if (code === GOOGLE_ONLY_ACCOUNT_CODE) {
+        // Provider mismatch — Google owns the password, not us. Never penalize
+        // the password_reset bucket: the platform cannot reset this account by
+        // design and clicking again won't change that.
         setError(GOOGLE_ONLY_ACCOUNT_MESSAGE);
         return;
       }
@@ -102,9 +107,16 @@ export default function ForgotPasswordPage() {
         setError(err.message);
         return;
       }
-      // Confirmed send failure → record so abusive loops still get capped.
-      void RateLimitService.recordFailure(result.data, "password_reset");
-      // Always show success to prevent email enumeration
+      // Only count REAL backend rate-limits / abuse signals against the bucket.
+      // Transient service errors (5xx, network blips, identity-lookup fallback)
+      // must NOT lock the member out for 60 minutes — that was the root cause
+      // of "Too many requests. Please try again in 60 minutes." showing up
+      // after a few harmless retries.
+      const isBackendRateLimit = status === 429 || /too many|rate limit/i.test(message);
+      if (isBackendRateLimit) {
+        void RateLimitService.recordFailure(result.data, "password_reset");
+      }
+      // Always show success to prevent email enumeration.
       setSubmitted(true);
     } finally {
       setLoading(false);

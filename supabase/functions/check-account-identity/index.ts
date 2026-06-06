@@ -119,11 +119,14 @@ Deno.serve(withAuditWrapper("check-account-identity", async (req) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // Server-side rate limit — keyed by hashed email + IP to prevent enumeration sweeps
+    // Server-side rate limit — keyed by hashed email + IP. Uses a DEDICATED
+    // `identity_check` bucket so harmless "is this Google-only?" probes never
+    // poison `login_attempt` or `password_reset` (root cause of "Too many
+    // requests. Try again in 60 minutes." for legitimate members).
     const rlKey = await hashIdentifier(`${email}|${ip ?? "noip"}`);
     const { data: rl, error: rlErr } = await admin.rpc("check_rate_limit", {
       p_identifier: rlKey,
-      p_action: "login_attempt", // reuse existing bucket; this endpoint is a login-adjacent call
+      p_action: "identity_check",
       p_max_attempts: 10,
       p_window_minutes: 1,
       p_block_minutes: 5,
