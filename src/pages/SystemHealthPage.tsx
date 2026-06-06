@@ -31,6 +31,7 @@ import { LoginHealthTab } from "@/components/system-health/LoginHealthTab";
 import { TranslationsTab } from "@/components/admin/system-health/TranslationsTab";
 import { HelpDeskTab } from "@/components/system-health/HelpDeskTab";
 import { RefactorKpisTab } from "@/components/system-health/RefactorKpisTab";
+import { EdgeFunctionsTab } from "@/components/system-health/EdgeFunctionsTab";
 import { PageTitle } from "@/components/ui/typography";
 
 const FIVE_MIN = 5 * 60 * 1000;
@@ -245,6 +246,7 @@ export default function SystemHealthPage() {
           <TabsTrigger value="audit">Audit</TabsTrigger>
           <TabsTrigger value="discord">Discord</TabsTrigger>
           <TabsTrigger value="help-desk">Help desk</TabsTrigger>
+          <TabsTrigger value="edge-functions">Edge functions</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
 
@@ -295,6 +297,7 @@ export default function SystemHealthPage() {
         <TabsContent value="audit"><AuditPressureTab /></TabsContent>
         <TabsContent value="discord"><DiscordRepairTab /></TabsContent>
         <TabsContent value="help-desk"><HelpDeskTab /></TabsContent>
+        <TabsContent value="edge-functions"><EdgeFunctionsTab /></TabsContent>
         <TabsContent value="settings" className="space-y-4">
           <StatsControlsCard />
           <Card>

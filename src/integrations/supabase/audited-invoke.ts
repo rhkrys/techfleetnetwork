@@ -9,6 +9,20 @@ import { supabase } from "@/integrations/supabase/client";
 import { reportError } from "@/services/error-reporter.service";
 import { newTraceId, withTrace } from "@/lib/trace";
 import type { FunctionInvokeOptions, FunctionsResponse } from "@supabase/functions-js";
+import manifest from "@/generated/edge-functions.manifest.json";
+
+// AUTH-PIN-001: derived from supabase/functions.manifest.json — the single
+// source of truth maintained by scripts/ci/check-edge-function-coverage.mjs.
+// Mark a function critical by adding `// @edge-auth required` to the first
+// 15 lines of its index.ts (or, transitionally, add it to CRITICAL_FALLBACK
+// in the generator). When a critical function 404s, we bump severity to
+// `error` + emit `fingerprint:edge_function_not_deployed:<name>` so the
+// 5-minute Triage Critical Push pages admins on the FIRST occurrence.
+const AUTH_CRITICAL = new Set<string>(
+  (manifest as { functions: Array<{ name: string; critical?: boolean }> }).functions
+    .filter((f) => f.critical)
+    .map((f) => f.name),
+);
 
 export async function auditedInvoke<T = unknown>(
   fn: string,
@@ -20,26 +34,6 @@ export async function auditedInvoke<T = unknown>(
     "x-trace-id": traceId,
   };
   return await withTrace(async (): Promise<FunctionsResponse<T>> => {
-    // AUTH-PIN-001: auth-critical edge functions that, when 404/transport,
-    // strand real users mid-flow (password reset, login, magic link, signup,
-    // account delete). A 404 here = function was never deployed. Escalate to
-    // severity:error + a stable fingerprint so the Triage Critical Push cron
-    // pages admins on the FIRST occurrence instead of waiting for digest.
-    const AUTH_CRITICAL = new Set<string>([
-      "update-password-confirmed",
-      "login-with-captcha",
-      "send-magic-link",
-      "verify-turnstile",
-      "validate-email-domain",
-      "resend-signup-confirmations",
-      "sign-out-all-devices",
-      "revoke-user-sessions",
-      "delete-account",
-      "admin-purge-auth-user",
-      "admin-sign-out-all-users",
-      "record-consent",
-      "record-policy-acknowledgment",
-    ]);
     try {
       const result = await supabase.functions.invoke<T>(fn, { ...options, headers });
       if (result.error) {
