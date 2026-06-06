@@ -82,7 +82,7 @@ export default function MyProjectApplicationsPage() {
   const navigate = useNavigate();
   const { isAdmin } = useAdmin();
   const [view, setView] = useState<"card" | "table">("card");
-  const queryClient = useQueryClient();
+  
 
   /* Realtime invalidation is mounted globally in AppLayout
    * (useProjectApplicationsRealtime + useNotificationRealtime), so we no
