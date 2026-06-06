@@ -171,6 +171,26 @@ async function singleFlightSetSession(tokens: { access_token: string; refresh_to
   }
 }
 
+async function readFunctionError(error: unknown): Promise<{ status?: number; message: string; code?: string }> {
+  const fallback = error instanceof Error ? error.message : String((error as { message?: string } | null | undefined)?.message ?? "Unknown error");
+  const directStatus = (error as { status?: unknown } | null | undefined)?.status;
+  const response = (error as { context?: { response?: Response } } | null | undefined)?.context?.response;
+  let message = fallback;
+  let code: string | undefined;
+  try {
+    const body = response ? await response.clone().json().catch(() => null) as { error?: string; message?: string; code?: string } | null : null;
+    message = body?.error || body?.message || fallback;
+    code = body?.code;
+  } catch {
+    // Use fallback message.
+  }
+  return {
+    status: response?.status ?? (typeof directStatus === "number" ? directStatus : undefined),
+    message,
+    code,
+  };
+}
+
 
 export const AuthService = {
   async signInWithPassword(email: string, password: string, captchaToken?: string, attemptId?: string) {
@@ -203,9 +223,20 @@ export const AuthService = {
         return { data: null, error: new Error("Invalid login response") };
       });
       if (error) {
-        log.error("signInWithPassword", `Authentication failed for ${safeEmail}: ${error.message}`, { email: safeEmail, errorCode: error.status }, error);
-        void logAccountActivity("login_failed", { email: safeEmail, errorMessage: error.message, errorCode: error.status });
-        if (error.status === 429 || error.message.toLowerCase().includes("too many rapid auth attempts")) throw createAuthThrottleCaptchaError();
+        const fnError = await readFunctionError(error);
+        log.error("signInWithPassword", `Authentication failed for ${safeEmail}: ${fnError.message}`, { email: safeEmail, errorCode: fnError.status ?? fnError.code }, error);
+        void logAccountActivity("login_failed", { email: safeEmail, errorMessage: fnError.message, errorCode: fnError.status ?? fnError.code });
+        if (fnError.status === 429 || fnError.message.toLowerCase().includes("too many rapid auth attempts")) throw createAuthThrottleCaptchaError();
+        if (typeof fnError.status === "number" && fnError.status >= 500) {
+          const serviceError = new Error("The sign-in service hit a snag. Please try again in a moment.") as Error & { status?: number };
+          serviceError.status = fnError.status;
+          throw serviceError;
+        }
+        if (fnError.code === "CAPTCHA_REQUIRED" || fnError.message.toLowerCase().includes("human verification")) {
+          const captchaError = new Error("Complete the human verification below before signing in.") as Error & { status?: number };
+          captchaError.status = fnError.status;
+          throw captchaError;
+        }
         throw new Error("Invalid email or password. Please try again.");
       }
       // LCL-FIX-004 (revised): Post-setSession round-trip validation is
