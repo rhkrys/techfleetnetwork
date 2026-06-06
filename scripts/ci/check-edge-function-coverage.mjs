@@ -179,10 +179,8 @@ try {
   );
 } catch { /* dir may not exist yet on first run */ }
 // Mirror into src/ so Vite + tsconfig.app.json (include: ["src"]) can import.
-import("node:fs").then(({ mkdirSync }) => {
-  try { mkdirSync(join(ROOT, "src", "generated"), { recursive: true }); } catch {}
-  writeFileSync(join(ROOT, "src", "generated", "edge-functions.manifest.json"), manifestJson);
-});
+try { mkdirSync(join(ROOT, "src", "generated"), { recursive: true }); } catch {}
+writeFileSync(join(ROOT, "src", "generated", "edge-functions.manifest.json"), manifestJson);
 
 console.log(`OK: ${dirs.length} edge functions all pinned; manifest written (${undeclared.length} undeclared kind).`);
 
