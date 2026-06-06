@@ -20,7 +20,9 @@ The `auth-email-hook` edge function REWRITES the recovery email link before rend
 1. `?token_hash=…&type=recovery` → `supabase.auth.verifyOtp({type:"recovery", token_hash})` (PRIMARY, idempotent until consumed/expired, works cross-device/incognito/double-click).
 2. `?code=…` → `exchangeCodeForSession(code)` (PKCE fallback).
 3. `#access_token=…&type=recovery` → wait 8s for SDK to process, then `getSession()` (legacy fallback).
-4. None of the above → `getSession()` to honor any active recovery session.
+4. None of the above → invalid/expired link. Never unlock the reset form from an ordinary signed-in session.
+
+ResetPasswordPage must require fresh recovery proof from the URL (`token_hash`, PKCE `code`, or legacy recovery hash) or the `PASSWORD_RECOVERY` event. It must NOT treat `SIGNED_IN`, `getSession()`, or any existing app session as recovery proof; doing so lets normal sessions reach `updateUser()`, which returns “Auth session missing”/similar and was misclassified as “password service unavailable.” `AuthService.updatePassword` maps missing auth session strings to `session_expired`, not `service_unavailable`.
 
 All successful branches call `stripSensitiveParams()` via `history.replaceState` to clear `token_hash`, `type`, `code`, `access_token`, etc. from the address bar.
 
@@ -38,7 +40,7 @@ Forgot-password must call `check-account-identity` before `resetPasswordForEmail
 
 `ForgotPasswordPage` now only calls `RateLimitService.recordFailure("password_reset")` on **confirmed backend rate-limit signals** (HTTP 429 or "too many"/"rate limit" messages). Transient 5xx, network blips, identity-lookup fallbacks, and Google-only short-circuits MUST NOT increment the bucket — previously they did, and 3 harmless retries triggered the 60-minute lockout ("Too many requests. Please try again in 60 minutes."). `check-account-identity` uses a dedicated `identity_check` rate-limit action (10/min/identifier) instead of `login_attempt`, so identity probes never poison the login or reset buckets. Valid actions in `check_rate_limit`/`peek_rate_limit`: `login_attempt`, `signup_attempt`, `signup_resend`, `password_reset`, `identity_check`.
 
-## BDD: AUTH-RESET-001..006, AUTH-RESET-010..012, AUTH-RESET-020..023, AUTH-RESET-GOOGLE-ONLY-001..002, AUTH-RESET-TRANSIENT-001, AUTH-IDENTITY-BUCKET-001.
+## BDD: AUTH-RESET-001..006, AUTH-RESET-010..012, AUTH-RESET-020..023, AUTH-RESET-SESSION-001..002, AUTH-RESET-GOOGLE-ONLY-001..002, AUTH-RESET-TRANSIENT-001, AUTH-IDENTITY-BUCKET-001.
 
 ## Out of scope of this fix
 - OAuth/PKCE flow (uses `?code=` exchange, untouched).
