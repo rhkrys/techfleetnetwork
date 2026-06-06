@@ -258,6 +258,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   );
   useAnnouncementRealtime();
   useNotificationRealtime();
+  useProjectApplicationsRealtime();
   useRouteAnnouncer();
 
   const isActive = (href: string) =>
