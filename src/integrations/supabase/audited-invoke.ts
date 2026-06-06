@@ -9,7 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { reportError } from "@/services/error-reporter.service";
 import { newTraceId, withTrace } from "@/lib/trace";
 import type { FunctionInvokeOptions, FunctionsResponse } from "@supabase/functions-js";
-import manifest from "../../../supabase/functions.manifest.json";
+import manifest from "@/generated/edge-functions.manifest.json";
 
 // AUTH-PIN-001: derived from supabase/functions.manifest.json — the single
 // source of truth maintained by scripts/ci/check-edge-function-coverage.mjs.
