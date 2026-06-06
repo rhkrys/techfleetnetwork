@@ -149,4 +149,28 @@ describe("ResetPasswordPage UI (BDD 20.1)", () => {
     replaceState.mockRestore();
     window.history.replaceState({}, "", "/reset-password");
   });
+
+  it("AUTH-RESET-SESSION-002: exchangeCodeForSession success without active session keeps form locked", async () => {
+    vi.mocked(supabase.auth.exchangeCodeForSession).mockResolvedValue({ data: { session: null }, error: null } as never);
+    vi.mocked(supabase.auth.getUser).mockResolvedValue({ data: { user: null }, error: null } as never);
+    window.history.replaceState({}, "", "/reset-password?code=pkce-abc&type=recovery");
+
+    renderWithRouter(<ResetPasswordPage />);
+
+    expect(await screen.findByText(/invalid or expired link/i)).toBeInTheDocument();
+    expect(AuthService.updatePassword).not.toHaveBeenCalled();
+    window.history.replaceState({}, "", "/reset-password");
+  });
+
+  it("AUTH-RESET-SESSION-004: setSession success but getUser failure keeps form locked", async () => {
+    vi.mocked(supabase.auth.setSession).mockResolvedValue({ data: { session: { user: { id: "u" } } }, error: null } as never);
+    vi.mocked(supabase.auth.getUser).mockResolvedValue({ data: { user: null }, error: { message: "Auth session missing" } } as never);
+    window.history.replaceState({}, "", "/reset-password#access_token=a.jwt&refresh_token=r.jwt&type=recovery");
+
+    renderWithRouter(<ResetPasswordPage />);
+
+    expect(await screen.findByText(/invalid or expired link/i)).toBeInTheDocument();
+    expect(AuthService.updatePassword).not.toHaveBeenCalled();
+    window.history.replaceState({}, "", "/reset-password");
+  });
 });

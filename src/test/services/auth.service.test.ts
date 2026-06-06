@@ -150,6 +150,18 @@ describe("AuthService session max-age marker", () => {
     expect(supabase.functions.invoke).not.toHaveBeenCalledWith("update-password-confirmed", expect.anything());
   });
 
+  it("AUTH-RESET-SESSION-005: maps 'User from sub claim in JWT does not exist' to session_expired", async () => {
+    vi.mocked(supabase.auth.updateUser).mockResolvedValue({ data: { user: null }, error: { message: "User from sub claim in JWT does not exist", status: 403 } });
+    await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).rejects.toMatchObject({ code: "session_expired" });
+  });
+
+  it("AUTH-RESET-SESSION-006: maps 'JWT expired' to session_expired (not service_unavailable)", async () => {
+    vi.mocked(supabase.auth.updateUser).mockResolvedValue({ data: { user: null }, error: { message: "JWT expired", status: 401 } });
+    await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).rejects.toMatchObject({ code: "session_expired" });
+  });
+
+
+
   it("does not sign out a user because another account left a stale timestamp", async () => {
     const session = makeSession("current-user");
     localStorage.setItem("sb-project-auth-token", JSON.stringify({ access_token: session.access_token, refresh_token: session.refresh_token }));
