@@ -226,12 +226,27 @@ export function TurnstileChallenge({ action, onTokenChange, failureCount = 0, em
     return null;
   })();
 
-  if (loadFailed) {
+  // PERMANENT FIX (captcha-fallback): the magic-link escape hatch used to
+  // render only when the Turnstile script never loaded (loadFailed). In
+  // practice the dominant failure mode is the script loading but the
+  // challenge erroring out repeatedly (1,128 `network`-class failures in
+  // the last 7 days). Surface the recovery UI for persistent network/unknown
+  // errors too, so a real member is never stranded on "Retrying…" without a
+  // way to sign in.
+  const showFallback =
+    loadFailed ||
+    (action === "login" &&
+      (transientError === "network" || transientError === "unknown") &&
+      consecutiveFailuresRef.current >= 2);
+
+  if (showFallback) {
     return (
       <div data-no-card className="rounded-md border border-destructive/40 bg-destructive/5 p-3" role="group" aria-label="Human verification">
-        <p className="text-sm text-foreground font-medium">Verification didn't load.</p>
+        <p className="text-sm text-foreground font-medium">
+          {loadFailed ? "Verification didn't load." : "Verification keeps failing."}
+        </p>
         <p className="mt-1 text-xs text-muted-foreground">
-          This usually means a browser extension, ad-blocker, or your network is blocking <span className="font-mono">challenges.cloudflare.com</span>.
+          This usually means a browser extension, ad-blocker, privacy browser (e.g. Brave Shields), or your network is blocking <span className="font-mono">challenges.cloudflare.com</span>. You can email yourself a one-time sign-in link instead.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <button
@@ -254,9 +269,14 @@ export function TurnstileChallenge({ action, onTokenChange, failureCount = 0, em
             </button>
           )}
         </div>
+        {!email && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Enter your email above to enable the sign-in-link option.
+          </p>
+        )}
         {magicLinkState === "sent" && (
           <p className="mt-2 text-xs text-muted-foreground" role="status" aria-live="polite">
-            If an account exists for that email, we've sent a sign-in link. Please check your inbox.
+            If an account exists for that email, we've sent a sign-in link. Please check your inbox (and spam folder).
           </p>
         )}
         {magicLinkState === "error" && (
