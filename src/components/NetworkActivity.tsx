@@ -297,22 +297,9 @@ export const NetworkActivity = memo(function NetworkActivity({ showMap = true, s
                   label="Core Course Completions"
                   colorClass="bg-warning/10"
                 />
-                {/* Beginner/Advanced course completions intentionally omitted from Past 7 Days:
-                    those tiers are pre-platform Masterclass data in network_stats_historical and
-                    have no live weekly source. The All Time panel still shows them via the
-                    historical totals. See mem://features/network-stats-v4 + StatsControlsCard. */}
-                <StatCard
-                  icon={<BookOpen className="h-5 w-5 text-info" aria-hidden="true" />}
-                  value={safeStats.prev_week_onboarding_active ?? 0}
-                  label="Onboarding Course Completions"
-                  colorClass="bg-info/10"
-                />
-                <StatCard
-                  icon={<MessageCircle className="h-5 w-5 text-info" aria-hidden="true" />}
-                  value={safeStats.prev_week_discord_links_count ?? 0}
-                  label="Discord Links"
-                  colorClass="bg-info/10"
-                />
+                <StatCard icon={<BookOpen className="h-5 w-5 text-info" aria-hidden="true" />} value={safeStats.prev_week_beginner_active} label="Beginner course registrations" colorClass="bg-info/10" />
+                <StatCard icon={<BookOpen className="h-5 w-5 text-accent-foreground" aria-hidden="true" />} value={safeStats.prev_week_advanced_active} label="Advanced course registrations" colorClass="bg-accent/50" />
+
                 <StatCard icon={<FileCheck className="h-5 w-5 text-success" aria-hidden="true" />} value={safeStats.prev_week_applications} label="General Applications Completed" colorClass="bg-success/10" />
                 <StatCard
                   icon={<Award className="h-5 w-5 text-primary" aria-hidden="true" />}
