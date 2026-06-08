@@ -105,6 +105,7 @@ export default tseslint.config(
       "triage-permanent/no-direct-error-reporter": "warn",
       "triage-permanent/no-raw-functions-invoke": "warn",
       "triage-permanent/no-supabase-single": "warn",
+      "triage-permanent/no-rpc-then-catch": "error",
       "auth-invariants/no-bare-password-set-input": "error",
       "auth-invariants/no-raw-password-update": "error",
       // Part 1 §1.5 — bare React.lazy white-screens on stale chunks after a
