@@ -44,6 +44,10 @@ export default tseslint.config(
           "no-direct-error-reporter": noDirectErrorReporter,
           "no-raw-functions-invoke": noRawFunctionsInvoke,
           "no-supabase-single": noSupabaseSingle,
+          // 2026-06-08 — guards against `supabase.rpc(...).catch(...)` which
+          // throws "catch is not a function" at runtime (root cause of 18
+          // `email_failed` audit rows on 2026-06-05).
+          "no-rpc-then-catch": noRpcThenCatch,
         },
       },
       "auth-invariants": authInvariants,
