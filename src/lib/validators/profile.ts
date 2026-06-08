@@ -1,6 +1,15 @@
 import { z } from "zod";
 import { safeMultilineTextSchema, safeRequiredTextSchema, safeShortTextSchema, safeStringArraySchema, safeUrlSchema } from "@/lib/validators/shared-input";
 
+/**
+ * Maximum experience areas a member may select. Shared by the schema (this
+ * file) AND the UI picker so the client can disable extra checkboxes once
+ * the cap is reached — eliminating the `validation_rejected: experience_areas`
+ * event class (7 events / 4 users in the 7d window before this fix).
+ */
+export const MAX_EXPERIENCE_AREAS = 30;
+
+
 // A03: Input validation with strict sanitization
 const safeText = (label: string, max: number) =>
   safeRequiredTextSchema(label, max);
@@ -39,7 +48,7 @@ export const profileSchema = z.object({
   portfolio_url: safeUrl("Portfolio URL", 500),
   linkedin_url: safeUrl("LinkedIn URL", 500),
   scheduling_url: safeUrl("Scheduling link", 500),
-  experience_areas: safeStringArraySchema("Experience areas", 30, 200).optional().default([]),
+  experience_areas: safeStringArraySchema("Experience areas", MAX_EXPERIENCE_AREAS, 200).optional().default([]),
   professional_goals: safeMultilineTextSchema("Professional goals", 2000).optional().default(""),
   notify_training_opportunities: z.boolean().optional().default(false),
   notify_announcements: z.boolean().optional().default(false),

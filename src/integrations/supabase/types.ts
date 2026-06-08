@@ -7329,6 +7329,12 @@ export type Database = {
       }
       archive_old_fix_queue: { Args: never; Returns: number }
       audit_i18n_coverage: { Args: never; Returns: Json }
+      auto_resolve_stale_fix_queue: {
+        Args: never
+        Returns: {
+          resolved_count: number
+        }[]
+      }
       backfill_ugc_translations: { Args: { p_table?: string }; Returns: Json }
       backfill_ugc_translations_for_locales: {
         Args: { p_locales: string[]; p_table?: string }

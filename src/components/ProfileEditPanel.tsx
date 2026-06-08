@@ -14,7 +14,8 @@ import { cn } from "@/lib/utils";
 import { profileSchema, ACTIVITY_OPTIONS, PROFILE_FIELD_LABELS, PROFILE_FIELD_GUIDANCE } from "@/lib/validators/profile";
 import { showFormErrors, scrollToFirstError } from "@/lib/form-validation";
 import { MultiSelect, type MultiSelectOption } from "@/components/ui/multi-select";
-import { EXPERIENCE_AREAS, EDUCATION_OPTIONS } from "@/lib/application-options";
+import { EDUCATION_OPTIONS } from "@/lib/application-options";
+import { ExperienceAreasSelect } from "@/components/ExperienceAreasSelect";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ProfileService } from "@/services/profile.service";
@@ -462,8 +463,7 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
             <div className="space-y-1.5">
               <Label>Experience areas</Label>
               <p className="text-xs text-muted-foreground">What areas do you want to gain experience in?</p>
-              <MultiSelect
-                options={EXPERIENCE_AREAS.map((e) => ({ value: e, label: e }))}
+              <ExperienceAreasSelect
                 selected={form.experience_areas}
                 onChange={(v) => setForm({ ...form, experience_areas: v })}
                 placeholder="Search and select areas..."

@@ -1,14 +1,18 @@
 import { useCallback, useMemo } from "react";
 import { MultiSelect, type MultiSelectOption } from "@/components/ui/multi-select";
 import { EXPERIENCE_AREAS } from "@/lib/application-options";
+import { MAX_EXPERIENCE_AREAS } from "@/lib/validators/profile";
 
 const NOT_SURE = "I'm not sure yet";
 
 /**
- * Experience Areas multi-select with mutual exclusion:
- * - "I'm not sure yet" is listed first, rest are alphabetical
- * - When "I'm not sure yet" is selected, all others are disabled/cleared
- * - When any other option is selected, "I'm not sure yet" is removed
+ * Experience Areas multi-select with mutual exclusion + hard cap:
+ * - "I'm not sure yet" is listed first, rest alphabetical.
+ * - When "I'm not sure yet" is selected, all others are disabled/cleared.
+ * - When any other option is selected, "I'm not sure yet" is removed.
+ * - Caps at MAX_EXPERIENCE_AREAS (= schema cap) — unselected options grey
+ *   out once the cap is reached so the server-side `validation_rejected`
+ *   event class can never fire.
  */
 interface ExperienceAreasSelectProps {
   selected: string[];
@@ -28,19 +32,20 @@ export function ExperienceAreasSelect({
   "aria-invalid": ariaInvalid,
 }: ExperienceAreasSelectProps) {
   const notSureSelected = selected.includes(NOT_SURE);
+  const atCap = selected.length >= MAX_EXPERIENCE_AREAS && !notSureSelected;
 
   const options: MultiSelectOption[] = useMemo(() => {
-    // "I'm not sure yet" first, rest alphabetical (they're already sorted in the array minus the last item)
     const sorted = EXPERIENCE_AREAS.filter((e) => e !== NOT_SURE).slice().sort((a, b) => a.localeCompare(b));
     return [
-      { value: NOT_SURE, label: NOT_SURE },
+      { value: NOT_SURE, label: NOT_SURE, disabled: selected.length > 0 && !notSureSelected },
       ...sorted.map((e) => ({
         value: e,
         label: e,
-        disabled: notSureSelected,
+        // Disable if "not sure" is on, OR cap reached AND this option isn't already chosen.
+        disabled: notSureSelected || (atCap && !selected.includes(e)),
       })),
     ] as MultiSelectOption[];
-  }, [notSureSelected]);
+  }, [notSureSelected, atCap, selected]);
 
   const handleChange = useCallback(
     (newSelected: string[]) => {
@@ -48,27 +53,42 @@ export function ExperienceAreasSelect({
       const isNotSure = newSelected.includes(NOT_SURE);
 
       if (isNotSure && !wasNotSure) {
-        // User just selected "I'm not sure yet" — clear everything else
         onChange([NOT_SURE]);
-      } else if (isNotSure && newSelected.length > 1) {
-        // User selected another item while "not sure" was active — remove "not sure"
-        onChange(newSelected.filter((v) => v !== NOT_SURE));
-      } else {
-        onChange(newSelected);
+        return;
       }
+      if (isNotSure && newSelected.length > 1) {
+        onChange(newSelected.filter((v) => v !== NOT_SURE));
+        return;
+      }
+      // Hard client cap — never send more than the schema accepts.
+      if (newSelected.length > MAX_EXPERIENCE_AREAS) {
+        onChange(newSelected.slice(0, MAX_EXPERIENCE_AREAS));
+        return;
+      }
+      onChange(newSelected);
     },
     [selected, onChange]
   );
 
   return (
-    <MultiSelect
-      options={options}
-      selected={selected}
-      onChange={handleChange}
-      placeholder={notSureSelected ? "I'm not sure yet" : placeholder}
-      disabled={disabled}
-      aria-label={ariaLabel || "Experience areas"}
-      aria-invalid={ariaInvalid}
-    />
+    <div className="space-y-1">
+      <MultiSelect
+        options={options}
+        selected={selected}
+        onChange={handleChange}
+        placeholder={notSureSelected ? "I'm not sure yet" : placeholder}
+        disabled={disabled}
+        aria-label={ariaLabel || "Experience areas"}
+        aria-invalid={ariaInvalid}
+      />
+      <p
+        className="text-xs text-muted-foreground"
+        aria-live="polite"
+        data-testid="experience-areas-counter"
+      >
+        {selected.length} of {MAX_EXPERIENCE_AREAS} selected
+        {atCap && " — maximum reached"}
+      </p>
+    </div>
   );
 }

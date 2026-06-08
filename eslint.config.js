@@ -16,6 +16,7 @@ import authInvariants from "./scripts/lint/eslint-plugin-auth-invariants.mjs";
 import lazyRequiresRetry from "./scripts/lint/eslint-plugin-lazy-requires-retry.mjs";
 import useAuthRequiresProvider from "./scripts/lint/eslint-plugin-use-auth-requires-provider.mjs";
 import noAnonymousMutation from "./scripts/lint/eslint-plugin-no-anonymous-mutation.mjs";
+import noRpcThenCatch from "./scripts/lint/eslint-plugin-no-rpc-then-catch.mjs";
 
 export default tseslint.config(
   { ignores: ["dist"] },
@@ -43,6 +44,10 @@ export default tseslint.config(
           "no-direct-error-reporter": noDirectErrorReporter,
           "no-raw-functions-invoke": noRawFunctionsInvoke,
           "no-supabase-single": noSupabaseSingle,
+          // 2026-06-08 — guards against `supabase.rpc(...).catch(...)` which
+          // throws "catch is not a function" at runtime (root cause of 18
+          // `email_failed` audit rows on 2026-06-05).
+          "no-rpc-then-catch": noRpcThenCatch,
         },
       },
       "auth-invariants": authInvariants,
@@ -100,6 +105,7 @@ export default tseslint.config(
       "triage-permanent/no-direct-error-reporter": "warn",
       "triage-permanent/no-raw-functions-invoke": "warn",
       "triage-permanent/no-supabase-single": "warn",
+      "triage-permanent/no-rpc-then-catch": "error",
       "auth-invariants/no-bare-password-set-input": "error",
       "auth-invariants/no-raw-password-update": "error",
       // Part 1 §1.5 — bare React.lazy white-screens on stale chunks after a
