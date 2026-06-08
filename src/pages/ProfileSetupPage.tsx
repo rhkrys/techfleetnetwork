@@ -296,7 +296,9 @@ export default function ProfileSetupPage() {
             <SearchFirstCombobox id="setup-timezone-trigger" open={timezoneOpen} onOpenChange={setTimezoneOpen} selectedValue={form.timezone} selectedLabel={selectedTimezoneLabel} emptyLabel="Search timezone" searchPlaceholder="Start typing a city, region, or GMT offset…" emptyMessage="No timezone found." options={TIMEZONES.map((tz) => ({ value: tz.value, label: tz.label }))} icon={<Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />} invalid={!!errors.timezone} triggerClassName={bc("timezone", form.timezone)} onSelect={(value) => { setForm({ ...form, timezone: value }); setTimezoneOpen(false); markTouched("timezone"); }} />
           </ValidatedField>
 
-          <ProfileDiscordConnector />
+          <ScopedErrorBoundary label="Discord connector">
+            <ProfileDiscordConnector />
+          </ScopedErrorBoundary>
 
           {/* Activity Interests */}
           <div className="space-y-3">
