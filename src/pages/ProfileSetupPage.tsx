@@ -21,6 +21,7 @@ import { AvatarUpload } from "@/components/AvatarUpload";
 import { ExperienceAreasSelect } from "@/components/ExperienceAreasSelect";
 import { SearchFirstCombobox } from "@/components/profile/SearchFirstCombobox";
 import { ProfileDiscordConnector } from "@/components/profile/ProfileDiscordConnector";
+import { ScopedErrorBoundary } from "@/components/ScopedErrorBoundary";
 import { ValidatedField } from "@/components/ui/validated-field";
 import { validationBorderClass, getFieldValidationState, showFormErrors, scrollToFirstError } from "@/lib/form-validation";
 import { toast } from "sonner";
