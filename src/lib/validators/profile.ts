@@ -1,6 +1,15 @@
 import { z } from "zod";
 import { safeMultilineTextSchema, safeRequiredTextSchema, safeShortTextSchema, safeStringArraySchema, safeUrlSchema } from "@/lib/validators/shared-input";
 
+/**
+ * Maximum experience areas a member may select. Shared by the schema (this
+ * file) AND the UI picker so the client can disable extra checkboxes once
+ * the cap is reached — eliminating the `validation_rejected: experience_areas`
+ * event class (7 events / 4 users in the 7d window before this fix).
+ */
+export const MAX_EXPERIENCE_AREAS = 30;
+
+
 // A03: Input validation with strict sanitization
 const safeText = (label: string, max: number) =>
   safeRequiredTextSchema(label, max);
