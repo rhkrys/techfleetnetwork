@@ -34,6 +34,11 @@ export function isChunkLoadMessage(msg: string): boolean {
     msg.includes("Importing a module script failed") ||
     msg.includes("error loading dynamically imported module") ||
     msg.includes("Unable to preload CSS") ||
+    // Firefox / Safari wording variants — same root cause (stale chunk URL
+    // 404s after a new deploy invalidated the previous hash). Matching by
+    // structure (NetworkError + a JS asset URL) keeps us future-proof.
+    /NetworkError.*(dynamically imported module|\/assets\/.+\.js)/i.test(msg) ||
+    /TypeError:\s*Failed to fetch.*\/assets\/.+\.(js|css)(\?|$)/i.test(msg) ||
     /ChunkLoadError/i.test(msg)
   );
 }
