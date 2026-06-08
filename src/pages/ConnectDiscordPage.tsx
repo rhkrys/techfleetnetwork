@@ -30,6 +30,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useJourneyProgress } from "@/hooks/use-journey-progress";
 import { ProfileDiscordConnector } from "@/components/profile/ProfileDiscordConnector";
+import { ScopedErrorBoundary } from "@/components/ScopedErrorBoundary";
 
 const TASK_ID = "connect-discord";
 const PHASE = "first_steps" as const;
