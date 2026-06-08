@@ -12,14 +12,29 @@
 
 const EXTENSION_FRAME_RE = /(chrome|moz|safari-web)-extension:\/\//i;
 const ABOUT_FRAME_RE = /(^|\s)at\s+about:/i;
+// Translation extensions (Google Translate, Transover, DeepL, etc.) mutate the
+// live DOM under React. When React then tries to reconcile, the expected node
+// has been moved or removed and the browser throws
+// `NotFoundError: Failed to execute 'insertBefore'/'removeChild' on 'Node'`.
+// Unrecoverable extension noise — never a Tech Fleet bug. Drop at the
+// reporter; the surrounding <ScopedErrorBoundary> remounts the subtree.
+const DOM_EXTENSION_RE = /Failed to execute '(insertBefore|removeChild|appendChild)' on 'Node'/i;
 
 export interface ClassifiedError {
   /** Should this error be reported to audit_log / agent_fix_queue? */
   report: boolean;
   /** Reason for dropping (logged locally, not reported). */
-  reason?: "extension_frame" | "offline" | "hidden_tab_fetch" | "aborted";
+  reason?: "extension_frame" | "offline" | "hidden_tab_fetch" | "aborted" | "dom_extension_mutation";
   /** Should the caller retry transparently? */
   retriable: boolean;
+}
+
+/** Public — also used by <ScopedErrorBoundary> to trigger silent remount. */
+export function isDomExtensionMutationError(err: unknown): boolean {
+  if (!err) return false;
+  const e = err as { name?: string; message?: string };
+  if (e.name !== "NotFoundError") return false;
+  return DOM_EXTENSION_RE.test(e.message ?? "");
 }
 
 interface MaybeError {
