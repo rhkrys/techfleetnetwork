@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import { profileSchema, ACTIVITY_OPTIONS, PROFILE_FIELD_LABELS, PROFILE_FIELD_GUIDANCE } from "@/lib/validators/profile";
 import { showFormErrors, scrollToFirstError } from "@/lib/form-validation";
 import { MultiSelect, type MultiSelectOption } from "@/components/ui/multi-select";
-import { EXPERIENCE_AREAS, EDUCATION_OPTIONS } from "@/lib/application-options";
+import { EDUCATION_OPTIONS } from "@/lib/application-options";
 import { ExperienceAreasSelect } from "@/components/ExperienceAreasSelect";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
