@@ -463,8 +463,7 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
             <div className="space-y-1.5">
               <Label>Experience areas</Label>
               <p className="text-xs text-muted-foreground">What areas do you want to gain experience in?</p>
-              <MultiSelect
-                options={EXPERIENCE_AREAS.map((e) => ({ value: e, label: e }))}
+              <ExperienceAreasSelect
                 selected={form.experience_areas}
                 onChange={(v) => setForm({ ...form, experience_areas: v })}
                 placeholder="Search and select areas..."
