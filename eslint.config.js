@@ -16,6 +16,7 @@ import authInvariants from "./scripts/lint/eslint-plugin-auth-invariants.mjs";
 import lazyRequiresRetry from "./scripts/lint/eslint-plugin-lazy-requires-retry.mjs";
 import useAuthRequiresProvider from "./scripts/lint/eslint-plugin-use-auth-requires-provider.mjs";
 import noAnonymousMutation from "./scripts/lint/eslint-plugin-no-anonymous-mutation.mjs";
+import noRpcThenCatch from "./scripts/lint/eslint-plugin-no-rpc-then-catch.mjs";
 
 export default tseslint.config(
   { ignores: ["dist"] },
