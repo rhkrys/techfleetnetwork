@@ -83,15 +83,17 @@ export default function ConnectDiscordPage() {
         </div>
       </div>
 
-      <ProfileDiscordConnector
-        heading="Discord account"
-        intro="Link your account through the verified Tech Fleet Discord flow."
-        onLinked={() => {
-          if (completionShownRef.current) return;
-          completionShownRef.current = true;
-          setShowCompletionDialog(true);
-        }}
-      />
+      <ScopedErrorBoundary label="Connect to Discord">
+        <ProfileDiscordConnector
+          heading="Discord account"
+          intro="Link your account through the verified Tech Fleet Discord flow."
+          onLinked={() => {
+            if (completionShownRef.current) return;
+            completionShownRef.current = true;
+            setShowCompletionDialog(true);
+          }}
+        />
+      </ScopedErrorBoundary>
 
       <Dialog open={showCompletionDialog} onOpenChange={setShowCompletionDialog}>
         <DialogContent className="sm:max-w-md text-center">
