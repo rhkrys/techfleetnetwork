@@ -73,6 +73,13 @@ export function classify(value: unknown): ClassifiedError {
     return { report: false, reason: "extension_frame", retriable: false };
   }
 
+  // 1b. DOM mutation collision caused by a translation extension — same
+  //     class of "not our bug, but no extension frame in the stack because
+  //     React's reconciler is what actually threw."
+  if (isDomExtensionMutationError(value)) {
+    return { report: false, reason: "dom_extension_mutation", retriable: true };
+  }
+
   // 2. Aborted requests are expected on unmount / query-key change.
   if (isAbort(err)) {
     return { report: false, reason: "aborted", retriable: false };
