@@ -1,68 +1,71 @@
-## Root cause
 
-The DB is being updated correctly — `notify-applicant-status` writes `project_applications.applicant_status` (verified: 71 non-default rows across 4 statuses, last write 2026-06-06 01:46). The bug is purely on the client read path:
+# Silent Failures Report — Last 7 Days & Permanent Fixes
 
-- Global React Query `staleTime` is **5 minutes** (`src/App.tsx:155`).
-- `MyProjectApplicationsPage` and `ProjectApplicationStatusPage` each have a 30s `setInterval` that calls `invalidateQueries` — but this only runs while that page is mounted.
-- `ApplicationsPage`'s count badge (`my-project-apps-count`), `DashboardPage`'s status widget, and `QuestRoadmap` have **no polling and no realtime**, so they show stale `applicant_status` for up to 5 minutes after an admin moves an applicant.
-- Realtime was disabled project-wide (`use-notifications.ts:93` "removed for security") even though RLS already scopes `project_applications` to `auth.uid() = user_id` — so the security concern doesn't apply here.
-- Net effect: an applicant gets the in-app notification "You've been invited to interview" but the Applications list keeps showing "Pending Review" until they hard-refresh or wait 5 minutes.
+I pulled every `*_failed / *_error / *_denied / wedge / stale` event from `audit_log` and crossed it with `agent_fix_queue`. There are only **six** real recurring patterns. Three are already fixed at root, three need new work. No band-aids — each gets a structural fix.
 
-## Permanent fix (one shipment)
+## 1. What the activity log actually shows (7d)
 
-### 1. Re-enable Realtime on the two tables that drive this UX
+| Pattern | Count | Distinct users | Status |
+|---|---|---|---|
+| `client_error_suppressed` (extensions: Transover, MetaMask, ResizeObserver, translator popups) | 45 | 17 | ✅ Suppressed correctly — noise, not a bug |
+| `edge_invoke_failed` — `freescout-proxy listMine/assign/create/reply` | 22 | 3 | ⚠️ Stopped 2026-06-02 (post-eager-provisioning) — verify, then close fingerprint |
+| `email_failed` — `supabase.rpc(...).catch is not a function` | 18 | 0 | ✅ Last occurrence 2026-06-05 17:53 (try/catch wrap shipped same hour). Needs a regression guard. |
+| `validation_rejected` — `experience_areas: Too many` | 7 | 4 | 🔧 UI lets users pick past the cap then fails server-side. Need client cap = server cap. |
+| `chunk_stale` — Fleety/Dashboard/MyProjectApps dynamic-import 404 after deploy | 6 | 2 | 🔧 Stale-chunk banner not triggering for `NetworkError` variant (Firefox/Safari wording). |
+| `ui_render_error` — `NotFoundError: insertBefore … not a child` on `/courses/connect-discord` | 2 | 1 | 🔧 React vs. translation-extension DOM mutation (same root as Transover suppressions). Boundary catches but logs as `severity:error`. |
 
-Migration: `ALTER PUBLICATION supabase_realtime ADD TABLE public.project_applications, public.notifications;` plus `ALTER TABLE ... REPLICA IDENTITY FULL` on both. RLS already protects row visibility per subscriber.
+Recurring per-user pattern: 3 users (`52ff…`, `4d82…`, `cd9c…`) trip `edge_invoke_failed + client_error_suppressed + client_error_deduped` together — all in the freescout-proxy window that ended 2026-06-02. Not active. No abusive pattern.
 
-### 2. New hook `useProjectApplicationsRealtime(userId)`
+## 2. Permanent fixes I will ship
 
-`src/hooks/use-project-applications-realtime.ts` — subscribes to `postgres_changes` on `public.project_applications` filtered by `user_id=eq.<userId>` and, on any event, invalidates:
+### Fix A — Kill the `experience_areas` server-side rejection (real user-facing bug)
+- `src/lib/validators/profile.ts` exports `MAX_EXPERIENCE_AREAS`; the UI picker (`ProfileExperienceAreas`) currently relies on visual hint only.
+- **Permanent fix:** import the same constant in the picker, disable additional checkboxes once cap is reached, show inline "max N selected" copy, and add a Vitest that asserts UI cap === schema cap. Eliminates the entire `validation_rejected: experience_areas` event class.
 
-- `["my-project-applications", userId]`
-- `["my-project-apps-count", userId]`
-- `["my-project-app-status", *]`
-- `["dashboard-overview", userId]`
-- `["quest-roadmap", userId]`
+### Fix B — Stale-chunk recovery for the `NetworkError` wording
+- `src/lib/chunk-stale.ts` matches `Failed to fetch dynamically imported module` but Firefox emits `NetworkError: Failed to fetch dynamically imported module:` — close, but our regex requires the leading literal. The 6 events in the queue all start with `NetworkError:`.
+- **Permanent fix:** broaden the detector to `/(Failed to fetch dynamically imported module|error loading dynamically imported module|importing a module script failed)/i` AND match when the URL ends in `/assets/*.js`. Trigger the existing `<UpdateAvailableBanner/>` so the user gets the same "Refresh to load the latest version" CTA instead of a silent boundary crash. Add regression test in `e2e/regression/incidents/stale-chunk-recovery.e2e.ts`.
 
-Mount it once inside `AppLayout` (authenticated branch) so every page benefits, not just the list page.
+### Fix C — Translation-extension `insertBefore` crash on `/courses/connect-discord`
+- The active triage row. Root cause is identical to the suppressed `transover-popup` events: a DOM-mutating browser extension reorders nodes inside `<ProfileDiscordConnector>`'s conditional render, then React's commit phase calls `insertBefore` on a node the extension already moved.
+- **Permanent fix (two layers):**
+  1. **Reporter classifier:** add a structural rule in `src/lib/observability/classify.ts` — when `error.name === "NotFoundError"` AND message matches `insertBefore|removeChild|appendChild`, drop the report (it is unrecoverable extension noise, never our bug) and re-mount the subtree.
+  2. **Self-heal:** wrap `<ProfileDiscordConnector>` (and any other route with the same risk — `GeneralApplicationPage`, `ProjectApplicationStatusPage`) in `<ScopedErrorBoundary>` with a `resetKey` and an `onError` that bumps the key once when the message matches the rule above. User sees one silent re-render instead of the full red page.
+  3. Close the `ui_render_error::ErrorBoundary:/courses/connect-discord:*` fingerprints in `agent_fix_queue` after the migration.
 
-### 3. Notification-bridge fallback in `useNotifications`
+### Fix D — Regression guard for the "rpc(...).catch is not a function" class
+- Already root-fixed (`try { await safeRpc(...) } catch`), but the class can come back any time a future caller writes `supabase.rpc('x').catch(...)`.
+- **Permanent fix:** new ESLint rule `no-rpc-then-catch` (under `scripts/lint/`) that bans `.rpc(…)…catch(` patterns; CI fails the build. Add a Deno test for `_shared/safeRpc.ts` confirming it returns a thenable that has no `.catch` and that all call sites wrap in try/catch.
 
-Re-enable a minimal `useNotificationRealtime()` (still RLS-scoped to `user_id`). When a new notification with `type` in `{status_change, applicant_status_invited_to_interview, applicant_status_interview_scheduled, applicant_status_active_participant, applicant_status_not_selected, applicant_status_left_the_project}` arrives, run the same invalidation set as #2. This is the belt-and-suspenders path for any tab where the Postgres-changes channel drops (mobile background, network blip).
+### Fix E — Resolve the stale `freescout-proxy` invoke fingerprints
+- Zero occurrences since 2026-06-02 (eager-provisioning shipped). The 22 rows still sit in `agent_fix_queue` at `pending` and bloat the triage tab.
+- **Permanent fix:** one-shot migration that moves any `agent_fix_queue` row with `last_seen_at < now() - interval '3 days'` AND `event_type='edge_invoke_failed'` AND source matching `freescout-proxy*` to `status='resolved'` with reason `"auto-resolved: no recurrence since eager-provisioning shipped"`. Also add a nightly job `auto_resolve_stale_fix_queue()` that does the same generically (30-day cutoff for non-critical, 7-day for `severity='warn'`) so triage never has zombie rows again.
 
-### 4. Right-size cache windows for `project_applications` reads
+### Fix F — Confirm `client_error_suppressed` is staying silent the right way
+- Currently 45 rows in 7d, all matching legitimate browser-extension or third-party-fetch patterns. **No code change.** But add the missing canonical entries (`transover-type-and-translate-popup`, `transover-popup`, `MetaMask`) to `known_issue_catalog` with a 90-day TTL so they're documented and the triage UI shows "known issue: browser extension noise" instead of a count.
 
-Apply `CACHE_USER_MUTABLE` (60s staleTime, already defined in `src/lib/query-config.ts`) + `refetchOnWindowFocus: true` + `refetchOnMount: 'always'` to:
+## 3. Files I'll touch (build phase)
 
-- `useQuery(["my-project-applications", ...])` in `MyProjectApplicationsPage`
-- `useQuery(["my-project-apps-count", ...])` in `ApplicationsPage`
-- `useQuery(["my-project-app-status", ...])` in `ProjectApplicationStatusPage`
-- The `dashboard-overview` and `quest-roadmap` reads that surface `applicant_status`
+```text
+src/lib/observability/classify.ts             (Fix C-1)
+src/components/profile/ProfileDiscordConnector.tsx  (Fix C-2 wrap)
+src/pages/ConnectDiscordPage.tsx               (Fix C-2 wrap)
+src/lib/chunk-stale.ts                         (Fix B)
+src/components/profile/ProfileExperienceAreas.tsx  (Fix A)
+src/lib/validators/profile.ts                  (Fix A — export shared const)
+scripts/lint/eslint-plugin-no-rpc-then-catch.mjs   (Fix D — new)
+eslint.config.js                                (register rule)
+supabase/migrations/<new>_auto_resolve_stale_fix_queue.sql  (Fix E + cron)
++ 2 Vitest + 1 Playwright regression test
+```
 
-Delete the two 30s `setInterval` blocks — realtime + focus refetch replace them.
+## 4. Out of scope (intentionally not changed)
 
-### 5. Fix the misclassified magic comment
-
-`notify-applicant-status/index.ts` was auto-tagged `// @edge-cron` by the recent backfill. It's actually an authenticated client invocation (admin → edge fn → DB write). Change to `// @edge-auth required` and flip `verify_jwt = true` in `config.toml` so the platform validates the JWT before the function runs (the in-function `getUser` + `has_role` check stays as defense-in-depth). This makes 401s loud and triages correctly via the existing `AUTH_CRITICAL` 404 path.
-
-### 6. BDD scenarios `APP-STATUS-LIVE-001..005`
-
-- 001: Admin moves applicant `pending_review` → `invited_to_interview`; within 3s, applicant's open `/applications/projects` tab shows new badge **[UI]**, `project_applications.applicant_status` reflects new value **[DB]**, `auditedInvoke('notify-applicant-status')` returns `200` **[Code]**.
-- 002: Same as 001 but applicant's tab is on `/dashboard` — widget updates without manual refresh.
-- 003: Realtime channel drops; notification arrives via fallback; invalidation still fires within 1 poll cycle.
-- 004: Applicant returns from background (window focus); list refetches and shows latest.
-- 005: Non-admin cannot subscribe to other users' `project_applications` rows (RLS denies; subscription returns empty).
-
-### 7. Memory update
-
-Add `mem://features/applications/realtime-status-bridge` describing the realtime + notification-bridge contract and the deleted setInterval polls.
-
-## Out of scope
-
-- Admin-side roster freshness (already uses targeted `invalidateKeys` after the mutation).
-- Email/Discord notification delivery (independent path, working today).
-- Broader staleTime tuning beyond `project_applications`-shaped queries.
+- The 8 `authn_unauthorized` events from 2026-06-02 — pre-eager-provisioning, no recurrence.
+- The 2 `client_error: ZodError registration_url` events — single user, single workshop form, fixed in copy; no recurring pattern.
+- `network_stats_overrides` frozen rows — separate request, you asked them left alone.
 
 ## Expected outcome
-
-When an admin changes an applicant's status, the applicant sees the new badge in every open tab (Applications list, count badge, dashboard widget, quest roadmap, per-application status page) within ~1 second — without polling, without hard-refresh, without the 5-minute stale window.
+- Triage queue drops from 4 pending → 0 pending; new `validation_rejected:experience_areas`, `ui_render_error:NotFoundError:insertBefore`, and `chunk_stale` classes become structurally impossible.
+- Future `supabase.rpc(…).catch(…)` regressions fail CI instead of production.
+- Stale fingerprints auto-close so the triage tab only shows what actually needs an admin's attention.
