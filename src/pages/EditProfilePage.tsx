@@ -616,7 +616,9 @@ export default function EditProfilePage() {
               </div>
 
               <div className="pt-2 border-t">
-                <ProfileDiscordConnector />
+                <ScopedErrorBoundary label="Discord connector">
+                  <ProfileDiscordConnector />
+                </ScopedErrorBoundary>
               </div>
 
               <div className="space-y-1.5 pt-2 border-t">
