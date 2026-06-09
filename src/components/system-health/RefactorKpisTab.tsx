@@ -153,12 +153,12 @@ export function RefactorKpisTab() {
     staleTime: 30_000,
   });
 
-  // Realtime: refresh when daily snapshots change
+  // Realtime: refresh when daily snapshots change (admin-scoped broadcast topic)
   useEffect(() => {
     if (!user) return;
     const channel = supabase
-      .channel("refactor-kpis-daily")
-      .on("postgres_changes", { event: "*", schema: "public", table: "refactor_kpi_daily" },
+      .channel("admin:refactor-kpis", { config: { private: true } })
+      .on("broadcast", { event: "refactor_kpi_change" },
         () => qc.invalidateQueries({ queryKey: ["refactor-kpis", 30] }))
       .subscribe();
     return () => { supabase.removeChannel(channel); };

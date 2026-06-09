@@ -1,12 +1,13 @@
 /**
- * useProjectApplicationsRealtime — Postgres-changes subscription on
- * public.project_applications scoped to the current user. Any INSERT/UPDATE/
- * DELETE invalidates the React Query caches that surface applicant_status so
- * the Applications list, count badge, dashboard widget, quest roadmap, and
- * per-application status page refresh within ~1 second of an admin move.
+ * useProjectApplicationsRealtime — Realtime Broadcast subscription on the
+ * user-scoped topic `user:<uid>:project-applications`. The DB trigger
+ * `broadcast_project_application_change` fires a private broadcast on this
+ * topic only when the row's `user_id` matches; the realtime.messages RLS
+ * policy further restricts subscribers to their own `user:<uid>:*` topic.
  *
- * RLS already restricts `project_applications` to `auth.uid() = user_id`, so
- * subscribing here only delivers the caller's own rows.
+ * This replaces postgres_changes CDC on public.project_applications so that
+ * no subscriber can ever receive another user's row (the table is no longer
+ * in the supabase_realtime publication).
  */
 import { useEffect } from "react";
 import { useQueryClient } from "@/lib/react-query";
@@ -29,19 +30,10 @@ export function useProjectApplicationsRealtime() {
       queryClient.invalidateQueries({ queryKey: ["my-active-projects", user.id] });
     };
 
+    const topic = `user:${user.id}:project-applications`;
     const channel = supabase
-      .channel(`project-applications-self-${user.id}`)
-      .on(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        "postgres_changes" as any,
-        {
-          event: "*",
-          schema: "public",
-          table: "project_applications",
-          filter: `user_id=eq.${user.id}`,
-        },
-        () => invalidateAll(),
-      )
+      .channel(topic, { config: { private: true } })
+      .on("broadcast", { event: "project_applications_change" }, () => invalidateAll())
       .subscribe();
 
     return () => {
