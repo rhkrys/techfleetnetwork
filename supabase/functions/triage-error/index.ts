@@ -154,13 +154,17 @@ Deno.serve(withAuditWrapper("triage-error", async (req) => {
         dismissed_reason: reason,
       })
       .eq("id", fixId);
+    // Return 200 (not 409): auto-silence is a successful outcome, and
+    // supabase-js treats any non-2xx as FunctionsHttpError, which the admin
+    // UI then misreports as an edge function failure. Callers branch on
+    // `auto_silenced` to render the silenced state.
     return jsonResponse({
       ok: true,
       auto_silenced: true,
       reason: isOpaqueScriptError ? "opaque_script_error" : "known_issue_catalog_match",
       pattern: knownIssueMatch?.pattern ?? "Script error.",
       ai_call_skipped: true,
-    }, 409);
+    }, 200);
   }
 
   // --- Claim daily budget --------------------------------------------------
