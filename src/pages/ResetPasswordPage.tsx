@@ -88,6 +88,7 @@ export default function ResetPasswordPage() {
   const [checking, setChecking] = useState(true);
   const [attempts, setAttempts] = useState<number>(() => readAttempts());
   const [linkExpired, setLinkExpired] = useState(false);
+  const [recoveryEmail, setRecoveryEmail] = useState<string | null>(null);
   const navigate = useNavigate();
   const recoveredRef = useRef(false);
 
