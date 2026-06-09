@@ -12,6 +12,7 @@ import {
   GeneralApplicationService,
   type GeneralApplication,
 } from "@/services/general-application.service";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { showFormErrors, scrollToFirstError } from "@/lib/form-validation";
 import {
@@ -216,6 +217,13 @@ export function useGeneralApplication() {
         const discord = profile?.discord_username || undefined;
         const discordId = profile?.discord_user_id || undefined;
         DiscordNotifyService.applicationSubmitted(displayName, "General", discord, discordId);
+        // Fire-and-forget confirmation email (idempotent — outbox row + sweeper
+        // back this up if the call fails or the user closes the tab).
+        supabase.functions
+          .invoke("send-application-confirmation", {
+            body: { kind: "general", applicationId: activeApp.id },
+          })
+          .catch(() => { /* sweeper will retry */ });
       } else {
         toast.success(markComplete ? "Application updated!" : "Progress saved");
       }
