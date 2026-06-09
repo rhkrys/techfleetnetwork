@@ -79,7 +79,7 @@ export default function MyClassesPage() {
       cellRenderer: (p: ICellRendererParams<ClassRow>) => {
         if (!p.data) return null;
         return (
-          <div className="flex items-center gap-2 h-full">
+          <div className="flex items-center gap-2">
             <a
               href={`/teach/classes/${p.data.id}`}
               onClick={(e) => { e.preventDefault(); navigate(`/teach/classes/${p.data!.id}`); }}
@@ -141,7 +141,7 @@ export default function MyClassesPage() {
         if (!p.data) return null;
         const c = p.data;
         return (
-          <div className="flex items-center gap-1.5 h-full">
+          <div className="flex items-center gap-1.5">
             <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); navigate(`/teach/classes/${c.id}/edit`); }}>
               Edit
             </Button>

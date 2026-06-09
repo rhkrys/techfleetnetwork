@@ -137,7 +137,7 @@ export default function AdminClassesPage() {
         if (!p.data) return null;
         const c = p.data;
         return (
-          <div className="flex items-center gap-1.5 h-full">
+          <div className="flex items-center gap-1.5">
             <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); navigate(`/teach/classes/${c.id}`); }}>
               Review
             </Button>
