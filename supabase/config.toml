@@ -286,3 +286,8 @@ project_id = "iqsjhrhsjlgjiaedzmtz"
     verify_jwt = false
   [functions.edge-deploy-smoke]
     verify_jwt = false
+  [functions.auth-prober]
+    # Cron-poked synthetic auth probe. Authorizes via shared
+    # `authorizeServiceRoleRequest` (accepts both legacy service_role
+    # JWTs and opaque sb_secret_* tokens), so `verify_jwt = false`.
+    verify_jwt = false
