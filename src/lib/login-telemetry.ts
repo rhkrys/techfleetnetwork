@@ -21,6 +21,7 @@ export type LoginOutcome =
   | "mfa_required"
   | "redirected"
   | "session_incomplete"
+  | "client_session_write_failed"
   | "network_error"
   | "server_error"
   | "stale_chunk_recovery"

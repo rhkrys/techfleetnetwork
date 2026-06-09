@@ -3,9 +3,17 @@
  * honest, recovery-focused messaging and only penalize the user (device
  * lockout + server rate-limit increment) on confirmed credential rejects.
  *
- * See LCL-FIX-003 / LCL-FIX-005.
+ * AUTH-VICHEA-FIX (2026-06-09): classifier is now CODE-FIRST. It recognises
+ * typed error classes (ClientSessionWriteError) and server-issued codes
+ * (`invalid_credentials`) BEFORE falling back to message-string matching.
+ * The string "invalid login response" used to map to INVALID_CREDENTIALS
+ * via the bare "invalid login" pattern — that pattern has been removed.
+ * Only explicit credential phrases match now.
+ *
+ * See LCL-FIX-003 / LCL-FIX-005 / AUTH-VICHEA-001.
  */
 import { isAuthThrottleCaptchaError } from "@/lib/auth-throttle-captcha";
+import { isClientSessionWriteError } from "@/lib/auth/session-health";
 
 export type AuthErrorKind =
   | "INVALID_CREDENTIALS"
@@ -14,6 +22,7 @@ export type AuthErrorKind =
   | "RATE_LIMITED"
   | "DOMAIN_INVALID"
   | "SESSION_INCOMPLETE"
+  | "CLIENT_SESSION_WRITE_FAILED"
   | "NETWORK"
   | "SERVER"
   | "UNKNOWN";
@@ -25,11 +34,16 @@ export interface ClassifiedAuthError {
   countsAgainstUser: boolean;
 }
 
+// AUTH-VICHEA-FIX: removed bare "invalid login" — too broad, matched the
+// client-side ClientSessionWriteError message ("Invalid login response").
+// Use explicit credential-only phrases. Server `invalid_credentials` code is
+// matched via codeOf() above and never reaches this list.
 const CRED_PATTERNS = [
-  "invalid login",
+  "invalid login credentials",
   "invalid credentials",
   "invalid email or password",
   "email and password didn't match",
+  "incorrect email or password",
 ];
 
 const DOMAIN_PATTERNS = [
@@ -76,10 +90,39 @@ function statusOf(err: unknown): number | undefined {
   return typeof s === "number" ? s : undefined;
 }
 
+function codeOf(err: unknown): string | undefined {
+  const c = (err as { code?: unknown }).code;
+  return typeof c === "string" ? c : undefined;
+}
+
 export function classifyAuthError(err: unknown): ClassifiedAuthError {
   const raw = messageOf(err);
   const msg = raw.toLowerCase();
   const status = statusOf(err);
+  const code = codeOf(err);
+
+  // AUTH-VICHEA-001: CODE-FIRST — a client-side session-write failure is
+  // recognised by its typed class, never by message text. It must NEVER
+  // count against the user (no lockout, no rate-limit increment, no CAPTCHA
+  // refresh-as-penalty). Returning SESSION_INCOMPLETE keeps the existing UX
+  // copy path while ensuring countsAgainstUser stays false.
+  if (isClientSessionWriteError(err)) {
+    return {
+      kind: "CLIENT_SESSION_WRITE_FAILED",
+      message: "Sign-in didn't complete cleanly. Please try again — your account is safe and no attempts were counted.",
+      countsAgainstUser: false,
+    };
+  }
+
+  // Server-issued credential rejection (typed code from the auth backend).
+  // Match BEFORE any message-based heuristics so backend taxonomy wins.
+  if (code === "invalid_credentials" || code === "INVALID_CREDENTIALS") {
+    return {
+      kind: "INVALID_CREDENTIALS",
+      message: "That email and password didn't match. Double-check, or use one of the recovery options below.",
+      countsAgainstUser: true,
+    };
+  }
 
   if (isAuthThrottleCaptchaError(err)) {
     return {
