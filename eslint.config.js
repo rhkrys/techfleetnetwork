@@ -108,6 +108,14 @@ export default tseslint.config(
       "triage-permanent/no-rpc-then-catch": "error",
       "auth-invariants/no-bare-password-set-input": "error",
       "auth-invariants/no-raw-password-update": "error",
+      // Rebuild §8 — single source of truth guards. Warn-only initially so
+      // the legacy auth surface (LoginPage, AuthService, RateLimitService…)
+      // does not brick CI; promote to "error" after each surface migrates
+      // to `src/features/auth/**`.
+      "auth-invariants/no-direct-supabase-auth": "warn",
+      "auth-invariants/no-direct-failure-counters": "warn",
+      "auth-invariants/no-auth-storage-literals": "warn",
+      "auth-invariants/no-auth-booleans-in-ui": "error",
       // Part 1 §1.5 — bare React.lazy white-screens on stale chunks after a
       // deploy; the wrapper retries 3× then surfaces <UpdateAvailableBanner/>.
       "lazy/requires-retry": "warn",

@@ -488,6 +488,42 @@ export type Database = {
         }
         Relationships: []
       }
+      auth_prober_results: {
+        Row: {
+          correlation_id: string
+          created_at: string
+          details: Json
+          error_code: string | null
+          id: string
+          latency_ms: number
+          outcome: string
+          prober_user_agent: string
+          stage: string
+        }
+        Insert: {
+          correlation_id: string
+          created_at?: string
+          details?: Json
+          error_code?: string | null
+          id?: string
+          latency_ms: number
+          outcome: string
+          prober_user_agent: string
+          stage: string
+        }
+        Update: {
+          correlation_id?: string
+          created_at?: string
+          details?: Json
+          error_code?: string | null
+          id?: string
+          latency_ms?: number
+          outcome?: string
+          prober_user_agent?: string
+          stage?: string
+        }
+        Relationships: []
+      }
       auth_wedge_events: {
         Row: {
           id: number
