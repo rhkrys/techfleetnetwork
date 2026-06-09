@@ -344,6 +344,45 @@ export type Database = {
         }
         Relationships: []
       }
+      application_confirmation_outbox: {
+        Row: {
+          application_id: string
+          attempts: number
+          enqueued_at: string
+          id: string
+          kind: string
+          last_error: string | null
+          project_id: string | null
+          recipient_email: string | null
+          sent_at: string | null
+          user_id: string
+        }
+        Insert: {
+          application_id: string
+          attempts?: number
+          enqueued_at?: string
+          id?: string
+          kind: string
+          last_error?: string | null
+          project_id?: string | null
+          recipient_email?: string | null
+          sent_at?: string | null
+          user_id: string
+        }
+        Update: {
+          application_id?: string
+          attempts?: number
+          enqueued_at?: string
+          id?: string
+          kind?: string
+          last_error?: string | null
+          project_id?: string | null
+          recipient_email?: string | null
+          sent_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       audit_event_policy: {
         Row: {
           cap_per_minute: number
