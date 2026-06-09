@@ -1,93 +1,153 @@
-# Why blast emails are stuck "pending"
+## Why refactor (not patch again)
 
-## Root cause (from live data + code)
+The email subsystem has grown to **28 edge functions, a 732-line `process-email-queue`, a 571-line `transactional-email` helper, 30+ patch migrations, 3 pgmq queues, 2 throttle tables, and 6 cron jobs**. Each incident has added another knob (workspace token bucket, per-lane cooldown, frequency cap, bulk-paused flag, workspace-quota cap, resume button…). The knobs interact in ways no one document captures, so every new failure mode requires another patch. That's the smell.
 
-At **13:31:50 UTC** the bulk lane sent one announcement that received a single 429 from the email provider:
+This plan replaces the surface area with a **clean four-layer architecture**, a **single Outbox**, and a **single Scheduler with policy plug-ins** — the way Stripe, Shopify, and Twilio run their notification systems.
 
-```
-rate_limit:workspace:email_send  → "High demand! Please try again in a moment."
-```
+---
 
-`process-email-queue` (lines 619‑633) then set `email_send_state.bulk_retry_after_until` to **14:29:01 UTC** — a **~58‑minute cooldown** — because it honors the provider's `Retry-After` header verbatim (`Math.max(providerSecs, expSecs)`). Confirmed in DB:
+## Target architecture
 
-- `bulk_consecutive_rate_limits = 1`
-- `bulk_retry_after_until = 2026‑06‑09 14:29:01+00`
-- 112 `pending` rows in `email_send_log` over the last 2 hours
-- Logs every 5s: `Skipping queue (cooldown active) { queue: "bulk_emails", until: "...14:29:01..." }`
-
-So a **single** workspace‑wide 429 froze the entire bulk lane for nearly an hour, even though:
-
-1. The workspace token bucket (`consume_workspace_email_token`) already halved itself on the 429 and is structurally pacing every send below the provider ceiling.
-2. The 429 is workspace‑scoped (shared with auth + transactional), not bulk‑specific — the provider's giant `Retry-After` is meant for the bucket as a whole, not as a "stop sending bulk for an hour" instruction.
-3. Auth and transactional lanes have their own per‑queue cooldown rows and were unaffected — exactly as designed — but the bulk lane is doing nothing while the bucket is already gating safely.
-
-## Permanent fix
-
-Three coordinated changes so this never recurs:
-
-### 1. Cap per‑lane cooldown for workspace‑quota 429s (`process-email-queue/index.ts`)
-
-When `isWorkspaceQuota === true`, the workspace token bucket is the primary throttle. The per‑lane cooldown is only a "second line of defense" (per the existing comment at line 469) and should be **short**. Change the cooldown calc so workspace‑quota 429s use a bounded backoff:
-
-```ts
-const isWorkspaceQuota = /rate_limit:workspace:email_send/i.test(errorMsg)
-// Per-lane cooldown: workspace-quota 429s use a short cap because the
-// token bucket has already halved and gates every subsequent send.
-// True per-lane 429s (provider lane-specific) honor full Retry-After.
-const baseCap = isWorkspaceQuota ? 120 : 900           // 2 min vs 15 min
-const expBase = isWorkspaceQuota ? 30  : 60
-const expSecs = Math.min(expBase * Math.pow(2, nextCount - 1), baseCap)
-const providerSecs = isWorkspaceQuota
-  ? Math.min(getRetryAfterSeconds(error), baseCap)     // ignore giant header
-  : getRetryAfterSeconds(error)
-const retryAfterSecs = Math.max(providerSecs, expSecs)
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│ Interface layer                                                     │
+│   • HTTP edge fns (thin) — auth-email-hook, send-announcement-email │
+│   • Admin console (System Health → Email v2)                        │
+│   • Cron (pg_cron) — drains queues, runs reconcilers                │
+└──────────────┬──────────────────────────────────────────────────────┘
+               │ commands / queries
+┌──────────────▼──────────────────────────────────────────────────────┐
+│ Application layer (use-cases, transaction script per command)       │
+│   EnqueueEmail · DispatchDue · HandleProviderResult · ReplayDlq     │
+│   PauseLane · ResumeLane · ExpireStalePending · GcRetention         │
+└──────────────┬──────────────────────────────────────────────────────┘
+               │ ports (interfaces)
+┌──────────────▼──────────────────────────────────────────────────────┐
+│ Domain layer (pure, no I/O)                                         │
+│   Aggregates:  Email · Lane · ThrottlePolicy · Suppression          │
+│   Value objs:  Recipient · Template · Lane(auth|tx|bulk)            │
+│                ProviderResult · BackoffDecision · Idempotency       │
+│   Policies:    LaneRouter · BackoffStrategy · FairnessGuard         │
+│                FrequencyCap · SuppressionGate                       │
+└──────────────┬──────────────────────────────────────────────────────┘
+               │ implemented by
+┌──────────────▼──────────────────────────────────────────────────────┐
+│ Infrastructure layer                                                │
+│   OutboxRepo (pg)      ProviderPort (Lovable Emails today,          │
+│   SuppressionRepo (pg)   Resend/SES tomorrow — swap one file)       │
+│   ThrottleRepo (pg)    Clock · Logger · Tracer · MetricSink         │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-Result for the same incident: 30s lane cooldown instead of 58 min. Bucket continues to enforce real pacing on every tick.
+### Single Outbox (replaces 3 pgmq queues + log + state mash-up)
 
-### 2. Reset stale `bulk_consecutive_rate_limits` on idle ticks
+One canonical table `email_outbox(id, lane, template, recipient, payload, idempotency_key, status, attempts, next_attempt_at, last_error, dlq_reason, created_at, sent_at, dlq_at, run_id)` with status `pending → sending → sent | dlq | suppressed | expired`. The Scheduler claims `(status='pending' AND next_attempt_at<=now())` rows with `FOR UPDATE SKIP LOCKED` — no pgmq, no visibility-timeout footguns, no parallel "lanes vs queues" mental model. Lane is just a column the Scheduler reads.
 
-Today the counter only resets on a successful send (line 547‑557). If a 429 hits and then traffic goes quiet, the counter stays at N and the next 429 doubles. Add a one‑line reset when a lane has zero queued messages AND cooldown has fully expired (idle = no contention).
+`email_send_log` becomes a **view** over `email_outbox` for backward compat; the existing 1,845 legacy `pending` rows are migrated and aged-out by the new `ExpireStalePending` job in one shot.
 
-### 3. Admin "Resume bulk lane now" button + audit row (System Health → Email tab)
+### Adaptive Scheduler with policy plug-ins
 
-Add an admin‑only RPC `clear_email_lane_cooldown(lane text)` (SECURITY DEFINER, `has_role(auth.uid(),'admin')`) that:
+A single SECURITY-DEFINER RPC `claim_due_emails(p_now, p_max)` returns a fair, throttle-aware batch — auth first, transactional second, bulk last, subject to:
 
-- Clears `<lane>_retry_after_until` and `<lane>_consecutive_rate_limits`.
-- Writes `record_event(sink:='audit_log', kind:='email_lane_cooldown_cleared', severity:='info', payload:=jsonb_build_object('lane', lane, 'cleared_by', auth.uid()))` so we have a tamper‑evident trail.
+1. `FairnessGuard` — bulk may not consume the last workspace token while auth/tx have work waiting.
+2. `BackoffStrategy.next(attempt, providerHint, recent429s)` — pure function; replaces 4 scattered `Math.max/min` blocks.
+3. `FrequencyCap.check(recipient, lane, template, window)` — already designed, moved into domain.
+4. `SuppressionGate.check(recipient)` — pre-claim filter.
+5. `CircuitBreaker.permit(lane)` — opens on 3 workspace-quota 429s in 10 min, half-opens after a probe interval, closes on 5 successes. **Replaces the bulk_paused flag + the lane cooldown + the 120-s cap.**
 
-Surface a "Resume now" button next to the existing bulk‑lane status in the System Health Email tab (visible only while a cooldown is active). One click → 200 OK → next cron tick (≤5s) drains the queue.
+All five policies are pure TS in the domain layer, contract-tested without DB or network — every "knob" becomes a tunable in a single `EmailPolicyConfig` row.
 
-### 4. Immediately unfreeze the current incident
+### Provider port
 
-In the same migration, run:
+`ProviderPort.send(EmailEnvelope) → ProviderResult` is the only I/O boundary. Today: `LovableEmailsProvider`. Adding Resend/SES tomorrow = one file, no behavior change anywhere else.
 
-```sql
-UPDATE email_send_state
-   SET bulk_retry_after_until = NULL,
-       bulk_consecutive_rate_limits = 0,
-       updated_at = now()
- WHERE id = 1 AND bulk_retry_after_until > now();
-```
+### Observability built in, not bolted on
 
-so the 112 pending blast rows start sending within 5s of deploy.
+- One emitter `EmailEventSink.emit(kind, payload, severity)` → `ops_events` (telemetry, 90-day TTL) **and** `audit_log` (compliance) per the existing tri-partite contract.
+- Per-event OpenTelemetry-style trace: `enqueue → claim → send → result` linked by `idempotency_key`.
+- `ops_metrics` daily rollup: sent / dlq / rate_limited / circuit_open_seconds per lane.
 
-## BDD coverage to add
+### Operator console (System Health → Email v2)
 
-`EMAIL-RL-015` workspace‑quota 429 → lane cooldown ≤ 120s regardless of provider Retry-After.
-`EMAIL-RL-016` idle tick with expired cooldown resets `*_consecutive_rate_limits` to 0.
-`EMAIL-RL-017` admin can clear lane cooldown via RPC; non‑admins receive permission error; audit_log captures the action.
+One screen replacing the scattered cards. Real-time view of every lane's: circuit state, queue depth, p50/p95 attempt latency, last 50 events, top 5 failing templates. Actions: Pause, Resume, Drain DLQ, Replay row, Force-expire stale.
 
-## What I will NOT change
+---
 
-- Auth & transactional cooldown logic (already isolated, working as designed).
-- Token bucket math (already self‑healing — halves on 429, +10% per 500 wins).
-- Bulk hourly cap, batch size, pacing knobs.
+## Migration plan (strangler fig, zero downtime)
 
-## Files touched (build phase)
+| Phase | Outcome | Risk |
+|---|---|---|
+| **0. Freeze** | Lock the 6 cron jobs at current behavior; tag the current state as `pre-refactor-2026-06-09` in `refactor_kpi_daily`. | None |
+| **1. Domain + ports** | Pure TS in `supabase/functions/_shared/email/domain/**` + `ports/**` with 60+ contract tests. No runtime touch. | None |
+| **2. Infrastructure** | `email_outbox` table + RPCs (`claim_due_emails`, `record_attempt_result`, `policy_get/set`). Backfill from `email_send_log`+`pgmq` in a single transaction; pgmq queues drained then dropped after Phase 4. | Low — additive |
+| **3. Application + new dispatcher** | New edge fn `email-dispatcher` runs the Scheduler. `auth-email-hook` + `send-transactional-email` + `send-announcement-email` switch to `EnqueueEmail` use-case (thin shim — same external contract). | Medium — feature-flag `email_pipeline_v2_enabled` defaults OFF; flip per-lane (auth → tx → bulk) over 3 days. |
+| **4. Decommission** | Delete `process-email-queue`, `reconcile-stuck-emails`, `replay-dlq-emails`, `replay-email-dlq`, `email-pipeline-health` (folded into v2 console). Drop pgmq queues + 4 throttle/state columns. Convert `email_send_log` to view. | Low — gated by Phase 3 stability for 72 h |
+| **5. Console v2** | New `EmailControlCenter` page replaces 6 scattered cards. Old cards stay during transition, then removed. | None |
+| **6. Hard-cap regressions** | ESLint rule `no-legacy-email-send` bans `supabase.functions.invoke("send-transactional-email"|"send-announcement-email"|"send-project-blast")` — must go through `EnqueueEmail`. CI guard `check-email-architecture.mjs` walks `supabase/functions/_shared/email/**` and fails on direct provider/DB calls outside the infra layer. | None |
 
-- `supabase/functions/process-email-queue/index.ts` — bounded workspace‑quota cooldown + idle counter reset.
-- `supabase/migrations/<ts>_email_lane_cooldown_controls.sql` — `clear_email_lane_cooldown` RPC, grants, immediate unfreeze.
-- `src/pages/admin/SystemHealth/EmailTab.tsx` (or equivalent) — "Resume now" button.
-- `supabase/seed/bdd/email-rate-limit.sql` — 3 new scenarios.
-- Memory update: extend `mem://features/email-queue-per-lane-cooldown` with the workspace‑quota cap rule.
+Each phase is independently shippable and behind feature flag `email_pipeline_v2_enabled` (per-lane bitmask). Rollback = flip flag; no data loss because v1 and v2 read/write the same `email_outbox` table after Phase 2.
+
+---
+
+## Security posture (no regressions; tightens several)
+
+- All new RPCs `SECURITY DEFINER`, `SET search_path = public`, `REVOKE ALL FROM public/anon/authenticated`, explicit `GRANT EXECUTE TO service_role` (admin-callable ones get `has_role(auth.uid(),'admin')` gate).
+- `email_outbox` RLS: deny everything except `service_role`; admin reads via `get_email_outbox(...)` RPC that strips PII payload by default.
+- `payload` column encrypted-at-rest via `pgcrypto` symmetric with key in vault (rotation-safe — matches existing PII pattern).
+- All edge fns continue to use `_shared/service-role-auth.ts` (JWT **or** `sb_secret_*` token) per the cron-key memory.
+- No new public endpoints. No widening of CORS. Idempotency required on every Enqueue call.
+
+---
+
+## Cost posture (target ≥ 30 % drop)
+
+| Lever | Before | After |
+|---|---|---|
+| Cron invocations | 6 jobs × 12/min = 72/min | 1 dispatcher × 12/min + 2 reconcilers × 1/min = 14/min (−80 %) |
+| Per-claim DB round-trips | 4 (pgmq pop + state read + log upsert + audit) | 1 (`claim_due_emails` returns batch w/ side-effects) |
+| Edge fn cold-starts | ~2 K/day across 6 fns | ~400/day on dispatcher (pooled isolate) |
+| Provider 429 retry waste | Re-sends on every cooldown expiry | CircuitBreaker prevents probe storms (−95 % wasted sends) |
+| `email_send_log` storage | ~1 row per attempt × 5 retries | 1 row per email; attempt history compacted into `attempts` jsonb |
+
+---
+
+## What stays
+
+- Provider (Lovable Emails) — unchanged. ProviderPort wraps it.
+- React Email templates under `_shared/email-templates/**` and `_shared/transactional-email-templates/**` — unchanged, the rendering helper just moves behind `TemplateRenderer` port.
+- `suppressed_emails`, `email_unsubscribe_tokens`, `email_workspace_throttle` (becomes the persistence row for `CircuitBreaker` + `TokenBucket` policies — renamed columns, data preserved).
+- All BDD `EMAIL-RL-001..017`, `ANN-CAP-001..005`, `EMAIL-HYG-*` — re-asserted against v2 contracts; none deleted, ~20 new added.
+
+## What ships in this PR series (each its own approved migration/diff)
+
+1. `supabase/functions/_shared/email/domain/**` + 60 contract tests.
+2. `supabase/functions/_shared/email/application/**` + use-case tests.
+3. `supabase/functions/_shared/email/infrastructure/**` (Pg repos, LovableEmailsProvider).
+4. Migration: `email_outbox` table + RPCs + backfill + view-shim for `email_send_log`.
+5. New edge fn `email-dispatcher` (pinned in `config.toml`, `verify_jwt=false`, service-role-auth).
+6. Shims: `auth-email-hook`, `send-transactional-email`, `send-announcement-email`, `send-project-blast`, `send-application-confirmation`, `send-community-agreement-trigger`, `send-magic-link` → call `EnqueueEmail`.
+7. Feature flag `email_pipeline_v2_enabled` in `app_settings`; per-lane bitmask.
+8. New `src/pages/admin/SystemHealth/EmailControlCenter.tsx` + lane cards, replacing `EmailBulkThrottleCard` + scattered tiles.
+9. Decommission migration: drops `pgmq.q_auth_emails`, `q_transactional_emails`, `q_bulk_emails`, `bulk_paused`, `*_consecutive_rate_limits`, `*_retry_after_until`, `bulk_retry_after_until`, the standalone `clear_email_lane_cooldown` RPC (replaced by `pause_lane`/`resume_lane`).
+10. ESLint rule `no-legacy-email-send` + CI guard `scripts/ci/check-email-architecture.mjs`.
+11. BDD: `EMAIL-V2-001..030` covering ports, scheduler fairness, CircuitBreaker transitions, idempotency, suppression, frequency cap, expiry, retention, console actions, security RLS.
+12. Memory updates: replace `mem://features/email-queue-per-lane-cooldown`, `mem://features/email-lane-isolation`, `mem://features/email-workspace-token-bucket`, `mem://features/email-frequency-cap` with one canonical `mem://features/email-subsystem-v2` plus a deprecation note pointing to it.
+13. Runbook `docs/runbooks/email-subsystem-v2.md` — operator guide, SLOs, rollback, on-call playbook.
+
+## What I will NOT do in this refactor
+
+- Switch email provider — out of scope; the port is the seam.
+- Change React Email templates — they render identically.
+- Touch auth flows themselves — `auth-email-hook` keeps its public contract.
+- Re-architect notifications (push, in-app, Discord) — separate subsystem; only the email path moves.
+
+## Verification gates per phase
+
+- Phase 1–3: 100 % unit on domain + use-cases; integration on infrastructure; staging soak 24 h before flag flip.
+- Phase 3 flag flip: per-lane canary 1 % → 10 % → 100 % over 24 h, gated on `ops_metrics`: zero rise in `dlq_count`, p95 send latency ≤ baseline, zero `severity:error` rows tagged `lane:<x>`.
+- Phase 4 decommission: blocked until 72 h post-100 % with all gates green.
+- Phase 6: CI red unless `check-email-architecture` and `no-legacy-email-send` pass.
+
+## Estimated size
+
+~3,500 lines added (mostly tests), ~2,200 deleted, net **−1,200**, plus 6 deleted edge fns, plus 12 deprecated migrations folded into 1 backfill. One review-able PR per phase.
