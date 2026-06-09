@@ -280,11 +280,15 @@ export function useGeneralApplication() {
     label: "general-application",
     onSave: async (fields) => {
       if (!activeApp) return;
-      const payload: Partial<GeneralApplication> = { ...fields, status: "draft" };
-      await GeneralApplicationService.save(activeApp.id, payload);
-      // Profile-side fields are non-critical for autosave; sync best-effort.
+      // CRITICAL: never write `status` from autosave. A late-arriving autosave
+      // would otherwise clobber a just-submitted `completed` row back to `draft`
+      // (race), leaving `completed_at` set but `status='draft'` — the exact
+      // pattern that caused the submission loop. Status is owned solely by
+      // handleSave(markComplete).
+      await GeneralApplicationService.save(activeApp.id, fields);
       try { await syncProfileFields(); } catch { /* non-blocking */ }
     },
+
   });
 
   return {
