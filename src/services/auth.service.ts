@@ -157,13 +157,19 @@ async function logAdminLoginIfElevated(userId?: string | null) {
 // interleave writes to `sb-*-auth-token` and produce a malformed JWT.
 let setSessionInflight: Promise<unknown> | null = null;
 async function singleFlightSetSession(tokens: { access_token: string; refresh_token: string }) {
-  // AUTH-WEDGE Phase 4 + Phase 2: refuse to ever write a structurally invalid
-  // JWT into storage, AND purge any residual sb-*-auth-token rows from a
-  // prior session before writing the new ones (kills the race that produced
-  // post-signin bad_jwt under LCL-FIX-004).
-  if (!isLikelyJwt(tokens.access_token) || !isLikelyJwt(tokens.refresh_token)) {
+  // AUTH-VICHEA-FIX (2026-06-09): validate access_token as a JWT (it IS a JWT)
+  // and refresh_token as an OPAQUE string (it is NOT a JWT). The previous code
+  // applied isLikelyJwt() to BOTH, which rejected every valid Supabase login
+  // because refresh tokens are opaque, then misclassified the throw as
+  // INVALID_CREDENTIALS and locked the user out. Throw a typed error so
+  // downstream classifiers can recognise it by code, never by message string.
+  if (!isLikelyJwt(tokens.access_token)) {
     purgeLocalAuthState({ reason: "shape_invalid", source: "signin" });
-    throw new Error("Invalid login response");
+    throw new ClientSessionWriteError("access_token_invalid");
+  }
+  if (!isOpaqueRefreshToken(tokens.refresh_token)) {
+    purgeLocalAuthState({ reason: "shape_invalid", source: "signin" });
+    throw new ClientSessionWriteError("refresh_token_invalid");
   }
   purgeLocalAuthState({ reason: "manual", source: "signin", silent: true });
 
