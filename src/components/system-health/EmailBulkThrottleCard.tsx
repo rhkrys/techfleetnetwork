@@ -71,6 +71,27 @@ export function EmailBulkThrottleCard() {
   const stuckTone = stuckCount === 0 ? "default" : stuckCount < 5 ? "secondary" : "destructive";
   const stateTone = paused ? "destructive" : adaptiveOn ? "secondary" : "default";
 
+  const inCooldown = Boolean(
+    s?.bulk_retry_after_until && new Date(s.bulk_retry_after_until) > new Date(),
+  );
+
+  const handleResume = async () => {
+    setResuming(true);
+    try {
+      const { error } = await supabase.rpc("clear_email_lane_cooldown" as never, {
+        p_lane: "bulk_emails",
+      } as never);
+      if (error) throw error;
+      toast({ title: "Bulk lane resumed", description: "Pending emails will send within 5 seconds." });
+      await qc.invalidateQueries({ queryKey: ["email", "bulk-lane-state"] });
+      await qc.invalidateQueries({ queryKey: ["email", "stuck-pending"] });
+    } catch (e) {
+      toast({ title: "Could not resume bulk lane", description: String((e as Error)?.message ?? e), variant: "destructive" });
+    } finally {
+      setResuming(false);
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -78,10 +99,24 @@ export function EmailBulkThrottleCard() {
           <Activity className="h-4 w-4" aria-hidden /> Bulk email lane
           <Badge variant={stateTone}>{paused ? "Paused" : adaptiveOn ? "Throttled" : "Normal"}</Badge>
           {isPeak && <Badge variant="outline">Peak hour (UTC {nowHour}:00)</Badge>}
+          {inCooldown && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="ml-auto"
+              disabled={resuming}
+              onClick={handleResume}
+            >
+              {resuming ? "Resuming…" : "Resume now"}
+            </Button>
+          )}
         </CardTitle>
         <CardDescription>
           Off-peak delay {s?.bulk_send_delay_ms ?? "—"}ms · Peak delay {s?.bulk_send_delay_peak_ms ?? "—"}ms ·
           Cap {s?.bulk_hourly_cap ?? "—"}/hr
+          {inCooldown && s?.bulk_retry_after_until && (
+            <> · Cooldown until {new Date(s.bulk_retry_after_until).toLocaleTimeString()}</>
+          )}
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3 sm:grid-cols-3 text-sm">
