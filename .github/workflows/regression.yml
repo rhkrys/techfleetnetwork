@@ -152,6 +152,15 @@ jobs:
       - name: Verify plpgsql RETURNS TABLE functions guard against OUT-param shadowing
         run: node scripts/ci/check-plpgsql-variable-conflict.mjs
 
+      - name: Verify auth failure counters only fire from AuthFailurePolicy
+        run: node scripts/ci/check-auth-counter-coverage.mjs
+
+      - name: Verify every auth flow returns Result<AuthOk, AuthErr>
+        run: node scripts/ci/check-auth-result-contract.mjs
+
+      - name: Verify auth feature layer graph (ui → state → flows → services → domain)
+        run: node scripts/ci/check-auth-layer-graph.mjs
+
 
       - name: Verify no opaque "Script error." rows landed in last 24h
         if: ${{ env.PGHOST != '' }}
