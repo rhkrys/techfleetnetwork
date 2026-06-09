@@ -1,9 +1,12 @@
-import { useQuery } from "@/lib/react-query";
+import { useQuery, useQueryClient } from "@/lib/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Activity, Clock, MailWarning } from "lucide-react";
+import { useState } from "react";
+import { toast } from "@/hooks/use-toast";
 
 interface SendStateRow {
   bulk_send_delay_ms: number | null;
