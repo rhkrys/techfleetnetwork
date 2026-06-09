@@ -7465,6 +7465,7 @@ export type Database = {
       cleanup_request_idempotency: { Args: never; Returns: number }
       cleanup_stuck_email_queue: { Args: never; Returns: number }
       cleanup_two_factor_login_artifacts: { Args: never; Returns: number }
+      clear_email_lane_cooldown: { Args: { p_lane: string }; Returns: Json }
       clear_login_rate_limit_for_email: {
         Args: { p_email: string }
         Returns: undefined
