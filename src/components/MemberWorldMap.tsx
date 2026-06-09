@@ -134,11 +134,6 @@ export function MemberWorldMap() {
           <span>
             <strong className="text-foreground">{countriesRepresented}</strong> countries
           </span>
-          {totalExternal > 0 && (
-            <span className="text-xs">
-              ({totalPlatform.toLocaleString()} platform members + {totalExternal.toLocaleString()} historical)
-            </span>
-          )}
           {unspecifiedCount > 0 && (
             <span>
               <strong className="text-foreground">{unspecifiedCount}</strong> not specified
@@ -186,11 +181,7 @@ export function MemberWorldMap() {
                 {isHovered && hasMembers && name && (() => {
                   const centroid = pathGenerator.centroid(feat as unknown as GeoJSON.Feature);
                   if (!centroid || isNaN(centroid[0])) return null;
-                  const plat = platformById.get(id) || 0;
-                  const ext = externalById.get(id) || 0;
-                  const label = ext > 0
-                    ? `${name}: ${count} all-time (${plat} platform + ${ext} historical)`
-                    : `${name}: ${count} ${count === 1 ? "signup" : "signups"}`;
+                  const label = `${name}: ${count} ${count === 1 ? "signup" : "signups"}`;
                   const labelWidth = Math.max(140, label.length * 6.5);
 
                   return (
