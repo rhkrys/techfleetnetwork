@@ -118,14 +118,15 @@ export default function ResetPasswordPage() {
       // For the "valid" path, confirm we ACTUALLY hold a session before
       // unlocking the form. If not — downgrade to expired-link branch.
       if (valid) {
-        const sessionOk = await confirmActiveRecoverySession();
-        if (!sessionOk) {
+        const session = await confirmActiveRecoverySession();
+        if (!session.ok) {
           settled = true;
           beacon(branch, "no_session_returned", shape);
           setValidRecovery(false);
           setChecking(false);
           return;
         }
+        setRecoveryEmail(session.email);
       }
       settled = true;
       beacon(branch, outcome, shape);
