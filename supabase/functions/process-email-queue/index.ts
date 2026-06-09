@@ -244,6 +244,21 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
       console.log('Skipping queue (cooldown active)', { queue, until: cooldownUntil[queue] })
       continue
     }
+    // Idle counter reset: if a previous 429 left a non-zero consecutive
+    // counter behind and the cooldown has fully expired, reset it now so
+    // the NEXT 429 doesn't double from a stale baseline. Without this,
+    // counters drift upward over days and cooldowns escalate unfairly.
+    if ((consecutive[queue] ?? 0) > 0 && (!cooldownUntil[queue] || new Date(cooldownUntil[queue] as string) <= new Date())) {
+      try {
+        await supabase
+          .from('email_send_state')
+          .update({ [counterCols[queue]]: 0, updated_at: new Date().toISOString() })
+          .eq('id', 1)
+        consecutive[queue] = 0
+      } catch (resetErr) {
+        console.warn('Idle counter reset failed — non-fatal', { queue, err: String(resetErr) })
+      }
+    }
     // Bulk lane respects the global pause switch.
     if (queue === 'bulk_emails' && bulkPaused) {
       console.log('Bulk lane paused via email_send_state.bulk_paused')
