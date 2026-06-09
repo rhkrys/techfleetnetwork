@@ -25,17 +25,23 @@ export function makeLovableEmailsProvider(): EmailProviderPort {
             return { kind: 'permanent_fail', statusCode: 422, message: `unknown template: ${env.template}` };
           }
           html = await renderAsync(React.createElement(entry.component, env.payload as never));
-          subject = subject || entry.subject;
+          const entrySubject = typeof entry.subject === 'function'
+            ? entry.subject(env.payload as Record<string, unknown>)
+            : entry.subject;
+          subject = subject || entrySubject;
         }
-        const res = await sendLovableEmail({
-          senderDomain: SENDER_DOMAIN,
-          from: `${FROM_MAILBOX}@${FROM_DOMAIN}`,
-          to: env.recipient,
-          subject,
-          html,
-          replyTo: REPLY_TO,
-          headers: { 'X-Idempotency-Key': env.idempotencyKey, 'X-Message-Id': env.messageId },
-        } as never);
+        const res = await sendLovableEmail(
+          {
+            senderDomain: SENDER_DOMAIN,
+            from: `${FROM_MAILBOX}@${FROM_DOMAIN}`,
+            to: env.recipient,
+            subject,
+            html,
+            replyTo: REPLY_TO,
+            headers: { 'X-Idempotency-Key': env.idempotencyKey, 'X-Message-Id': env.messageId },
+          } as never,
+          {} as never,
+        );
         return { kind: 'sent', statusCode: 200, providerMessageId: (res as { id?: string })?.id };
       } catch (err) {
         const e = err as { status?: number; message?: string; retryAfterSeconds?: number | null };
