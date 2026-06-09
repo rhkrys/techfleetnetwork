@@ -7911,6 +7911,24 @@ export type Database = {
           min_occurrences_before_escalate: number
         }[]
       }
+      get_auth_funnel_counts: {
+        Args: { p_window?: string }
+        Returns: {
+          count: number
+          stage: string
+        }[]
+      }
+      get_auth_prober_health: {
+        Args: never
+        Returns: {
+          latest_at: string
+          latest_error_code: string
+          latest_latency_ms: number
+          latest_outcome: string
+          stage: string
+          two_strike: boolean
+        }[]
+      }
       get_class_email_recipients: {
         Args: { p_class_id: string }
         Returns: {
