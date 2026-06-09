@@ -26,7 +26,7 @@ export function useAuthMachine(mode: AuthMachineMode) {
     send({ type: "SUBMIT", email, password, captchaToken });
     const result = await signInWithPassword({ email, password, captchaToken, correlationId });
     if (result.ok) send({ type: "SERVER_OK", value: result.value });
-    else send({ type: "SERVER_ERR", error: result.error });
+    else send({ type: "SERVER_ERR", error: (result as { error: import("../domain/auth-result").AuthErr }).error });
     return result;
   };
 
@@ -34,7 +34,7 @@ export function useAuthMachine(mode: AuthMachineMode) {
     send({ type: "SUBMIT", email: "" });
     const result = await signInWithGoogle({ redirectTo, correlationId });
     if (result.ok) send({ type: "SERVER_OK", value: result.value });
-    else send({ type: "SERVER_ERR", error: result.error });
+    else send({ type: "SERVER_ERR", error: (result as { error: import("../domain/auth-result").AuthErr }).error });
     return result;
   };
 
@@ -42,7 +42,7 @@ export function useAuthMachine(mode: AuthMachineMode) {
     send({ type: "SUBMIT", email: input.email, password: input.password });
     const result = await signUp({ ...input, correlationId });
     if (result.ok) send({ type: "SERVER_OK", value: result.value });
-    else send({ type: "SERVER_ERR", error: result.error });
+    else send({ type: "SERVER_ERR", error: (result as { error: import("../domain/auth-result").AuthErr }).error });
     return result;
   };
 
@@ -50,7 +50,7 @@ export function useAuthMachine(mode: AuthMachineMode) {
     send({ type: "SUBMIT", email });
     const result = await requestPasswordReset({ email, redirectTo, correlationId });
     if (result.ok) send({ type: "SERVER_OK", value: result.value });
-    else send({ type: "SERVER_ERR", error: result.error });
+    else send({ type: "SERVER_ERR", error: (result as { error: import("../domain/auth-result").AuthErr }).error });
     return result;
   };
 
@@ -58,7 +58,7 @@ export function useAuthMachine(mode: AuthMachineMode) {
     send({ type: "SUBMIT", email: state.context.email, password: newPassword });
     const result = await completePasswordReset({ newPassword, correlationId });
     if (result.ok) send({ type: "SERVER_OK", value: result.value });
-    else send({ type: "SERVER_ERR", error: result.error });
+    else send({ type: "SERVER_ERR", error: (result as { error: import("../domain/auth-result").AuthErr }).error });
     return result;
   };
 
