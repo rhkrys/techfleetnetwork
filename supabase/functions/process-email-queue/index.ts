@@ -244,6 +244,21 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
       console.log('Skipping queue (cooldown active)', { queue, until: cooldownUntil[queue] })
       continue
     }
+    // Idle counter reset: if a previous 429 left a non-zero consecutive
+    // counter behind and the cooldown has fully expired, reset it now so
+    // the NEXT 429 doesn't double from a stale baseline. Without this,
+    // counters drift upward over days and cooldowns escalate unfairly.
+    if ((consecutive[queue] ?? 0) > 0 && (!cooldownUntil[queue] || new Date(cooldownUntil[queue] as string) <= new Date())) {
+      try {
+        await supabase
+          .from('email_send_state')
+          .update({ [counterCols[queue]]: 0, updated_at: new Date().toISOString() })
+          .eq('id', 1)
+        consecutive[queue] = 0
+      } catch (resetErr) {
+        console.warn('Idle counter reset failed — non-fatal', { queue, err: String(resetErr) })
+      }
+    }
     // Bulk lane respects the global pause switch.
     if (queue === 'bulk_emails' && bulkPaused) {
       console.log('Bulk lane paused via email_send_state.bulk_paused')
@@ -613,12 +628,23 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
           }
 
 
-          // Exponential backoff per consecutive 429 for the OFFENDER lane:
-          // 60s → 120s → 240s …, cap 900s. Honor provider Retry-After when
-          // present; otherwise grow exponentially from a 60s base.
-          const providerSecs = getRetryAfterSeconds(error)
+          // Exponential backoff per consecutive 429 for the OFFENDER lane.
+          // Workspace-quota 429s use a SHORT cap (max 120s) because the
+          // workspace token bucket has already halved itself on this 429 and
+          // gates every subsequent send across all lanes/isolates — the per-
+          // lane cooldown is only a second line of defense. Honoring the
+          // provider's giant Retry-After header here would freeze a lane for
+          // ~1h while the bucket is already pacing safely (root cause of the
+          // 2026-06-09 stuck-blast incident).
+          // True per-lane 429s (provider lane-specific) still honor full
+          // Retry-After up to the 900s cap.
+          const baseCap = isWorkspaceQuota ? 120 : 900
+          const expBase = isWorkspaceQuota ? 30 : 60
+          const providerSecs = isWorkspaceQuota
+            ? Math.min(getRetryAfterSeconds(error), baseCap)
+            : getRetryAfterSeconds(error)
           const nextCount = (consecutive[offenderLane] ?? 0) + 1
-          const expSecs = Math.min(60 * Math.pow(2, nextCount - 1), 900)
+          const expSecs = Math.min(expBase * Math.pow(2, nextCount - 1), baseCap)
           const retryAfterSecs = Math.max(providerSecs, expSecs)
           const until = new Date(Date.now() + retryAfterSecs * 1000).toISOString()
 
