@@ -269,7 +269,7 @@ export const AuthService = {
           });
           return setSessionResult as { data: { session: AuthSession | null; user: AuthSession["user"] | null }; error: null } | { data: null; error: Error };
         }
-        return { data: null, error: new Error("Invalid login response") };
+        return { data: null, error: new ClientSessionWriteError("set_session_rejected", "Sign-in didn't complete — please try again.") };
       });
       if (error) {
         const fnError = await readFunctionError(error);
