@@ -237,13 +237,14 @@ export default function ResetPasswordPage() {
       setValidRecovery(false);
       return;
     }
-    const sessionOk = await confirmActiveRecoverySession();
-    if (!sessionOk) {
+    const session = await confirmActiveRecoverySession();
+    if (!session.ok) {
       recordResetTelemetry({ branch: "update_submit", outcome: "update_session_expired" });
       setLinkExpired(true);
       setValidRecovery(false);
       return;
     }
+    if (session.email && session.email !== recoveryEmail) setRecoveryEmail(session.email);
 
     setError("");
     setErrorCode("");
