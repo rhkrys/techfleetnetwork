@@ -613,12 +613,23 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
           }
 
 
-          // Exponential backoff per consecutive 429 for the OFFENDER lane:
-          // 60s → 120s → 240s …, cap 900s. Honor provider Retry-After when
-          // present; otherwise grow exponentially from a 60s base.
-          const providerSecs = getRetryAfterSeconds(error)
+          // Exponential backoff per consecutive 429 for the OFFENDER lane.
+          // Workspace-quota 429s use a SHORT cap (max 120s) because the
+          // workspace token bucket has already halved itself on this 429 and
+          // gates every subsequent send across all lanes/isolates — the per-
+          // lane cooldown is only a second line of defense. Honoring the
+          // provider's giant Retry-After header here would freeze a lane for
+          // ~1h while the bucket is already pacing safely (root cause of the
+          // 2026-06-09 stuck-blast incident).
+          // True per-lane 429s (provider lane-specific) still honor full
+          // Retry-After up to the 900s cap.
+          const baseCap = isWorkspaceQuota ? 120 : 900
+          const expBase = isWorkspaceQuota ? 30 : 60
+          const providerSecs = isWorkspaceQuota
+            ? Math.min(getRetryAfterSeconds(error), baseCap)
+            : getRetryAfterSeconds(error)
           const nextCount = (consecutive[offenderLane] ?? 0) + 1
-          const expSecs = Math.min(60 * Math.pow(2, nextCount - 1), 900)
+          const expSecs = Math.min(expBase * Math.pow(2, nextCount - 1), baseCap)
           const retryAfterSecs = Math.max(providerSecs, expSecs)
           const until = new Date(Date.now() + retryAfterSecs * 1000).toISOString()
 
