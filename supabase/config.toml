@@ -114,6 +114,14 @@ project_id = "iqsjhrhsjlgjiaedzmtz"
     # JWT to present. Hardened in-code: strict enum allow-lists, body cap,
     # per-IP rate limit, daily-salted IP hash (no raw IPs stored).
     verify_jwt = false
+  [functions.auth-broker]
+    # Single edge function fronting every credentialed auth operation
+    # (sign-in/password, sign-up, password-reset, sign-out, session/refresh,
+    # identity/check, sign-in/google-callback). Public surface — the broker
+    # enforces its own zod input validation, per-IP/per-email rate limits
+    # via peek_rate_limit, and CAPTCHA in-code. Server is the only place
+    # GoTrue error messages may be translated to AuthErrorCode.
+    verify_jwt = false
   [functions.record-auth-recovery]
     # Public reset-flow telemetry beacon — by definition the caller has no
     # valid auth session (that's the failure we are diagnosing). Hardened
