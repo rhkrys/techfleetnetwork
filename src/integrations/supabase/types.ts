@@ -1669,6 +1669,174 @@ export type Database = {
         }
         Relationships: []
       }
+      email_lane_state: {
+        Row: {
+          circuit_state: string
+          consecutive_success: number
+          lane: string
+          opened_at: string | null
+          paused_by_admin: boolean
+          paused_reason: string | null
+          probe_at: string | null
+          recent_429_count: number
+          recent_429_window_start: string | null
+          updated_at: string
+        }
+        Insert: {
+          circuit_state?: string
+          consecutive_success?: number
+          lane: string
+          opened_at?: string | null
+          paused_by_admin?: boolean
+          paused_reason?: string | null
+          probe_at?: string | null
+          recent_429_count?: number
+          recent_429_window_start?: string | null
+          updated_at?: string
+        }
+        Update: {
+          circuit_state?: string
+          consecutive_success?: number
+          lane?: string
+          opened_at?: string | null
+          paused_by_admin?: boolean
+          paused_reason?: string | null
+          probe_at?: string | null
+          recent_429_count?: number
+          recent_429_window_start?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      email_outbox: {
+        Row: {
+          attempt_history: Json
+          attempts: number
+          claimed_at: string | null
+          created_at: string
+          dlq_at: string | null
+          dlq_reason: string | null
+          expires_at: string
+          id: string
+          idempotency_key: string
+          lane: string
+          last_error: string | null
+          last_status_code: number | null
+          message_id: string
+          next_attempt_at: string
+          payload: Json
+          recipient: string
+          run_id: string | null
+          sent_at: string | null
+          status: string
+          subject: string | null
+          template: string
+          trace_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          attempt_history?: Json
+          attempts?: number
+          claimed_at?: string | null
+          created_at?: string
+          dlq_at?: string | null
+          dlq_reason?: string | null
+          expires_at: string
+          id?: string
+          idempotency_key: string
+          lane: string
+          last_error?: string | null
+          last_status_code?: number | null
+          message_id: string
+          next_attempt_at?: string
+          payload?: Json
+          recipient: string
+          run_id?: string | null
+          sent_at?: string | null
+          status?: string
+          subject?: string | null
+          template: string
+          trace_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          attempt_history?: Json
+          attempts?: number
+          claimed_at?: string | null
+          created_at?: string
+          dlq_at?: string | null
+          dlq_reason?: string | null
+          expires_at?: string
+          id?: string
+          idempotency_key?: string
+          lane?: string
+          last_error?: string | null
+          last_status_code?: number | null
+          message_id?: string
+          next_attempt_at?: string
+          payload?: Json
+          recipient?: string
+          run_id?: string | null
+          sent_at?: string | null
+          status?: string
+          subject?: string | null
+          template?: string
+          trace_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      email_policy_config: {
+        Row: {
+          auth_pending_expiry_minutes: number
+          base_backoff_seconds: number
+          cb_close_success_threshold: number
+          cb_half_open_probe_seconds: number
+          cb_open_threshold_429s: number
+          cb_open_window_seconds: number
+          dlq_retention_days: number
+          id: number
+          max_backoff_seconds: number
+          max_batch_size: number
+          min_send_gap_ms: number
+          pending_expiry_minutes: number
+          updated_at: string
+          workspace_quota_cap_seconds: number
+        }
+        Insert: {
+          auth_pending_expiry_minutes?: number
+          base_backoff_seconds?: number
+          cb_close_success_threshold?: number
+          cb_half_open_probe_seconds?: number
+          cb_open_threshold_429s?: number
+          cb_open_window_seconds?: number
+          dlq_retention_days?: number
+          id?: number
+          max_backoff_seconds?: number
+          max_batch_size?: number
+          min_send_gap_ms?: number
+          pending_expiry_minutes?: number
+          updated_at?: string
+          workspace_quota_cap_seconds?: number
+        }
+        Update: {
+          auth_pending_expiry_minutes?: number
+          base_backoff_seconds?: number
+          cb_close_success_threshold?: number
+          cb_half_open_probe_seconds?: number
+          cb_open_threshold_429s?: number
+          cb_open_window_seconds?: number
+          dlq_retention_days?: number
+          id?: number
+          max_backoff_seconds?: number
+          max_batch_size?: number
+          min_send_gap_ms?: number
+          pending_expiry_minutes?: number
+          updated_at?: string
+          workspace_quota_cap_seconds?: number
+        }
+        Relationships: []
+      }
       email_send_log: {
         Row: {
           created_at: string
@@ -1721,6 +1889,7 @@ export type Database = {
           id: number
           per_recipient_bulk_max: number
           per_recipient_bulk_window_hours: number
+          pipeline_v2_lanes_bitmask: number
           retry_after_until: string | null
           send_delay_ms: number
           transactional_consecutive_rate_limits: number
@@ -1746,6 +1915,7 @@ export type Database = {
           id?: number
           per_recipient_bulk_max?: number
           per_recipient_bulk_window_hours?: number
+          pipeline_v2_lanes_bitmask?: number
           retry_after_until?: string | null
           send_delay_ms?: number
           transactional_consecutive_rate_limits?: number
@@ -1771,6 +1941,7 @@ export type Database = {
           id?: number
           per_recipient_bulk_max?: number
           per_recipient_bulk_window_hours?: number
+          pipeline_v2_lanes_bitmask?: number
           retry_after_until?: string | null
           send_delay_ms?: number
           transactional_consecutive_rate_limits?: number
@@ -7442,6 +7613,21 @@ export type Database = {
         }
         Returns: Json
       }
+      claim_due_emails: {
+        Args: { p_max?: number }
+        Returns: {
+          attempts: number
+          id: string
+          idempotency_key: string
+          lane: string
+          message_id: string
+          payload: Json
+          recipient: string
+          subject: string
+          template: string
+          trace_id: string
+        }[]
+      }
       claim_idempotency_key: {
         Args: {
           p_key: string
@@ -7553,6 +7739,19 @@ export type Database = {
       enqueue_email: {
         Args: { payload: Json; queue_name: string }
         Returns: number
+      }
+      enqueue_email_v2: {
+        Args: {
+          p_idempotency_key: string
+          p_lane: string
+          p_message_id: string
+          p_payload: Json
+          p_recipient: string
+          p_subject: string
+          p_template: string
+          p_trace_id?: string
+        }
+        Returns: string
       }
       enqueue_freescout_provisioning: {
         Args: { _kind: string; _user_id: string }
@@ -7894,6 +8093,7 @@ export type Database = {
         Args: { p_content: string; p_title: string; p_url: string }
         Returns: undefined
       }
+      gc_expired_email_outbox: { Args: never; Returns: number }
       get_active_locales: { Args: never; Returns: string[] }
       get_announcement_view_counts: {
         Args: never
@@ -7974,6 +8174,29 @@ export type Database = {
       }
       get_dashboard_overview: { Args: { p_user_id: string }; Returns: Json }
       get_deliverable_context: { Args: { p_id: string }; Returns: Json }
+      get_email_outbox: {
+        Args: {
+          p_lane?: string
+          p_limit?: number
+          p_offset?: number
+          p_status?: string
+        }
+        Returns: {
+          attempts: number
+          created_at: string
+          dlq_at: string
+          dlq_reason: string
+          id: string
+          lane: string
+          last_error: string
+          last_status_code: number
+          next_attempt_at: string
+          recipient: string
+          sent_at: string
+          status: string
+          template: string
+        }[]
+      }
       get_email_pipeline_health: {
         Args: { p_hours?: number; p_limit?: number }
         Returns: Json
@@ -8232,6 +8455,10 @@ export type Database = {
         }
         Returns: string
       }
+      pause_email_lane: {
+        Args: { p_lane: string; p_reason?: string }
+        Returns: undefined
+      }
       peek_rate_limit: {
         Args: {
           p_action: string
@@ -8314,6 +8541,17 @@ export type Database = {
       reconcile_account_orphans: { Args: never; Returns: Json }
       reconcile_course_badge_parity: { Args: never; Returns: Json }
       reconcile_stuck_emails: { Args: never; Returns: Json }
+      record_email_attempt_result: {
+        Args: {
+          p_error?: string
+          p_id: string
+          p_outcome: string
+          p_retry_after_s?: number
+          p_status_code?: number
+          p_workspace_quota?: boolean
+        }
+        Returns: undefined
+      }
       record_event: {
         Args: {
           p_actor?: string
@@ -8408,6 +8646,7 @@ export type Database = {
         Args: { p_action: string; p_identifier: string }
         Returns: undefined
       }
+      resume_email_lane: { Args: { p_lane: string }; Returns: undefined }
       retry_pending_discord_role_grants: { Args: never; Returns: number }
       retry_stuck_fanout_jobs: { Args: never; Returns: number }
       run_auto_remediations: { Args: never; Returns: Json }
