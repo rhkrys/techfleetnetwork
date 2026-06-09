@@ -251,11 +251,11 @@ export function useGeneralApplication() {
       try {
         const fields = gatherSaveFields();
         fields.current_section = nextSection;
-        // Preserve "completed" status — only set draft for non-completed apps
-        if (!isCompleted) {
-          fields.status = "draft";
-        }
+        // Do NOT write `status` here. Status is owned solely by handleSave;
+        // writing "draft" on Next would race with a concurrent Submit and
+        // revert a completed row back to draft.
         await GeneralApplicationService.save(activeApp.id, fields);
+
         await syncProfileFields();
         const updated = await GeneralApplicationService.fetch(activeApp.id);
         if (updated) setActiveApp(updated);
