@@ -16,6 +16,15 @@ interface PasswordSetFieldsProps {
   onBlur?: (field: keyof PasswordSetValue) => void;
   errors?: { password?: string; confirmPassword?: string };
   className?: string;
+  /**
+   * Email tied to the credential. When provided, a hidden
+   * autoComplete="username" input is rendered so browsers + password
+   * managers (Safari, Firefox, 1Password, Bitwarden, Chrome, etc.)
+   * recognize this as a credential-change form and update the stored
+   * password on submit. Without it the old password stays saved and the
+   * member loops back into "invalid credentials" on next sign-in.
+   */
+  username?: string;
 }
 
 export function PasswordSetFields({
@@ -28,6 +37,7 @@ export function PasswordSetFields({
   onBlur,
   errors,
   className,
+  username,
 }: PasswordSetFieldsProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -40,6 +50,18 @@ export function PasswordSetFields({
 
   return (
     <div className={cn("space-y-4", className)} data-auth-password-set-fields>
+      {username ? (
+        <input
+          type="email"
+          name="username"
+          autoComplete="username"
+          value={username}
+          readOnly
+          tabIndex={-1}
+          aria-hidden="true"
+          style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", border: 0 }}
+        />
+      ) : null}
       <div className="space-y-2">
         <Label htmlFor={passwordId}>{labels?.password ?? "New password"}</Label>
         <div className="relative">

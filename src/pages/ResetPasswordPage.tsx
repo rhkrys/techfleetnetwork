@@ -45,13 +45,35 @@ function clearAttempts() {
  * proof completes; otherwise we route to the expired-link branch and
  * never reveal the form.
  */
-async function confirmActiveRecoverySession(): Promise<boolean> {
+async function confirmActiveRecoverySession(): Promise<{ ok: boolean; email: string | null }> {
   try {
     const { data, error } = await supabase.auth.getUser();
-    if (error) return false;
-    return Boolean(data?.user?.id);
+    if (error) return { ok: false, email: null };
+    return { ok: Boolean(data?.user?.id), email: data?.user?.email ?? null };
   } catch {
-    return false;
+    return { ok: false, email: null };
+  }
+}
+
+/**
+ * Tell the browser + password manager that this credential is now valid.
+ * This is the W3C Credential Management API call that Chrome/Edge/Opera/
+ * Samsung Internet + 1Password/Bitwarden/Dashlane/LastPass listen for to
+ * UPDATE the saved password in place. Without it, password managers keep
+ * autofilling the old password on next login → "invalid credentials" →
+ * the member resets again → infinite loop. Safari/Firefox ignore this
+ * call harmlessly (they pick up the credential from the hidden username
+ * + new-password form fields on submit).
+ */
+async function storeCredentialInBrowser(email: string | null, password: string): Promise<void> {
+  if (!email) return;
+  try {
+    const w = window as unknown as { PasswordCredential?: new (init: { id: string; password: string; name?: string }) => Credential };
+    if (typeof navigator === "undefined" || !("credentials" in navigator) || !w.PasswordCredential) return;
+    const cred = new w.PasswordCredential({ id: email, password, name: email });
+    await (navigator.credentials as unknown as { store: (c: Credential) => Promise<void> }).store(cred);
+  } catch {
+    /* non-fatal — the hidden username + new-password form still triggers the native save prompt */
   }
 }
 
@@ -66,6 +88,7 @@ export default function ResetPasswordPage() {
   const [checking, setChecking] = useState(true);
   const [attempts, setAttempts] = useState<number>(() => readAttempts());
   const [linkExpired, setLinkExpired] = useState(false);
+  const [recoveryEmail, setRecoveryEmail] = useState<string | null>(null);
   const navigate = useNavigate();
   const recoveredRef = useRef(false);
 
@@ -95,14 +118,15 @@ export default function ResetPasswordPage() {
       // For the "valid" path, confirm we ACTUALLY hold a session before
       // unlocking the form. If not — downgrade to expired-link branch.
       if (valid) {
-        const sessionOk = await confirmActiveRecoverySession();
-        if (!sessionOk) {
+        const session = await confirmActiveRecoverySession();
+        if (!session.ok) {
           settled = true;
           beacon(branch, "no_session_returned", shape);
           setValidRecovery(false);
           setChecking(false);
           return;
         }
+        setRecoveryEmail(session.email);
       }
       settled = true;
       beacon(branch, outcome, shape);
@@ -213,13 +237,14 @@ export default function ResetPasswordPage() {
       setValidRecovery(false);
       return;
     }
-    const sessionOk = await confirmActiveRecoverySession();
-    if (!sessionOk) {
+    const session = await confirmActiveRecoverySession();
+    if (!session.ok) {
       recordResetTelemetry({ branch: "update_submit", outcome: "update_session_expired" });
       setLinkExpired(true);
       setValidRecovery(false);
       return;
     }
+    if (session.email && session.email !== recoveryEmail) setRecoveryEmail(session.email);
 
     setError("");
     setErrorCode("");
@@ -230,6 +255,11 @@ export default function ResetPasswordPage() {
       setOtherDevicesRevoked(revoked);
       clearAttempts();
       clearAuthLockout();
+      // Tell the browser + password manager to UPDATE the saved credential
+      // immediately. This is the structural fix that prevents the reset
+      // loop: without it, autofill keeps replaying the old password on
+      // next sign-in and the member ends up resetting again.
+      await storeCredentialInBrowser(session.email ?? recoveryEmail, passwordSet.password);
       recordResetTelemetry({ branch: "update_submit", outcome: "update_success" });
       setSuccess(true);
     } catch (err) {
@@ -385,6 +415,7 @@ export default function ResetPasswordPage() {
                   onChange={(next) => { setPasswordSet(next); setError(""); setErrorCode(""); }}
                   touched={touched}
                   onBlur={(field) => setTouched((current) => ({ ...current, [field]: true }))}
+                  username={recoveryEmail ?? undefined}
                 />
 
                 <Button type="submit" className="w-full" disabled={loading || !passwordValidation.isValid}>
