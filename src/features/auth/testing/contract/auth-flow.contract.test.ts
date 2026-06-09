@@ -13,7 +13,7 @@ const VALID_ACCESS =
 const OPAQUE_REFRESH = "v1.MzAxYWY3NTQtMmNkNi00YjVjLWJjNzY";
 
 async function importService() {
-  const mod = await import("../services/auth-flow.service");
+  const mod = await import("../../services/auth-flow.service");
   return mod;
 }
 

@@ -47,7 +47,7 @@ export async function setSessionSafe(tokens: SessionTokens): Promise<void> {
         refresh_token: tokens.refresh_token,
       });
       if (error) {
-        log.warn("setSession rejected", { msg: error.message });
+        log.warn("setSession", "setSession rejected", { msg: error.message });
         throw new ClientSessionWriteError("set_session_rejected", "Sign-in didn't complete — please try again.");
       }
     } finally {
@@ -63,6 +63,6 @@ export async function signOutSafe(): Promise<void> {
     await supabase.auth.signOut();
   } catch (err) {
     // Best-effort: revocation row is the authoritative kill switch.
-    log.warn("signOut threw (non-fatal)", { err: err instanceof Error ? err.message : String(err) });
+    log.warn("signOut", "signOut threw (non-fatal)", { err: err instanceof Error ? err.message : String(err) });
   }
 }

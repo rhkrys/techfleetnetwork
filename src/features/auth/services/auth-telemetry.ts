@@ -73,10 +73,10 @@ export async function emitAuthBeacon(
       p_severity: severity,
       p_source_table: "features/auth",
     } as never);
-    if (error) log.warn("emitAuthBeacon rpc failed", { kind, code: error.code });
+    if (error) log.warn("emit", "emitAuthBeacon rpc failed", { kind, code: error.code });
   } catch (err) {
     // Telemetry is best-effort — must never throw into auth flow.
-    log.warn("emitAuthBeacon threw", { kind, err: err instanceof Error ? err.message : String(err) });
+    log.warn("emit", "emitAuthBeacon threw", { kind, err: err instanceof Error ? err.message : String(err) });
   }
 }
 
