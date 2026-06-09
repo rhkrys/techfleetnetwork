@@ -29,6 +29,7 @@ import { EmailBulkThrottleCard } from "@/components/system-health/EmailBulkThrot
 import { DiscordRepairTab } from "@/components/system-health/DiscordRepairTab";
 import { LoginHealthTab } from "@/components/system-health/LoginHealthTab";
 import { ResetHealthTab } from "@/components/system-health/ResetHealthTab";
+import { AuthFunnelTab } from "@/components/system-health/AuthFunnelTab";
 import { TranslationsTab } from "@/components/admin/system-health/TranslationsTab";
 import { HelpDeskTab } from "@/components/system-health/HelpDeskTab";
 import { RefactorKpisTab } from "@/components/system-health/RefactorKpisTab";
