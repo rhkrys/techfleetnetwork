@@ -22,6 +22,8 @@ import { template as adminMemberAlert } from './admin-member-alert.tsx'
 import { template as classStatusChange } from './class-status-change.tsx'
 import { template as supportTicketReply } from './support-ticket-reply.tsx'
 import { template as resumeApplication } from './resume-application.tsx'
+import { template as generalApplicationSubmitted } from './general-application-submitted.tsx'
+import { template as projectApplicationSubmitted } from './project-application-submitted.tsx'
 
 export const TEMPLATES: Record<string, TemplateEntry> = {
   'interview-invite': interviewInvite,
@@ -37,4 +39,6 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
   'class-status-change': classStatusChange,
   'support-ticket-reply': supportTicketReply,
   'resume-application': resumeApplication,
+  'general-application-submitted': generalApplicationSubmitted,
+  'project-application-submitted': projectApplicationSubmitted,
 }
