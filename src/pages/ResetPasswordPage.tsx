@@ -45,13 +45,35 @@ function clearAttempts() {
  * proof completes; otherwise we route to the expired-link branch and
  * never reveal the form.
  */
-async function confirmActiveRecoverySession(): Promise<boolean> {
+async function confirmActiveRecoverySession(): Promise<{ ok: boolean; email: string | null }> {
   try {
     const { data, error } = await supabase.auth.getUser();
-    if (error) return false;
-    return Boolean(data?.user?.id);
+    if (error) return { ok: false, email: null };
+    return { ok: Boolean(data?.user?.id), email: data?.user?.email ?? null };
   } catch {
-    return false;
+    return { ok: false, email: null };
+  }
+}
+
+/**
+ * Tell the browser + password manager that this credential is now valid.
+ * This is the W3C Credential Management API call that Chrome/Edge/Opera/
+ * Samsung Internet + 1Password/Bitwarden/Dashlane/LastPass listen for to
+ * UPDATE the saved password in place. Without it, password managers keep
+ * autofilling the old password on next login → "invalid credentials" →
+ * the member resets again → infinite loop. Safari/Firefox ignore this
+ * call harmlessly (they pick up the credential from the hidden username
+ * + new-password form fields on submit).
+ */
+async function storeCredentialInBrowser(email: string | null, password: string): Promise<void> {
+  if (!email) return;
+  try {
+    const w = window as unknown as { PasswordCredential?: new (init: { id: string; password: string; name?: string }) => Credential };
+    if (typeof navigator === "undefined" || !("credentials" in navigator) || !w.PasswordCredential) return;
+    const cred = new w.PasswordCredential({ id: email, password, name: email });
+    await (navigator.credentials as unknown as { store: (c: Credential) => Promise<void> }).store(cred);
+  } catch {
+    /* non-fatal — the hidden username + new-password form still triggers the native save prompt */
   }
 }
 
