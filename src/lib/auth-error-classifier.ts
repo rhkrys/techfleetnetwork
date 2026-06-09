@@ -90,10 +90,39 @@ function statusOf(err: unknown): number | undefined {
   return typeof s === "number" ? s : undefined;
 }
 
+function codeOf(err: unknown): string | undefined {
+  const c = (err as { code?: unknown }).code;
+  return typeof c === "string" ? c : undefined;
+}
+
 export function classifyAuthError(err: unknown): ClassifiedAuthError {
   const raw = messageOf(err);
   const msg = raw.toLowerCase();
   const status = statusOf(err);
+  const code = codeOf(err);
+
+  // AUTH-VICHEA-001: CODE-FIRST — a client-side session-write failure is
+  // recognised by its typed class, never by message text. It must NEVER
+  // count against the user (no lockout, no rate-limit increment, no CAPTCHA
+  // refresh-as-penalty). Returning SESSION_INCOMPLETE keeps the existing UX
+  // copy path while ensuring countsAgainstUser stays false.
+  if (isClientSessionWriteError(err)) {
+    return {
+      kind: "CLIENT_SESSION_WRITE_FAILED",
+      message: "Sign-in didn't complete cleanly. Please try again — your account is safe and no attempts were counted.",
+      countsAgainstUser: false,
+    };
+  }
+
+  // Server-issued credential rejection (typed code from the auth backend).
+  // Match BEFORE any message-based heuristics so backend taxonomy wins.
+  if (code === "invalid_credentials" || code === "INVALID_CREDENTIALS") {
+    return {
+      kind: "INVALID_CREDENTIALS",
+      message: "That email and password didn't match. Double-check, or use one of the recovery options below.",
+      countsAgainstUser: true,
+    };
+  }
 
   if (isAuthThrottleCaptchaError(err)) {
     return {
