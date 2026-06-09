@@ -415,6 +415,7 @@ export default function ResetPasswordPage() {
                   onChange={(next) => { setPasswordSet(next); setError(""); setErrorCode(""); }}
                   touched={touched}
                   onBlur={(field) => setTouched((current) => ({ ...current, [field]: true }))}
+                  username={recoveryEmail ?? undefined}
                 />
 
                 <Button type="submit" className="w-full" disabled={loading || !passwordValidation.isValid}>
