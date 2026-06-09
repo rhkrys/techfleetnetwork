@@ -8,7 +8,7 @@ import { validatePasswordSet, type PasswordSetValue } from "@/lib/auth/password-
 import { createAuthThrottleCaptchaError, isAuthThrottleCaptchaError } from "@/lib/auth-throttle-captcha";
 import { validateEmailDomainExists } from "@/lib/email-domain-validation";
 import { getLastActivityAt } from "@/lib/session-activity";
-import { classifyAuthError, isLikelyJwt, purgeLocalAuthState } from "@/lib/auth/session-health";
+import { classifyAuthError, isLikelyJwt, isOpaqueRefreshToken, ClientSessionWriteError, purgeLocalAuthState } from "@/lib/auth/session-health";
 
 
 const log = createLogger("AuthService");
