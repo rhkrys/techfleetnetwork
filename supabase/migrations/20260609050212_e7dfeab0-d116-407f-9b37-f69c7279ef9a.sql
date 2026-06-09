@@ -1,0 +1,2 @@
+UPDATE public.bdd_scenarios SET status = 'implemented', notes = COALESCE(notes,'') || E'\nCovered by src/features/auth/services/auth-failure-policy.ts + contract test (2026-06-09).'
+WHERE scenario_id IN ('AUTH-CORE-005','AUTH-CORE-006','AUTH-CORE-008','AUTH-CORE-009','AUTH-CORE-010','AUTH-CORE-013','AUTH-CORE-018','AUTH-CORE-019','AUTH-CORE-024','AUTH-CORE-025');
