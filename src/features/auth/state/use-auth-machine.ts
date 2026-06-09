@@ -1,5 +1,5 @@
 import { useMachine } from "@xstate/react";
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { createAuthMachine } from "./auth-machine";
 import type { AuthMachineMode } from "./auth-machine.types";
 import { signInWithPassword } from "../flows/sign-in-password.flow";
@@ -14,17 +14,7 @@ import { signInWithPassword } from "../flows/sign-in-password.flow";
  */
 export function useAuthMachine(mode: AuthMachineMode) {
   const machine = useMemo(() => createAuthMachine({ mode }), [mode]);
-  const [state, send, actor] = useMachine(machine, { input: { mode } });
-
-  // Bridge: when machine enters `submitting` from SUBMIT, run the
-  // appropriate flow and dispatch the typed Result back.
-  useEffect(() => {
-    const sub = actor.subscribe((snapshot) => {
-      // no-op subscriber keeps the actor alive across re-renders
-      void snapshot;
-    });
-    return () => sub.unsubscribe();
-  }, [actor]);
+  const [state, send] = useMachine(machine, { input: { mode } });
 
   const submitPassword = async (email: string, password: string, captchaToken?: string) => {
     send({ type: "SUBMIT", email, password, captchaToken });
@@ -34,17 +24,12 @@ export function useAuthMachine(mode: AuthMachineMode) {
       captchaToken,
       correlationId: state.context.correlationId,
     });
-    if (result.ok) send({ type: "SERVER_OK", value: result.value });
-    else send({ type: "SERVER_ERR", error: result.error });
+    if (result.ok === true) {
+      send({ type: "SERVER_OK", value: result.value });
+    } else {
+      send({ type: "SERVER_ERR", error: result.error });
+    }
     return result;
-  };
-
-  return { state, send, submitPassword };
-}
-
-// (unreachable — kept to satisfy old structure)
-function _noop() {
-  return null;
   };
 
   return { state, send, submitPassword };
