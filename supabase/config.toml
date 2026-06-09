@@ -43,6 +43,11 @@ project_id = "iqsjhrhsjlgjiaedzmtz"
     verify_jwt = false
   [functions.process-email-queue]
     verify_jwt = false
+  [functions.email-dispatcher]
+    # Email subsystem v2 dispatcher (single Outbox + adaptive scheduler).
+    # Cron-poked; authorizes service-role bearer in code via
+    # `authorizeServiceRoleRequest` (accepts JWT or sb_secret_* token).
+    verify_jwt = false
   [functions.reconcile-stuck-emails]
     # Cron-poked email reconciler. Validates service-role bearer in code.
     verify_jwt = false
