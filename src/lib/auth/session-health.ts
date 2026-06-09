@@ -87,6 +87,48 @@ export function isLikelyJwt(token: unknown): token is string {
   return parts.every((p) => p.length > 0 && JWT_SEGMENT.test(p));
 }
 
+/**
+ * AUTH-VICHEA-FIX (2026-06-09): Supabase refresh tokens are OPAQUE strings,
+ * not JWTs. The previous `isLikelyJwt(refresh_token)` gate rejected every
+ * valid login response, threw "Invalid login response", and the client
+ * misclassified that as INVALID_CREDENTIALS — locking real users out and
+ * forcing repeated password resets (Vichea, June 2026).
+ *
+ * Validate refresh tokens ONLY as non-empty opaque strings with a sane
+ * minimum length. Never apply a JWT shape check to a refresh token.
+ */
+export function isOpaqueRefreshToken(token: unknown): token is string {
+  return typeof token === "string" && token.length >= 20 && token.length <= 4096;
+}
+
+/* ---------------------------------------------------------------------- */
+/* 2a. Typed client-side session-write failure                            */
+/* ---------------------------------------------------------------------- */
+
+/**
+ * Thrown when the client refuses to write a session to storage because the
+ * shape of the tokens returned by the auth backend is invalid. This is a
+ * CLIENT-SIDE failure, not a credential failure — it MUST NOT count toward
+ * device lockout, server rate limit, or CAPTCHA failure counters.
+ *
+ * Carries a stable `code` so the auth-error-classifier can recognise it
+ * without any message-string matching. See AUTH-VICHEA-001.
+ */
+export class ClientSessionWriteError extends Error {
+  readonly code = "CLIENT_SESSION_WRITE_FAILED" as const;
+  readonly reason: "access_token_invalid" | "refresh_token_invalid" | "set_session_rejected";
+  constructor(reason: ClientSessionWriteError["reason"], message?: string) {
+    super(message ?? "Sign-in didn't complete — please try again.");
+    this.name = "ClientSessionWriteError";
+    this.reason = reason;
+  }
+}
+
+export function isClientSessionWriteError(err: unknown): err is ClientSessionWriteError {
+  return err instanceof ClientSessionWriteError ||
+    (typeof err === "object" && err !== null && (err as { code?: string }).code === "CLIENT_SESSION_WRITE_FAILED");
+}
+
 /* ---------------------------------------------------------------------- */
 /* 2b. Stored access-token health — used to distinguish transient server  */
 /* bad_jwt (GoTrue restart, edge proxy hiccup) from a real corruption.    */
