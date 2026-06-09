@@ -241,6 +241,7 @@ export default function SystemHealthPage() {
           <TabsTrigger value="performance">Performance</TabsTrigger>
           <TabsTrigger value="login">Login</TabsTrigger>
           <TabsTrigger value="reset">Password reset</TabsTrigger>
+          <TabsTrigger value="auth-funnel">Auth funnel</TabsTrigger>
           <TabsTrigger value="fleety">Fleety</TabsTrigger>
           <TabsTrigger value="content">Content</TabsTrigger>
           <TabsTrigger value="translations">Translations</TabsTrigger>
