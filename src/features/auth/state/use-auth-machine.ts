@@ -2,6 +2,7 @@ import { useMachine } from "@xstate/react";
 import { useMemo } from "react";
 import { createAuthMachine } from "./auth-machine";
 import type { AuthMachineMode } from "./auth-machine.types";
+import type { AuthResult } from "../domain/auth-result";
 import { signInWithPassword } from "../flows/sign-in-password.flow";
 import { signInWithGoogle } from "../flows/sign-in-google.flow";
 import { signUp, type SignUpInput } from "../flows/sign-up.flow";
@@ -22,43 +23,46 @@ export function useAuthMachine(mode: AuthMachineMode) {
 
   const correlationId = state.context.correlationId;
 
+  const forward = (result: AuthResult) => {
+    if (result.ok === true) {
+      send({ type: "SERVER_OK", value: result.value });
+    } else {
+      send({ type: "SERVER_ERR", error: result.error });
+    }
+  };
+
   const submitPassword = async (email: string, password: string, captchaToken?: string) => {
     send({ type: "SUBMIT", email, password, captchaToken });
     const result = await signInWithPassword({ email, password, captchaToken, correlationId });
-    if (result.ok) send({ type: "SERVER_OK", value: result.value });
-    else send({ type: "SERVER_ERR", error: (result as { error: import("../domain/auth-result").AuthErr }).error });
+    forward(result);
     return result;
   };
 
   const submitGoogle = async (redirectTo?: string) => {
     send({ type: "SUBMIT", email: "" });
     const result = await signInWithGoogle({ redirectTo, correlationId });
-    if (result.ok) send({ type: "SERVER_OK", value: result.value });
-    else send({ type: "SERVER_ERR", error: (result as { error: import("../domain/auth-result").AuthErr }).error });
+    forward(result);
     return result;
   };
 
   const submitSignUp = async (input: Omit<SignUpInput, "correlationId">) => {
     send({ type: "SUBMIT", email: input.email, password: input.password });
     const result = await signUp({ ...input, correlationId });
-    if (result.ok) send({ type: "SERVER_OK", value: result.value });
-    else send({ type: "SERVER_ERR", error: (result as { error: import("../domain/auth-result").AuthErr }).error });
+    forward(result);
     return result;
   };
 
   const submitResetRequest = async (email: string, redirectTo?: string) => {
     send({ type: "SUBMIT", email });
     const result = await requestPasswordReset({ email, redirectTo, correlationId });
-    if (result.ok) send({ type: "SERVER_OK", value: result.value });
-    else send({ type: "SERVER_ERR", error: (result as { error: import("../domain/auth-result").AuthErr }).error });
+    forward(result);
     return result;
   };
 
   const submitResetComplete = async (newPassword: string) => {
     send({ type: "SUBMIT", email: state.context.email, password: newPassword });
     const result = await completePasswordReset({ newPassword, correlationId });
-    if (result.ok) send({ type: "SERVER_OK", value: result.value });
-    else send({ type: "SERVER_ERR", error: (result as { error: import("../domain/auth-result").AuthErr }).error });
+    forward(result);
     return result;
   };
 
