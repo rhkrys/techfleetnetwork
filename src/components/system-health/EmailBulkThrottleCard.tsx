@@ -26,6 +26,8 @@ interface SendStateRow {
  * `get_stuck_pending_email_count` RPC (Issue I).
  */
 export function EmailBulkThrottleCard() {
+  const qc = useQueryClient();
+  const [resuming, setResuming] = useState(false);
   const send = useQuery({
     queryKey: ["email", "bulk-lane-state"] as const,
     meta: { audit: "system_health.bulk_lane_state" },
