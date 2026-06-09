@@ -303,18 +303,32 @@ export default function LoginPage() {
         });
         navigate(from, { replace: true });
       } catch (err: unknown) {
-        const nextCaptcha = recordFailedLoginAttempt();
-        setCaptchaState(nextCaptcha);
-        // Token is consumed by the failed attempt; widget will issue a new one.
-        setCaptchaToken("");
-        setCaptchaFailureCount((count) => count + 1);
-        try {
-          await supabase.rpc("record_failed_login", {
-            _email: result.data.email,
-            _ip: null,
-            _user_agent: navigator.userAgent.substring(0, 200),
-          });
-        } catch { /* non-blocking */ }
+        // AUTH-VICHEA-001: failure attribution must be SINGLE-WRITER. Only
+        // confirmed credential rejections (classifier says countsAgainstUser)
+        // may increment CAPTCHA refresh or the server `record_failed_login`
+        // RPC. Client-side session-write failures, network errors, service
+        // outages, and CAPTCHA-throttle errors MUST NOT count — that was
+        // the Vichea bug (one client error inflated four counters and locked
+        // real users out for days).
+        const innerClassified = classifyAuthError(err);
+        if (innerClassified.countsAgainstUser) {
+          const nextCaptcha = recordFailedLoginAttempt();
+          setCaptchaState(nextCaptcha);
+          setCaptchaToken("");
+          setCaptchaFailureCount((count) => count + 1);
+          try {
+            await supabase.rpc("record_failed_login", {
+              _email: result.data.email,
+              _ip: null,
+              _user_agent: navigator.userAgent.substring(0, 200),
+            });
+          } catch { /* non-blocking */ }
+        } else {
+          // Token is consumed by the failed attempt regardless; widget will
+          // issue a new one on the next render. But the failure does NOT
+          // increment the lockout counter or the server rate-limit row.
+          setCaptchaToken("");
+        }
         throw err;
       }
     } catch (err: any) {
