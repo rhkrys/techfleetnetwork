@@ -34,7 +34,11 @@ const FORBIDDEN_IN_APPLICATION = [
 try {
   const files = await walk(ROOT);
   for (const f of files) {
-    const src = await readFile(f, 'utf8');
+    if (/\.test\.ts$/.test(f)) continue; // tests may use Deno.test
+    const src = (await readFile(f, 'utf8'))
+      .split('\n')
+      .filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)) // strip comment lines
+      .join('\n');
     if (f.includes('/domain/')) {
       for (const re of FORBIDDEN_IN_DOMAIN)
         if (re.test(src)) errors.push(`[domain] ${f} contains forbidden pattern: ${re}`);
