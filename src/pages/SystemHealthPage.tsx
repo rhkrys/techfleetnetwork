@@ -294,6 +294,7 @@ export default function SystemHealthPage() {
         </TabsContent>
         <TabsContent value="login"><LoginHealthTab /></TabsContent>
         <TabsContent value="reset"><ResetHealthTab /></TabsContent>
+        <TabsContent value="auth-funnel"><AuthFunnelTab /></TabsContent>
         <TabsContent value="fleety"><FleetyHealthTab /></TabsContent>
         <TabsContent value="content"><ContentGapsTab /></TabsContent>
         <TabsContent value="translations"><TranslationsTab /></TabsContent>
