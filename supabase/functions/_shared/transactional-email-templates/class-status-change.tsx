@@ -113,7 +113,8 @@ const ClassStatusChangeEmail = ({
   )
 }
 
-const subject = ({ action, recipientRole, classTitle }: ClassStatusChangeProps) => {
+const subject = (data: Record<string, any>) => {
+  const { action, recipientRole, classTitle } = data as ClassStatusChangeProps
   const head = HEADLINES[action][recipientRole]
   return `${head}: ${classTitle}`
 }
