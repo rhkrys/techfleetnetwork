@@ -152,6 +152,9 @@ jobs:
       - name: Verify plpgsql RETURNS TABLE functions guard against OUT-param shadowing
         run: node scripts/ci/check-plpgsql-variable-conflict.mjs
 
+      - name: Verify email subsystem v2 layering (domain pure, application port-only)
+        run: node scripts/ci/check-email-architecture.mjs
+
       - name: Verify auth failure counters only fire from AuthFailurePolicy
         run: node scripts/ci/check-auth-counter-coverage.mjs
 
