@@ -16,6 +16,15 @@ interface PasswordSetFieldsProps {
   onBlur?: (field: keyof PasswordSetValue) => void;
   errors?: { password?: string; confirmPassword?: string };
   className?: string;
+  /**
+   * Email tied to the credential. When provided, a hidden
+   * autoComplete="username" input is rendered so browsers + password
+   * managers (Safari, Firefox, 1Password, Bitwarden, Chrome, etc.)
+   * recognize this as a credential-change form and update the stored
+   * password on submit. Without it the old password stays saved and the
+   * member loops back into "invalid credentials" on next sign-in.
+   */
+  username?: string;
 }
 
 export function PasswordSetFields({
