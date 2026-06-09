@@ -255,6 +255,11 @@ export default function ResetPasswordPage() {
       setOtherDevicesRevoked(revoked);
       clearAttempts();
       clearAuthLockout();
+      // Tell the browser + password manager to UPDATE the saved credential
+      // immediately. This is the structural fix that prevents the reset
+      // loop: without it, autofill keeps replaying the old password on
+      // next sign-in and the member ends up resetting again.
+      await storeCredentialInBrowser(session.email ?? recoveryEmail, passwordSet.password);
       recordResetTelemetry({ branch: "update_submit", outcome: "update_success" });
       setSuccess(true);
     } catch (err) {
