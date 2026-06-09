@@ -37,6 +37,7 @@ export function PasswordSetFields({
   onBlur,
   errors,
   className,
+  username,
 }: PasswordSetFieldsProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -49,6 +50,18 @@ export function PasswordSetFields({
 
   return (
     <div className={cn("space-y-4", className)} data-auth-password-set-fields>
+      {username ? (
+        <input
+          type="email"
+          name="username"
+          autoComplete="username"
+          value={username}
+          readOnly
+          tabIndex={-1}
+          aria-hidden="true"
+          style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", border: 0 }}
+        />
+      ) : null}
       <div className="space-y-2">
         <Label htmlFor={passwordId}>{labels?.password ?? "New password"}</Label>
         <div className="relative">
