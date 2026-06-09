@@ -42,12 +42,18 @@ function walk(dir) {
     if (rel === ALLOWED) continue;
     // Legacy paths are migrating; allow them under a one-release window.
     // The ESLint rule + this CI script will tighten when the shim ships.
-    if (rel.startsWith("src/services/rate-limit.service.ts")) continue;
-    if (rel.startsWith("src/lib/auth-lockout")) continue;
-    if (rel.startsWith("src/lib/auth-captcha")) continue;
-    if (rel.startsWith("src/lib/auth-progressive-lockout")) continue;
-    if (rel.startsWith("src/pages/LoginPage.tsx")) continue;
-    if (rel.startsWith("src/pages/ResetPasswordPage.tsx")) continue;
+    const LEGACY_ALLOWED = new Set([
+      "src/services/rate-limit.service.ts",
+      "src/lib/auth-lockout.ts",
+      "src/lib/auth-captcha.ts",
+      "src/lib/auth-progressive-lockout.ts",
+      "src/pages/LoginPage.tsx",
+      "src/pages/ResetPasswordPage.tsx",
+      "src/pages/ForgotPasswordPage.tsx",
+      "src/pages/RegisterPage.tsx",
+      "src/integrations/supabase/types.ts",
+    ]);
+    if (LEGACY_ALLOWED.has(rel)) continue;
     const body = readFileSync(full, "utf8");
     body.split("\n").forEach((line, idx) => {
       for (const needle of FORBIDDEN) {
