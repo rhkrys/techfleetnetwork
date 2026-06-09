@@ -53,6 +53,11 @@ project_id = "iqsjhrhsjlgjiaedzmtz"
   [functions.resume-application-reminder]
     # Cron-poked reminder worker. Validates service-role bearer in code.
     verify_jwt = false
+  [functions.send-application-confirmation]
+    # Dual-mode: (a) authenticated member call right after submit, and
+    # (b) cron-poked safety-net sweeper that drains the
+    # application_confirmation_outbox. Auth handled in code.
+    verify_jwt = false
   [functions.promote-to-admin]
     verify_jwt = false
   [functions.public-project-detail]
