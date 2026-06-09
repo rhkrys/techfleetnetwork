@@ -302,6 +302,41 @@ export async function queueTransactionalEmail({
     }
   }
 
+  // ── Email subsystem v2 strangler fig ───────────────────────────────────────
+  // If the v2 lane flag is set for this template's lane, route through the
+  // new Outbox + dispatcher. Same external contract, completely different
+  // (clean) internals. Per-lane bitmask in email_send_state.pipeline_v2_lanes_bitmask
+  // gates rollout (1=auth, 2=transactional, 4=bulk). Legacy path below stays
+  // intact until Phase 4 decommission.
+  try {
+    const { buildEmailContainer, isV2Enabled } = await import('./email/composition.ts')
+    const { routeLane } = await import('./email/domain/policies.ts')
+    const lane = routeLane(templateName)
+    if (await isV2Enabled(supabase, lane)) {
+      const tmpl = TEMPLATES[templateName]
+      if (!tmpl) {
+        return { ok: false, status: 404, error: `Template '${templateName}' not found`, messageId }
+      }
+      const effectiveRecipient = (tmpl.to || recipientEmail || '').toLowerCase()
+      if (!effectiveRecipient) {
+        return { ok: false, status: 400, error: 'recipientEmail is required', messageId }
+      }
+      const { enqueueEmail } = buildEmailContainer(supabase)
+      const out = await enqueueEmail({
+        template: templateName,
+        recipient: effectiveRecipient,
+        payload: { ...templateData, bypass_frequency_cap: bypassFrequencyCap },
+        idempotencyKey: idempotencyKey ?? messageId,
+        messageId,
+      })
+      return { ok: true, queued: true, messageId: out.messageId,
+        suppressed: out.suppressed, reason: out.suppressed ? 'email_suppressed' : undefined }
+    }
+  } catch (e) {
+    console.warn('email v2 path errored — falling back to legacy pipeline', { err: String(e) })
+  }
+  // ── End v2 strangler fig ───────────────────────────────────────────────────
+
   const template = TEMPLATES[templateName]
 
   if (!template) {
