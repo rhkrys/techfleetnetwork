@@ -304,10 +304,27 @@ export default function TrainingPage() {
   const { data: basicClasses = [] } = usePublishedClassesByTrack("basic_training");
   const { data: advancedClasses = [] } = usePublishedClassesByTrack("advanced_training");
 
+  const stripHtml = (html: string | null | undefined): string => {
+    if (!html) return "";
+    const text = html
+      .replace(/<\/(p|div|li|h[1-6]|br)>/gi, " ")
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/gi, "'")
+      .replace(/\s+/g, " ")
+      .trim();
+    return text.length > 180 ? `${text.slice(0, 177).trimEnd()}…` : text;
+  };
+
   const mapClassToCard = (c: typeof basicClasses[number]): CourseCard => ({
     id: `class-${c.id}`,
     title: c.title,
-    description: c.summary,
+    description: stripHtml(c.summary),
     icon: GraduationCap,
     href: `/classes/${c.slug}`,
     totalTasks: 0,
