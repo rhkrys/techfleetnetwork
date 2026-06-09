@@ -166,9 +166,17 @@ export function TriageTab() {
         }
         return;
       }
-      toast.success("Triage complete", {
-        description: `Cost ~$${(data?.cost_estimate_usd ?? 0).toFixed(4)}`,
-      });
+      if (data?.auto_silenced) {
+        toast.success("Auto-silenced", {
+          description: data.reason === "opaque_script_error"
+            ? "Opaque cross-origin script error (permanent backstop)."
+            : `Known issue match: ${String(data.pattern ?? "").slice(0, 80)}`,
+        });
+      } else {
+        toast.success("Triage complete", {
+          description: `Cost ~$${(data?.cost_estimate_usd ?? 0).toFixed(4)}`,
+        });
+      }
       await fetchAll();
     } finally {
       setBusyId(null);
