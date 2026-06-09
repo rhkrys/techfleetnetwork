@@ -40,13 +40,15 @@ export default function ApplicationsPage() {
     }).catch((e) => reportError(e, "ApplicationsPage.loadGeneralApp", { severity: "warn" }));
   }, [user]);
 
-  /* Count user's own project applications for the card badge */
+  /* Count user's own project applications for the card badge.
+     Authoritative completion = status='completed' OR completed_at IS NOT NULL.
+     Defends against legacy rows or races where the two fields drift. */
   const { data: myProjectApps } = useQuery({
     queryKey: ["my-project-apps-count", user?.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("project_applications")
-        .select("id, status")
+        .select("id, status, completed_at")
         .eq("user_id", user!.id);
       if (error) throw error;
       return data ?? [];
@@ -57,9 +59,11 @@ export default function ApplicationsPage() {
     refetchOnWindowFocus: true,
   });
 
+  const isCompletedApp = (a: { status?: string | null; completed_at?: string | null }) =>
+    a.status === "completed" || !!a.completed_at;
   const projAppCount = myProjectApps?.length ?? 0;
-  const projAppsCompleted = myProjectApps?.filter((a) => a.status === "completed").length ?? 0;
-  const projAppsDraft = myProjectApps?.filter((a) => a.status === "draft").length ?? 0;
+  const projAppsCompleted = myProjectApps?.filter(isCompletedApp).length ?? 0;
+  const projAppsDraft = (myProjectApps?.length ?? 0) - projAppsCompleted;
 
   const yourApplicationsContent = (
     <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">

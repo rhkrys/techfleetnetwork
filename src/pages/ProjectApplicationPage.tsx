@@ -356,6 +356,15 @@ export default function ProjectApplicationPage() {
         const discordId = profileData?.discord_user_id || undefined;
         const projectName = client?.name ? `${client.name} (${typeLabel(project?.project_type ?? "")})` : "a project";
         DiscordNotifyService.projectApplied(displayName, projectName, discord, discordId);
+        // Fire-and-forget confirmation email (idempotent — outbox row + sweeper
+        // back this up if the call fails or the user closes the tab).
+        if (existingApp?.id) {
+          supabase.functions
+            .invoke("send-application-confirmation", {
+              body: { kind: "project", applicationId: existingApp.id },
+            })
+            .catch(() => { /* sweeper will retry */ });
+        }
       } else {
         toast.success("Draft saved — you can resume anytime");
       }

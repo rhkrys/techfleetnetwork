@@ -1,39 +1,35 @@
-## Root cause
+Root cause:
+- The app had two different meanings for "submitted": some old code and database logic still looked for `status='submitted'`, while current submission writes `status='completed'` plus `completed_at`.
+- A late draft save could also race a submit, which is why completed rows were able to look like drafts before the last fix.
+- The first fix protected general applications only. Project applications still do not have the same database-level invariant, and profile/application counts still rely on status in places instead of the authoritative timestamp.
+- There is also no reliable member-facing confirmation email path for application submissions, so people can submit successfully and still get no email.
 
-After `supabase.auth.updateUser({ password })` succeeds, the browser/password manager never sees a credential event, so it keeps autofilling the old saved password on next visit. GoTrue returns 401, the user thinks the reset failed, resets again, loop repeats. The server hash is correct every time — the bug is purely that we never told the browser "save this new password for this email."
+Permanent fix plan:
+1. Make completion impossible to corrupt in the database
+   - Add the same invariant trigger to `project_applications` that general applications now has.
+   - Strengthen the general application trigger so any row with `completed_at` is always `status='completed'`, not just when a caller writes `draft`.
+   - Backfill both tables so any legacy row with `completed_at` is completed.
 
-## The fix (single layer, done correctly)
+2. Make the UI use one authoritative completion rule
+   - Treat `completed_at IS NOT NULL OR status='completed'` as submitted everywhere member-facing.
+   - Fix the Applications page count so “0 apps” cannot appear when a completed timestamp exists.
+   - Remove stale `submitted` checks from the member flow where they conflict with `completed`.
 
-**1. `src/pages/ResetPasswordPage.tsx`** — immediately after `updatePassword` succeeds, before navigation:
+3. Stop client-side save races from reappearing
+   - Ensure project application autosave/next/back/draft paths never write status.
+   - Only the explicit submit action can set `status` and `completed_at`.
+   - Verify general application code keeps the same rule.
 
-```ts
-if ('credentials' in navigator && 'PasswordCredential' in window) {
-  try {
-    const cred = new (window as any).PasswordCredential({
-      id: email,           // pulled from the recovery session's user.email
-      password,
-      name: email,
-    });
-    await (navigator.credentials as any).store(cred);
-  } catch { /* non-fatal */ }
-}
-```
+4. Add a real confirmation email path
+   - Add or wire a transactional application-submitted email for general and project applications.
+   - Trigger it once from the database/event path when completion first happens, not from fragile client state.
+   - Keep Discord/admin notifications non-blocking so email failures do not corrupt submission state.
 
-This is the W3C Credential Management API. Chrome, Edge, Opera, Samsung Internet, and every Chromium-based password manager (1Password, Bitwarden, Dashlane, LastPass) honor it and update the saved entry in place. Safari/Firefox ignore it harmlessly — and on those browsers the existing `<form autoComplete="on">` + `name="password" autoComplete="new-password"` submit already triggers their native save prompt, so they're covered by what's already there.
+5. Add regression coverage
+   - Add BDD scenarios for the exact failure: submit general app, late autosave arrives, app still counts as submitted; submit project app, profile/applications count updates; confirmation email is queued exactly once.
+   - Add tests around the affected UI/service paths so future changes cannot reintroduce status/timestamp drift.
 
-**2. `src/components/auth/PasswordSetFields.tsx`** — ensure the inputs are inside a real `<form>` with `method="dialog"` (or a no-op submit handler) and that the email is rendered as a hidden `<input type="email" name="username" autoComplete="username" value={email} readOnly>` sibling. Safari/Firefox require the username field to be present in the same form as `new-password` to fire their save prompt. This is the part `PasswordSetFields` is missing today and is why even non-Chromium browsers don't prompt.
-
-That's it. Two files. No dashboards, no RPCs, no smoke-test extension, no memory entry tracking loops, no recurring-reset detector. The browser saves the new password → next login autofills the correct password → loop is structurally impossible.
-
-## Why this is permanent, not a band-aid
-
-- The Credential Management `store()` call is the canonical, spec-defined way to tell a browser "this credential is now valid." It's not a workaround — it's the API designed for exactly this case (SPA password changes that don't go through a traditional `<form action>` POST).
-- The hidden `username` field is the documented requirement from Apple, Mozilla, and Chromium for `autoComplete="new-password"` to be recognized as a credential-change form.
-- Combined, every mainstream browser + password manager updates the stored credential the moment the reset succeeds. There is no scenario where the old password remains saved.
-
-## Files touched
-
-- `src/pages/ResetPasswordPage.tsx` — call `navigator.credentials.store` after successful update.
-- `src/components/auth/PasswordSetFields.tsx` — wrap in `<form>` and add hidden username input bound to the recovery email.
-
-Nothing else changes.
+Validation:
+- Query the database after migration: zero rows where `completed_at IS NOT NULL AND status <> 'completed'` in both tables.
+- Verify member application counts use completed timestamps correctly.
+- Verify an application submission queues one confirmation email and does not loop back to the general/project application forms.
