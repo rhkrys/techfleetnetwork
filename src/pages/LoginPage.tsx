@@ -333,7 +333,7 @@ export default function LoginPage() {
       }
     } catch (err: any) {
       const classifiedForTelemetry = classifyAuthError(err);
-      const outcomeMap: Record<string, "invalid_credentials" | "auth_throttle" | "captcha_failed" | "network_error" | "server_error" | "session_incomplete" | "domain_reject" | "unknown"> = {
+      const outcomeMap: Record<string, "invalid_credentials" | "auth_throttle" | "captcha_failed" | "network_error" | "server_error" | "session_incomplete" | "client_session_write_failed" | "domain_reject" | "unknown"> = {
         INVALID_CREDENTIALS: "invalid_credentials",
         RATE_LIMITED: "auth_throttle",
         CAPTCHA_FAILED: "captcha_failed",
@@ -341,6 +341,7 @@ export default function LoginPage() {
         NETWORK: "network_error",
         SERVER: "server_error",
         SESSION_INCOMPLETE: "session_incomplete",
+        CLIENT_SESSION_WRITE_FAILED: "client_session_write_failed",
         DOMAIN_INVALID: "domain_reject",
         UNKNOWN: "unknown",
       };
