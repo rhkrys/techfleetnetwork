@@ -251,11 +251,11 @@ export function useGeneralApplication() {
       try {
         const fields = gatherSaveFields();
         fields.current_section = nextSection;
-        // Preserve "completed" status — only set draft for non-completed apps
-        if (!isCompleted) {
-          fields.status = "draft";
-        }
+        // Do NOT write `status` here. Status is owned solely by handleSave;
+        // writing "draft" on Next would race with a concurrent Submit and
+        // revert a completed row back to draft.
         await GeneralApplicationService.save(activeApp.id, fields);
+
         await syncProfileFields();
         const updated = await GeneralApplicationService.fetch(activeApp.id);
         if (updated) setActiveApp(updated);
@@ -280,11 +280,15 @@ export function useGeneralApplication() {
     label: "general-application",
     onSave: async (fields) => {
       if (!activeApp) return;
-      const payload: Partial<GeneralApplication> = { ...fields, status: "draft" };
-      await GeneralApplicationService.save(activeApp.id, payload);
-      // Profile-side fields are non-critical for autosave; sync best-effort.
+      // CRITICAL: never write `status` from autosave. A late-arriving autosave
+      // would otherwise clobber a just-submitted `completed` row back to `draft`
+      // (race), leaving `completed_at` set but `status='draft'` — the exact
+      // pattern that caused the submission loop. Status is owned solely by
+      // handleSave(markComplete).
+      await GeneralApplicationService.save(activeApp.id, fields);
       try { await syncProfileFields(); } catch { /* non-blocking */ }
     },
+
   });
 
   return {
