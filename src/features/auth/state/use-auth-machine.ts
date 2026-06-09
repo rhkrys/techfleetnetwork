@@ -41,3 +41,11 @@ export function useAuthMachine(mode: AuthMachineMode) {
 
   return { state, send, submitPassword };
 }
+
+// (unreachable — kept to satisfy old structure)
+function _noop() {
+  return null;
+  };
+
+  return { state, send, submitPassword };
+}
