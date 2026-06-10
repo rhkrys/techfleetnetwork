@@ -139,7 +139,7 @@ export default function ResetPasswordPage() {
     recoveredRef.current = true;
   };
 
-  const settleInvalid = (branch: ResetBranch, outcome: ResetOutcome, shape: { has_token_hash?: boolean; has_code?: boolean; has_hash?: boolean }) => {
+  const settleInvalid = (branch: ResetBranch, outcome: ResetOutcome, shape: { has_token_hash?: boolean; has_code?: boolean; has_hash?: boolean; token_hash_prefix?: string | null }) => {
     if (settledRef.current) return;
     settledRef.current = true;
     recordResetTelemetry({ branch, outcome, ...shape });
@@ -267,7 +267,7 @@ export default function ResetPasswordPage() {
         stripSensitiveParams();
         setLinkExpired(true);
         setAwaitingUserGesture(false);
-        settleInvalid("token_hash", "verify_error", shape);
+        settleInvalid("token_hash", "verify_error", { ...shape, token_hash_prefix: tokenHashPrefix(tokenHash) });
         return;
       }
       stripSensitiveParams();
@@ -275,7 +275,7 @@ export default function ResetPasswordPage() {
       await settleValid("token_hash", "ok", shape);
     } catch {
       setAwaitingUserGesture(false);
-      settleInvalid("token_hash", "verify_error", shape);
+      settleInvalid("token_hash", "verify_error", { ...shape, token_hash_prefix: tokenHashPrefix(tokenHash) });
     } finally {
       setVerifyingToken(false);
     }
