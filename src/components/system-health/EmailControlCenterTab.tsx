@@ -192,6 +192,22 @@ export function EmailControlCenterTab() {
     onError: (e: Error) => toast.error(`Resume failed: ${e.message}`),
   });
 
+  const replayMut = useMutation({
+    mutationKey: ["email-v2", "replay-row"],
+    mutationFn: async (id: string) => {
+      const { data, error } = await supabase.rpc("replay_email_outbox_row", { p_id: id });
+      if (error) throw error;
+      const d = (data ?? {}) as { ok?: boolean; reason?: string };
+      if (!d.ok) throw new Error(d.reason ?? "Replay not allowed");
+      return d;
+    },
+    onSuccess: () => {
+      toast.success("Replayed — dispatcher will retry on next cycle");
+      qc.invalidateQueries({ queryKey: ["email-v2"] });
+    },
+    onError: (e: Error) => toast.error(`Replay failed: ${e.message}`),
+  });
+
   const depthByLane = useMemo(() => {
     const map = new Map<Lane, DepthRow[]>();
     for (const row of depthQuery.data ?? []) {
