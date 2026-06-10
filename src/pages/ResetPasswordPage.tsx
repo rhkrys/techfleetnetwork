@@ -159,9 +159,27 @@ export default function ResetPasswordPage() {
 
     if (hasTokenHashRecovery) {
       supabase.auth.verifyOtp({ type: "recovery", token_hash: tokenHash! })
-        .then(({ error }) => {
+        .then(async ({ error }) => {
           if (error) {
+            // AUTH-RESET-PREFETCH-002: idempotent verify grace window.
+            // If verifyOtp fails (token already consumed) BUT we already
+            // hold an active session on this device, the user almost
+            // certainly verified successfully a moment ago (double-click,
+            // browser back/forward, React StrictMode dev double-mount).
+            // Accept that session instead of stranding them on the
+            // "expired" screen.
+            const session = await confirmActiveRecoverySession();
+            if (session.ok) {
+              stripSensitiveParams();
+              void settle(true, "token_hash", "ok");
+              return;
+            }
             stripSensitiveParams();
+            // No local session => token was burned somewhere else
+            // (email-link prefetcher, second device, security scanner).
+            // Mark as expired so the user gets the "request a new link"
+            // CTA rather than the generic "invalid link" copy.
+            setLinkExpired(true);
             void settleInvalid("token_hash", "verify_error");
           } else {
             stripSensitiveParams();
@@ -361,14 +379,14 @@ export default function ResetPasswordPage() {
       <div className="min-h-[calc(100dvh-4rem)] flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-md text-center animate-fade-in card-elevated p-8">
           <h1 className="text-2xl font-bold text-foreground mb-2">
-            {linkExpired ? "Reset link expired" : "Invalid or expired link"}
+            {linkExpired ? "This reset link can't be used" : "Invalid or expired link"}
           </h1>
           <p className="text-muted-foreground mb-4">
             {linkExpired
-              ? "Your reset link expired before we could save your new password. Request a fresh one and try again."
+              ? "This reset link has already been used or has expired. For your safety each link only works once. Request a fresh one and we'll get you back in."
               : "This password reset link is invalid or has expired."}
           </p>
-          <Link to="/forgot-password"><Button variant="outline">Request a new link</Button></Link>
+          <Link to="/forgot-password"><Button variant="outline">Send a new reset link</Button></Link>
         </div>
       </div>
     );
