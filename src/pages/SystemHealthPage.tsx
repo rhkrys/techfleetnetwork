@@ -26,6 +26,7 @@ import { ProjectBlastsHealthCard } from "@/components/system-health/ProjectBlast
 import { EmailDeliverabilityCard } from "@/components/system-health/EmailDeliverabilityCard";
 import { EmailDlqPanel } from "@/components/system-health/EmailDlqPanel";
 import { EmailBulkThrottleCard } from "@/components/system-health/EmailBulkThrottleCard";
+import { EmailControlCenterTab } from "@/components/system-health/EmailControlCenterTab";
 import { DiscordRepairTab } from "@/components/system-health/DiscordRepairTab";
 import { LoginHealthTab } from "@/components/system-health/LoginHealthTab";
 import { ResetHealthTab } from "@/components/system-health/ResetHealthTab";
@@ -233,6 +234,7 @@ export default function SystemHealthPage() {
           <TabsTrigger value="refactor-kpis">Refactor KPIs</TabsTrigger>
           <TabsTrigger value="queues">Queues</TabsTrigger>
           <TabsTrigger value="delivery">Delivery</TabsTrigger>
+          <TabsTrigger value="email-v2">Email v2</TabsTrigger>
           <TabsTrigger value="deliverability">Deliverability</TabsTrigger>
           <TabsTrigger value="blasts">Project Blasts</TabsTrigger>
           <TabsTrigger value="errors">Errors</TabsTrigger>
@@ -279,6 +281,7 @@ export default function SystemHealthPage() {
         </TabsContent>
 
         <TabsContent value="delivery"><LogTable logs={data.recent_logs} generatedAt={generatedAt} /></TabsContent>
+        <TabsContent value="email-v2"><EmailControlCenterTab /></TabsContent>
         <TabsContent value="deliverability" className="space-y-4">
           <EmailBulkThrottleCard />
           <EmailDeliverabilityCard />
@@ -370,7 +373,7 @@ function ErrorList({ errors, generatedAt }: { errors: Array<{ error_message: str
   );
 }
 
-const VALID_HEALTH_TABS = ["refactor-kpis","queues","delivery","deliverability","blasts","errors","triage","silent","performance","login","fleety","content","translations","privacy","incidents","audit","discord","help-desk","settings"] as const;
+const VALID_HEALTH_TABS = ["refactor-kpis","queues","delivery","email-v2","deliverability","blasts","errors","triage","silent","performance","login","fleety","content","translations","privacy","incidents","audit","discord","help-desk","settings"] as const;
 
 function SystemHealthTabs({ children }: { children: React.ReactNode }) {
   const [params, setParams] = useSearchParams();

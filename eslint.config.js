@@ -17,6 +17,7 @@ import lazyRequiresRetry from "./scripts/lint/eslint-plugin-lazy-requires-retry.
 import useAuthRequiresProvider from "./scripts/lint/eslint-plugin-use-auth-requires-provider.mjs";
 import noAnonymousMutation from "./scripts/lint/eslint-plugin-no-anonymous-mutation.mjs";
 import noRpcThenCatch from "./scripts/lint/eslint-plugin-no-rpc-then-catch.mjs";
+import noLegacyEmailSend from "./scripts/lint/eslint-plugin-no-legacy-email-send.mjs";
 
 export default tseslint.config(
   { ignores: ["dist"] },
@@ -50,6 +51,9 @@ export default tseslint.config(
           "no-rpc-then-catch": noRpcThenCatch,
         },
       },
+      // Email subsystem v2 Phase 6 — bans direct invokes of legacy
+      // send-* edge fns; routes must go through EnqueueEmail.
+      "email-v2": { rules: { "no-legacy-email-send": noLegacyEmailSend } },
       "auth-invariants": authInvariants,
       // Part 1 §1.5 — chunk-load brick + AuthProvider hoist invariants.
       lazy: lazyRequiresRetry,
@@ -106,6 +110,9 @@ export default tseslint.config(
       "triage-permanent/no-raw-functions-invoke": "warn",
       "triage-permanent/no-supabase-single": "warn",
       "triage-permanent/no-rpc-then-catch": "error",
+      // Warn-only during v2 strangler-fig migration; promote to error after
+      // bitmask=7 + 72h soak per mem://features/email-subsystem-v2.
+      "email-v2/no-legacy-email-send": "warn",
       "auth-invariants/no-bare-password-set-input": "error",
       "auth-invariants/no-raw-password-update": "error",
       // Rebuild §8 — single source of truth guards. Warn-only initially so
