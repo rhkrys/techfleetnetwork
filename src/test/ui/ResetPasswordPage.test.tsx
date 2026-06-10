@@ -3,6 +3,7 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithRouter } from "./test-utils";
 import ResetPasswordPage from "@/pages/ResetPasswordPage";
+import ConfirmRecoveryLinkPage from "@/pages/ConfirmRecoveryLinkPage";
 import { AuthService } from "@/services/auth.service";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -64,7 +65,7 @@ describe("ResetPasswordPage UI (BDD 20.1)", () => {
     // verifyOtp returns no error but getUser shows nobody — must block form.
     vi.mocked(supabase.auth.verifyOtp).mockResolvedValue({ data: { session: null }, error: null } as never);
     vi.mocked(supabase.auth.getUser).mockResolvedValue({ data: { user: null }, error: null } as never);
-    window.history.replaceState({}, "", "/reset-password?token_hash=abc123&type=recovery");
+    window.history.replaceState({}, "", "/reset-password?token_hash=abc123&type=recovery&reset_intent=confirm");
 
     renderWithRouter(<ResetPasswordPage />);
 
@@ -75,7 +76,7 @@ describe("ResetPasswordPage UI (BDD 20.1)", () => {
   it("AUTH-RESET-010: blocks mismatched password confirmation before service call", async () => {
     vi.mocked(supabase.auth.verifyOtp).mockResolvedValue({ data: { session: { user: { id: "user-1" } } }, error: null } as never);
     vi.mocked(supabase.auth.getUser).mockResolvedValue(sessionUser as never);
-    window.history.replaceState({}, "", "/reset-password?token_hash=abc123&type=recovery");
+    window.history.replaceState({}, "", "/reset-password?token_hash=abc123&type=recovery&reset_intent=confirm");
     const user = userEvent.setup();
 
     renderWithRouter(<ResetPasswordPage />);
@@ -93,7 +94,7 @@ describe("ResetPasswordPage UI (BDD 20.1)", () => {
     vi.mocked(supabase.auth.verifyOtp).mockResolvedValue({ data: { session: { user: { id: "user-1" } } }, error: null } as never);
     vi.mocked(supabase.auth.getUser).mockResolvedValue(sessionUser as never);
     vi.mocked(AuthService.updatePassword).mockResolvedValue({ otherDevicesRevoked: true });
-    window.history.replaceState({}, "", "/reset-password?token_hash=abc123&type=recovery");
+    window.history.replaceState({}, "", "/reset-password?token_hash=abc123&type=recovery&reset_intent=confirm");
     const user = userEvent.setup();
 
     renderWithRouter(<ResetPasswordPage />);
@@ -107,11 +108,20 @@ describe("ResetPasswordPage UI (BDD 20.1)", () => {
     expect(await screen.findByText(/use your new password the next time you sign in/i)).toBeInTheDocument();
   });
 
-  it("AUTH-RESET-020: token_hash query settles to valid recovery via verifyOtp", async () => {
+  it("AUTH-RESET-PREFETCH-001: direct token_hash landing waits for user gesture before verifyOtp", async () => {
+    window.history.replaceState({}, "", "/reset-password?token_hash=abc123&type=recovery");
+
+    renderWithRouter(<ResetPasswordPage />);
+
+    expect(await screen.findByRole("heading", { name: /continue resetting your password/i })).toBeInTheDocument();
+    expect(supabase.auth.verifyOtp).not.toHaveBeenCalled();
+  });
+
+  it("AUTH-RESET-020: confirmed token_hash query settles to valid recovery via verifyOtp", async () => {
     vi.mocked(supabase.auth.verifyOtp).mockResolvedValue({ data: { session: { user: { id: "u" } } }, error: null } as never);
     vi.mocked(supabase.auth.getUser).mockResolvedValue(sessionUser as never);
     const replaceState = vi.spyOn(window.history, "replaceState");
-    window.history.replaceState({}, "", "/reset-password?token_hash=abc123&type=recovery");
+    window.history.replaceState({}, "", "/reset-password?token_hash=abc123&type=recovery&reset_intent=confirm");
 
     renderWithRouter(<ResetPasswordPage />);
 
@@ -126,7 +136,7 @@ describe("ResetPasswordPage UI (BDD 20.1)", () => {
   it("AUTH-RESET-022: invalid token_hash falls back to invalid-link message", async () => {
     vi.mocked(supabase.auth.verifyOtp).mockResolvedValue({ data: { session: null }, error: { message: "expired" } } as never);
     vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: null }, error: null } as never);
-    window.history.replaceState({}, "", "/reset-password?token_hash=expired&type=recovery");
+    window.history.replaceState({}, "", "/reset-password?token_hash=expired&type=recovery&reset_intent=confirm");
 
     renderWithRouter(<ResetPasswordPage />);
 
