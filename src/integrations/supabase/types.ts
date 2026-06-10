@@ -7735,6 +7735,18 @@ export type Database = {
         }[]
       }
       email_v2_daily_rollup: { Args: { p_day?: string }; Returns: number }
+      email_v2_lane_metrics: {
+        Args: never
+        Returns: {
+          dlq_1h: number
+          lane: string
+          p50_latency_ms: number
+          p95_latency_ms: number
+          pending_count: number
+          sending_count: number
+          sent_1h: number
+        }[]
+      }
       encrypt_pii: { Args: { plain: string }; Returns: string }
       enforce_retention_policy: { Args: never; Returns: Json }
       enqueue_email: {
@@ -7775,6 +7787,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      expire_stale_pending_v2: { Args: never; Returns: number }
       export_my_data: { Args: never; Returns: Json }
       fill_content_gaps_check_and_inc: {
         Args: { p_cap?: number }
