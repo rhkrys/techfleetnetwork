@@ -274,7 +274,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   // Public pages (no sidebar)
   const isPublicPage =
     !user ||
-    ["/", "/login", "/register", "/forgot-password", "/reset-password"].includes(
+    ["/", "/login", "/register", "/forgot-password", "/reset-password", "/reset-password/confirm"].includes(
       location.pathname
     );
 
