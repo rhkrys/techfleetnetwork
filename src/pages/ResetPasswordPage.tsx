@@ -226,11 +226,19 @@ export default function ResetPasswordPage() {
       if (error) {
         const session = await confirmActiveRecoverySession();
         if (session.ok) {
+          // 10-minute grace branch: verifyOtp said "consumed" but a recovery
+          // session already exists for this device → the prior consumption
+          // was almost certainly an upstream prefetcher (SafeLinks et al.).
+          // Let the human proceed instead of bouncing them to "expired".
           stripSensitiveParams();
           setAwaitingUserGesture(false);
           await settleValid("token_hash", "ok", shape);
           return;
         }
+        // No session AND verifyOtp errored → token was burned upstream. Beacon
+        // the prefetch fingerprint so System Health can spot the pattern
+        // without us having to ask the affected member.
+        recordResetTelemetry({ branch: "token_hash", outcome: "recovery_link_prefetch_suspected", ...shape });
         stripSensitiveParams();
         setLinkExpired(true);
         setAwaitingUserGesture(false);
