@@ -216,6 +216,7 @@ function classifyPasswordUpdateError(err: { message?: string; code?: string; sta
     return { code: "weak_password", message: "This password appeared in a known data breach. Choose a different one." };
   }
   if (
+    code === "session_expired" ||
     code === "session_not_found" ||
     code === "no_authorization" ||
     code === "bad_jwt" ||
@@ -231,7 +232,7 @@ function classifyPasswordUpdateError(err: { message?: string; code?: string; sta
   ) {
     return { code: "session_expired", message: "Your password reset link expired. Request a new one to continue." };
   }
-  if (code === "over_request_rate_limit" || err.status === 429 || msg.includes("rate limit")) {
+  if (code === "over_request_rate_limit" || code === "rate_limited" || err.status === 429 || msg.includes("rate limit")) {
     return { code: "rate_limited", message: "Too many attempts in a short time. Please wait a minute and try again." };
   }
   if (!err.status || err.status >= 500 || msg.includes("failed to fetch") || msg.includes("network")) {
