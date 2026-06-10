@@ -27,12 +27,14 @@ const COPY: Record<AuthErrorCode, Copy> = {
     body: "Too many sign-in attempts. Wait a few minutes and try again.",
   },
   captcha_required: {
-    title: "One more check",
-    body: "Please complete the captcha to continue.",
+    title: "Human verification didn't load",
+    body: "A browser extension, VPN, or strict privacy mode may be blocking it. Try disabling shields or use the magic-link option below.",
+    action: "Refresh the page or request a magic link instead.",
   },
   captcha_failed: {
-    title: "Captcha didn't verify",
-    body: "Please try the captcha again.",
+    title: "Human check expired",
+    body: "Please complete the verification box again — it only stays valid for a couple of minutes.",
+    action: "Tap the checkbox once more to refresh it.",
   },
   rate_limited: {
     title: "Slow down for a moment",
