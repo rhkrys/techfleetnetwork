@@ -117,6 +117,15 @@ describe("ResetPasswordPage UI (BDD 20.1)", () => {
     expect(supabase.auth.verifyOtp).not.toHaveBeenCalled();
   });
 
+  it("AUTH-RESET-PREFETCH-004: confirm page never verifies on load", async () => {
+    window.history.replaceState({}, "", "/reset-password/confirm?token_hash=abc123&type=recovery");
+
+    renderWithRouter(<ConfirmRecoveryLinkPage />);
+
+    expect(await screen.findByRole("button", { name: /continue resetting password/i })).toBeInTheDocument();
+    expect(supabase.auth.verifyOtp).not.toHaveBeenCalled();
+  });
+
   it("AUTH-RESET-020: confirmed token_hash query settles to valid recovery via verifyOtp", async () => {
     vi.mocked(supabase.auth.verifyOtp).mockResolvedValue({ data: { session: { user: { id: "u" } } }, error: null } as never);
     vi.mocked(supabase.auth.getUser).mockResolvedValue(sessionUser as never);
