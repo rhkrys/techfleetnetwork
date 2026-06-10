@@ -36,7 +36,8 @@ export type ResetOutcome =
   | "update_weak_password"
   | "update_unknown_error"
   | "update_success"
-  | "missing_proof_blocked";
+  | "missing_proof_blocked"
+  | "recovery_link_prefetch_suspected";
 
 interface ResetTelemetryPayload {
   branch: ResetBranch;
