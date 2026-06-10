@@ -534,10 +534,13 @@ export const AuthService = {
         throw err;
       }
 
-      const { data, error } = await supabase.auth.updateUser({ password: passwordSet.password });
+      const { data, error } = await supabase.functions.invoke("finalize-password-reset", {
+        body: { password: passwordSet.password },
+      });
       if (error) {
-        const classified = classifyPasswordUpdateError(error as { message?: string; code?: string; status?: number });
-        log.error("updatePassword", `Password update failed: ${error.message} [${classified.code}]`, { errorCode: classified.code || error.status });
+        const fnError = await readFunctionError(error);
+        const classified = classifyPasswordUpdateError(fnError);
+        log.error("updatePassword", `Password update failed: ${fnError.message} [${classified.code}]`, { errorCode: classified.code || fnError.status });
         const wrapped = new Error(classified.message) as Error & { code?: string };
         wrapped.code = classified.code;
         throw wrapped;
@@ -553,8 +556,7 @@ export const AuthService = {
       })().catch((err) => {
         log.warn("updatePassword", `Rate-limit cleanup after reset failed: ${(err as Error)?.message ?? String(err)}`);
       });
-      const revoke = await AuthService.signOutAllDevices({ keepCurrent: true, reason: "self_password_changed" });
-      return { otherDevicesRevoked: revoke.revocationRecorded };
+      return { otherDevicesRevoked: Boolean((data as { other_devices_revoked?: boolean } | null)?.other_devices_revoked) };
     });
   },
 
