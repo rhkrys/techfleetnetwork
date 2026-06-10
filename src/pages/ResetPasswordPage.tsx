@@ -143,6 +143,25 @@ export default function ResetPasswordPage() {
     setChecking(false);
   };
 
+  // Belt-and-suspenders against link prefetchers / corporate proxies caching
+  // the reset page (and therefore the single-use token in the URL). Injected
+  // as <head> meta tags because Lovable hosting doesn't process _headers.
+  useEffect(() => {
+    const tags: HTMLMetaElement[] = [];
+    const add = (attrs: Record<string, string>) => {
+      const m = document.createElement("meta");
+      Object.entries(attrs).forEach(([k, v]) => m.setAttribute(k, v));
+      document.head.appendChild(m);
+      tags.push(m);
+    };
+    add({ name: "robots", content: "noindex,nofollow,noarchive,nosnippet" });
+    add({ name: "googlebot", content: "noindex,nofollow" });
+    add({ "http-equiv": "Cache-Control", content: "no-store, no-cache, must-revalidate" });
+    add({ "http-equiv": "Pragma", content: "no-cache" });
+    add({ name: "referrer", content: "no-referrer" });
+    return () => { tags.forEach((m) => m.remove()); };
+  }, []);
+
   useEffect(() => {
     const url = new URL(window.location.href);
     const hash = window.location.hash;
