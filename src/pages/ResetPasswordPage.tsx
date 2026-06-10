@@ -16,6 +16,10 @@ import { recordResetTelemetry, type ResetBranch, type ResetOutcome } from "@/lib
 const MAX_REJECTIONS = 3;
 const RESET_ATTEMPTS_KEY = "tfn:reset-attempts";
 
+function tokenHashPrefix(tokenHash: string | null): string | null {
+  return tokenHash ? tokenHash.slice(0, 12) : null;
+}
+
 function readAttempts(): number {
   try {
     const raw = window.sessionStorage.getItem(RESET_ATTEMPTS_KEY);
@@ -194,7 +198,7 @@ export default function ResetPasswordPage() {
           void settleValid("token_hash", "ok", shape);
           return;
         }
-        recordResetTelemetry({ branch: "no_params", outcome: "ok", ...shape });
+        recordResetTelemetry({ branch: "no_params", outcome: "ok", ...shape, token_hash_prefix: tokenHashPrefix(tokenHash) });
         setPendingTokenHash(tokenHash);
         setAwaitingUserGesture(true);
         setChecking(false);
@@ -257,7 +261,7 @@ export default function ResetPasswordPage() {
         // No session AND verifyOtp errored → token was burned upstream. Beacon
         // the prefetch fingerprint so System Health can spot the pattern
         // without us having to ask the affected member.
-        recordResetTelemetry({ branch: "token_hash", outcome: "recovery_link_prefetch_suspected", ...shape });
+        recordResetTelemetry({ branch: "token_hash", outcome: "recovery_link_prefetch_suspected", ...shape, token_hash_prefix: tokenHashPrefix(pendingTokenHash) });
         stripSensitiveParams();
         setLinkExpired(true);
         setAwaitingUserGesture(false);
