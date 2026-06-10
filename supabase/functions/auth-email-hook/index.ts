@@ -369,6 +369,49 @@ async function handleWebhook(req: Request): Promise<Response> {
     })
   }
 
+  // ── Email subsystem v2 strangler fig (auth lane) ─────────────────────────
+  // When pipeline_v2_lanes_bitmask has bit 1 set, route auth emails through
+  // the new Outbox. Same external contract; legacy path below is the fallback
+  // until Phase 4 decommission.
+  try {
+    const { buildEmailContainer, isV2Enabled } = await import('../_shared/email/composition.ts')
+    if (await isV2Enabled(supabase, 'auth')) {
+      const { enqueueEmail } = buildEmailContainer(supabase)
+      const out = await enqueueEmail({
+        template: emailType,
+        recipient: payload.data.email,
+        subject: EMAIL_SUBJECTS[emailType] || 'Notification',
+        payload: {
+          run_id,
+          html,
+          text,
+          from: `${SITE_NAME} <${FROM_MAILBOX}@${FROM_DOMAIN}>`,
+          reply_to: REPLY_TO,
+          sender_domain: SENDER_DOMAIN,
+          purpose: 'transactional',
+          label: emailType,
+          unsubscribe_token: unsubscribeToken,
+        },
+        idempotencyKey: messageId,
+        messageId,
+        laneOverride: 'auth',
+      })
+      await supabase.from('email_send_log').insert({
+        message_id: out.messageId,
+        template_name: emailType,
+        recipient_email: payload.data.email,
+        status: out.suppressed ? 'suppressed' : 'pending',
+      })
+      return new Response(JSON.stringify({ ok: true, queued: true, v2: true, messageId: out.messageId }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+  } catch (e) {
+    console.warn('email v2 auth path errored — falling back to legacy', { err: String(e) })
+  }
+  // ── End v2 strangler fig ─────────────────────────────────────────────────
+
   // Log pending BEFORE enqueue so we have a record even if enqueue crashes
   await supabase.from('email_send_log').insert({
     message_id: messageId,
@@ -395,6 +438,7 @@ async function handleWebhook(req: Request): Promise<Response> {
       queued_at: new Date().toISOString(),
     },
   })
+
 
   if (enqueueError) {
     console.error('Failed to enqueue auth email', { error: enqueueError, run_id, emailType })
