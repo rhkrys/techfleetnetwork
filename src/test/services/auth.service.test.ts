@@ -102,9 +102,9 @@ describe("AuthService session max-age marker", () => {
   });
 
   it("AUTH-RESET-011: finalizes confirmed recovery passwords server-side and revokes other sessions", async () => {
-    vi.mocked(supabase.functions.invoke).mockResolvedValue({ data: { revocation_recorded: true, gotrue_signed_out: false }, error: null });
+    vi.mocked(supabase.functions.invoke).mockResolvedValue({ data: { other_devices_revoked: true }, error: null });
 
-    await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).resolves.toEqual({ otherDevicesRevoked: false });
+    await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).resolves.toEqual({ otherDevicesRevoked: true });
 
     expect(supabase.auth.updateUser).not.toHaveBeenCalled();
     expect(supabase.functions.invoke).toHaveBeenCalledWith("finalize-password-reset", { body: { password: "StrongPass123!" } });
