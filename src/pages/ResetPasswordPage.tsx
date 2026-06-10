@@ -398,6 +398,27 @@ export default function ResetPasswordPage() {
     );
   }
 
+  if (awaitingUserGesture) {
+    return (
+      <div className="min-h-[calc(100dvh-4rem)] flex items-center justify-center px-4 py-12">
+        <div className="w-full max-w-md text-center animate-fade-in card-elevated p-8 space-y-5">
+          <img src={techFleetLogo} alt="" className="h-12 w-12 mx-auto dark:invert" aria-hidden="true" />
+          <h1 className="text-2xl font-bold text-foreground">Continue resetting your password</h1>
+          <p className="text-muted-foreground">
+            For your safety, we wait for you to confirm before we activate this reset link. Tap continue and we'll take you straight to the new-password screen.
+          </p>
+          <Button onClick={handleContinueGesture} disabled={verifyingToken} className="w-full">
+            {verifyingToken ? "One moment…" : "Continue resetting password"}
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            Didn't request this? You can safely close this page — your password stays the same.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+
   if (!validRecovery) {
     return (
       <div className="min-h-[calc(100dvh-4rem)] flex items-center justify-center px-4 py-12">
