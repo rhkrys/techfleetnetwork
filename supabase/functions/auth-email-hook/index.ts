@@ -243,7 +243,12 @@ async function handleWebhook(req: Request): Promise<Response> {
       const redirectTo = new URL(rawRedirectTo)
       const origin = ALLOWED_RESET_ORIGINS.has(redirectTo.origin) ? redirectTo.origin : APP_ORIGIN
       if (tokenHash) {
-        const target = new URL('/reset-password', origin)
+        // AUTH-RESET-PREFETCH-001: point at /reset-password/confirm — a
+        // two-step landing page that requires an explicit user click before
+        // calling verifyOtp. Without this, email link prefetchers (Outlook
+        // SafeLinks, Proofpoint, Slack/iMessage unfurlers) consume the
+        // single-use token before the real human ever sees the email.
+        const target = new URL('/reset-password/confirm', origin)
         target.searchParams.set('token_hash', tokenHash)
         target.searchParams.set('type', 'recovery')
         confirmationUrl = target.toString()
