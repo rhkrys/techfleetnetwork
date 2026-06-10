@@ -243,15 +243,11 @@ async function handleWebhook(req: Request): Promise<Response> {
       const redirectTo = new URL(rawRedirectTo)
       const origin = ALLOWED_RESET_ORIGINS.has(redirectTo.origin) ? redirectTo.origin : APP_ORIGIN
       if (tokenHash) {
-        // AUTH-RESET-PREFETCH-001 (v2): point at /reset-password directly.
-        // The page itself is the prefetch gate — when it sees
-        // ?token_hash=...&type=recovery WITHOUT an active session it shows
-        // a "Continue resetting password" button and only calls verifyOtp
-        // on the explicit user click. This collapses the previous
-        // two-route design (/reset-password/confirm → /reset-password)
-        // into one stable URL that exists on every historical deploy, so
-        // an unpublished route can never strand users on a 404.
-        const target = new URL('/reset-password', origin)
+        // AUTH-RESET-PREFETCH-001: point email at the inert confirm page.
+        // SafeLinks/Proofpoint/link previews can GET this route without
+        // consuming the single-use token; only the human button click forwards
+        // to /reset-password with reset_intent=confirm, where verifyOtp runs.
+        const target = new URL('/reset-password/confirm', origin)
         target.searchParams.set('token_hash', tokenHash)
         target.searchParams.set('type', 'recovery')
         confirmationUrl = target.toString()
