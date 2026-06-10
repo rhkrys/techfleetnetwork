@@ -14,6 +14,7 @@ export interface OutboxRepo {
   claimDue(max: number): Promise<ClaimedRow[]>;
   recordResult(id: string, outcome: ProviderOutcome): Promise<void>;
   gcExpired(): Promise<number>;
+  replay(id: string): Promise<{ ok: boolean; reason?: string }>;
 }
 
 export interface SuppressionRepo {

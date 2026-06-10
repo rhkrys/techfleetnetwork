@@ -41,6 +41,13 @@ export function makePgOutboxRepo(supabase: SupabaseClient): OutboxRepo {
       if (error) throw new Error(`gc_expired_email_outbox: ${error.message}`);
       return Number(data ?? 0);
     },
+
+    async replay(id: string) {
+      const { data, error } = await supabase.rpc('replay_email_outbox_row', { p_id: id });
+      if (error) return { ok: false, reason: error.message };
+      const d = (data ?? {}) as { ok?: boolean; reason?: string };
+      return { ok: !!d.ok, reason: d.reason };
+    },
   };
 }
 

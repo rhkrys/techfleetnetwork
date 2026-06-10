@@ -7734,6 +7734,7 @@ export type Database = {
           message_id: string
         }[]
       }
+      email_v2_daily_rollup: { Args: { p_day?: string }; Returns: number }
       encrypt_pii: { Args: { plain: string }; Returns: string }
       enforce_retention_policy: { Args: never; Returns: Json }
       enqueue_email: {
@@ -8628,6 +8629,7 @@ export type Database = {
         Args: { p_cohort_id: string; p_referrer?: string }
         Returns: string
       }
+      replay_email_outbox_row: { Args: { p_id: string }; Returns: Json }
       replay_frequency_capped: {
         Args: { p_since?: string; p_template_name: string }
         Returns: {

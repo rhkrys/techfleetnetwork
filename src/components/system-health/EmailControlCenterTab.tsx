@@ -192,6 +192,22 @@ export function EmailControlCenterTab() {
     onError: (e: Error) => toast.error(`Resume failed: ${e.message}`),
   });
 
+  const replayMut = useMutation({
+    mutationKey: ["email-v2", "replay-row"],
+    mutationFn: async (id: string) => {
+      const { data, error } = await supabase.rpc("replay_email_outbox_row", { p_id: id });
+      if (error) throw error;
+      const d = (data ?? {}) as { ok?: boolean; reason?: string };
+      if (!d.ok) throw new Error(d.reason ?? "Replay not allowed");
+      return d;
+    },
+    onSuccess: () => {
+      toast.success("Replayed — dispatcher will retry on next cycle");
+      qc.invalidateQueries({ queryKey: ["email-v2"] });
+    },
+    onError: (e: Error) => toast.error(`Replay failed: ${e.message}`),
+  });
+
   const depthByLane = useMemo(() => {
     const map = new Map<Lane, DepthRow[]>();
     for (const row of depthQuery.data ?? []) {
@@ -350,36 +366,54 @@ export function EmailControlCenterTab() {
                   <th className="px-3 py-2">Attempts</th>
                   <th className="px-3 py-2">Updated</th>
                   <th className="px-3 py-2">Error</th>
+                  <th className="px-3 py-2" aria-label="Actions" />
                 </tr>
               </thead>
               <tbody>
-                {outboxQuery.data.map((row) => (
-                  <tr key={row.id} className="border-b last:border-b-0">
-                    <td className="px-3 py-2 capitalize">{row.lane}</td>
-                    <td className="px-3 py-2 font-medium text-foreground">{row.template}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{row.recipient}</td>
-                    <td className="px-3 py-2">
-                      <Badge
-                        variant={
-                          row.status === "sent"
-                            ? "default"
-                            : row.status === "dlq" || row.status === "expired"
-                            ? "destructive"
-                            : "secondary"
-                        }
-                      >
-                        {row.status}
-                      </Badge>
-                    </td>
-                    <td className="px-3 py-2">{row.attempts}</td>
-                    <td className="px-3 py-2 text-muted-foreground">
-                      {rel(row.sent_at ?? row.dlq_at ?? row.next_attempt_at ?? row.created_at)}
-                    </td>
-                    <td className="px-3 py-2 text-muted-foreground">
-                      {row.dlq_reason ?? row.last_error ?? "—"}
-                    </td>
-                  </tr>
-                ))}
+                {outboxQuery.data.map((row) => {
+                  const canReplay =
+                    row.status === "dlq" || row.status === "expired" || row.status === "permanent_fail";
+                  return (
+                    <tr key={row.id} className="border-b last:border-b-0">
+                      <td className="px-3 py-2 capitalize">{row.lane}</td>
+                      <td className="px-3 py-2 font-medium text-foreground">{row.template}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{row.recipient}</td>
+                      <td className="px-3 py-2">
+                        <Badge
+                          variant={
+                            row.status === "sent"
+                              ? "default"
+                              : row.status === "dlq" || row.status === "expired"
+                              ? "destructive"
+                              : "secondary"
+                          }
+                        >
+                          {row.status}
+                        </Badge>
+                      </td>
+                      <td className="px-3 py-2">{row.attempts}</td>
+                      <td className="px-3 py-2 text-muted-foreground">
+                        {rel(row.sent_at ?? row.dlq_at ?? row.next_attempt_at ?? row.created_at)}
+                      </td>
+                      <td className="px-3 py-2 text-muted-foreground">
+                        {row.dlq_reason ?? row.last_error ?? "—"}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        {canReplay ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => replayMut.mutate(row.id)}
+                            disabled={replayMut.isPending}
+                            aria-label={`Replay email ${row.template} to ${row.recipient}`}
+                          >
+                            Replay row
+                          </Button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           ) : (
