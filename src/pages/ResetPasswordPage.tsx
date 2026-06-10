@@ -89,16 +89,61 @@ export default function ResetPasswordPage() {
   const [attempts, setAttempts] = useState<number>(() => readAttempts());
   const [linkExpired, setLinkExpired] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState<string | null>(null);
+  // AUTH-RESET-PREFETCH-001 (v2): the page itself is the prefetch gate.
+  // When the URL carries ?token_hash=...&type=recovery and we don't yet
+  // hold a session, we wait for an explicit user click before calling
+  // verifyOtp — link prefetchers (Outlook SafeLinks, Proofpoint, Slack/
+  // iMessage unfurlers, AV scanners) issue automated GETs that would
+  // otherwise burn the single-use token before the human ever sees it.
+  // Folding the gate into /reset-password (instead of a /reset-password/
+  // confirm subroute) keeps the email URL valid across every historical
+  // deploy — an unpublished route can never strand users on a 404.
+  const [awaitingUserGesture, setAwaitingUserGesture] = useState(false);
+  const [pendingTokenHash, setPendingTokenHash] = useState<string | null>(null);
+  const [verifyingToken, setVerifyingToken] = useState(false);
   const navigate = useNavigate();
   const recoveredRef = useRef(false);
+  const settledRef = useRef(false);
+
+  const stripSensitiveParams = () => {
+    try {
+      const clean = new URL(window.location.href);
+      ["token_hash", "type", "code", "access_token", "refresh_token", "expires_in", "expires_at", "token_type"].forEach((k) => clean.searchParams.delete(k));
+      const newUrl = clean.pathname + (clean.search ? clean.search : "") + (clean.hash && !clean.hash.includes("access_token") && !clean.hash.includes("type=recovery") ? clean.hash : "");
+      window.history.replaceState({}, "", newUrl);
+    } catch { /* noop */ }
+  };
+
+  const settleValid = async (branch: ResetBranch, outcome: ResetOutcome, shape: { has_token_hash?: boolean; has_code?: boolean; has_hash?: boolean }) => {
+    if (settledRef.current) return;
+    const session = await confirmActiveRecoverySession();
+    if (!session.ok) {
+      settledRef.current = true;
+      recordResetTelemetry({ branch, outcome: "no_session_returned", ...shape });
+      setValidRecovery(false);
+      setChecking(false);
+      return;
+    }
+    settledRef.current = true;
+    setRecoveryEmail(session.email);
+    recordResetTelemetry({ branch, outcome, ...shape });
+    setValidRecovery(true);
+    setChecking(false);
+    clearAuthLockout();
+    clearAttempts();
+    setAttempts(0);
+    recoveredRef.current = true;
+  };
+
+  const settleInvalid = (branch: ResetBranch, outcome: ResetOutcome, shape: { has_token_hash?: boolean; has_code?: boolean; has_hash?: boolean }) => {
+    if (settledRef.current) return;
+    settledRef.current = true;
+    recordResetTelemetry({ branch, outcome, ...shape });
+    setValidRecovery(false);
+    setChecking(false);
+  };
 
   useEffect(() => {
-    let settled = false;
-
-    const beacon = (branch: ResetBranch, outcome: ResetOutcome, shape: { has_token_hash?: boolean; has_code?: boolean; has_hash?: boolean }) => {
-      recordResetTelemetry({ branch, outcome, ...shape });
-    };
-
     const url = new URL(window.location.href);
     const hash = window.location.hash;
     const code = url.searchParams.get("code");
@@ -113,89 +158,37 @@ export default function ResetPasswordPage() {
       has_hash: Boolean(hash),
     };
 
-    const settle = async (valid: boolean, branch: ResetBranch, outcome: ResetOutcome) => {
-      if (settled) return;
-      // For the "valid" path, confirm we ACTUALLY hold a session before
-      // unlocking the form. If not — downgrade to expired-link branch.
-      if (valid) {
-        const session = await confirmActiveRecoverySession();
-        if (!session.ok) {
-          settled = true;
-          beacon(branch, "no_session_returned", shape);
-          setValidRecovery(false);
-          setChecking(false);
-          return;
-        }
-        setRecoveryEmail(session.email);
-      }
-      settled = true;
-      beacon(branch, outcome, shape);
-      setValidRecovery(valid);
-      setChecking(false);
-      if (valid) {
-        clearAuthLockout();
-        clearAttempts();
-        setAttempts(0);
-        recoveredRef.current = true;
-      }
-    };
-
-    const settleInvalid = (branch: ResetBranch, outcome: ResetOutcome) => settle(false, branch, outcome);
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY") {
-        void settle(true, "session_event", "ok");
+        void settleValid("session_event", "ok", shape);
       }
     });
 
-    const stripSensitiveParams = () => {
-      try {
-        const clean = new URL(window.location.href);
-        ["token_hash", "type", "code", "access_token", "refresh_token", "expires_in", "expires_at", "token_type"].forEach((k) => clean.searchParams.delete(k));
-        const newUrl = clean.pathname + (clean.search ? clean.search : "") + (clean.hash && !clean.hash.includes("access_token") && !clean.hash.includes("type=recovery") ? clean.hash : "");
-        window.history.replaceState({}, "", newUrl);
-      } catch { /* noop */ }
-    };
-
     if (hasTokenHashRecovery) {
-      supabase.auth.verifyOtp({ type: "recovery", token_hash: tokenHash! })
-        .then(async ({ error }) => {
-          if (error) {
-            // AUTH-RESET-PREFETCH-002: idempotent verify grace window.
-            // If verifyOtp fails (token already consumed) BUT we already
-            // hold an active session on this device, the user almost
-            // certainly verified successfully a moment ago (double-click,
-            // browser back/forward, React StrictMode dev double-mount).
-            // Accept that session instead of stranding them on the
-            // "expired" screen.
-            const session = await confirmActiveRecoverySession();
-            if (session.ok) {
-              stripSensitiveParams();
-              void settle(true, "token_hash", "ok");
-              return;
-            }
-            stripSensitiveParams();
-            // No local session => token was burned somewhere else
-            // (email-link prefetcher, second device, security scanner).
-            // Mark as expired so the user gets the "request a new link"
-            // CTA rather than the generic "invalid link" copy.
-            setLinkExpired(true);
-            void settleInvalid("token_hash", "verify_error");
-          } else {
-            stripSensitiveParams();
-            void settle(true, "token_hash", "ok");
-          }
-        })
-        .catch(() => void settleInvalid("token_hash", "verify_error"));
+      // PREFETCH GATE: never verifyOtp without a real user gesture.
+      // If we already hold a session (browser back from form, double-click),
+      // accept it. Otherwise render the Continue button and stop.
+      (async () => {
+        const session = await confirmActiveRecoverySession();
+        if (session.ok) {
+          stripSensitiveParams();
+          void settleValid("token_hash", "ok", shape);
+          return;
+        }
+        recordResetTelemetry({ branch: "no_params", outcome: "ok", ...shape });
+        setPendingTokenHash(tokenHash);
+        setAwaitingUserGesture(true);
+        setChecking(false);
+      })();
     } else if (!hasRecoveryInHash && !hasRecoveryInQuery) {
-      void settleInvalid("no_params", "missing_proof_blocked");
+      settleInvalid("no_params", "missing_proof_blocked", shape);
     } else if (code && typeof supabase.auth.exchangeCodeForSession === "function") {
       supabase.auth.exchangeCodeForSession(code)
         .then(({ error }) => {
-          if (error) void settleInvalid("code", "exchange_error");
-          else { stripSensitiveParams(); void settle(true, "code", "ok"); }
+          if (error) settleInvalid("code", "exchange_error", shape);
+          else { stripSensitiveParams(); void settleValid("code", "ok", shape); }
         })
-        .catch(() => void settleInvalid("code", "exchange_error"));
+        .catch(() => settleInvalid("code", "exchange_error", shape));
     } else {
       const hashParams = new URLSearchParams(hash.replace(/^#/, ""));
       const accessToken = hashParams.get("access_token");
@@ -204,16 +197,16 @@ export default function ResetPasswordPage() {
       if (hasRecoveryInHash && accessToken && refreshToken) {
         supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
           .then(({ error }) => {
-            if (error) void settleInvalid("hash", "set_session_error");
-            else { stripSensitiveParams(); void settle(true, "hash", "ok"); }
+            if (error) settleInvalid("hash", "set_session_error", shape);
+            else { stripSensitiveParams(); void settleValid("hash", "ok", shape); }
           })
-          .catch(() => void settleInvalid("hash", "set_session_error"));
+          .catch(() => settleInvalid("hash", "set_session_error", shape));
 
         return () => subscription.unsubscribe();
       }
 
       const timeout = setTimeout(() => {
-        void settleInvalid("timeout", "missing_proof_blocked");
+        settleInvalid("timeout", "missing_proof_blocked", shape);
       }, 8000);
       return () => {
         clearTimeout(timeout);
@@ -223,6 +216,37 @@ export default function ResetPasswordPage() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  const handleContinueGesture = async () => {
+    if (!pendingTokenHash || verifyingToken) return;
+    setVerifyingToken(true);
+    const shape = { has_token_hash: true, has_code: false, has_hash: false };
+    try {
+      const { error } = await supabase.auth.verifyOtp({ type: "recovery", token_hash: pendingTokenHash });
+      if (error) {
+        const session = await confirmActiveRecoverySession();
+        if (session.ok) {
+          stripSensitiveParams();
+          setAwaitingUserGesture(false);
+          await settleValid("token_hash", "ok", shape);
+          return;
+        }
+        stripSensitiveParams();
+        setLinkExpired(true);
+        setAwaitingUserGesture(false);
+        settleInvalid("token_hash", "verify_error", shape);
+        return;
+      }
+      stripSensitiveParams();
+      setAwaitingUserGesture(false);
+      await settleValid("token_hash", "ok", shape);
+    } catch {
+      setAwaitingUserGesture(false);
+      settleInvalid("token_hash", "verify_error", shape);
+    } finally {
+      setVerifyingToken(false);
+    }
+  };
 
   const [otherDevicesRevoked, setOtherDevicesRevoked] = useState(true);
   const [retryingRevoke, setRetryingRevoke] = useState(false);
