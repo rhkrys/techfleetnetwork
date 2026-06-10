@@ -7687,6 +7687,7 @@ export type Database = {
         Returns: number
       }
       count_classes_pending_review: { Args: never; Returns: number }
+      country_to_continent: { Args: { p_country: string }; Returns: string }
       decrypt_pii: { Args: { cipher: string }; Returns: string }
       delete_email: {
         Args: { message_id: number; queue_name: string }
@@ -8252,6 +8253,15 @@ export type Database = {
         }[]
       }
       get_login_health: { Args: { p_window_minutes?: number }; Returns: Json }
+      get_member_continent_distribution: {
+        Args: never
+        Returns: {
+          continent: string
+          external_count: number
+          platform_count: number
+          total_count: number
+        }[]
+      }
       get_member_country_distribution: { Args: never; Returns: Json }
       get_milestone_blueprint: { Args: { p_id: string }; Returns: Json }
       get_network_stats: { Args: never; Returns: Json }
