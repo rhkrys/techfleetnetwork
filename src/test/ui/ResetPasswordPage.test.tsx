@@ -49,7 +49,7 @@ describe("ResetPasswordPage UI (BDD 20.1)", () => {
   it("20.1: shows invalid/expired link message when no recovery session", async () => {
     renderWithRouter(<ResetPasswordPage />);
     expect(await screen.findByText(/invalid or expired link/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /request a new link/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /send a new reset link/i })).toBeInTheDocument();
   });
 
   it("AUTH-RESET-SESSION-001: ordinary signed-in sessions do not unlock password reset", async () => {
@@ -57,7 +57,7 @@ describe("ResetPasswordPage UI (BDD 20.1)", () => {
 
     renderWithRouter(<ResetPasswordPage />);
 
-    expect(await screen.findByText(/invalid or expired link/i)).toBeInTheDocument();
+    expect(await screen.findByText(/this reset link can't be used/i)).toBeInTheDocument();
     expect(AuthService.updatePassword).not.toHaveBeenCalled();
   });
 
