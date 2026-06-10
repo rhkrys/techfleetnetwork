@@ -62,11 +62,13 @@ const COPY: Record<AuthErrorCode, Copy> = {
   },
   recovery_session_expired: {
     title: "Reset link expired",
-    body: "Request a new password reset email and try again.",
+    body: "Password reset links are only good for 1 hour. Request a new one and try again.",
+    action: "Send a new reset link.",
   },
   recovery_link_consumed: {
-    title: "Reset link already used",
-    body: "Request a new password reset email if you still need to change your password.",
+    title: "This reset link has already been used",
+    body: "Email security scanners or opening the link on a second device can consume it. Request a new one if you still need to change your password.",
+    action: "Send a new reset link.",
   },
   client_session_write_failed: {
     title: "Sign-in didn't complete",
