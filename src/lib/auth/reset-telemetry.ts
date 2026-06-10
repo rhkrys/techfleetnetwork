@@ -45,6 +45,7 @@ interface ResetTelemetryPayload {
   has_token_hash?: boolean;
   has_code?: boolean;
   has_hash?: boolean;
+  token_hash_prefix?: string | null;
   release_tag?: string;
 }
 
@@ -81,6 +82,7 @@ export function recordResetTelemetry(payload: ResetTelemetryPayload): void {
     has_token_hash: Boolean(payload.has_token_hash),
     has_code: Boolean(payload.has_code),
     has_hash: Boolean(payload.has_hash),
+    token_hash_prefix: payload.token_hash_prefix?.slice(0, 24) ?? null,
     release_tag: payload.release_tag ?? null,
   });
 
