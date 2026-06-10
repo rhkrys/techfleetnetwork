@@ -226,6 +226,46 @@ Deno.serve(withAuditWrapper("send-announcement-email", async (req) => {
           token: unsubscribeToken,
         });
 
+        // ── Email subsystem v2 strangler fig (bulk lane) ──────────────────
+        let routedV2 = false;
+        try {
+          const { buildEmailContainer, isV2Enabled } = await import('../_shared/email/composition.ts');
+          if (await isV2Enabled(adminClient, 'bulk')) {
+            const { enqueueEmail } = buildEmailContainer(adminClient);
+            const out = await enqueueEmail({
+              template: 'announcement',
+              recipient: normalizedEmail,
+              subject: `[Tech Fleet] ${announcement.title}`,
+              payload: {
+                html: emailHtml,
+                text: emailText,
+                from: `Tech Fleet <onboarding@techfleet.org>`,
+                sender_domain: 'notify.techfleet.org',
+                label: 'announcement',
+                unsubscribe_token: unsubscribeToken,
+                purpose: 'transactional',
+                announcement_id,
+              },
+              idempotencyKey: messageId,
+              messageId,
+              laneOverride: 'bulk',
+            });
+            await adminClient.from('email_send_log').insert({
+              message_id: out.messageId,
+              recipient_email: normalizedEmail,
+              template_name: 'announcement',
+              status: out.suppressed ? 'suppressed' : 'pending',
+              metadata: { announcement_id, title: announcement.title, v2: true },
+            });
+            routedV2 = true;
+            enqueued++;
+          }
+        } catch (e) {
+          console.warn('email v2 bulk path errored — falling back to legacy', { err: String(e) });
+        }
+        if (routedV2) continue;
+        // ── End v2 strangler fig ──────────────────────────────────────────
+
         await adminClient.from("email_send_log").insert({
           message_id: messageId,
           recipient_email: normalizedEmail,
@@ -256,6 +296,7 @@ Deno.serve(withAuditWrapper("send-announcement-email", async (req) => {
         console.error(`Failed to enqueue email to ${normalizedEmail}:`, e);
       }
     }
+
 
     // --- Cross-post to Discord #platform-updates channel ---
     let discordPosted = false;
