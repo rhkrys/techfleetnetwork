@@ -1,3 +1,18 @@
+# AUTH-RESET-PREFETCH-003: never let proxies/caches store recovery URLs.
+# The token_hash is single-use; even a 304 revalidation by a corporate
+# proxy can burn the link before the user clicks.
+/reset-password
+  Cache-Control: no-store, no-cache, must-revalidate, private
+  Pragma: no-cache
+  X-Robots-Tag: noindex, nofollow, noarchive, nosnippet
+  Referrer-Policy: no-referrer
+
+/reset-password/*
+  Cache-Control: no-store, no-cache, must-revalidate, private
+  Pragma: no-cache
+  X-Robots-Tag: noindex, nofollow, noarchive, nosnippet
+  Referrer-Policy: no-referrer
+
 /*
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache

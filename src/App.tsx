@@ -59,6 +59,7 @@ const PWAInstallPrompt = lazy(() => import("./components/PWAInstallPrompt").then
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage"));
 const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
+const ConfirmRecoveryLinkPage = lazy(() => import("./pages/ConfirmRecoveryLinkPage"));
 const ProfileSetupPage = lazy(() => import("./pages/ProfileSetupPage"));
 const WelcomeWizard = lazy(() => import("./pages/WelcomeWizard"));
 const FirstStepsPage = lazy(() => import("./pages/FirstStepsPage"));
@@ -225,6 +226,7 @@ const App = () => (
                     <Route path="/register" element={<RegisterPage />} />
                     <Route path="/forgot-password" element={<ForgotPasswordPage />} />
                     <Route path="/reset-password" element={<ResetPasswordPage />} />
+                    <Route path="/reset-password/confirm" element={<ConfirmRecoveryLinkPage />} />
                     <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
                     <Route path="/profile-setup" element={<ProtectedRoute><ProfileSetupPage /></ProtectedRoute>} />
                     <Route path="/welcome" element={<ProtectedRoute><WelcomeWizard /></ProtectedRoute>} />
