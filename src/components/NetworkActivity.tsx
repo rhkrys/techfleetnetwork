@@ -318,12 +318,16 @@ export const NetworkActivity = memo(function NetworkActivity({ showMap = true, s
         )}
 
         {showMap && (
-          <div className={showActivity ? "pt-8 mt-8" : ""}>
+          <div className={showActivity ? "pt-8 mt-8 space-y-6" : "space-y-6"}>
             <Suspense fallback={<MapFallback />}>
               <MemberWorldMap />
             </Suspense>
+            <Suspense fallback={null}>
+              <MemberContinentBreakdown />
+            </Suspense>
           </div>
         )}
+
       </div>
     </section>
   );
