@@ -172,6 +172,7 @@ export default function ResetPasswordPage() {
     const code = url.searchParams.get("code");
     const tokenHash = url.searchParams.get("token_hash");
     const typeParam = url.searchParams.get("type");
+    const resetIntent = url.searchParams.get("reset_intent");
     const hasRecoveryInHash = hash.includes("type=recovery");
     const hasTokenHashRecovery = Boolean(tokenHash) && typeParam === "recovery";
     const hasRecoveryInQuery = typeParam === "recovery" || Boolean(code);
@@ -187,10 +188,11 @@ export default function ResetPasswordPage() {
       }
     });
 
-    if (hasTokenHashRecovery) {
-      // PREFETCH GATE: never verifyOtp without a real user gesture.
-      // If we already hold a session (browser back from form, double-click),
-      // accept it. Otherwise render the Continue button and stop.
+    if (hasTokenHashRecovery && resetIntent !== "confirm") {
+      // PREFETCH GATE: never verifyOtp until /reset-password/confirm forwards
+      // with reset_intent=confirm. If we already hold a session (browser back
+      // from form, double-click), accept it. Otherwise render the Continue
+      // button here too for older emails that pointed directly at this route.
       (async () => {
         const session = await confirmActiveRecoverySession();
         if (session.ok) {
@@ -203,6 +205,8 @@ export default function ResetPasswordPage() {
         setAwaitingUserGesture(true);
         setChecking(false);
       })();
+    } else if (hasTokenHashRecovery) {
+      void verifyPendingToken(tokenHash, shape);
     } else if (!hasRecoveryInHash && !hasRecoveryInQuery) {
       settleInvalid("no_params", "missing_proof_blocked", shape);
     } else if (code && typeof supabase.auth.exchangeCodeForSession === "function") {
@@ -240,12 +244,10 @@ export default function ResetPasswordPage() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const handleContinueGesture = async () => {
-    if (!pendingTokenHash || verifyingToken) return;
+  const verifyPendingToken = async (tokenHash: string, shape: { has_token_hash?: boolean; has_code?: boolean; has_hash?: boolean }) => {
     setVerifyingToken(true);
-    const shape = { has_token_hash: true, has_code: false, has_hash: false };
     try {
-      const { error } = await supabase.auth.verifyOtp({ type: "recovery", token_hash: pendingTokenHash });
+      const { error } = await supabase.auth.verifyOtp({ type: "recovery", token_hash: tokenHash });
       if (error) {
         const session = await confirmActiveRecoverySession();
         if (session.ok) {
@@ -261,7 +263,7 @@ export default function ResetPasswordPage() {
         // No session AND verifyOtp errored → token was burned upstream. Beacon
         // the prefetch fingerprint so System Health can spot the pattern
         // without us having to ask the affected member.
-        recordResetTelemetry({ branch: "token_hash", outcome: "recovery_link_prefetch_suspected", ...shape, token_hash_prefix: tokenHashPrefix(pendingTokenHash) });
+        recordResetTelemetry({ branch: "token_hash", outcome: "recovery_link_prefetch_suspected", ...shape, token_hash_prefix: tokenHashPrefix(tokenHash) });
         stripSensitiveParams();
         setLinkExpired(true);
         setAwaitingUserGesture(false);
@@ -277,6 +279,11 @@ export default function ResetPasswordPage() {
     } finally {
       setVerifyingToken(false);
     }
+  };
+
+  const handleContinueGesture = async () => {
+    if (!pendingTokenHash || verifyingToken) return;
+    await verifyPendingToken(pendingTokenHash, { has_token_hash: true, has_code: false, has_hash: false });
   };
 
   const [otherDevicesRevoked, setOtherDevicesRevoked] = useState(true);
