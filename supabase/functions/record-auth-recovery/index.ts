@@ -131,6 +131,10 @@ Deno.serve(async (req: Request) => {
   const has_token_hash = body.has_token_hash === true;
   const has_code = body.has_code === true;
   const has_hash = body.has_hash === true;
+  const token_hash_prefix =
+    typeof body.token_hash_prefix === "string"
+      ? body.token_hash_prefix.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 24)
+      : null;
   const release_tag =
     typeof body.release_tag === "string" ? body.release_tag.slice(0, 64) : null;
   const user_agent = (req.headers.get("user-agent") ?? "").slice(0, 256);
@@ -138,6 +142,8 @@ Deno.serve(async (req: Request) => {
 
   const severity = outcome === "update_success" || outcome === "ok"
     ? "info"
+    : outcome === "recovery_link_prefetch_suspected"
+      ? "warn"
     : outcome === "update_service_unavailable" || outcome === "update_rate_limited"
       ? "warn"
       : "info";
@@ -159,6 +165,7 @@ Deno.serve(async (req: Request) => {
         has_token_hash,
         has_code,
         has_hash,
+        token_hash_prefix,
         release_tag,
         user_agent,
         ip_hash,

@@ -162,6 +162,9 @@ project_id = "iqsjhrhsjlgjiaedzmtz"
   [functions.sign-out-all-devices]
     # Authenticated: self-serve session revocation. Manual JWT check in code.
     verify_jwt = false
+  [functions.finalize-password-reset]
+    # Authenticated recovery session: updates password and revokes other devices in one server-side transaction.
+    verify_jwt = false
   [functions.revoke-user-sessions]
     # Admin-only: requires fresh 2fa step-up. Manual JWT check in code.
     verify_jwt = false
