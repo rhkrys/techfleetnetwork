@@ -101,14 +101,13 @@ describe("AuthService session max-age marker", () => {
     expect(supabase.auth.updateUser).not.toHaveBeenCalled();
   });
 
-  it("AUTH-RESET-011: updates confirmed recovery passwords without the extra edge-function dependency", async () => {
-    vi.mocked(supabase.auth.updateUser).mockResolvedValue({ data: { user: null }, error: null });
+  it("AUTH-RESET-011: finalizes confirmed recovery passwords server-side and revokes other sessions", async () => {
     vi.mocked(supabase.functions.invoke).mockResolvedValue({ data: { revocation_recorded: true, gotrue_signed_out: false }, error: null });
 
-    await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).resolves.toEqual({ otherDevicesRevoked: true });
+    await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).resolves.toEqual({ otherDevicesRevoked: false });
 
-    expect(supabase.auth.updateUser).toHaveBeenCalledWith({ password: "StrongPass123!" });
-    expect(supabase.functions.invoke).not.toHaveBeenCalledWith("update-password-confirmed", expect.anything());
+    expect(supabase.auth.updateUser).not.toHaveBeenCalled();
+    expect(supabase.functions.invoke).toHaveBeenCalledWith("finalize-password-reset", { body: { password: "StrongPass123!" } });
     expect(logAccountActivity).toHaveBeenCalledWith("password_updated", { details: { confirmed: true } });
   });
 
@@ -135,28 +134,28 @@ describe("AuthService session max-age marker", () => {
   });
 
   it("AUTH-RESET-TRANSIENT-001: treats password update transport failures as service unavailable", async () => {
-    vi.mocked(supabase.auth.updateUser).mockResolvedValue({ data: { user: null }, error: { message: "Failed to fetch", status: 0 } });
+    vi.mocked(supabase.functions.invoke).mockResolvedValue({ data: null, error: { message: "Failed to fetch", status: 0 } });
 
     await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).rejects.toMatchObject({ code: "service_unavailable" });
 
-    expect(supabase.functions.invoke).not.toHaveBeenCalledWith("update-password-confirmed", expect.anything());
+    expect(supabase.functions.invoke).toHaveBeenCalledWith("finalize-password-reset", { body: { password: "StrongPass123!" } });
   });
 
   it("AUTH-RESET-SESSION-002: maps missing recovery session to expired link", async () => {
-    vi.mocked(supabase.auth.updateUser).mockResolvedValue({ data: { user: null }, error: { message: "Auth session missing", status: 400 } });
+    vi.mocked(supabase.functions.invoke).mockResolvedValue({ data: null, error: { message: "Auth session missing", status: 401 } });
 
     await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).rejects.toMatchObject({ code: "session_expired" });
 
-    expect(supabase.functions.invoke).not.toHaveBeenCalledWith("update-password-confirmed", expect.anything());
+    expect(supabase.functions.invoke).toHaveBeenCalledWith("finalize-password-reset", { body: { password: "StrongPass123!" } });
   });
 
   it("AUTH-RESET-SESSION-005: maps 'User from sub claim in JWT does not exist' to session_expired", async () => {
-    vi.mocked(supabase.auth.updateUser).mockResolvedValue({ data: { user: null }, error: { message: "User from sub claim in JWT does not exist", status: 403 } });
+    vi.mocked(supabase.functions.invoke).mockResolvedValue({ data: null, error: { message: "User from sub claim in JWT does not exist", status: 403 } });
     await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).rejects.toMatchObject({ code: "session_expired" });
   });
 
   it("AUTH-RESET-SESSION-006: maps 'JWT expired' to session_expired (not service_unavailable)", async () => {
-    vi.mocked(supabase.auth.updateUser).mockResolvedValue({ data: { user: null }, error: { message: "JWT expired", status: 401 } });
+    vi.mocked(supabase.functions.invoke).mockResolvedValue({ data: null, error: { message: "JWT expired", status: 401 } });
     await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).rejects.toMatchObject({ code: "session_expired" });
   });
 
