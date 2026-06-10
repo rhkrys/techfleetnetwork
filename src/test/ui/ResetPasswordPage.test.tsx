@@ -69,7 +69,7 @@ describe("ResetPasswordPage UI (BDD 20.1)", () => {
 
     renderWithRouter(<ResetPasswordPage />);
 
-    expect(await screen.findByText(/this reset link can't be used/i)).toBeInTheDocument();
+    expect(await screen.findByText(/invalid or expired link/i)).toBeInTheDocument();
     expect(AuthService.updatePassword).not.toHaveBeenCalled();
   });
 
@@ -149,7 +149,7 @@ describe("ResetPasswordPage UI (BDD 20.1)", () => {
 
     renderWithRouter(<ResetPasswordPage />);
 
-    expect(await screen.findByText(/invalid or expired link/i)).toBeInTheDocument();
+    expect(await screen.findByText(/this reset link can't be used/i)).toBeInTheDocument();
     window.history.replaceState({}, "", "/reset-password");
   });
 
