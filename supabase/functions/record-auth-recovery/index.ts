@@ -44,6 +44,11 @@ const ALLOWED_OUTCOMES = new Set([
   "update_unknown_error",
   "update_success",
   "missing_proof_blocked",
+  // AUTH-RESET-007: emitted when verifyOtp returns an error AND we hold no
+  // recovery session — strong fingerprint of an upstream link prefetcher
+  // (SafeLinks / Proofpoint / Slack unfurler / AV scanner) consuming the
+  // single-use token before the human ever clicked Continue.
+  "recovery_link_prefetch_suspected",
 ]);
 
 const RATE_LIMIT_MAX = 60;
