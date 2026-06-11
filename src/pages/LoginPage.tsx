@@ -57,6 +57,10 @@ export default function LoginPage() {
   const [captchaState, setCaptchaState] = useState(() => getLoginCaptchaState());
   const [captchaToken, setCaptchaToken] = useState("");
   const [captchaFailureCount, setCaptchaFailureCount] = useState(0);
+  // Non-punitive widget refresh (no 30s lockout). Bumped after any
+  // client/network/server failure that consumed the single-use Turnstile
+  // token but is NOT the user's fault.
+  const [captchaSoftResetCount, setCaptchaSoftResetCount] = useState(0);
   const [lockoutState, setLockoutState] = useState(() => getAuthLockoutState());
   const [loading, setLoading] = useState(false);
   const [mfaOpen, setMfaOpen] = useState(false);
