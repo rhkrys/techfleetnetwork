@@ -61,3 +61,6 @@ export function report(error: unknown, ctx: ReportContext): void {
 export const reportActivity = internalReportActivity;
 /** Recovery signal (e.g. circuit breaker closed) — passes straight through. */
 export const reportRecovery = internalReportRecovery;
+
+/** Zod/validator rejection — passes straight through to the audit logger. */
+export const reportValidationRejection = internalReportValidationRejection;
