@@ -74,7 +74,10 @@ const NETWORK_PATTERNS = [
   "load failed",
   "fetch failed",
   "networkerror",
-  "sign-in didn't complete",
+  // NOTE: do NOT add "sign-in didn't complete" here — that phrase belongs to
+  // ClientSessionWriteError, which is matched earlier via isClientSessionWriteError().
+  // Keeping it here would misclassify the typed error as a network failure and
+  // strip the recovery copy.
 ];
 
 function messageOf(err: unknown): string {
@@ -109,7 +112,7 @@ export function classifyAuthError(err: unknown): ClassifiedAuthError {
   if (isClientSessionWriteError(err)) {
     return {
       kind: "CLIENT_SESSION_WRITE_FAILED",
-      message: "Your browser couldn't finish signing in. Your account is safe — we refreshed the verification below, please try once more.",
+      message: "We need to retry sign-in. Your account is safe — something interrupted the browser session, so we cleared the attempt and refreshed verification below. Please complete it and sign in again.",
       countsAgainstUser: false,
     };
   }
@@ -200,7 +203,7 @@ export function classifyAuthError(err: unknown): ClassifiedAuthError {
     return {
       kind: "SESSION_INCOMPLETE",
       message:
-        "Your browser couldn't finish signing in. Your account is safe — please try once more.",
+        "We need to retry sign-in. Your account is safe — something interrupted the browser session, so we cleared the attempt. Complete verification below and sign in again.",
       countsAgainstUser: false,
     };
   }

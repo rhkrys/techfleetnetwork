@@ -57,6 +57,10 @@ export default function LoginPage() {
   const [captchaState, setCaptchaState] = useState(() => getLoginCaptchaState());
   const [captchaToken, setCaptchaToken] = useState("");
   const [captchaFailureCount, setCaptchaFailureCount] = useState(0);
+  // Non-punitive widget refresh (no 30s lockout). Bumped after any
+  // client/network/server failure that consumed the single-use Turnstile
+  // token but is NOT the user's fault.
+  const [captchaSoftResetCount, setCaptchaSoftResetCount] = useState(0);
   const [lockoutState, setLockoutState] = useState(() => getAuthLockoutState());
   const [loading, setLoading] = useState(false);
   const [mfaOpen, setMfaOpen] = useState(false);
@@ -67,6 +71,14 @@ export default function LoginPage() {
   const [turnstileReady, setTurnstileReady] = useState(false);
   useEffect(() => {
     if (turnstileReady) return;
+    // Eager mount after a password reset, session-expired bounce, or any
+    // ?reason= handoff so the widget is interactive before the member
+    // clicks "Sign in" with autofilled credentials.
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("from") === "password-reset" || params.has("reason")) {
+      setTurnstileReady(true);
+      return;
+    }
     const arm = () => setTurnstileReady(true);
     const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
     const idleId = typeof ric === "function" ? ric(arm, { timeout: 2000 }) : window.setTimeout(arm, 1200);
@@ -303,27 +315,21 @@ export default function LoginPage() {
         });
         navigate(from, { replace: true });
       } catch (err: unknown) {
-        // AUTH-VICHEA-001: failure attribution must be SINGLE-WRITER. Only
-        // confirmed credential rejections (classifier says countsAgainstUser)
-        // may increment CAPTCHA refresh or the server `record_failed_login`
-        // RPC. Client-side session-write failures, network errors, service
-        // outages, and CAPTCHA-throttle errors MUST NOT count — that was
-        // the Vichea bug (one client error inflated four counters and locked
-        // real users out for days).
-        //
-        // CAPTCHA LIFECYCLE FIX (2026-06-11): Cloudflare Turnstile tokens are
-        // SINGLE-USE — every submit consumes the token regardless of whether
-        // the auth call succeeded or failed. Previously only the
-        // countsAgainstUser=true branch bumped failureCount, so a
-        // client-session-write failure left the widget showing green
-        // "Success" while React state held an empty token, blocking every
-        // subsequent submit with "complete human verification below" that
-        // the user could not actually complete. Always bump failureCount on
-        // failure so TurnstileChallenge remounts a fresh token.
+        // AUTH-VICHEA-001 + CAPTCHA-LIFECYCLE-002: Turnstile tokens are
+        // single-use, so the consumed token MUST be cleared on every error.
+        // But the way we refresh the widget depends on attribution:
+        //   - countsAgainstUser=true (invalid credentials, real CAPTCHA
+        //     rejection)  → bump `captchaFailureCount` (punitive, may trigger
+        //     30s retry lockout after 2 strikes).
+        //   - countsAgainstUser=false (client_session_write_failed, network,
+        //     server, rate_limited, session_incomplete) → bump
+        //     `captchaSoftResetCount` (non-punitive). Widget reissues a fresh
+        //     token immediately, no lockout, no "complete verification below"
+        //     trap for users who did nothing wrong.
         const innerClassified = classifyAuthError(err);
         setCaptchaToken("");
-        setCaptchaFailureCount((count) => count + 1);
         if (innerClassified.countsAgainstUser) {
+          setCaptchaFailureCount((count) => count + 1);
           const nextCaptcha = recordFailedLoginAttempt();
           setCaptchaState(nextCaptcha);
           try {
@@ -333,6 +339,8 @@ export default function LoginPage() {
               _user_agent: navigator.userAgent.substring(0, 200),
             });
           } catch { /* non-blocking */ }
+        } else {
+          setCaptchaSoftResetCount((count) => count + 1);
         }
         throw err;
       }
@@ -359,7 +367,9 @@ export default function LoginPage() {
         logCaptchaTelemetry("auth_captcha_fetch_blocked", { surface: "login", reason: "client_auth_throttle_429" });
         setCaptchaState(refreshLoginCaptcha());
         setCaptchaToken("");
-        setCaptchaFailureCount((count) => count + 1);
+        // Non-punitive: server-side throttle is not the user's fault. Soft-reset
+        // so the widget refreshes without entering the 30s retry lockout.
+        setCaptchaSoftResetCount((count) => count + 1);
         setAuthError(err.message);
         setLoading(false);
         return;
@@ -447,7 +457,7 @@ export default function LoginPage() {
                     setAuthError("");
                     setCaptchaNotice("");
                     setCaptchaToken("");
-                    setCaptchaFailureCount((c) => c + 1);
+                    setCaptchaSoftResetCount((c) => c + 1);
                   }}
                   className="underline hover:no-underline"
                 >
@@ -518,7 +528,7 @@ export default function LoginPage() {
             <div style={{ minHeight: 78 }} onFocusCapture={() => setTurnstileReady(true)}>
               {turnstileReady ? (
                 <Suspense fallback={<div style={{ height: 78 }} aria-hidden="true" />}>
-                  <TurnstileChallenge action="login" onTokenChange={setCaptchaToken} failureCount={captchaFailureCount} email={email} />
+                  <TurnstileChallenge action="login" onTokenChange={setCaptchaToken} failureCount={captchaFailureCount} softResetCount={captchaSoftResetCount} email={email} />
                 </Suspense>
               ) : (
                 <div style={{ height: 78 }} aria-hidden="true" />

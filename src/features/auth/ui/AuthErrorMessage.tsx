@@ -71,8 +71,9 @@ const COPY: Record<AuthErrorCode, Copy> = {
     action: "Send a new reset link.",
   },
   client_session_write_failed: {
-    title: "Sign-in didn't complete",
-    body: "Something interrupted finishing sign-in. Please try again.",
+    title: "We need to retry sign-in",
+    body: "Your account is safe. Something interrupted the browser session, so we cleared the attempt. Complete verification again and sign in.",
+    action: "If this keeps happening, use Google sign-in or request a sign-in link.",
   },
   mfa_required: {
     title: "Two-step verification needed",

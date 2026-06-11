@@ -23,6 +23,8 @@ export default function ForgotPasswordPage() {
   const [captchaState, setCaptchaState] = useState(() => getLoginCaptchaState());
   const [captchaToken, setCaptchaToken] = useState("");
   const [captchaFailureCount, setCaptchaFailureCount] = useState(0);
+  // Non-punitive widget refresh (no 30s lockout). See LoginPage for rationale.
+  const [captchaSoftResetCount, setCaptchaSoftResetCount] = useState(0);
   const [lockoutState, setLockoutState] = useState(() => getAuthLockoutState());
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -93,16 +95,11 @@ export default function ForgotPasswordPage() {
       const status = (err as { status?: number } | null | undefined)?.status;
       const message = (err as { message?: string } | null | undefined)?.message ?? "";
       // CAPTCHA LIFECYCLE FIX (2026-06-11): Turnstile tokens are single-use.
-      // Always clear + bump failureCount after a failed attempt so the widget
-      // remounts with a fresh token, otherwise the next click is blocked by
-      // "complete human verification below" with a green widget the user
-      // cannot interact with.
+      // Clear the consumed token; use a soft-reset (no 30s lockout) for
+      // non-punitive errors, which is the only failure shape we surface here.
       setCaptchaToken("");
-      setCaptchaFailureCount((count) => count + 1);
+      setCaptchaSoftResetCount((count) => count + 1);
       if (code === GOOGLE_ONLY_ACCOUNT_CODE) {
-        // Provider mismatch — Google owns the password, not us. Never penalize
-        // the password_reset bucket: the platform cannot reset this account by
-        // design and clicking again won't change that.
         setError(GOOGLE_ONLY_ACCOUNT_MESSAGE);
         return;
       }
@@ -112,11 +109,6 @@ export default function ForgotPasswordPage() {
         setError(err.message);
         return;
       }
-      // Only count REAL backend rate-limits / abuse signals against the bucket.
-      // Transient service errors (5xx, network blips, identity-lookup fallback)
-      // must NOT lock the member out for 60 minutes — that was the root cause
-      // of "Too many requests. Please try again in 60 minutes." showing up
-      // after a few harmless retries.
       const isBackendRateLimit = status === 429 || /too many|rate limit/i.test(message);
       if (isBackendRateLimit) {
         void RateLimitService.recordFailure(result.data, "password_reset");
@@ -166,7 +158,7 @@ export default function ForgotPasswordPage() {
               </div>
             </div>
 
-            <TurnstileChallenge action="forgot_password" onTokenChange={setCaptchaToken} failureCount={captchaFailureCount} />
+            <TurnstileChallenge action="forgot_password" onTokenChange={setCaptchaToken} failureCount={captchaFailureCount} softResetCount={captchaSoftResetCount} />
 
             <Button type="submit" className="w-full" disabled={loading || lockoutState.locked} aria-describedby={lockoutState.locked ? "forgot-password-lockout-status" : undefined}>
               {loading ? "Sending reset link…" : lockoutState.locked ? `Try again in ${lockoutState.remainingSeconds}s` : "Send reset link"}

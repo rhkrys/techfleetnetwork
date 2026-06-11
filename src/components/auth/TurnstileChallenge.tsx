@@ -42,7 +42,21 @@ type TurnstileErrorKind = "expired" | "network" | "challenge" | "unknown";
 type TurnstileChallengeProps = {
   action: "login" | "register" | "forgot_password" | "signup_confirmation_resend";
   onTokenChange: (token: string) => void;
+  /**
+   * Punitive failure counter. Incrementing this advances the consecutive-failure
+   * counter and, after 2 strikes, enters a 30s retry countdown. Use ONLY for
+   * confirmed user-attributable failures (invalid credentials, real CAPTCHA
+   * rejection). Never for client_session_write_failed / network / server.
+   */
   failureCount?: number;
+  /**
+   * Non-punitive soft-reset counter. Incrementing this remounts a fresh
+   * Turnstile token without bumping the consecutive-failure counter or
+   * triggering the 30s lockout. Use for client session-write failures,
+   * network errors, and any flow where the user is not at fault but the
+   * single-use token has been consumed and a fresh one is needed.
+   */
+  softResetCount?: number;
   /** Email to use for the magic-link fallback. Login surfaces this. */
   email?: string;
 };
@@ -75,7 +89,7 @@ function injectScript(onReady: () => void): HTMLScriptElement {
   return script;
 }
 
-export function TurnstileChallenge({ action, onTokenChange, failureCount = 0, email }: TurnstileChallengeProps) {
+export function TurnstileChallenge({ action, onTokenChange, failureCount = 0, softResetCount = 0, email }: TurnstileChallengeProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<string | null>(null);
   const [scriptReady, setScriptReady] = useState(Boolean(window.turnstile));
@@ -85,6 +99,7 @@ export function TurnstileChallenge({ action, onTokenChange, failureCount = 0, em
   const [magicLinkState, setMagicLinkState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const consecutiveFailuresRef = useRef(0);
   const lastFailureCountRef = useRef(failureCount);
+  const lastSoftResetCountRef = useRef(softResetCount);
   const retryCountRef = useRef(0);
 
   const resetWidget = () => {
@@ -170,6 +185,21 @@ export function TurnstileChallenge({ action, onTokenChange, failureCount = 0, em
     }
     lastFailureCountRef.current = failureCount;
   }, [failureCount]);
+
+  // Non-punitive soft reset: clears the current token and forces Cloudflare
+  // to issue a fresh one without incrementing the consecutive-failure
+  // counter (so no 30s lockout). Used after client_session_write_failed,
+  // network errors, and other errors the user is not responsible for.
+  useEffect(() => {
+    if (softResetCount > lastSoftResetCountRef.current) {
+      onTokenChange("");
+      setTransientError(null);
+      setRetrySeconds(0);
+      resetWidget();
+    }
+    lastSoftResetCountRef.current = softResetCount;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [softResetCount]);
 
   useEffect(() => {
     if (retrySeconds <= 0) return;
