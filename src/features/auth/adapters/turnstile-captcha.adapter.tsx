@@ -6,69 +6,41 @@
  * `no-restricted-imports` guard will forbid Turnstile SDK imports outside this
  * file.
  *
- * Contract surface intentionally matches `CaptchaPort`:
- *   - `<TurnstileCaptchaAdapter onToken onError onExpire resetKey />`
- *   - Parent owns the token + reset counter (engine state).
+ * The underlying widget owns its own DOM lifecycle and reacts to bumps in
+ * `failureCount` / `softResetCount` to remount a fresh challenge. The adapter
+ * normalises the surface so callers think in terms of `resetKey` and a single
+ * `onToken` callback — matching the eventual `CaptchaPort` shape without
+ * forcing a refactor of the legacy widget today.
  */
-import { forwardRef, useImperativeHandle, useRef } from "react";
-import { TurnstileChallenge, type TurnstileChallengeHandle } from "@/components/auth/TurnstileChallenge";
-import type { CaptchaPort } from "@/features/auth/ports/captcha.port";
+import { TurnstileChallenge } from "@/components/auth/TurnstileChallenge";
+
+export type TurnstileAction = "login" | "register" | "forgot_password" | "signup_confirmation_resend";
 
 export interface TurnstileCaptchaAdapterProps {
-  /** Bumping this remounts the widget — used after captcha_failed / expired. */
-  resetKey?: number | string;
-  /** Fires when Turnstile returns a fresh token. */
+  action: TurnstileAction;
   onToken: (token: string) => void;
-  /** Fires when Turnstile signals an error (network, blocked, internal). */
-  onError?: (reason: string) => void;
-  /** Fires when the token expires and needs a re-solve. */
-  onExpire?: () => void;
-  /** Allow callers to pass a className for layout, never for SDK config. */
-  className?: string;
+  /** Punitive counter — advances the user-attributable failure lockout. */
+  failureCount?: number;
+  /** Non-punitive counter — remounts without bumping the failure lockout. */
+  softResetCount?: number;
+  /** Email passed through for the magic-link fallback on the login surface. */
+  email?: string;
 }
 
-/**
- * `CaptchaPort`-compatible imperative handle. Engines call `.reset()` /
- * `.getFreshToken()` without knowing the underlying widget.
- */
-export const TurnstileCaptchaAdapter = forwardRef<CaptchaPort, TurnstileCaptchaAdapterProps>(
-  function TurnstileCaptchaAdapter({ resetKey, onToken, onError, onExpire, className }, ref) {
-    const widgetRef = useRef<TurnstileChallengeHandle | null>(null);
-    const latestTokenRef = useRef<string>("");
-
-    useImperativeHandle(
-      ref,
-      () => ({
-        reset() {
-          latestTokenRef.current = "";
-          widgetRef.current?.reset();
-        },
-        async getFreshToken() {
-          // Turnstile auto-solves; surface whatever the latest issued token is.
-          return latestTokenRef.current || null;
-        },
-      }),
-      [],
-    );
-
-    return (
-      <TurnstileChallenge
-        key={`turnstile-${resetKey ?? "0"}`}
-        ref={widgetRef}
-        className={className}
-        onToken={(token) => {
-          latestTokenRef.current = token;
-          onToken(token);
-        }}
-        onError={(reason) => {
-          latestTokenRef.current = "";
-          onError?.(reason);
-        }}
-        onExpire={() => {
-          latestTokenRef.current = "";
-          onExpire?.();
-        }}
-      />
-    );
-  },
-);
+export function TurnstileCaptchaAdapter({
+  action,
+  onToken,
+  failureCount = 0,
+  softResetCount = 0,
+  email,
+}: TurnstileCaptchaAdapterProps) {
+  return (
+    <TurnstileChallenge
+      action={action}
+      onTokenChange={onToken}
+      failureCount={failureCount}
+      softResetCount={softResetCount}
+      email={email}
+    />
+  );
+}
