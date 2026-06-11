@@ -436,7 +436,7 @@ export default function LoginPage() {
     <div className="min-h-[calc(100dvh-4rem)] flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-md space-y-8 animate-fade-in">
         <div className="text-center">
-          <img src={techFleetLogo} alt="" width={48} height={48} decoding="async" fetchpriority="high" className="h-12 w-12 mx-auto mb-4 dark:invert" aria-hidden="true" />
+          <img src={techFleetLogo} alt="" width={48} height={48} decoding="async" className="h-12 w-12 mx-auto mb-4 dark:invert" aria-hidden="true" />
           <h1 className="text-2xl font-bold text-foreground">Welcome back</h1>
           <p className="text-muted-foreground mt-1">Sign in to your Tech Fleet account</p>
         </div>
