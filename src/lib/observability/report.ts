@@ -17,6 +17,7 @@ import {
   reportError as internalReportError,
   reportActivity as internalReportActivity,
   reportRecovery as internalReportRecovery,
+  reportValidationRejection as internalReportValidationRejection,
   type ReportSeverity,
   type ReportEventType,
 } from "@/services/error-reporter.service";

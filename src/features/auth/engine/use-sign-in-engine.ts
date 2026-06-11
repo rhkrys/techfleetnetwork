@@ -19,7 +19,7 @@ import { decideFailureActions } from "@/features/auth/services/auth-failure-poli
 import { RateLimitService } from "@/services/rate-limit.service";
 import { MfaService } from "@/services/mfa.service";
 import { loginSchema } from "@/lib/validators/auth";
-import { reportValidationRejection } from "@/services/error-reporter.service";
+import { reportValidationRejection } from "@/lib/observability/report";
 import { normalizeSafeRedirectTarget } from "@/lib/security";
 import { clearLoginCaptcha, getLoginCaptchaState, refreshLoginCaptcha } from "@/features/auth/ports/captcha-state.port";
 import {

@@ -28,7 +28,7 @@ import { getCanonicalAppOrigin } from "@/lib/canonical-origin";
 import { recordPolicyAcknowledgment } from "@/lib/policies";
 import { loadConsent } from "@/lib/consent/manager";
 import { showFormErrors, scrollToFirstError } from "@/lib/form-validation";
-import { reportValidationRejection } from "@/services/error-reporter.service";
+import { reportValidationRejection } from "@/lib/observability/report";
 
 export interface RegisterEngine {
   // form

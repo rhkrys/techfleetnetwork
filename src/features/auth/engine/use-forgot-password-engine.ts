@@ -20,7 +20,7 @@ import { applyInvalidAttempt, applyServerRateLimitFailure } from "@/features/aut
 import { isAuthThrottleCaptchaError } from "@/lib/auth-throttle-captcha";
 import { validateEmailDomainExists } from "@/lib/email-domain-validation";
 import { getCanonicalAppOrigin } from "@/lib/canonical-origin";
-import { reportValidationRejection } from "@/services/error-reporter.service";
+import { reportValidationRejection } from "@/lib/observability/report";
 
 export interface ForgotPasswordEngine {
   email: string;
