@@ -355,8 +355,8 @@ export function useSignInEngine(): SignInEngine {
     setCaptchaToken("");
     if (actions.incrementDeviceLockout) {
       setCaptchaFailureCount((c) => c + 1);
-      setCaptchaState(recordFailedLoginAttempt());
-      const nextLockout = recordInvalidAuthAttempt();
+      setCaptchaState(applyCaptchaFailedLogin());
+      const nextLockout = applyInvalidAttempt();
       setLockoutState(nextLockout);
       lastFailedEmailRef.current = result.data.email.trim().toLowerCase();
       if (actions.recordCredentialFailureRpc) {
@@ -369,7 +369,7 @@ export function useSignInEngine(): SignInEngine {
         })().catch(() => undefined);
       }
       if (actions.recordServerRateLimitFailure) {
-        void RateLimitService.recordFailure(result.data.email, "login_attempt").catch(() => undefined);
+        applyServerRateLimitFailure(result.data.email, "login_attempt");
       }
       if (nextLockout.locked) {
         setTypedAuthError(null);

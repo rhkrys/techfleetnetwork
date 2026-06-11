@@ -66,7 +66,7 @@ export function useForgotPasswordEngine(): ForgotPasswordEngine {
     if (!result.success) {
       reportValidationRejection("emailInputSchema", result.error.issues, "ForgotPasswordScreen.handleSubmit");
       setError(result.error.issues[0].message);
-      const nextLockout = recordInvalidAuthAttempt();
+      const nextLockout = applyInvalidAttempt();
       setLockoutState(nextLockout);
       if (nextLockout.locked) setError(formatAuthLockoutMessage(nextLockout.remainingSeconds));
       return;
@@ -74,7 +74,7 @@ export function useForgotPasswordEngine(): ForgotPasswordEngine {
     const domainCheck = await validateEmailDomainExists(result.data);
     if (!domainCheck.valid) {
       setError(domainCheck.message ?? "Use an email address with a real domain.");
-      const nextLockout = recordInvalidAuthAttempt();
+      const nextLockout = applyInvalidAttempt();
       setLockoutState(nextLockout);
       if (nextLockout.locked) setError(formatAuthLockoutMessage(nextLockout.remainingSeconds));
       return;
@@ -84,7 +84,7 @@ export function useForgotPasswordEngine(): ForgotPasswordEngine {
       setCaptchaState(refreshLoginCaptcha());
       setCaptchaToken("");
       setCaptchaFailureCount((c) => c + 1);
-      const nextLockout = recordInvalidAuthAttempt();
+      const nextLockout = applyInvalidAttempt();
       setLockoutState(nextLockout);
       setError(nextLockout.locked ? formatAuthLockoutMessage(nextLockout.remainingSeconds) : "Complete the human verification before trying again.");
       return;
@@ -123,7 +123,7 @@ export function useForgotPasswordEngine(): ForgotPasswordEngine {
       }
       const isBackendRateLimit = status === 429 || /too many|rate limit/i.test(message);
       if (isBackendRateLimit) {
-        void RateLimitService.recordFailure(result.data, "password_reset");
+        applyServerRateLimitFailure(result.data, "password_reset");
       }
       // Email-enumeration guard: always show success.
       setSubmitted(true);

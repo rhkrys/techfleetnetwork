@@ -226,7 +226,7 @@ export function useRegisterEngine(): RegisterEngine {
       setCaptchaState(refreshLoginCaptcha());
       setCaptchaToken("");
       setCaptchaFailureCount((c) => c + 1);
-      const nextLockout = recordInvalidAuthAttempt();
+      const nextLockout = applyInvalidAttempt();
       setLockoutState(nextLockout);
       setAuthError(nextLockout.locked ? formatAuthLockoutMessage(nextLockout.remainingSeconds) : "Complete the human verification before trying again.");
       return;
@@ -279,9 +279,9 @@ export function useRegisterEngine(): RegisterEngine {
         setLoading(false);
         return;
       }
-      void RateLimitService.recordFailure(result.data.email, "signup_attempt").catch(() => undefined);
+      applyServerRateLimitFailure(result.data.email, "signup_attempt");
       setAuthError(e.message ?? "We couldn't create your account. Try again in a moment.");
-      const nextLockout = recordInvalidAuthAttempt();
+      const nextLockout = applyInvalidAttempt();
       setLockoutState(nextLockout);
       lastFailedEmailRef.current = result.data.email.trim().toLowerCase();
       if (nextLockout.locked) setAuthError(formatAuthLockoutMessage(nextLockout.remainingSeconds));

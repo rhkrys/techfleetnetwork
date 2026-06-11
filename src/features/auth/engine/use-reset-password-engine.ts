@@ -27,7 +27,8 @@ import { recordResetTelemetry, type ResetBranch, type ResetOutcome } from "@/lib
 import { telemetryPort } from "@/features/auth/ports/telemetry.port";
 
 export const MAX_REJECTIONS = 3;
-const RESET_ATTEMPTS_KEY = "tfn:reset-attempts";
+import { AUTH_STORAGE_KEYS } from "@/features/auth/domain/auth-storage-keys";
+const RESET_ATTEMPTS_KEY = AUTH_STORAGE_KEYS.resetAttempts;
 
 function tokenHashPrefix(tokenHash: string | null): string | null {
   return tokenHash ? tokenHash.slice(0, 12) : null;
