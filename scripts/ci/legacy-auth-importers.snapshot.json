@@ -15,16 +15,8 @@
     "src/lib/client-request-throttle.ts",
     "src/lib/turnstile-verification.ts",
     "src/main.tsx",
-    "src/pages/ForgotPasswordPage.tsx",
-    "src/pages/LoginPage.tsx",
-    "src/pages/RegisterPage.tsx",
-    "src/pages/ResetPasswordPage.tsx",
     "src/test/lib/auth-captcha.test.ts",
     "src/test/lib/auth-lockout.test.ts",
-    "src/test/services/auth.service.test.ts",
-    "src/test/ui/ForgotPasswordPage.test.tsx",
-    "src/test/ui/LoginPage.test.tsx",
-    "src/test/ui/RegisterPage.test.tsx",
-    "src/test/ui/ResetPasswordPage.test.tsx"
+    "src/test/services/auth.service.test.ts"
   ]
 }
