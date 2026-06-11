@@ -65,9 +65,9 @@ export default function ForgotPasswordScreen() {
               </div>
             </div>
 
-            <TurnstileChallenge
+            <TurnstileCaptchaAdapter
               action="forgot_password"
-              onTokenChange={e.setCaptchaToken}
+              onToken={e.setCaptchaToken}
               failureCount={e.captchaFailureCount}
               softResetCount={e.captchaSoftResetCount}
             />
