@@ -14,8 +14,8 @@
  * VICHEA INVARIANT: `client_session_write_failed` MUST set every counter flag
  * to false. Verified by `auth-failure-policy.contract.test.ts`. Do not bypass.
  */
-import { recordInvalidAuthAttempt, type AuthLockoutState } from "@/lib/auth-lockout";
-import { recordFailedLoginAttempt, type LoginCaptchaState } from "@/lib/auth-captcha";
+import { recordInvalidAuthAttempt, type AuthLockoutState } from "@/features/auth/ports/lockout.port";
+import { recordFailedLoginAttempt, type LoginCaptchaState } from "@/features/auth/ports/captcha-state.port";
 import { RateLimitService } from "@/services/rate-limit.service";
 import { sessionPort } from "@/features/auth/ports/session.port";
 
