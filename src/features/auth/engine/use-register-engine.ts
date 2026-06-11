@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { useLocation } from "react-router-dom";
-import { AuthService } from "@/services/auth.service";
+import { sessionPort } from "@/features/auth/ports/session.port";
 import { RateLimitService } from "@/services/rate-limit.service";
 import { registerSchema, ageInYears, GUARDIAN_MIN_AGE } from "@/lib/validators/auth";
 import { supabase } from "@/integrations/supabase/client";
@@ -250,7 +250,7 @@ export function useRegisterEngine(): RegisterEngine {
         return;
       }
 
-      await AuthService.signUp(
+      await sessionPort.signUp(
         result.data.email,
         result.data.password,
         result.data.firstName,
@@ -312,7 +312,7 @@ export function useRegisterEngine(): RegisterEngine {
         setResendMessage(`Please wait ${minutes} minute${minutes > 1 ? "s" : ""} before requesting another verification email.`);
         return;
       }
-      await AuthService.resendSignupConfirmation(
+      await sessionPort.resendSignupConfirmation(
         email,
         getCanonicalAppOrigin() + (redirectParam ? redirectParam : "/profile-setup"),
         resendCaptchaToken,
