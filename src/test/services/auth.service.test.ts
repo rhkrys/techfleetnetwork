@@ -58,6 +58,7 @@ describe("AuthService session max-age marker", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(supabase.auth.getSession).mockReset();
+    vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: makeSession("reset-user") }, error: null });
     sessionStorage.clear();
     localStorage.clear();
     vi.mocked(supabase.rpc).mockResolvedValue({ data: false, error: null });
@@ -107,7 +108,10 @@ describe("AuthService session max-age marker", () => {
     await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).resolves.toEqual({ otherDevicesRevoked: true });
 
     expect(supabase.auth.updateUser).not.toHaveBeenCalled();
-    expect(supabase.functions.invoke).toHaveBeenCalledWith("finalize-password-reset", { body: { password: "StrongPass123!" } });
+    expect(supabase.functions.invoke).toHaveBeenCalledWith("finalize-password-reset", {
+      body: { password: "StrongPass123!" },
+      headers: { Authorization: "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.signature" },
+    });
     expect(logAccountActivity).toHaveBeenCalledWith("password_updated", { details: { confirmed: true } });
   });
 
@@ -138,7 +142,10 @@ describe("AuthService session max-age marker", () => {
 
     await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).rejects.toMatchObject({ code: "service_unavailable" });
 
-    expect(supabase.functions.invoke).toHaveBeenCalledWith("finalize-password-reset", { body: { password: "StrongPass123!" } });
+    expect(supabase.functions.invoke).toHaveBeenCalledWith("finalize-password-reset", expect.objectContaining({
+      body: { password: "StrongPass123!" },
+      headers: { Authorization: "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.signature" },
+    }));
   });
 
   it("AUTH-RESET-SESSION-002: maps missing recovery session to expired link", async () => {
@@ -146,7 +153,31 @@ describe("AuthService session max-age marker", () => {
 
     await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).rejects.toMatchObject({ code: "session_expired" });
 
-    expect(supabase.functions.invoke).toHaveBeenCalledWith("finalize-password-reset", { body: { password: "StrongPass123!" } });
+    expect(supabase.functions.invoke).toHaveBeenCalledWith("finalize-password-reset", expect.objectContaining({
+      body: { password: "StrongPass123!" },
+      headers: { Authorization: "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.signature" },
+    }));
+  });
+
+  it("AUTH-RESET-025: refuses to finalize when the recovery session is missing", async () => {
+    vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: null }, error: null });
+
+    await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).rejects.toMatchObject({ code: "session_expired" });
+
+    expect(supabase.functions.invoke).not.toHaveBeenCalledWith("finalize-password-reset", expect.anything());
+  });
+
+  it("AUTH-RESET-025: pins the recovery bearer token on finalize-password-reset", async () => {
+    const session = makeSession("reset-user");
+    vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session }, error: null });
+    vi.mocked(supabase.functions.invoke).mockResolvedValue({ data: { other_devices_revoked: false }, error: null });
+
+    await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).resolves.toEqual({ otherDevicesRevoked: false });
+
+    expect(supabase.functions.invoke).toHaveBeenCalledWith("finalize-password-reset", {
+      body: { password: "StrongPass123!" },
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
   });
 
   it("AUTH-RESET-SESSION-005: maps 'User from sub claim in JWT does not exist' to session_expired", async () => {
