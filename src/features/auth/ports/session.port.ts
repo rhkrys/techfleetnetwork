@@ -29,6 +29,8 @@ export const sessionPort = {
   signOutAllDevices: AuthService.signOutAllDevices.bind(AuthService),
   /** Triggers a password-reset email via Supabase + RateLimitService. */
   resetPassword: AuthService.resetPassword.bind(AuthService),
+  /** Final step of the reset flow — calls update-password-confirmed edge fn. */
+  updatePassword: AuthService.updatePassword.bind(AuthService),
 } as const;
 
 export type SessionPort = typeof sessionPort;
