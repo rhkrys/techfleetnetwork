@@ -309,8 +309,10 @@ export default tseslint.config(
     // until each engine migrates; flip to "error" in Ship 5.
     files: ["src/features/auth/engine/**/*.{ts,tsx}"],
     rules: {
+      // Ship 6 lock-in (2026-06-11): engines verified clean, guard flipped
+      // to error so any future port-bypass fails CI.
       "no-restricted-imports": [
-        "warn",
+        "error",
         {
           paths: [
             { name: "@/integrations/supabase/client", message: "Engines must call ports/adapters (supabaseSessionAdapter) — not the Supabase client directly." },
