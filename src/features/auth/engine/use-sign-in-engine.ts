@@ -32,6 +32,7 @@ import {
 } from "@/lib/auth-lockout";
 import { logCaptchaTelemetry } from "@/lib/auth-captcha-telemetry";
 import { flushPendingStaleChunkEvent, newAttemptId, recordLoginEvent } from "@/lib/login-telemetry";
+import { recordAuthEngineEvent } from "@/features/auth/adapters/audit-telemetry.adapter";
 
 export interface SignInEngine {
   // form state
@@ -288,6 +289,7 @@ export function useSignInEngine(): SignInEngine {
     const attemptId = newAttemptId();
     const attemptStarted = Date.now();
     recordLoginEvent(attemptId, "started", { email: result.data.email });
+    recordAuthEngineEvent("auth_engine.sign_in_started", { email: result.data.email, attempt_id: attemptId });
 
     const rateCheck = await RateLimitService.peek(result.data.email, "login_attempt").catch(() => ({
       allowed: true, remaining: 5, retry_after: 0,
@@ -323,6 +325,7 @@ export function useSignInEngine(): SignInEngine {
       clearAuthLockout();
       clearLoginCaptcha();
       recordLoginEvent(attemptId, "redirected", { email: result.data.email, durationMs: Date.now() - attemptStarted });
+      recordAuthEngineEvent("auth_engine.sign_in_succeeded", { email: result.data.email, attempt_id: attemptId, duration_ms: Date.now() - attemptStarted });
       navigate(redirectTarget, { replace: true });
       return;
     }
