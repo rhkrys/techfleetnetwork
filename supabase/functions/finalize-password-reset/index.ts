@@ -35,7 +35,7 @@ function classifyUpdateError(error: { code?: string; status?: number; message?: 
   if (code === "weak_password" || msg.includes("pwned") || msg.includes("breach") || msg.includes("weak")) {
     return { status: 400, code: "weak_password", message: "This password appeared in a known data breach. Choose a different one." };
   }
-  if (error.status === 401 || msg.includes("session") || msg.includes("jwt")) {
+  if (error.status === 401 || error.status === 403 || msg.includes("unauthorized") || msg.includes("session") || msg.includes("jwt")) {
     return { status: 401, code: "session_expired", message: "Your password reset link expired. Request a new one to continue." };
   }
   if (error.status === 429 || msg.includes("rate")) {
