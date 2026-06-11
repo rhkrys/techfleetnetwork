@@ -8,8 +8,7 @@ import { validatePasswordSet, type PasswordSetValue } from "@/lib/auth/password-
 import { createAuthThrottleCaptchaError, isAuthThrottleCaptchaError } from "@/lib/auth-throttle-captcha";
 import { validateEmailDomainExists } from "@/lib/email-domain-validation";
 import { getLastActivityAt } from "@/lib/session-activity";
-import { classifyAuthError, ClientSessionWriteError, purgeLocalAuthState } from "@/lib/auth/session-health";
-import { setSessionSafe } from "@/features/auth/services/auth-flow.service";
+import { classifyAuthError, purgeLocalAuthState } from "@/lib/auth/session-health";
 
 
 const log = createLogger("AuthService");
@@ -220,38 +219,20 @@ export const AuthService = {
       throw new Error("Complete the human verification before trying again.");
     }
     const safeEmail = parsedEmail.data;
-    // LCL-FIX-002: client-side DNS check intentionally removed on the login
-    // path. The server already runs a fail-open domain check inside
-    // `login-with-captcha`, and DoH hiccups on the client were a top cause
-    // of "Use an email address with a real domain." false rejects. Domain
-    // typo prevention still runs on registration where it adds value.
+    // AUTH-DIRECT-SIGNIN-001: password sign-in must let the auth SDK create
+    // the browser session directly. The removed edge-token handoff accepted
+    // credentials server-side, returned raw tokens, then asked the browser to
+    // re-hydrate them via setSessionSafe — the exact source of Vichea's
+    // recurring client_session_write_failed loop.
     void logAccountActivity("login_attempt_started", { email: safeEmail });
     return log.track("signInWithPassword", `Authenticating user ${safeEmail}`, { email: safeEmail }, async () => {
-      const { data, error } = await supabase.functions.invoke<{ session: AuthSession; user: AuthSession["user"] }>("login-with-captcha", {
-        body: { email: safeEmail, password, captchaToken: captchaToken.trim(), ...(attemptId ? { attemptId } : {}) },
-      }).then(async (res) => {
-        if (res.error) return { data: null, error: res.error };
-        const srvSession = res.data?.session;
-        if (!srvSession?.access_token || !srvSession.refresh_token) {
-          return { data: null, error: new ClientSessionWriteError("set_session_rejected", "Sign-in didn't complete — please try again.") };
-        }
-        const tokens = { access_token: srvSession.access_token, refresh_token: srvSession.refresh_token };
-        try {
-          const confirmedSession = await setSessionSafe(tokens);
-          return { data: { session: confirmedSession as AuthSession, user: confirmedSession.user ?? res.data?.user ?? null }, error: null };
-        } catch (setErr) {
-          if (setErr instanceof ClientSessionWriteError &&
-              (setErr.reason === "access_token_invalid" || setErr.reason === "refresh_token_invalid")) {
-            purgeLocalAuthState({ reason: "shape_invalid", source: "signin" });
-            return { data: null, error: setErr };
-          }
-          log.warn("signInWithPassword", "setSession did not produce a confirmed client session", { email: safeEmail }, setErr);
-          return { data: null, error: setErr instanceof ClientSessionWriteError ? setErr : new ClientSessionWriteError("set_session_rejected") };
-        }
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: safeEmail,
+        password,
+        options: { captchaToken: captchaToken.trim() },
       });
 
       if (error) {
-        if (error instanceof ClientSessionWriteError) throw error;
         const fnError = await readFunctionError(error);
         log.error("signInWithPassword", `Authentication failed for ${safeEmail}: ${fnError.message}`, { email: safeEmail, errorCode: fnError.status ?? fnError.code }, error);
         void logAccountActivity("login_failed", { email: safeEmail, errorMessage: fnError.message, errorCode: fnError.status ?? fnError.code });
@@ -266,6 +247,12 @@ export const AuthService = {
           const captchaError = new Error("Complete the human verification below before signing in.") as Error & { status?: number; code?: string };
           captchaError.status = fnError.status;
           captchaError.code = "captcha_required";
+          throw captchaError;
+        }
+        if (fnError.code?.toLowerCase() === "captcha_failed" || fnError.message.toLowerCase().includes("captcha")) {
+          const captchaError = new Error("Complete the human verification below before signing in.") as Error & { status?: number; code?: string };
+          captchaError.status = fnError.status;
+          captchaError.code = "captcha_failed";
           throw captchaError;
         }
         const credentialError = new Error("Invalid email or password. Please try again.") as Error & { status?: number; code?: string };
