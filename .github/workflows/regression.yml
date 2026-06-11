@@ -164,6 +164,10 @@ jobs:
       - name: Verify auth feature layer graph (ui → state → flows → services → domain)
         run: node scripts/ci/check-auth-layer-graph.mjs
 
+      - name: Verify legacy auth importer allowlist (Ship 5 of auth rebuild)
+        run: node scripts/ci/check-legacy-auth-importers.mjs
+
+
 
       - name: Verify no opaque "Script error." rows landed in last 24h
         if: ${{ env.PGHOST != '' }}
