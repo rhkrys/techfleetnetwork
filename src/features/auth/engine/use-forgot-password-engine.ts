@@ -9,13 +9,13 @@ import { sessionPort } from "@/features/auth/ports/session.port";
 import { GOOGLE_ONLY_ACCOUNT_CODE, GOOGLE_ONLY_ACCOUNT_MESSAGE } from "@/features/auth/domain/google-only-account";
 import { RateLimitService } from "@/services/rate-limit.service";
 import { emailInputSchema } from "@/lib/validators/auth";
-import { getLoginCaptchaState, refreshLoginCaptcha } from "@/lib/auth-captcha";
+import { getLoginCaptchaState, refreshLoginCaptcha } from "@/features/auth/ports/captcha-state.port";
 import {
   clearAuthLockout,
   formatAuthLockoutMessage,
   getAuthLockoutState,
   recordInvalidAuthAttempt,
-} from "@/lib/auth-lockout";
+} from "@/features/auth/ports/lockout.port";
 import { logCaptchaTelemetry } from "@/lib/auth-captcha-telemetry";
 import { isAuthThrottleCaptchaError } from "@/lib/auth-throttle-captcha";
 import { validateEmailDomainExists } from "@/lib/email-domain-validation";

@@ -13,7 +13,7 @@ import { RateLimitService } from "@/services/rate-limit.service";
 import { registerSchema, ageInYears, GUARDIAN_MIN_AGE } from "@/lib/validators/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { logAccountActivity } from "@/lib/account-activity";
-import { getLoginCaptchaState, refreshLoginCaptcha } from "@/lib/auth-captcha";
+import { getLoginCaptchaState, refreshLoginCaptcha } from "@/features/auth/ports/captcha-state.port";
 import {
   clearAuthLockout,
   formatAuthLockoutMessage,
@@ -21,7 +21,7 @@ import {
   maybeAutoHealAuthLockout,
   recordInvalidAuthAttempt,
   resetAuthLockoutForEmailChange,
-} from "@/lib/auth-lockout";
+} from "@/features/auth/ports/lockout.port";
 import { logCaptchaTelemetry } from "@/lib/auth-captcha-telemetry";
 import { isAuthThrottleCaptchaError } from "@/lib/auth-throttle-captcha";
 import { validateEmailDomainExists } from "@/lib/email-domain-validation";

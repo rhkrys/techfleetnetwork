@@ -21,7 +21,7 @@ import { MfaService } from "@/services/mfa.service";
 import { loginSchema } from "@/lib/validators/auth";
 import { reportValidationRejection } from "@/services/error-reporter.service";
 import { normalizeSafeRedirectTarget } from "@/lib/security";
-import { clearLoginCaptcha, getLoginCaptchaState, recordFailedLoginAttempt, refreshLoginCaptcha } from "@/lib/auth-captcha";
+import { clearLoginCaptcha, getLoginCaptchaState, recordFailedLoginAttempt, refreshLoginCaptcha } from "@/features/auth/ports/captcha-state.port";
 import {
   clearAuthLockout,
   formatAuthLockoutMessage,
@@ -29,7 +29,7 @@ import {
   maybeAutoHealAuthLockout,
   recordInvalidAuthAttempt,
   resetAuthLockoutForEmailChange,
-} from "@/lib/auth-lockout";
+} from "@/features/auth/ports/lockout.port";
 import { logCaptchaTelemetry } from "@/lib/auth-captcha-telemetry";
 import { flushPendingStaleChunkEvent, newAttemptId, recordLoginEvent } from "@/lib/login-telemetry";
 import { recordAuthEngineEvent } from "@/features/auth/adapters/audit-telemetry.adapter";
