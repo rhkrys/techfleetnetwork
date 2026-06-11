@@ -303,6 +303,31 @@ export default tseslint.config(
     },
   },
   {
+    // AUTH REBUILD Ship 5b prep (2026-06-11): engine hooks under
+    // src/features/auth/engine/** must depend only on ports + adapters, not
+    // on the legacy auth surface or Supabase client directly. Warn-only
+    // until each engine migrates; flip to "error" in Ship 5.
+    files: ["src/features/auth/engine/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "warn",
+        {
+          paths: [
+            { name: "@/integrations/supabase/client", message: "Engines must call ports/adapters (supabaseSessionAdapter) — not the Supabase client directly." },
+            { name: "@/services/auth.service", message: "Engines must call sessionPort or the supabase-session adapter — not AuthService." },
+            { name: "@/lib/auth-lockout", message: "Lockout counters belong behind a port (rate-limit / device-lockout). Use the engine helper." },
+            { name: "@/lib/auth-captcha", message: "Captcha state belongs behind the captcha port + adapter." },
+            { name: "@/lib/auth-captcha-telemetry", message: "Telemetry must route through telemetryPort (audit-telemetry adapter)." },
+            { name: "@/lib/auth-error-classifier", message: "Use the typed AuthErr from features/auth/domain instead of string-match classification." },
+          ],
+          patterns: [
+            { group: ["**/auth-lockout", "**/auth-captcha", "**/auth-error-classifier"], message: "Engines must use ports/adapters, not legacy lib modules." },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // jsx-a11y/label-has-associated-control crashes under eslint-plugin-jsx-a11y@6.x
     // with minimatch v10 (TypeError: minimatch is not a function). The rule is
     // already covered by label-has-for + label requirements elsewhere.
