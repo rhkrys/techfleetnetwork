@@ -19,8 +19,8 @@ import {
   isOpaqueRefreshToken,
   ClientSessionWriteError,
   isClientSessionWriteError,
-} from "@/lib/auth/session-health";
-import { classifyAuthError } from "@/lib/auth/session-health";
+} from "@/lib/auth-error-classifier";
+import { classifyAuthError } from "@/lib/auth-error-classifier";
 
 const VALID_JWT =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9" +
