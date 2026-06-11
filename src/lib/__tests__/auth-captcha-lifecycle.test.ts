@@ -8,8 +8,7 @@
  *
  * Structural fixes locked down by this file:
  *   1. Classifier copy for CLIENT_SESSION_WRITE_FAILED + SESSION_INCOMPLETE
- *      uses the new "We need to retry sign-in" / "Your account is safe"
- *      member-safe text. No more "didn't complete cleanly".
+ *      avoids alarming legacy text and keeps the failure non-punitive.
  *   2. The string `"sign-in didn't complete"` was removed from
  *      NETWORK_PATTERNS — that pattern would have re-routed the typed
  *      ClientSessionWriteError through the network branch and stripped the
@@ -26,7 +25,7 @@ import { classifyAuthError } from "@/lib/auth-error-classifier";
 describe("AUTH-CAPTCHA-LIFECYCLE-002: copy", () => {
   it("uses recovery-focused non-alarming copy for ClientSessionWriteError", () => {
     const out = classifyAuthError(new ClientSessionWriteError("set_session_rejected"));
-    expect(out.message).toMatch(/sign in once more|try (again|once more)/i);
+    expect(out.message).toMatch(/browser did not store the session/i);
     expect(out.message).not.toMatch(/didn't complete cleanly/i);
     expect(out.message).not.toMatch(/couldn't finish signing in/i);
     expect(out.countsAgainstUser).toBe(false);
@@ -35,7 +34,7 @@ describe("AUTH-CAPTCHA-LIFECYCLE-002: copy", () => {
   it("uses the same member-safe copy for the SESSION_INCOMPLETE message-text branch", () => {
     const out = classifyAuthError(new Error("Sign-in didn't complete — please try again."));
     expect(out.kind).toBe("SESSION_INCOMPLETE");
-    expect(out.message).toMatch(/sign in once more|try (again|once more)/i);
+    expect(out.message).toMatch(/browser did not store the session/i);
     expect(out.countsAgainstUser).toBe(false);
   });
 });

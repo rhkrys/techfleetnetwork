@@ -2,15 +2,17 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { ClientSessionWriteError } from "@/lib/auth/session-health";
 
 const setSession = vi.fn();
+const getSession = vi.fn();
 vi.mock("@/integrations/supabase/client", () => ({
-  supabase: { auth: { setSession: (...args: unknown[]) => setSession(...args) } },
+  supabase: { auth: { setSession: (...args: unknown[]) => setSession(...args), getSession: (...args: unknown[]) => getSession(...args) } },
 }));
 
-beforeEach(() => { setSession.mockReset(); });
+beforeEach(() => { setSession.mockReset(); getSession.mockReset(); });
 
 const VALID_ACCESS =
   "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ2aWNoZWEifQ.signature_part_base64url";
 const OPAQUE_REFRESH = "v1.MzAxYWY3NTQtMmNkNi00YjVjLWJjNzY";
+const VALID_SESSION = { access_token: VALID_ACCESS, refresh_token: OPAQUE_REFRESH, user: { id: "vichea" } };
 
 async function importService() {
   const mod = await import("../../services/auth-flow.service");
@@ -19,11 +21,11 @@ async function importService() {
 
 describe("auth-flow.service.setSessionSafe — Vichea invariants", () => {
   it("accepts opaque refresh token from GoTrue (the Vichea regression)", async () => {
-    setSession.mockResolvedValue({ error: null });
+    setSession.mockResolvedValue({ data: { session: VALID_SESSION }, error: null });
     const { setSessionSafe } = await importService();
     await expect(
       setSessionSafe({ access_token: VALID_ACCESS, refresh_token: OPAQUE_REFRESH }),
-    ).resolves.toBeUndefined();
+    ).resolves.toMatchObject({ access_token: VALID_ACCESS });
     expect(setSession).toHaveBeenCalledOnce();
   });
 
@@ -44,11 +46,11 @@ describe("auth-flow.service.setSessionSafe — Vichea invariants", () => {
 
   it("never applies the JWT shape check to refresh_token", async () => {
     // A refresh token that is NOT a JWT must be accepted.
-    setSession.mockResolvedValue({ error: null });
+    setSession.mockResolvedValue({ data: { session: VALID_SESSION }, error: null });
     const { setSessionSafe } = await importService();
     await expect(
       setSessionSafe({ access_token: VALID_ACCESS, refresh_token: "x".repeat(64) }),
-    ).resolves.toBeUndefined();
+    ).resolves.toMatchObject({ access_token: VALID_ACCESS });
   });
 
   it("wraps a GoTrue rejection in ClientSessionWriteError (non-punitive)", async () => {
@@ -59,10 +61,19 @@ describe("auth-flow.service.setSessionSafe — Vichea invariants", () => {
     ).rejects.toBeInstanceOf(ClientSessionWriteError);
   });
 
+  it("never treats a null setSession result as login success", async () => {
+    setSession.mockResolvedValue({ data: { session: null }, error: null });
+    getSession.mockResolvedValue({ data: { session: null }, error: null });
+    const { setSessionSafe } = await importService();
+    await expect(
+      setSessionSafe({ access_token: VALID_ACCESS, refresh_token: OPAQUE_REFRESH }),
+    ).rejects.toBeInstanceOf(ClientSessionWriteError);
+  });
+
   it("single-flight: concurrent calls share one in-flight promise", async () => {
     let resolveIt: () => void = () => {};
-    setSession.mockReturnValue(new Promise<{ error: null }>((res) => {
-      resolveIt = () => res({ error: null });
+    setSession.mockReturnValue(new Promise<{ data: { session: typeof VALID_SESSION }; error: null }>((res) => {
+      resolveIt = () => res({ data: { session: VALID_SESSION }, error: null });
     }));
     const { setSessionSafe } = await importService();
     const a = setSessionSafe({ access_token: VALID_ACCESS, refresh_token: OPAQUE_REFRESH });

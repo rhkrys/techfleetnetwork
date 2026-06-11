@@ -112,7 +112,7 @@ export function classifyAuthError(err: unknown): ClassifiedAuthError {
   if (isClientSessionWriteError(err)) {
     return {
       kind: "CLIENT_SESSION_WRITE_FAILED",
-      message: "Almost there — please tap Sign in once more. We refreshed the verification below.",
+      message: "The password was accepted, but the browser did not store the session. We refreshed verification so the next sign-in can continue.",
       countsAgainstUser: false,
     };
   }
@@ -202,7 +202,7 @@ export function classifyAuthError(err: unknown): ClassifiedAuthError {
   if (msg.includes("sign-in didn't complete") || msg.includes("session didn't finish")) {
     return {
       kind: "SESSION_INCOMPLETE",
-      message: "Almost there — please tap Sign in once more. We refreshed the verification below.",
+      message: "The password was accepted, but the browser did not store the session. We refreshed verification so the next sign-in can continue.",
       countsAgainstUser: false,
     };
   }

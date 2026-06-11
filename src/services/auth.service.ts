@@ -8,7 +8,8 @@ import { validatePasswordSet, type PasswordSetValue } from "@/lib/auth/password-
 import { createAuthThrottleCaptchaError, isAuthThrottleCaptchaError } from "@/lib/auth-throttle-captcha";
 import { validateEmailDomainExists } from "@/lib/email-domain-validation";
 import { getLastActivityAt } from "@/lib/session-activity";
-import { classifyAuthError, isLikelyJwt, isOpaqueRefreshToken, ClientSessionWriteError, purgeLocalAuthState } from "@/lib/auth/session-health";
+import { classifyAuthError, ClientSessionWriteError, purgeLocalAuthState } from "@/lib/auth/session-health";
+import { setSessionSafe } from "@/features/auth/services/auth-flow.service";
 
 
 const log = createLogger("AuthService");
@@ -152,40 +153,6 @@ async function logAdminLoginIfElevated(userId?: string | null) {
   }
 }
 
-// LCL-FIX-008: Module-level single-flight lock around setSession so two
-// parallel signInWithPassword calls (rapid double-click, retry race) cannot
-// interleave writes to `sb-*-auth-token` and produce a malformed JWT.
-let setSessionInflight: Promise<unknown> | null = null;
-async function singleFlightSetSession(tokens: { access_token: string; refresh_token: string }) {
-  // AUTH-VICHEA-FIX (2026-06-09): validate access_token as a JWT (it IS a JWT)
-  // and refresh_token as an OPAQUE string (it is NOT a JWT).
-  if (!isLikelyJwt(tokens.access_token)) {
-    purgeLocalAuthState({ reason: "shape_invalid", source: "signin" });
-    throw new ClientSessionWriteError("access_token_invalid");
-  }
-  if (!isOpaqueRefreshToken(tokens.refresh_token)) {
-    purgeLocalAuthState({ reason: "shape_invalid", source: "signin" });
-    throw new ClientSessionWriteError("refresh_token_invalid");
-  }
-  // AUTH-VICHEA-FIX (2026-06-11): do NOT pre-purge local auth state here.
-  // setSession overwrites storage atomically; pre-purging created a brief
-  // window where GoTrue's autoRefresh could read an empty token, return
-  // bad_jwt, and make setSession resolve with a null session even though the
-  // server-side login already succeeded — which surfaced as "Your browser
-  // couldn't finish signing in" for users like Vichea.
-
-  if (setSessionInflight) {
-    await setSessionInflight.catch(() => undefined);
-  }
-  const p = supabase.auth.setSession(tokens);
-  setSessionInflight = p;
-  try {
-    return await p;
-  } finally {
-    if (setSessionInflight === p) setSessionInflight = null;
-  }
-}
-
 async function readFunctionError(error: unknown): Promise<{ status?: number; message: string; code?: string }> {
   const fallback = error instanceof Error ? error.message : String((error as { message?: string } | null | undefined)?.message ?? "Unknown error");
   const directStatus = (error as { status?: unknown } | null | undefined)?.status;
@@ -268,64 +235,43 @@ export const AuthService = {
         if (!srvSession?.access_token || !srvSession.refresh_token) {
           return { data: null, error: new ClientSessionWriteError("set_session_rejected", "Sign-in didn't complete — please try again.") };
         }
-        // AUTH-VICHEA-FIX (2026-06-11): self-healing setSession. If GoTrue's
-        // internal getUser races with storage and returns a null session
-        // (or throws), retry once after a short settle; if still null,
-        // accept the server-issued tokens as the authoritative session —
-        // they were just minted by GoTrue and setSession has already
-        // written them to storage. This prevents a successful 200 from the
-        // server from being surfaced to the user as a session-write failure.
         const tokens = { access_token: srvSession.access_token, refresh_token: srvSession.refresh_token };
-        let setRes: { data: { session: AuthSession | null; user: AuthSession["user"] | null } | null; error: unknown } | null = null;
         try {
-          setRes = await singleFlightSetSession(tokens) as typeof setRes;
+          const confirmedSession = await setSessionSafe(tokens);
+          return { data: { session: confirmedSession as AuthSession, user: confirmedSession.user ?? res.data?.user ?? null }, error: null };
         } catch (setErr) {
-          // shape-invalid throws bubble; transient throws → retry once
           if (setErr instanceof ClientSessionWriteError &&
               (setErr.reason === "access_token_invalid" || setErr.reason === "refresh_token_invalid")) {
+            purgeLocalAuthState({ reason: "shape_invalid", source: "signin" });
             return { data: null, error: setErr };
           }
-          await new Promise((r) => setTimeout(r, 150));
-          try {
-            setRes = await singleFlightSetSession(tokens) as typeof setRes;
-          } catch {
-            setRes = null;
-          }
+          log.warn("signInWithPassword", "setSession did not produce a confirmed client session", { email: safeEmail }, setErr);
+          return { data: null, error: setErr instanceof ClientSessionWriteError ? setErr : new ClientSessionWriteError("set_session_rejected") };
         }
-        if (setRes && !setRes.error && setRes.data?.session?.access_token) {
-          return setRes as { data: { session: AuthSession; user: AuthSession["user"] | null }; error: null };
-        }
-        // setSession returned null session or errored — retry once.
-        await new Promise((r) => setTimeout(r, 150));
-        try {
-          const retry = await singleFlightSetSession(tokens) as typeof setRes;
-          if (retry && !retry.error && retry.data?.session?.access_token) {
-            return retry as { data: { session: AuthSession; user: AuthSession["user"] | null }; error: null };
-          }
-        } catch { /* fall through to accept server tokens */ }
-        // Accept server-issued session as authoritative. Storage already
-        // holds the tokens (setSession writes before its internal getUser),
-        // and the onAuthStateChange listener will reconcile on next tick.
-        log.warn("signInWithPassword", "setSession returned null session; accepting server-issued tokens", { email: safeEmail });
-        return { data: { session: srvSession as AuthSession, user: res.data?.user ?? null }, error: null };
       });
 
       if (error) {
+        if (error instanceof ClientSessionWriteError) throw error;
         const fnError = await readFunctionError(error);
         log.error("signInWithPassword", `Authentication failed for ${safeEmail}: ${fnError.message}`, { email: safeEmail, errorCode: fnError.status ?? fnError.code }, error);
         void logAccountActivity("login_failed", { email: safeEmail, errorMessage: fnError.message, errorCode: fnError.status ?? fnError.code });
-        if (fnError.status === 429 || fnError.message.toLowerCase().includes("too many rapid auth attempts")) throw createAuthThrottleCaptchaError();
+        if (fnError.status === 429 || fnError.code === "rate_limited" || fnError.message.toLowerCase().includes("too many rapid auth attempts")) throw createAuthThrottleCaptchaError();
         if (typeof fnError.status === "number" && fnError.status >= 500) {
-          const serviceError = new Error("The sign-in service hit a snag. Please try again in a moment.") as Error & { status?: number };
+          const serviceError = new Error("The sign-in service hit a snag. Please try again in a moment.") as Error & { status?: number; code?: string };
           serviceError.status = fnError.status;
+          serviceError.code = "service_unavailable";
           throw serviceError;
         }
         if (fnError.code === "CAPTCHA_REQUIRED" || fnError.message.toLowerCase().includes("human verification")) {
-          const captchaError = new Error("Complete the human verification below before signing in.") as Error & { status?: number };
+          const captchaError = new Error("Complete the human verification below before signing in.") as Error & { status?: number; code?: string };
           captchaError.status = fnError.status;
+          captchaError.code = "captcha_required";
           throw captchaError;
         }
-        throw new Error("Invalid email or password. Please try again.");
+        const credentialError = new Error("Invalid email or password. Please try again.") as Error & { status?: number; code?: string };
+        credentialError.status = fnError.status ?? 401;
+        credentialError.code = fnError.code === "invalid_credentials" ? "invalid_credentials" : "invalid_credentials";
+        throw credentialError;
       }
       // LCL-FIX-004 (revised): Post-setSession round-trip validation is
       // non-fatal. The supabase client already validated tokens during

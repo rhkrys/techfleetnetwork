@@ -1,14 +1,30 @@
-import { describe, it, expect } from "vitest";
-import { screen, fireEvent } from "@testing-library/react";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
 import { renderWithRouter } from "./test-utils";
 import LoginPage from "@/pages/LoginPage";
+import { signInWithPassword } from "@/features/auth/flows/sign-in-password.flow";
 
 // Mock services
 vi.mock("@/services/auth.service", () => ({
   AuthService: { signInWithPassword: vi.fn() },
 }));
+vi.mock("@/features/auth/flows/sign-in-password.flow", () => ({
+  signInWithPassword: vi.fn(),
+}));
 vi.mock("@/services/rate-limit.service", () => ({
-  RateLimitService: { check: vi.fn().mockResolvedValue({ allowed: true, remaining: 5, retry_after: 0 }) },
+  RateLimitService: {
+    check: vi.fn().mockResolvedValue({ allowed: true, remaining: 5, retry_after: 0 }),
+    peek: vi.fn().mockResolvedValue({ allowed: true, remaining: 5, retry_after: 0 }),
+    recordFailure: vi.fn().mockResolvedValue({ allowed: true, remaining: 4, retry_after: 0 }),
+  },
+}));
+vi.mock("@/services/mfa.service", () => ({
+  MfaService: { getMfaGateDecision: vi.fn().mockResolvedValue({ hasVerifiedTotp: false, currentAal: "aal1", needsChallenge: false }) },
+}));
+vi.mock("@/components/auth/TurnstileChallenge", () => ({
+  TurnstileChallenge: ({ onTokenChange }: { onTokenChange: (token: string) => void }) => (
+    <button type="button" onClick={() => onTokenChange("valid-turnstile-token-with-enough-length")}>Pass captcha</button>
+  ),
 }));
 vi.mock("@/integrations/lovable/index", () => ({
   lovable: { auth: { signInWithOAuth: vi.fn().mockResolvedValue({}) } },
@@ -16,6 +32,8 @@ vi.mock("@/integrations/lovable/index", () => ({
 
 describe("LoginPage UI (BDD 17.1–17.3)", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(signInWithPassword).mockResolvedValue({ ok: true, value: { kind: "signed_in", userId: "member-1", correlationId: "corr-1" } });
     renderWithRouter(<LoginPage />);
   });
 
@@ -68,5 +86,21 @@ describe("LoginPage UI (BDD 17.1–17.3)", () => {
   // LCL-001 — OAuth-only hint is not shown on initial render
   it("LCL-001: OAuth-only hint is not shown on initial render", () => {
     expect(screen.queryByText(/this account uses google sign-in/i)).toBeNull();
+  });
+
+  it("AUTH-LOGIN-RECOVERY-001: successful password flow continues into the app instead of showing a verification loop", async () => {
+    fireEvent.focus(screen.getByLabelText(/email address/i));
+    fireEvent.change(screen.getByLabelText(/email address/i), { target: { value: "member@example.com" } });
+    fireEvent.change(document.getElementById("password") as HTMLInputElement, { target: { value: "ValidPass123!" } });
+    fireEvent.click(await screen.findByRole("button", { name: /pass captcha/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
+
+    await waitFor(() => expect(signInWithPassword).toHaveBeenCalledWith(expect.objectContaining({
+      email: "member@example.com",
+      password: "ValidPass123!",
+      captchaToken: "valid-turnstile-token-with-enough-length",
+    })));
+    expect(screen.queryByText(/complete the human verification/i)).toBeNull();
+    expect(screen.queryByTestId("auth-error-message")).toBeNull();
   });
 });

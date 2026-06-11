@@ -150,7 +150,7 @@ export function TurnstileChallenge({ action, onTokenChange, failureCount = 0, so
         setTransientError(null);
         setRetrySeconds(0);
         setLoadFailed(false);
-        markLoginCaptchaVerified();
+        if (action === "login") markLoginCaptchaVerified();
         if (action === "login") recordLoginEvent(newAttemptId(), "captcha_loaded");
         onTokenChange(token);
       },

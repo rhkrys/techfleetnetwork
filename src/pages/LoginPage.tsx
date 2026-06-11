@@ -3,7 +3,10 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Eye, EyeOff, Mail, Lock, ArrowRight } from "lucide-react";
-import { AuthService } from "@/services/auth.service";
+import { signInWithPassword } from "@/features/auth/flows/sign-in-password.flow";
+import type { AuthErr } from "@/features/auth/domain/auth-result";
+import { decideFailureActions } from "@/features/auth/services/auth-failure-policy";
+import { AuthErrorMessage } from "@/features/auth/ui/AuthErrorMessage";
 import { RateLimitService } from "@/services/rate-limit.service";
 import { loginSchema } from "@/lib/validators/auth";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
@@ -12,7 +15,7 @@ import { recordPolicyAcknowledgment } from "@/lib/policies";
 import { toast } from "sonner";
 import techFleetLogo from "@/assets/tech-fleet-logo.svg";
 import { ValidatedField } from "@/components/ui/validated-field";
-import { validationBorderClass, getFieldValidationState, showFormErrors, scrollToFirstError } from "@/lib/form-validation";
+import { validationBorderClass, getFieldValidationState, scrollToFirstError } from "@/lib/form-validation";
 import { useQueryClient } from "@/lib/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { MfaService } from "@/services/mfa.service";
@@ -28,10 +31,8 @@ const TurnstileChallenge = lazy(() =>
 );
 import { clearAuthLockout, formatAuthLockoutMessage, getAuthLockoutState, maybeAutoHealAuthLockout, recordInvalidAuthAttempt, resetAuthLockoutForEmailChange } from "@/lib/auth-lockout";
 import { logCaptchaTelemetry } from "@/lib/auth-captcha-telemetry";
-import { isAuthThrottleCaptchaError } from "@/lib/auth-throttle-captcha";
 import { reportValidationRejection } from "@/services/error-reporter.service";
 import { normalizeSafeRedirectTarget } from "@/lib/security";
-import { classifyAuthError } from "@/lib/auth-error-classifier";
 import { recordLoginEvent, newAttemptId, flushPendingStaleChunkEvent } from "@/lib/login-telemetry";
 
 export default function LoginPage() {
@@ -50,6 +51,7 @@ export default function LoginPage() {
   //  - oauthHint: friendly "this account uses Google" callout after a failed pw login
   // Field-level Zod errors continue to render via ValidatedField (`errors` map).
   const [authError, setAuthError] = useState("");
+  const [typedAuthError, setTypedAuthError] = useState<AuthErr | null>(null);
   const [captchaNotice, setCaptchaNotice] = useState("");
   const [oauthHint, setOauthHint] = useState<null | { has_google: boolean; has_password: boolean }>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -226,6 +228,7 @@ export default function LoginPage() {
     const currentLockout = getAuthLockoutState();
     setLockoutState(currentLockout);
     if (currentLockout.locked) {
+      setTypedAuthError(null);
       setAuthError(formatAuthLockoutMessage(currentLockout.remainingSeconds));
       return;
     }
@@ -253,6 +256,7 @@ export default function LoginPage() {
       setErrors(fieldErrors);
       // Validation errors render inline only — no red banner, no lockout increment.
       setAuthError("");
+      setTypedAuthError(null);
       setCaptchaNotice("");
       scrollToFirstError();
       return;
@@ -263,10 +267,12 @@ export default function LoginPage() {
       // passed → too many attempts" flicker. Just nudge the user inline.
       setCaptchaNotice("Complete the human verification below before signing in.");
       setAuthError("");
+      setTypedAuthError(null);
       return;
     }
     setErrors({});
     setAuthError("");
+    setTypedAuthError(null);
     setCaptchaNotice("");
     setOauthHint(null);
     setLoading(true);
@@ -276,131 +282,122 @@ export default function LoginPage() {
     recordLoginEvent(attemptId, "started", { email: result.data.email });
 
 
-    try {
-      // PEEK only — never increment on the way in. The bucket now counts only
-      // confirmed credential rejections (recordFailure below). This prevents
-      // successful logins earlier in the same 15-minute window from triggering
-      // a "too many attempts" error on a legitimate user's first retry.
-      const rateCheck = await RateLimitService.peek(result.data.email, "login_attempt");
-      if (!rateCheck.allowed) {
-        const minutes = Math.max(1, Math.ceil(rateCheck.retry_after / 60));
-        setAuthError(`This account is temporarily locked after multiple failed sign-ins. Try again in ${minutes} minute${minutes > 1 ? "s" : ""}, or reset your password.`);
+    // PEEK only — never increment on the way in. The bucket now counts only
+    // confirmed credential rejections (recordFailure below). This prevents
+    // successful logins earlier in the same 15-minute window from triggering
+    // a "too many attempts" error on a legitimate user's first retry.
+    const rateCheck = await RateLimitService.peek(result.data.email, "login_attempt").catch(() => ({
+      allowed: true,
+      remaining: 5,
+      retry_after: 0,
+    }));
+    if (!rateCheck.allowed) {
+      const minutes = Math.max(1, Math.ceil(rateCheck.retry_after / 60));
+      setTypedAuthError(null);
+      setAuthError(`This account is temporarily locked after multiple failed sign-ins. Try again in ${minutes} minute${minutes > 1 ? "s" : ""}, or reset your password.`);
+      setLoading(false);
+      return;
+    }
+
+    queryClient.removeQueries({ queryKey: ["admin-role"] });
+    const flowResult = await signInWithPassword({
+      email: result.data.email,
+      password: result.data.password,
+      captchaToken,
+      attemptId,
+    });
+
+    if (flowResult.ok === true) {
+      recordLoginEvent(attemptId, "session_set", {
+        email: result.data.email,
+        durationMs: Date.now() - attemptStarted,
+        userId: flowResult.value.kind === "signed_in" ? flowResult.value.userId : null,
+      });
+      const { needsChallenge } = await MfaService.getMfaGateDecision();
+      if (needsChallenge) {
+        recordLoginEvent(attemptId, "mfa_required", { email: result.data.email });
+        setMfaOpen(true);
         setLoading(false);
         return;
       }
-
-      queryClient.removeQueries({ queryKey: ["admin-role"] });
-      // Capture the token used for this attempt so we can also use it for the
-      // OAuth-identity hint check on failure (Turnstile tokens are single-use,
-      // so the hint check uses a fresh token via the next render — see below).
-      try {
-        const authResult = await AuthService.signInWithPassword(result.data.email, result.data.password, captchaToken, attemptId);
-        recordLoginEvent(attemptId, "session_set", {
-          email: result.data.email,
-          durationMs: Date.now() - attemptStarted,
-          userId: (authResult as { user?: { id?: string } } | null)?.user?.id ?? null,
-        });
-        const { needsChallenge } = await MfaService.getMfaGateDecision();
-        if (needsChallenge) {
-          recordLoginEvent(attemptId, "mfa_required", { email: result.data.email });
-          setMfaOpen(true);
-          setLoading(false);
-          return;
-        }
-        clearAuthLockout();
-        clearLoginCaptcha();
-        recordLoginEvent(attemptId, "redirected", {
-          email: result.data.email,
-          durationMs: Date.now() - attemptStarted,
-        });
-        navigate(from, { replace: true });
-      } catch (err: unknown) {
-        // AUTH-VICHEA-001 + CAPTCHA-LIFECYCLE-002: Turnstile tokens are
-        // single-use, so the consumed token MUST be cleared on every error.
-        // But the way we refresh the widget depends on attribution:
-        //   - countsAgainstUser=true (invalid credentials, real CAPTCHA
-        //     rejection)  → bump `captchaFailureCount` (punitive, may trigger
-        //     30s retry lockout after 2 strikes).
-        //   - countsAgainstUser=false (client_session_write_failed, network,
-        //     server, rate_limited, session_incomplete) → bump
-        //     `captchaSoftResetCount` (non-punitive). Widget reissues a fresh
-        //     token immediately, no lockout, no "complete verification below"
-        //     trap for users who did nothing wrong.
-        const innerClassified = classifyAuthError(err);
-        setCaptchaToken("");
-        if (innerClassified.countsAgainstUser) {
-          setCaptchaFailureCount((count) => count + 1);
-          const nextCaptcha = recordFailedLoginAttempt();
-          setCaptchaState(nextCaptcha);
-          try {
-            await supabase.rpc("record_failed_login", {
-              _email: result.data.email,
-              _ip: null,
-              _user_agent: navigator.userAgent.substring(0, 200),
-            });
-          } catch { /* non-blocking */ }
-        } else {
-          setCaptchaSoftResetCount((count) => count + 1);
-        }
-        throw err;
-      }
-    } catch (err: any) {
-      const classifiedForTelemetry = classifyAuthError(err);
-      const outcomeMap: Record<string, "invalid_credentials" | "auth_throttle" | "captcha_failed" | "network_error" | "server_error" | "session_incomplete" | "client_session_write_failed" | "domain_reject" | "unknown"> = {
-        INVALID_CREDENTIALS: "invalid_credentials",
-        RATE_LIMITED: "auth_throttle",
-        CAPTCHA_FAILED: "captcha_failed",
-        CAPTCHA_REQUIRED: "captcha_failed",
-        NETWORK: "network_error",
-        SERVER: "server_error",
-        SESSION_INCOMPLETE: "session_incomplete",
-        CLIENT_SESSION_WRITE_FAILED: "client_session_write_failed",
-        DOMAIN_INVALID: "domain_reject",
-        UNKNOWN: "unknown",
-      };
-      recordLoginEvent(attemptId, outcomeMap[classifiedForTelemetry.kind] ?? "unknown", {
+      clearAuthLockout();
+      clearLoginCaptcha();
+      recordLoginEvent(attemptId, "redirected", {
         email: result.data.email,
-        httpStatus: (err as { status?: number })?.status ?? null,
         durationMs: Date.now() - attemptStarted,
       });
-      if (isAuthThrottleCaptchaError(err)) {
+      navigate(from, { replace: true });
+      return;
+    }
+
+    const flowError = flowResult.error;
+    const actions = decideFailureActions(flowError.code);
+    const outcomeMap: Record<AuthErr["code"], "invalid_credentials" | "auth_throttle" | "captcha_failed" | "network_error" | "server_error" | "client_session_write_failed" | "unknown"> = {
+      invalid_credentials: "invalid_credentials",
+      account_locked: "auth_throttle",
+      captcha_required: "captcha_failed",
+      captcha_failed: "captcha_failed",
+      rate_limited: "auth_throttle",
+      google_only_account: "unknown",
+      email_not_confirmed: "unknown",
+      email_provider_unverified: "unknown",
+      weak_password: "unknown",
+      same_password: "unknown",
+      recovery_session_expired: "unknown",
+      recovery_link_consumed: "unknown",
+      client_session_write_failed: "client_session_write_failed",
+      mfa_required: "unknown",
+      mfa_invalid_code: "unknown",
+      network_error: "network_error",
+      service_unavailable: "server_error",
+      unexpected: "unknown",
+    };
+    recordLoginEvent(attemptId, outcomeMap[flowError.code] ?? "unknown", {
+      email: result.data.email,
+      durationMs: Date.now() - attemptStarted,
+    });
+
+    setCaptchaToken("");
+    if (actions.incrementDeviceLockout) {
+      setCaptchaFailureCount((count) => count + 1);
+      const nextCaptcha = recordFailedLoginAttempt();
+      setCaptchaState(nextCaptcha);
+      const nextLockout = recordInvalidAuthAttempt();
+      setLockoutState(nextLockout);
+      lastFailedEmailRef.current = result.data.email.trim().toLowerCase();
+      if (actions.recordCredentialFailureRpc) {
+        void (async () => {
+          await supabase.rpc("record_failed_login", {
+            _email: result.data.email,
+            _ip: null,
+            _user_agent: navigator.userAgent.substring(0, 200),
+          });
+        })().catch(() => undefined);
+      }
+      if (actions.recordServerRateLimitFailure) {
+        void RateLimitService.recordFailure(result.data.email, "login_attempt").catch(() => undefined);
+      }
+      if (nextLockout.locked) {
+        setTypedAuthError(null);
+        setAuthError(formatAuthLockoutMessage(nextLockout.remainingSeconds));
+      } else {
+        setAuthError("");
+        setTypedAuthError(flowError);
+      }
+      const probeEmail = result.data.email;
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent("tfn:probe-oauth-identity", { detail: { email: probeEmail } }));
+      }, 0);
+    } else {
+      if (flowError.code === "rate_limited") {
         logCaptchaTelemetry("auth_captcha_fetch_blocked", { surface: "login", reason: "client_auth_throttle_429" });
         setCaptchaState(refreshLoginCaptcha());
-        setCaptchaToken("");
-        // Non-punitive: server-side throttle is not the user's fault. Soft-reset
-        // so the widget refreshes without entering the 30s retry lockout.
-        setCaptchaSoftResetCount((count) => count + 1);
-        setAuthError(err.message);
-        setLoading(false);
-        return;
       }
-      // LCL-FIX-003/005: honest classification. Only INVALID_CREDENTIALS
-      // counts against the user (device lockout + server rate-limit row).
-      const classified = classifyAuthError(err);
-      if (classified.kind === "INVALID_CREDENTIALS") {
-        const nextLockout = recordInvalidAuthAttempt();
-        setLockoutState(nextLockout);
-        lastFailedEmailRef.current = result.data.email.trim().toLowerCase();
-        void RateLimitService.recordFailure(result.data.email, "login_attempt").catch(() => {});
-        if (nextLockout.locked) {
-          setAuthError(formatAuthLockoutMessage(nextLockout.remainingSeconds));
-        } else {
-          setAuthError(classified.message);
-        }
-        const probeEmail = result.data.email;
-        // Probe immediately — endpoint accepts no-captcha calls after a
-        // failed password attempt (rate-limit gated). This guarantees a
-        // Google-only user sees "use Google sign-in" instead of being stuck
-        // on a generic "invalid credentials" error.
-        setTimeout(() => {
-          void checkOauthIdentityForEmail(probeEmail, captchaToken || undefined);
-          window.dispatchEvent(new CustomEvent("tfn:probe-oauth-identity", { detail: { email: probeEmail } }));
-        }, 0);
-      } else {
-        setAuthError(classified.message);
-      }
-      setLoading(false);
+      setCaptchaSoftResetCount((count) => count + 1);
+      setAuthError("");
+      setTypedAuthError(flowError);
     }
+    setLoading(false);
   };
 
 
@@ -439,7 +436,7 @@ export default function LoginPage() {
     <div className="min-h-[calc(100dvh-4rem)] flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-md space-y-8 animate-fade-in">
         <div className="text-center">
-          <img src={techFleetLogo} alt="" width={48} height={48} decoding="async" fetchPriority="high" className="h-12 w-12 mx-auto mb-4 dark:invert" aria-hidden="true" />
+          <img src={techFleetLogo} alt="" width={48} height={48} decoding="async" className="h-12 w-12 mx-auto mb-4 dark:invert" aria-hidden="true" />
           <h1 className="text-2xl font-bold text-foreground">Welcome back</h1>
           <p className="text-muted-foreground mt-1">Sign in to your Tech Fleet account</p>
         </div>
@@ -455,6 +452,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={() => {
                     setAuthError("");
+                    setTypedAuthError(null);
                     setCaptchaNotice("");
                     setCaptchaToken("");
                     setCaptchaSoftResetCount((c) => c + 1);
@@ -467,6 +465,10 @@ export default function LoginPage() {
                 <span>Signed up with Google? Use the button above.</span>
               </p>
             </div>
+          )}
+
+          {typedAuthError && !authError && (
+            <AuthErrorMessage error={typedAuthError} className="mb-4 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm" />
           )}
 
           {oauthHint?.has_google && !oauthHint.has_password && (
