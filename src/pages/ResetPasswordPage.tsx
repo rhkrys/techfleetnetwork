@@ -9,6 +9,8 @@ import { reportValidationRejection } from "@/services/error-reporter.service";
 import { PasswordSetFields } from "@/components/auth/PasswordSetFields";
 import { validatePasswordSet } from "@/lib/auth/password-set";
 import { clearAuthLockout } from "@/lib/auth-lockout";
+import { clearLoginCaptcha } from "@/lib/auth-captcha";
+import { clearTransientStrike } from "@/lib/auth/session-health";
 import { recordResetTelemetry, type ResetBranch, type ResetOutcome } from "@/lib/auth/reset-telemetry";
 
 // Hard cap on rejected submits before we stop the user from hammering
