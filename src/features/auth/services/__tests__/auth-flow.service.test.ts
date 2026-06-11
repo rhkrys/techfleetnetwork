@@ -42,7 +42,7 @@ describe("auth-flow.service (Vichea invariants)", () => {
         // The exact regression: GoTrue refresh tokens are opaque, NOT JWTs.
         refresh_token: "v2.public.abcdefghijklmnopqrstuvwxyz",
       }),
-    ).resolves.toBeUndefined();
+    ).resolves.toMatchObject({ access_token: VALID_JWT });
     expect(setSessionMock).toHaveBeenCalledOnce();
   });
 
