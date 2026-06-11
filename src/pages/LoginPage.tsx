@@ -3,7 +3,10 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Eye, EyeOff, Mail, Lock, ArrowRight } from "lucide-react";
-import { AuthService } from "@/services/auth.service";
+import { signInWithPassword } from "@/features/auth/flows/sign-in-password.flow";
+import type { AuthErr } from "@/features/auth/domain/auth-result";
+import { decideFailureActions } from "@/features/auth/services/auth-failure-policy";
+import { AuthErrorMessage } from "@/features/auth/ui/AuthErrorMessage";
 import { RateLimitService } from "@/services/rate-limit.service";
 import { loginSchema } from "@/lib/validators/auth";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
@@ -31,7 +34,6 @@ import { logCaptchaTelemetry } from "@/lib/auth-captcha-telemetry";
 import { isAuthThrottleCaptchaError } from "@/lib/auth-throttle-captcha";
 import { reportValidationRejection } from "@/services/error-reporter.service";
 import { normalizeSafeRedirectTarget } from "@/lib/security";
-import { classifyAuthError } from "@/lib/auth-error-classifier";
 import { recordLoginEvent, newAttemptId, flushPendingStaleChunkEvent } from "@/lib/login-telemetry";
 
 export default function LoginPage() {
@@ -50,6 +52,7 @@ export default function LoginPage() {
   //  - oauthHint: friendly "this account uses Google" callout after a failed pw login
   // Field-level Zod errors continue to render via ValidatedField (`errors` map).
   const [authError, setAuthError] = useState("");
+  const [typedAuthError, setTypedAuthError] = useState<AuthErr | null>(null);
   const [captchaNotice, setCaptchaNotice] = useState("");
   const [oauthHint, setOauthHint] = useState<null | { has_google: boolean; has_password: boolean }>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
