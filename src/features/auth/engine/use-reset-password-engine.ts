@@ -17,7 +17,7 @@
  */
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { AuthService } from "@/services/auth.service";
+import { sessionPort } from "@/features/auth/ports/session.port";
 import { supabase } from "@/integrations/supabase/client";
 import { reportValidationRejection } from "@/services/error-reporter.service";
 import { validatePasswordSet } from "@/lib/auth/password-set";
@@ -322,7 +322,7 @@ export function useResetPasswordEngine(): ResetPasswordEngine {
     setLoading(true);
 
     try {
-      const { otherDevicesRevoked: revoked } = await AuthService.updatePassword(passwordSet);
+      const { otherDevicesRevoked: revoked } = await sessionPort.updatePassword(passwordSet);
       setOtherDevicesRevoked(revoked);
       // CLEAN HANDOFF (AUTH-RESET-HANDOFF-001)
       clearAttempts();
@@ -373,7 +373,7 @@ export function useResetPasswordEngine(): ResetPasswordEngine {
   const handleRetryRevoke = useCallback(async () => {
     setRetryingRevoke(true);
     try {
-      const { revocationRecorded } = await AuthService.signOutAllDevices({
+      const { revocationRecorded } = await sessionPort.signOutAllDevices({
         keepCurrent: true,
         reason: "self_password_changed",
       });

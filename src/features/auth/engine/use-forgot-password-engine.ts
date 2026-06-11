@@ -5,7 +5,8 @@
  * captcha lifecycle, lockout invariants, email-enumeration guard).
  */
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { AuthService, GOOGLE_ONLY_ACCOUNT_CODE, GOOGLE_ONLY_ACCOUNT_MESSAGE } from "@/services/auth.service";
+import { sessionPort } from "@/features/auth/ports/session.port";
+import { GOOGLE_ONLY_ACCOUNT_CODE, GOOGLE_ONLY_ACCOUNT_MESSAGE } from "@/features/auth/domain/google-only-account";
 import { RateLimitService } from "@/services/rate-limit.service";
 import { emailInputSchema } from "@/lib/validators/auth";
 import { getLoginCaptchaState, refreshLoginCaptcha } from "@/lib/auth-captcha";
@@ -100,7 +101,7 @@ export function useForgotPasswordEngine(): ForgotPasswordEngine {
         setLoading(false);
         return;
       }
-      await AuthService.resetPassword(result.data, `${getCanonicalAppOrigin()}/reset-password`, captchaToken);
+      await sessionPort.resetPassword(result.data, `${getCanonicalAppOrigin()}/reset-password`, captchaToken);
       clearAuthLockout();
       recordAuthEngineEvent("auth_engine.forgot_succeeded", { email: result.data });
       setSubmitted(true);
