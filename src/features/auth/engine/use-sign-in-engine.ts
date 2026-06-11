@@ -19,18 +19,23 @@ import { decideFailureActions } from "@/features/auth/services/auth-failure-poli
 import { RateLimitService } from "@/services/rate-limit.service";
 import { MfaService } from "@/services/mfa.service";
 import { loginSchema } from "@/lib/validators/auth";
-import { reportValidationRejection } from "@/services/error-reporter.service";
+import { reportValidationRejection } from "@/lib/observability/report";
 import { normalizeSafeRedirectTarget } from "@/lib/security";
-import { clearLoginCaptcha, getLoginCaptchaState, recordFailedLoginAttempt, refreshLoginCaptcha } from "@/features/auth/ports/captcha-state.port";
+import { clearLoginCaptcha, getLoginCaptchaState, refreshLoginCaptcha } from "@/features/auth/ports/captcha-state.port";
 import {
   clearAuthLockout,
   formatAuthLockoutMessage,
   getAuthLockoutState,
   maybeAutoHealAuthLockout,
-  recordInvalidAuthAttempt,
   resetAuthLockoutForEmailChange,
 } from "@/features/auth/ports/lockout.port";
 import { telemetryPort } from "@/features/auth/ports/telemetry.port";
+import {
+  applyCaptchaFailedLogin,
+  applyCredentialFailureRpc,
+  applyInvalidAttempt,
+  applyServerRateLimitFailure,
+} from "@/features/auth/engine/failure-policy";
 import { flushPendingStaleChunkEvent, newAttemptId, recordLoginEvent } from "@/lib/login-telemetry";
 
 export interface SignInEngine {
@@ -355,21 +360,15 @@ export function useSignInEngine(): SignInEngine {
     setCaptchaToken("");
     if (actions.incrementDeviceLockout) {
       setCaptchaFailureCount((c) => c + 1);
-      setCaptchaState(recordFailedLoginAttempt());
-      const nextLockout = recordInvalidAuthAttempt();
+      setCaptchaState(applyCaptchaFailedLogin());
+      const nextLockout = applyInvalidAttempt();
       setLockoutState(nextLockout);
       lastFailedEmailRef.current = result.data.email.trim().toLowerCase();
       if (actions.recordCredentialFailureRpc) {
-        void (async () => {
-          await sessionPort.rpc("record_failed_login", {
-            _email: result.data.email,
-            _ip: null,
-            _user_agent: navigator.userAgent.substring(0, 200),
-          });
-        })().catch(() => undefined);
+        applyCredentialFailureRpc(result.data.email, navigator.userAgent);
       }
       if (actions.recordServerRateLimitFailure) {
-        void RateLimitService.recordFailure(result.data.email, "login_attempt").catch(() => undefined);
+        applyServerRateLimitFailure(result.data.email, "login_attempt");
       }
       if (nextLockout.locked) {
         setTypedAuthError(null);

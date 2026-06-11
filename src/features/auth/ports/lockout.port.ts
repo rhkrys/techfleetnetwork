@@ -11,5 +11,7 @@ export {
   recordInvalidAuthAttempt,
   clearAuthLockout,
   formatAuthLockoutMessage,
+  maybeAutoHealAuthLockout,
+  resetAuthLockoutForEmailChange,
   type AuthLockoutState,
 } from "@/lib/auth-lockout";

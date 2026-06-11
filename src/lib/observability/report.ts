@@ -17,6 +17,7 @@ import {
   reportError as internalReportError,
   reportActivity as internalReportActivity,
   reportRecovery as internalReportRecovery,
+  reportValidationRejection as internalReportValidationRejection,
   type ReportSeverity,
   type ReportEventType,
 } from "@/services/error-reporter.service";
@@ -60,3 +61,6 @@ export function report(error: unknown, ctx: ReportContext): void {
 export const reportActivity = internalReportActivity;
 /** Recovery signal (e.g. circuit breaker closed) — passes straight through. */
 export const reportRecovery = internalReportRecovery;
+
+/** Zod/validator rejection — passes straight through to the audit logger. */
+export const reportValidationRejection = internalReportValidationRejection;

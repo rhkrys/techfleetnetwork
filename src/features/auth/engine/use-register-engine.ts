@@ -18,17 +18,17 @@ import {
   formatAuthLockoutMessage,
   getAuthLockoutState,
   maybeAutoHealAuthLockout,
-  recordInvalidAuthAttempt,
   resetAuthLockoutForEmailChange,
 } from "@/features/auth/ports/lockout.port";
 import { telemetryPort } from "@/features/auth/ports/telemetry.port";
+import { applyInvalidAttempt, applyServerRateLimitFailure } from "@/features/auth/engine/failure-policy";
 import { isAuthThrottleCaptchaError } from "@/lib/auth-throttle-captcha";
 import { validateEmailDomainExists } from "@/lib/email-domain-validation";
 import { getCanonicalAppOrigin } from "@/lib/canonical-origin";
 import { recordPolicyAcknowledgment } from "@/lib/policies";
 import { loadConsent } from "@/lib/consent/manager";
 import { showFormErrors, scrollToFirstError } from "@/lib/form-validation";
-import { reportValidationRejection } from "@/services/error-reporter.service";
+import { reportValidationRejection } from "@/lib/observability/report";
 
 export interface RegisterEngine {
   // form
@@ -202,11 +202,11 @@ export function useRegisterEngine(): RegisterEngine {
 
     if (countryCode) {
       try {
-        const { data: sanctionsResult } = await sessionPort.invokeEdge("screen-sanctions", {
+        const { data: sanctionsResult } = await sessionPort.invokeEdge<{ decision?: string }>("screen-sanctions", {
           body: { email: result.data.email, country_code: countryCode },
         });
         if (sanctionsResult?.decision === "deny") {
-          setAuthError("We're sorry — Tech Fleet cannot create accounts for users in this country due to U.S. export-control and sanctions laws.");
+          setAuthError("We're sorry — Tech Fleet cannot create accounts for members in this country due to U.S. export-control and sanctions laws.");
           return;
         }
       } catch { /* fail-open */ }
@@ -226,7 +226,7 @@ export function useRegisterEngine(): RegisterEngine {
       setCaptchaState(refreshLoginCaptcha());
       setCaptchaToken("");
       setCaptchaFailureCount((c) => c + 1);
-      const nextLockout = recordInvalidAuthAttempt();
+      const nextLockout = applyInvalidAttempt();
       setLockoutState(nextLockout);
       setAuthError(nextLockout.locked ? formatAuthLockoutMessage(nextLockout.remainingSeconds) : "Complete the human verification before trying again.");
       return;
@@ -279,9 +279,9 @@ export function useRegisterEngine(): RegisterEngine {
         setLoading(false);
         return;
       }
-      void RateLimitService.recordFailure(result.data.email, "signup_attempt").catch(() => undefined);
+      applyServerRateLimitFailure(result.data.email, "signup_attempt");
       setAuthError(e.message ?? "We couldn't create your account. Try again in a moment.");
-      const nextLockout = recordInvalidAuthAttempt();
+      const nextLockout = applyInvalidAttempt();
       setLockoutState(nextLockout);
       lastFailedEmailRef.current = result.data.email.trim().toLowerCase();
       if (nextLockout.locked) setAuthError(formatAuthLockoutMessage(nextLockout.remainingSeconds));
