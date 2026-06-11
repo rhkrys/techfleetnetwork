@@ -314,18 +314,23 @@ export const AuthService = {
         const fnError = await readFunctionError(error);
         log.error("signInWithPassword", `Authentication failed for ${safeEmail}: ${fnError.message}`, { email: safeEmail, errorCode: fnError.status ?? fnError.code }, error);
         void logAccountActivity("login_failed", { email: safeEmail, errorMessage: fnError.message, errorCode: fnError.status ?? fnError.code });
-        if (fnError.status === 429 || fnError.message.toLowerCase().includes("too many rapid auth attempts")) throw createAuthThrottleCaptchaError();
+        if (fnError.status === 429 || fnError.code === "rate_limited" || fnError.message.toLowerCase().includes("too many rapid auth attempts")) throw createAuthThrottleCaptchaError();
         if (typeof fnError.status === "number" && fnError.status >= 500) {
-          const serviceError = new Error("The sign-in service hit a snag. Please try again in a moment.") as Error & { status?: number };
+          const serviceError = new Error("The sign-in service hit a snag. Please try again in a moment.") as Error & { status?: number; code?: string };
           serviceError.status = fnError.status;
+          serviceError.code = "service_unavailable";
           throw serviceError;
         }
         if (fnError.code === "CAPTCHA_REQUIRED" || fnError.message.toLowerCase().includes("human verification")) {
-          const captchaError = new Error("Complete the human verification below before signing in.") as Error & { status?: number };
+          const captchaError = new Error("Complete the human verification below before signing in.") as Error & { status?: number; code?: string };
           captchaError.status = fnError.status;
+          captchaError.code = "captcha_required";
           throw captchaError;
         }
-        throw new Error("Invalid email or password. Please try again.");
+        const credentialError = new Error("Invalid email or password. Please try again.") as Error & { status?: number; code?: string };
+        credentialError.status = fnError.status ?? 401;
+        credentialError.code = fnError.code === "invalid_credentials" ? "invalid_credentials" : "invalid_credentials";
+        throw credentialError;
       }
       // LCL-FIX-004 (revised): Post-setSession round-trip validation is
       // non-fatal. The supabase client already validated tokens during
