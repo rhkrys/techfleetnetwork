@@ -441,6 +441,19 @@ export default function LoginPage() {
               <p className="mt-2 text-xs text-destructive/80">
                 <Link to="/forgot-password" className="underline hover:no-underline">Reset password</Link>
                 <span className="mx-2" aria-hidden="true">·</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthError("");
+                    setCaptchaNotice("");
+                    setCaptchaToken("");
+                    setCaptchaFailureCount((c) => c + 1);
+                  }}
+                  className="underline hover:no-underline"
+                >
+                  Refresh verification
+                </button>
+                <span className="mx-2" aria-hidden="true">·</span>
                 <span>Signed up with Google? Use the button above.</span>
               </p>
             </div>
