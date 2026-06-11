@@ -19,7 +19,7 @@
  *      (fresh token, no lockout) without re-introducing the original bug.
  */
 import { describe, it, expect } from "vitest";
-import { ClientSessionWriteError } from "@/lib/auth/session-health";
+import { ClientSessionWriteError } from "@/lib/auth-error-classifier";
 import { classifyAuthError } from "@/lib/auth-error-classifier";
 
 describe("AUTH-CAPTCHA-LIFECYCLE-002: copy", () => {
