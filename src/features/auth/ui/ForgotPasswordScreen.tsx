@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Mail, CheckCircle2 } from "lucide-react";
-import { TurnstileChallenge } from "@/components/auth/TurnstileChallenge";
+import { TurnstileCaptchaAdapter } from "@/features/auth/adapters/turnstile-captcha.adapter";
 import { useForgotPasswordEngine } from "@/features/auth/engine/use-forgot-password-engine";
 import techFleetLogo from "@/assets/tech-fleet-logo.svg";
 
@@ -65,9 +65,9 @@ export default function ForgotPasswordScreen() {
               </div>
             </div>
 
-            <TurnstileChallenge
+            <TurnstileCaptchaAdapter
               action="forgot_password"
-              onTokenChange={e.setCaptchaToken}
+              onToken={e.setCaptchaToken}
               failureCount={e.captchaFailureCount}
               softResetCount={e.captchaSoftResetCount}
             />

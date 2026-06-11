@@ -17,8 +17,8 @@ import { recordPolicyAcknowledgment } from "@/lib/policies";
 import { validationBorderClass, getFieldValidationState } from "@/lib/form-validation";
 import techFleetLogo from "@/assets/tech-fleet-logo.svg";
 
-const TurnstileChallenge = lazy(() =>
-  import("@/components/auth/TurnstileChallenge").then((m) => ({ default: m.TurnstileChallenge })),
+const TurnstileCaptchaAdapter = lazy(() =>
+  import("@/features/auth/adapters/turnstile-captcha.adapter").then((m) => ({ default: m.TurnstileCaptchaAdapter })),
 );
 
 export default function SignInScreen() {
@@ -130,7 +130,7 @@ export default function SignInScreen() {
             <div style={{ minHeight: 78 }} onFocusCapture={e.armTurnstile}>
               {e.turnstileReady ? (
                 <Suspense fallback={<div style={{ height: 78 }} aria-hidden="true" />}>
-                  <TurnstileChallenge action="login" onTokenChange={e.setCaptchaToken} failureCount={e.captchaFailureCount} softResetCount={e.captchaSoftResetCount} email={e.email} />
+                  <TurnstileCaptchaAdapter action="login" onToken={e.setCaptchaToken} failureCount={e.captchaFailureCount} softResetCount={e.captchaSoftResetCount} email={e.email} />
                 </Suspense>
               ) : (
                 <div style={{ height: 78 }} aria-hidden="true" />

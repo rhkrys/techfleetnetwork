@@ -12,7 +12,7 @@ import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 import { PasswordSetFields } from "@/components/auth/PasswordSetFields";
 import { ValidatedField } from "@/components/ui/validated-field";
 import { validationBorderClass, getFieldValidationState } from "@/lib/form-validation";
-import { TurnstileChallenge } from "@/components/auth/TurnstileChallenge";
+import { TurnstileCaptchaAdapter } from "@/features/auth/adapters/turnstile-captcha.adapter";
 import { PolicyLinksInline } from "@/components/PolicyLinksInline";
 import { recordPolicyAcknowledgment } from "@/lib/policies";
 import { useRegisterEngine, ageInYears, GUARDIAN_MIN_AGE } from "@/features/auth/engine/use-register-engine";
@@ -38,7 +38,7 @@ export default function RegisterScreen() {
             </p>
           )}
           <div className="mt-6 grid gap-3">
-            <TurnstileChallenge action="signup_confirmation_resend" onTokenChange={e.setResendCaptchaToken} failureCount={e.resendCaptchaFailureCount} />
+            <TurnstileCaptchaAdapter action="signup_confirmation_resend" onToken={e.setResendCaptchaToken} failureCount={e.resendCaptchaFailureCount} />
             <Button type="button" onClick={e.handleResendConfirmation} disabled={e.resending}>
               {e.resending ? "Sending verification…" : "Resend verification email"}
             </Button>
@@ -179,7 +179,7 @@ export default function RegisterScreen() {
             </div>
             {e.errors.agreedToTerms && <p className="text-sm text-destructive flex items-center gap-1" role="alert"><span className="h-3 w-3 shrink-0">⚠</span> {e.errors.agreedToTerms}</p>}
 
-            <TurnstileChallenge action="register" onTokenChange={e.setCaptchaToken} failureCount={e.captchaFailureCount} />
+            <TurnstileCaptchaAdapter action="register" onToken={e.setCaptchaToken} failureCount={e.captchaFailureCount} />
 
             <Button type="submit" className="w-full" disabled={e.loading || e.lockoutState.locked} aria-describedby={e.lockoutState.locked ? "register-lockout-status" : undefined}>
               {e.loading ? "Creating account…" : e.lockoutState.locked ? `Try again in ${e.lockoutState.remainingSeconds}s` : "Create account"}
