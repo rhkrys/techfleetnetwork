@@ -367,7 +367,9 @@ export default function LoginPage() {
         logCaptchaTelemetry("auth_captcha_fetch_blocked", { surface: "login", reason: "client_auth_throttle_429" });
         setCaptchaState(refreshLoginCaptcha());
         setCaptchaToken("");
-        setCaptchaFailureCount((count) => count + 1);
+        // Non-punitive: server-side throttle is not the user's fault. Soft-reset
+        // so the widget refreshes without entering the 30s retry lockout.
+        setCaptchaSoftResetCount((count) => count + 1);
         setAuthError(err.message);
         setLoading(false);
         return;
