@@ -23,12 +23,12 @@ export interface AuthenticatedRequestContext {
 export async function requireAuthenticatedRequest(
   req: Request,
   fn?: string,
-  options: { missingTokenSeverity?: AuditSeverity } = {},
+  options: { missingTokenSeverity?: AuditSeverity; auditClient?: SupabaseClient } = {},
 ): Promise<AuthenticatedRequestContext | Response> {
   const token = extractBearerToken(req);
   if (!token) {
     if (fn) {
-      void auditEdgeEvent(getAdminClient(), {
+      void auditEdgeEvent(options.auditClient ?? getAdminClient(), {
         fn,
         event: "authn_unauthorized",
         severity: options.missingTokenSeverity ?? "warn",
@@ -46,7 +46,7 @@ export async function requireAuthenticatedRequest(
 
   if (error || !userId) {
     if (fn) {
-      void auditEdgeEvent(getAdminClient(), {
+      void auditEdgeEvent(options.auditClient ?? getAdminClient(), {
         fn,
         event: "authn_unauthorized",
         severity: "warn",
