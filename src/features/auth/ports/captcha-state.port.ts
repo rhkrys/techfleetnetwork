@@ -7,5 +7,7 @@
 export {
   getLoginCaptchaState,
   refreshLoginCaptcha,
+  recordFailedLoginAttempt,
+  clearLoginCaptcha,
   type LoginCaptchaState,
 } from "@/lib/auth-captcha";
