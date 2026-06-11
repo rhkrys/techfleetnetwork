@@ -23,6 +23,8 @@ export default function ForgotPasswordPage() {
   const [captchaState, setCaptchaState] = useState(() => getLoginCaptchaState());
   const [captchaToken, setCaptchaToken] = useState("");
   const [captchaFailureCount, setCaptchaFailureCount] = useState(0);
+  // Non-punitive widget refresh (no 30s lockout). See LoginPage for rationale.
+  const [captchaSoftResetCount, setCaptchaSoftResetCount] = useState(0);
   const [lockoutState, setLockoutState] = useState(() => getAuthLockoutState());
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
