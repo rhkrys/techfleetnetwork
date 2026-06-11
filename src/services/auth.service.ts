@@ -155,6 +155,7 @@ async function logAdminLoginIfElevated(userId?: string | null) {
 async function readFunctionError(error: unknown): Promise<{ status?: number; message: string; code?: string }> {
   const fallback = error instanceof Error ? error.message : String((error as { message?: string } | null | undefined)?.message ?? "Unknown error");
   const directStatus = (error as { status?: unknown } | null | undefined)?.status;
+  const directCode = (error as { code?: unknown } | null | undefined)?.code;
   const response = (error as { context?: { response?: Response } } | null | undefined)?.context?.response;
   let message = fallback;
   let code: string | undefined;
@@ -168,7 +169,7 @@ async function readFunctionError(error: unknown): Promise<{ status?: number; mes
   return {
     status: response?.status ?? (typeof directStatus === "number" ? directStatus : undefined),
     message,
-    code,
+    code: code ?? (typeof directCode === "string" ? directCode : undefined),
   };
 }
 
@@ -222,8 +223,8 @@ export const AuthService = {
     // AUTH-DIRECT-SIGNIN-001: password sign-in must let the auth SDK create
     // the browser session directly. The removed edge-token handoff accepted
     // credentials server-side, returned raw tokens, then asked the browser to
-    // re-hydrate them via setSessionSafe — the exact source of Vichea's
-    // recurring client_session_write_failed loop.
+    // re-hydrate them — the exact source of Vichea's recurring
+    // client_session_write_failed loop.
     void logAccountActivity("login_attempt_started", { email: safeEmail });
     return log.track("signInWithPassword", `Authenticating user ${safeEmail}`, { email: safeEmail }, async () => {
       const { data, error } = await supabase.auth.signInWithPassword({
