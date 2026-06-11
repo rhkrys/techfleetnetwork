@@ -15,6 +15,7 @@
  *   layer should own them instead.
  */
 import { AuthService } from "@/services/auth.service";
+import { supabase } from "@/integrations/supabase/client";
 
 export const sessionPort = {
   /** GoTrue session bootstrap with idle-policy enforcement. */
@@ -35,6 +36,25 @@ export const sessionPort = {
   signUp: AuthService.signUp.bind(AuthService),
   /** Resend the email-confirmation link to a not-yet-verified account. */
   resendSignupConfirmation: AuthService.resendSignupConfirmation.bind(AuthService),
+  /** Re-validate the active member against GoTrue. */
+  getUser: () => supabase.auth.getUser(),
+  /** Verify a one-time recovery token (password-reset email link). */
+  verifyRecoveryOtp: (tokenHash: string) =>
+    supabase.auth.verifyOtp({ type: "recovery", token_hash: tokenHash }),
+  /** Exchange a Supabase auth code for a session (PKCE flow). */
+  exchangeCodeForSession: (code: string) =>
+    typeof supabase.auth.exchangeCodeForSession === "function"
+      ? supabase.auth.exchangeCodeForSession(code)
+      : Promise.resolve({ data: { session: null, user: null }, error: null } as never),
+  /** Restore a session from access/refresh tokens (recovery hash flow). */
+  setSession: (access_token: string, refresh_token: string) =>
+    supabase.auth.setSession({ access_token, refresh_token }),
+  /** Invoke an auth-related edge function via the Supabase client. */
+  invokeEdge: <T = unknown>(name: string, options?: { body?: unknown }) =>
+    supabase.functions.invoke<T>(name, options as never),
+  /** Invoke an auth-related RPC. */
+  rpc: <T = unknown>(name: string, args?: Record<string, unknown>) =>
+    supabase.rpc(name as never, args as never) as unknown as Promise<{ data: T | null; error: unknown }>,
 } as const;
 
 export type SessionPort = typeof sessionPort;

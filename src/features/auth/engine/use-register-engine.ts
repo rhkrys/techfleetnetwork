@@ -11,9 +11,8 @@ import { useLocation } from "react-router-dom";
 import { sessionPort } from "@/features/auth/ports/session.port";
 import { RateLimitService } from "@/services/rate-limit.service";
 import { registerSchema, ageInYears, GUARDIAN_MIN_AGE } from "@/lib/validators/auth";
-import { supabase } from "@/integrations/supabase/client";
 import { logAccountActivity } from "@/lib/account-activity";
-import { getLoginCaptchaState, refreshLoginCaptcha } from "@/lib/auth-captcha";
+import { getLoginCaptchaState, refreshLoginCaptcha } from "@/features/auth/ports/captcha-state.port";
 import {
   clearAuthLockout,
   formatAuthLockoutMessage,
@@ -21,14 +20,13 @@ import {
   maybeAutoHealAuthLockout,
   recordInvalidAuthAttempt,
   resetAuthLockoutForEmailChange,
-} from "@/lib/auth-lockout";
-import { logCaptchaTelemetry } from "@/lib/auth-captcha-telemetry";
+} from "@/features/auth/ports/lockout.port";
+import { telemetryPort } from "@/features/auth/ports/telemetry.port";
 import { isAuthThrottleCaptchaError } from "@/lib/auth-throttle-captcha";
 import { validateEmailDomainExists } from "@/lib/email-domain-validation";
 import { getCanonicalAppOrigin } from "@/lib/canonical-origin";
 import { recordPolicyAcknowledgment } from "@/lib/policies";
 import { loadConsent } from "@/lib/consent/manager";
-import { recordAuthEngineEvent } from "@/features/auth/adapters/audit-telemetry.adapter";
 import { showFormErrors, scrollToFirstError } from "@/lib/form-validation";
 import { reportValidationRejection } from "@/services/error-reporter.service";
 
@@ -204,7 +202,7 @@ export function useRegisterEngine(): RegisterEngine {
 
     if (countryCode) {
       try {
-        const { data: sanctionsResult } = await supabase.functions.invoke("screen-sanctions", {
+        const { data: sanctionsResult } = await sessionPort.invokeEdge("screen-sanctions", {
           body: { email: result.data.email, country_code: countryCode },
         });
         if (sanctionsResult?.decision === "deny") {
@@ -224,7 +222,7 @@ export function useRegisterEngine(): RegisterEngine {
     }
 
     if (!captchaToken.trim()) {
-      logCaptchaTelemetry("auth_captcha_failed", { surface: "register", failedAttempts: captchaState.failedAttempts + 1 });
+      telemetryPort.captcha("auth_captcha_failed", { surface: "register", failedAttempts: captchaState.failedAttempts + 1 });
       setCaptchaState(refreshLoginCaptcha());
       setCaptchaToken("");
       setCaptchaFailureCount((c) => c + 1);
@@ -237,7 +235,7 @@ export function useRegisterEngine(): RegisterEngine {
     setErrors({});
     setLoading(true);
     setAuthError("");
-    recordAuthEngineEvent("auth_engine.sign_up_started", { email: result.data.email });
+    telemetryPort.record("auth_engine.sign_up_started", { email: result.data.email });
 
 
     try {
@@ -261,13 +259,13 @@ export function useRegisterEngine(): RegisterEngine {
       );
       await recordPolicyAcknowledgment("registration", { electronicCommsConsent: true });
       clearAuthLockout();
-      recordAuthEngineEvent("auth_engine.sign_up_succeeded", { email: result.data.email });
+      telemetryPort.record("auth_engine.sign_up_succeeded", { email: result.data.email });
       setSubmitted(true);
     } catch (err) {
       const e = err as { code?: string; message?: string };
-      recordAuthEngineEvent("auth_engine.sign_up_failed", { email: result.data.email, code: e?.code ?? "unknown" });
+      telemetryPort.record("auth_engine.sign_up_failed", { email: result.data.email, code: e?.code ?? "unknown" });
       if (isAuthThrottleCaptchaError(err)) {
-        logCaptchaTelemetry("auth_captcha_fetch_blocked", { surface: "register", reason: "client_auth_throttle_429" });
+        telemetryPort.captcha("auth_captcha_fetch_blocked", { surface: "register", reason: "client_auth_throttle_429" });
         setCaptchaState(refreshLoginCaptcha());
         setCaptchaToken("");
         setCaptchaFailureCount((c) => c + 1);
@@ -298,7 +296,7 @@ export function useRegisterEngine(): RegisterEngine {
     setResendMessage("");
     try {
       if (!resendCaptchaToken.trim()) {
-        logCaptchaTelemetry("auth_captcha_failed", { surface: "signup_confirmation_resend", failedAttempts: captchaState.failedAttempts + 1 });
+        telemetryPort.captcha("auth_captcha_failed", { surface: "signup_confirmation_resend", failedAttempts: captchaState.failedAttempts + 1 });
         setResendCaptchaToken("");
         setResendCaptchaFailureCount((c) => c + 1);
         setResendStatus("error");
