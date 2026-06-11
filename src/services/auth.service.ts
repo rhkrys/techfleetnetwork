@@ -158,11 +158,7 @@ async function logAdminLoginIfElevated(userId?: string | null) {
 let setSessionInflight: Promise<unknown> | null = null;
 async function singleFlightSetSession(tokens: { access_token: string; refresh_token: string }) {
   // AUTH-VICHEA-FIX (2026-06-09): validate access_token as a JWT (it IS a JWT)
-  // and refresh_token as an OPAQUE string (it is NOT a JWT). The previous code
-  // applied isLikelyJwt() to BOTH, which rejected every valid Supabase login
-  // because refresh tokens are opaque, then misclassified the throw as
-  // INVALID_CREDENTIALS and locked the user out. Throw a typed error so
-  // downstream classifiers can recognise it by code, never by message string.
+  // and refresh_token as an OPAQUE string (it is NOT a JWT).
   if (!isLikelyJwt(tokens.access_token)) {
     purgeLocalAuthState({ reason: "shape_invalid", source: "signin" });
     throw new ClientSessionWriteError("access_token_invalid");
@@ -171,7 +167,12 @@ async function singleFlightSetSession(tokens: { access_token: string; refresh_to
     purgeLocalAuthState({ reason: "shape_invalid", source: "signin" });
     throw new ClientSessionWriteError("refresh_token_invalid");
   }
-  purgeLocalAuthState({ reason: "manual", source: "signin", silent: true });
+  // AUTH-VICHEA-FIX (2026-06-11): do NOT pre-purge local auth state here.
+  // setSession overwrites storage atomically; pre-purging created a brief
+  // window where GoTrue's autoRefresh could read an empty token, return
+  // bad_jwt, and make setSession resolve with a null session even though the
+  // server-side login already succeeded — which surfaced as "Your browser
+  // couldn't finish signing in" for users like Vichea.
 
   if (setSessionInflight) {
     await setSessionInflight.catch(() => undefined);
