@@ -340,6 +340,19 @@ export function useSignInEngine(): SignInEngine {
       : flowError.code === "service_unavailable" ? "server_error"
       : "unknown", { email: result.data.email, durationMs: Date.now() - attemptStarted });
 
+    // Vichea invariant: client_session_write_failed must be reported but
+    // never punish — verified by docs/runbooks/auth-rebuild-soak.md query 1.
+    if (flowError.code === "client_session_write_failed") {
+      recordAuthEngineEvent("auth_engine.client_session_write_failed", { email: result.data.email, attempt_id: attemptId });
+    } else if (flowError.code === "captcha_required" || flowError.code === "captcha_failed") {
+      recordAuthEngineEvent("auth_engine.captcha_failed", { email: result.data.email, attempt_id: attemptId, code: flowError.code });
+      recordAuthEngineEvent("auth_engine.captcha_reset", { attempt_id: attemptId });
+    } else if (flowError.code === "rate_limited" || flowError.code === "account_locked") {
+      recordAuthEngineEvent("auth_engine.sign_in_blocked", { email: result.data.email, reason: flowError.code });
+    } else {
+      recordAuthEngineEvent("auth_engine.sign_in_failed", { email: result.data.email, code: flowError.code, attempt_id: attemptId });
+    }
+
     setCaptchaToken("");
     if (actions.incrementDeviceLockout) {
       setCaptchaFailureCount((c) => c + 1);
