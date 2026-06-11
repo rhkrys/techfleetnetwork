@@ -15,7 +15,7 @@ import { recordPolicyAcknowledgment } from "@/lib/policies";
 import { toast } from "sonner";
 import techFleetLogo from "@/assets/tech-fleet-logo.svg";
 import { ValidatedField } from "@/components/ui/validated-field";
-import { validationBorderClass, getFieldValidationState, showFormErrors, scrollToFirstError } from "@/lib/form-validation";
+import { validationBorderClass, getFieldValidationState, scrollToFirstError } from "@/lib/form-validation";
 import { useQueryClient } from "@/lib/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { MfaService } from "@/services/mfa.service";
@@ -449,6 +449,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={() => {
                     setAuthError("");
+                    setTypedAuthError(null);
                     setCaptchaNotice("");
                     setCaptchaToken("");
                     setCaptchaSoftResetCount((c) => c + 1);
@@ -461,6 +462,10 @@ export default function LoginPage() {
                 <span>Signed up with Google? Use the button above.</span>
               </p>
             </div>
+          )}
+
+          {typedAuthError && !authError && (
+            <AuthErrorMessage error={typedAuthError} className="mb-4 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm" />
           )}
 
           {oauthHint?.has_google && !oauthHint.has_password && (
