@@ -22,7 +22,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMembershipRealtime } from "@/hooks/use-membership-realtime";
 import { ProfileService } from "@/services/profile.service";
-import { AuthService } from "@/services/auth.service";
+import { sessionPort } from "@/features/auth/ports/session.port";
 import { profileSchema, ACTIVITY_OPTIONS } from "@/lib/validators/profile";
 import { EDUCATION_OPTIONS } from "@/lib/application-options";
 import { COUNTRIES } from "@/lib/countries";
@@ -243,7 +243,7 @@ export default function EditProfilePage() {
     if (!user?.email) return;
     setResetPasswordLoading(true);
     try {
-      await AuthService.resetPassword(user.email, `${window.location.origin}/reset-password`);
+      await sessionPort.resetPassword(user.email, `${window.location.origin}/reset-password`);
       toast.success("Password reset email sent — check your inbox.", {
         description: "Check your inbox for a link to reset your password.",
         duration: 5000,

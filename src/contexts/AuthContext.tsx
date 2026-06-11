@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, useMemo, useCallback, useRef, type ReactNode } from "react";
 import { toast } from "sonner";
-import { AuthService } from "@/services/auth.service";
+import { sessionPort } from "@/features/auth/ports/session.port";
 import { ProfileService, type Profile } from "@/services/profile.service";
 import { DiscordNotifyService } from "@/services/discord-notify.service";
 import { clearOAuthUiMarker, hasFreshOAuthUiMarker, isRootOAuthCallback, stripRootOAuthCallbackUrl } from "@/lib/oauth-ui-guard";
@@ -170,10 +170,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [profile?.preferred_language]);
 
   useEffect(() => {
-    const { data: { subscription } } = AuthService.onAuthStateChange(
+    const { data: { subscription } } = sessionPort.onAuthStateChange(
       async (_event, session) => {
         if (_event === "SIGNED_OUT") {
-          AuthService.clearLocalAuthState();
+          sessionPort.clearLocalAuthState();
         }
 
         // Note: We previously force-signed-out users on SIGNED_IN at the root
@@ -282,7 +282,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    void consumeOAuthHashIfPresent().finally(() => AuthService.getSession()
+    void consumeOAuthHashIfPresent().finally(() => sessionPort.getSession()
       .then(async (initialSession) => {
         sessionRestoreSettledRef.current = true;
         const freshEventSession = authEventSessionRef.current;
@@ -362,7 +362,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchProfile, syncOAuthProfile]);
 
   const signOut = useCallback(async () => {
-    await AuthService.signOut();
+    await sessionPort.signOut();
     setUser(null);
     setSession(null);
     setProfile(null);
@@ -370,7 +370,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOutAllDevices = useCallback(async () => {
-    await AuthService.signOutAllDevices();
+    await sessionPort.signOutAllDevices();
     setUser(null);
     setSession(null);
     setProfile(null);

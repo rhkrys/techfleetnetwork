@@ -275,6 +275,34 @@ export default tseslint.config(
     },
   },
   {
+    // AUTH REBUILD Ship 5 prep (2026-06-11): non-auth-screen callers
+    // (AuthContext bootstrap, ProfileEditPanel, EditProfilePage, …) must
+    // route session operations through `@/features/auth/ports/session.port`
+    // so we have a single seam when AuthService is finally deleted. The
+    // engine hooks under `features/auth/engine/**` and the port itself are
+    // the only modules still allowed to import AuthService directly.
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: [
+      "src/features/auth/**",
+      "src/services/auth.service.ts",
+      "src/test/**",
+      "src/lib/__tests__/**",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "warn",
+        {
+          paths: [
+            {
+              name: "@/services/auth.service",
+              message: "Import sessionPort from '@/features/auth/ports/session.port' instead. AuthService is deletion-pending — see Ship 5 in the auth rebuild plan.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // jsx-a11y/label-has-associated-control crashes under eslint-plugin-jsx-a11y@6.x
     // with minimatch v10 (TypeError: minimatch is not a function). The rule is
     // already covered by label-has-for + label requirements elsewhere.
