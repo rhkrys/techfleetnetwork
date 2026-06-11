@@ -31,6 +31,10 @@ export const sessionPort = {
   resetPassword: AuthService.resetPassword.bind(AuthService),
   /** Final step of the reset flow — calls update-password-confirmed edge fn. */
   updatePassword: AuthService.updatePassword.bind(AuthService),
+  /** New-account sign-up (email/password + captcha + metadata). */
+  signUp: AuthService.signUp.bind(AuthService),
+  /** Resend the email-confirmation link to a not-yet-verified account. */
+  resendSignupConfirmation: AuthService.resendSignupConfirmation.bind(AuthService),
 } as const;
 
 export type SessionPort = typeof sessionPort;
