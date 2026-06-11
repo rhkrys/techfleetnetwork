@@ -12,7 +12,7 @@ import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 import { PasswordSetFields } from "@/components/auth/PasswordSetFields";
 import { ValidatedField } from "@/components/ui/validated-field";
 import { validationBorderClass, getFieldValidationState } from "@/lib/form-validation";
-import { TurnstileChallenge } from "@/components/auth/TurnstileChallenge";
+import { TurnstileCaptchaAdapter } from "@/features/auth/adapters/turnstile-captcha.adapter";
 import { PolicyLinksInline } from "@/components/PolicyLinksInline";
 import { recordPolicyAcknowledgment } from "@/lib/policies";
 import { useRegisterEngine, ageInYears, GUARDIAN_MIN_AGE } from "@/features/auth/engine/use-register-engine";
