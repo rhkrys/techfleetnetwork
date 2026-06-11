@@ -8,7 +8,8 @@ import { validatePasswordSet, type PasswordSetValue } from "@/lib/auth/password-
 import { createAuthThrottleCaptchaError, isAuthThrottleCaptchaError } from "@/lib/auth-throttle-captcha";
 import { validateEmailDomainExists } from "@/lib/email-domain-validation";
 import { getLastActivityAt } from "@/lib/session-activity";
-import { classifyAuthError, isLikelyJwt, isOpaqueRefreshToken, ClientSessionWriteError, purgeLocalAuthState } from "@/lib/auth/session-health";
+import { classifyAuthError, ClientSessionWriteError, purgeLocalAuthState } from "@/lib/auth/session-health";
+import { setSessionSafe } from "@/features/auth/services/auth-flow.service";
 
 
 const log = createLogger("AuthService");
@@ -149,40 +150,6 @@ async function logAdminLoginIfElevated(userId?: string | null) {
     });
   } catch {
     // Admin login telemetry must never block a successful login.
-  }
-}
-
-// LCL-FIX-008: Module-level single-flight lock around setSession so two
-// parallel signInWithPassword calls (rapid double-click, retry race) cannot
-// interleave writes to `sb-*-auth-token` and produce a malformed JWT.
-let setSessionInflight: Promise<unknown> | null = null;
-async function singleFlightSetSession(tokens: { access_token: string; refresh_token: string }) {
-  // AUTH-VICHEA-FIX (2026-06-09): validate access_token as a JWT (it IS a JWT)
-  // and refresh_token as an OPAQUE string (it is NOT a JWT).
-  if (!isLikelyJwt(tokens.access_token)) {
-    purgeLocalAuthState({ reason: "shape_invalid", source: "signin" });
-    throw new ClientSessionWriteError("access_token_invalid");
-  }
-  if (!isOpaqueRefreshToken(tokens.refresh_token)) {
-    purgeLocalAuthState({ reason: "shape_invalid", source: "signin" });
-    throw new ClientSessionWriteError("refresh_token_invalid");
-  }
-  // AUTH-VICHEA-FIX (2026-06-11): do NOT pre-purge local auth state here.
-  // setSession overwrites storage atomically; pre-purging created a brief
-  // window where GoTrue's autoRefresh could read an empty token, return
-  // bad_jwt, and make setSession resolve with a null session even though the
-  // server-side login already succeeded — which surfaced as "Your browser
-  // couldn't finish signing in" for users like Vichea.
-
-  if (setSessionInflight) {
-    await setSessionInflight.catch(() => undefined);
-  }
-  const p = supabase.auth.setSession(tokens);
-  setSessionInflight = p;
-  try {
-    return await p;
-  } finally {
-    if (setSessionInflight === p) setSessionInflight = null;
   }
 }
 
