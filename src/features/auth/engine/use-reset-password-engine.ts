@@ -18,14 +18,14 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { sessionPort } from "@/features/auth/ports/session.port";
-import { supabase } from "@/integrations/supabase/client";
+import { sessionPort } from "@/features/auth/ports/session.port";
 import { reportValidationRejection } from "@/services/error-reporter.service";
 import { validatePasswordSet } from "@/lib/auth/password-set";
 import { clearAuthLockout } from "@/features/auth/ports/lockout.port";
 import { clearLoginCaptcha } from "@/features/auth/ports/captcha-state.port";
 import { clearTransientStrike } from "@/lib/auth/session-health";
 import { recordResetTelemetry, type ResetBranch, type ResetOutcome } from "@/lib/auth/reset-telemetry";
-import { recordAuthEngineEvent } from "@/features/auth/adapters/audit-telemetry.adapter";
+import { telemetryPort } from "@/features/auth/ports/telemetry.port";
 
 export const MAX_REJECTIONS = 3;
 const RESET_ATTEMPTS_KEY = "tfn:reset-attempts";
@@ -48,7 +48,7 @@ function clearAttempts() {
 
 async function confirmActiveRecoverySession(): Promise<{ ok: boolean; email: string | null }> {
   try {
-    const { data, error } = await supabase.auth.getUser();
+    const { data, error } = await sessionPort.getUser();
     if (error) return { ok: false, email: null };
     return { ok: Boolean(data?.user?.id), email: data?.user?.email ?? null };
   } catch { return { ok: false, email: null }; }
@@ -175,7 +175,7 @@ export function useResetPasswordEngine(): ResetPasswordEngine {
   const verifyPendingToken = useCallback(async (tokenHash: string, shape: { has_token_hash?: boolean; has_code?: boolean; has_hash?: boolean }) => {
     setVerifyingToken(true);
     try {
-      const { error: verifyError } = await supabase.auth.verifyOtp({ type: "recovery", token_hash: tokenHash });
+      const { error: verifyError } = await sessionPort.verifyRecoveryOtp(tokenHash);
       if (verifyError) {
         const session = await confirmActiveRecoverySession();
         if (session.ok) {
@@ -219,7 +219,7 @@ export function useResetPasswordEngine(): ResetPasswordEngine {
       has_hash: Boolean(hash),
     };
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+    const { data: { subscription } } = sessionPort.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY") {
         void settleValid("session_event", "ok", shape);
       }
@@ -242,8 +242,8 @@ export function useResetPasswordEngine(): ResetPasswordEngine {
       void verifyPendingToken(tokenHash!, shape);
     } else if (!hasRecoveryInHash && !hasRecoveryInQuery) {
       settleInvalid("no_params", "missing_proof_blocked", shape);
-    } else if (code && typeof supabase.auth.exchangeCodeForSession === "function") {
-      supabase.auth.exchangeCodeForSession(code)
+    } else if (code && typeof sessionPort.exchangeCodeForSession === "function") {
+      sessionPort.exchangeCodeForSession(code)
         .then(({ error: exchangeError }) => {
           if (exchangeError) settleInvalid("code", "exchange_error", shape);
           else { stripSensitiveParams(); void settleValid("code", "ok", shape); }
@@ -255,7 +255,7 @@ export function useResetPasswordEngine(): ResetPasswordEngine {
       const refreshToken = hashParams.get("refresh_token");
 
       if (hasRecoveryInHash && accessToken && refreshToken) {
-        supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+        sessionPort.setSession(accessToken, refreshToken)
           .then(({ error: setSessionError }) => {
             if (setSessionError) settleInvalid("hash", "set_session_error", shape);
             else { stripSensitiveParams(); void settleValid("hash", "ok", shape); }
@@ -331,7 +331,7 @@ export function useResetPasswordEngine(): ResetPasswordEngine {
       clearTransientStrike();
       await storeCredentialInBrowser(session.email ?? recoveryEmail, passwordSet.password);
       recordResetTelemetry({ branch: "update_submit", outcome: "update_success" });
-      recordAuthEngineEvent("auth_engine.reset_succeeded", { email: session.email ?? recoveryEmail ?? null, other_devices_revoked: revoked });
+      telemetryPort.record("auth_engine.reset_succeeded", { email: session.email ?? recoveryEmail ?? null, other_devices_revoked: revoked });
       setSuccess(true);
     } catch (err) {
       const e2 = err as Error & { code?: string };
@@ -339,7 +339,7 @@ export function useResetPasswordEngine(): ResetPasswordEngine {
 
       if (code === "session_expired") {
         recordResetTelemetry({ branch: "update_submit", outcome: "update_session_expired" });
-        recordAuthEngineEvent("auth_engine.reset_failed", { code: "session_expired" });
+        telemetryPort.record("auth_engine.reset_failed", { code: "session_expired" });
         setLinkExpired(true);
         setValidRecovery(false);
         return;
@@ -356,7 +356,7 @@ export function useResetPasswordEngine(): ResetPasswordEngine {
         unknown: "update_unknown_error",
       };
       recordResetTelemetry({ branch: "update_submit", outcome: outcomeMap[code] ?? "update_unknown_error" });
-      recordAuthEngineEvent("auth_engine.reset_failed", { code });
+      telemetryPort.record("auth_engine.reset_failed", { code });
 
       if (code === "service_unavailable") return;
 

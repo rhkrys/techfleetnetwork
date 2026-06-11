@@ -12,7 +12,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useQueryClient } from "@/lib/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { sessionPort } from "@/features/auth/ports/session.port";
 import { signInWithPassword } from "@/features/auth/flows/sign-in-password.flow";
 import type { AuthErr } from "@/features/auth/domain/auth-result";
 import { decideFailureActions } from "@/features/auth/services/auth-failure-policy";
@@ -30,9 +30,8 @@ import {
   recordInvalidAuthAttempt,
   resetAuthLockoutForEmailChange,
 } from "@/features/auth/ports/lockout.port";
-import { logCaptchaTelemetry } from "@/lib/auth-captcha-telemetry";
+import { telemetryPort } from "@/features/auth/ports/telemetry.port";
 import { flushPendingStaleChunkEvent, newAttemptId, recordLoginEvent } from "@/lib/login-telemetry";
-import { recordAuthEngineEvent } from "@/features/auth/adapters/audit-telemetry.adapter";
 
 export interface SignInEngine {
   // form state
@@ -207,7 +206,7 @@ export function useSignInEngine(): SignInEngine {
     try {
       const body: Record<string, string> = { email: emailValue };
       if (token) body.captchaToken = token;
-      const { data, error: fnErr } = await supabase.functions.invoke("check-account-identity", { body });
+      const { data, error: fnErr } = await sessionPort.invokeEdge("check-account-identity", { body });
       if (fnErr || !data) return;
       const r = data as { has_password?: boolean; has_google?: boolean };
       if (r.has_google === true && r.has_password === false) {
@@ -279,7 +278,7 @@ export function useSignInEngine(): SignInEngine {
       return;
     }
     if (!captchaToken.trim()) {
-      logCaptchaTelemetry("auth_captcha_failed", { surface: "login", failedAttempts: captchaState.failedAttempts + 1 });
+      telemetryPort.captcha("auth_captcha_failed", { surface: "login", failedAttempts: captchaState.failedAttempts + 1 });
       setCaptchaNotice("Complete the human verification below before signing in.");
       setAuthError(""); setTypedAuthError(null);
       return;
@@ -289,7 +288,7 @@ export function useSignInEngine(): SignInEngine {
     const attemptId = newAttemptId();
     const attemptStarted = Date.now();
     recordLoginEvent(attemptId, "started", { email: result.data.email });
-    recordAuthEngineEvent("auth_engine.sign_in_started", { email: result.data.email, attempt_id: attemptId });
+    telemetryPort.record("auth_engine.sign_in_started", { email: result.data.email, attempt_id: attemptId });
 
     const rateCheck = await RateLimitService.peek(result.data.email, "login_attempt").catch(() => ({
       allowed: true, remaining: 5, retry_after: 0,
@@ -325,7 +324,7 @@ export function useSignInEngine(): SignInEngine {
       clearAuthLockout();
       clearLoginCaptcha();
       recordLoginEvent(attemptId, "redirected", { email: result.data.email, durationMs: Date.now() - attemptStarted });
-      recordAuthEngineEvent("auth_engine.sign_in_succeeded", { email: result.data.email, attempt_id: attemptId, duration_ms: Date.now() - attemptStarted });
+      telemetryPort.record("auth_engine.sign_in_succeeded", { email: result.data.email, attempt_id: attemptId, duration_ms: Date.now() - attemptStarted });
       navigate(redirectTarget, { replace: true });
       return;
     }
@@ -343,14 +342,14 @@ export function useSignInEngine(): SignInEngine {
     // Vichea invariant: client_session_write_failed must be reported but
     // never punish — verified by docs/runbooks/auth-rebuild-soak.md query 1.
     if (flowError.code === "client_session_write_failed") {
-      recordAuthEngineEvent("auth_engine.client_session_write_failed", { email: result.data.email, attempt_id: attemptId });
+      telemetryPort.record("auth_engine.client_session_write_failed", { email: result.data.email, attempt_id: attemptId });
     } else if (flowError.code === "captcha_required" || flowError.code === "captcha_failed") {
-      recordAuthEngineEvent("auth_engine.captcha_failed", { email: result.data.email, attempt_id: attemptId, code: flowError.code });
-      recordAuthEngineEvent("auth_engine.captcha_reset", { attempt_id: attemptId });
+      telemetryPort.record("auth_engine.captcha_failed", { email: result.data.email, attempt_id: attemptId, code: flowError.code });
+      telemetryPort.record("auth_engine.captcha_reset", { attempt_id: attemptId });
     } else if (flowError.code === "rate_limited" || flowError.code === "account_locked") {
-      recordAuthEngineEvent("auth_engine.sign_in_blocked", { email: result.data.email, reason: flowError.code });
+      telemetryPort.record("auth_engine.sign_in_blocked", { email: result.data.email, reason: flowError.code });
     } else {
-      recordAuthEngineEvent("auth_engine.sign_in_failed", { email: result.data.email, code: flowError.code, attempt_id: attemptId });
+      telemetryPort.record("auth_engine.sign_in_failed", { email: result.data.email, code: flowError.code, attempt_id: attemptId });
     }
 
     setCaptchaToken("");
@@ -362,7 +361,7 @@ export function useSignInEngine(): SignInEngine {
       lastFailedEmailRef.current = result.data.email.trim().toLowerCase();
       if (actions.recordCredentialFailureRpc) {
         void (async () => {
-          await supabase.rpc("record_failed_login", {
+          await sessionPort.rpc("record_failed_login", {
             _email: result.data.email,
             _ip: null,
             _user_agent: navigator.userAgent.substring(0, 200),
@@ -384,7 +383,7 @@ export function useSignInEngine(): SignInEngine {
       }, 0);
     } else {
       if (flowError.code === "rate_limited") {
-        logCaptchaTelemetry("auth_captcha_fetch_blocked", { surface: "login", reason: "client_auth_throttle_429" });
+        telemetryPort.captcha("auth_captcha_fetch_blocked", { surface: "login", reason: "client_auth_throttle_429" });
         setCaptchaState(refreshLoginCaptcha());
       }
       setCaptchaSoftResetCount((c) => c + 1);
