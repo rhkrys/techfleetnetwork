@@ -74,7 +74,10 @@ const NETWORK_PATTERNS = [
   "load failed",
   "fetch failed",
   "networkerror",
-  "sign-in didn't complete",
+  // NOTE: do NOT add "sign-in didn't complete" here — that phrase belongs to
+  // ClientSessionWriteError, which is matched earlier via isClientSessionWriteError().
+  // Keeping it here would misclassify the typed error as a network failure and
+  // strip the recovery copy.
 ];
 
 function messageOf(err: unknown): string {
