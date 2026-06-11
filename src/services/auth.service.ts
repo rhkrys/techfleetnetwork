@@ -204,7 +204,7 @@ function classifyPasswordUpdateError(err: { message?: string; code?: string; sta
     return { code: "rate_limited", message: "Too many attempts in a short time. Please wait a minute and try again." };
   }
   if (!err.status || err.status >= 500 || msg.includes("failed to fetch") || msg.includes("network")) {
-    return { code: "service_unavailable", message: "We're briefly unable to reach the password service. Please try again in a moment." };
+    return { code: "service_unavailable", message: "The password update service is temporarily unavailable. Please try again." };
   }
   return { code: "unknown", message: "We couldn't update your password. Please try again or request a new reset link." };
 }
