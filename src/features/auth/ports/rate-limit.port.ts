@@ -6,8 +6,10 @@
  * Ship 5b/5c the engines stop importing RateLimitService and `supabase`
  * directly and use this port exclusively.
  */
-import { RateLimitService, type RateLimitPurpose } from "@/services/rate-limit.service";
+import { RateLimitService } from "@/services/rate-limit.service";
 import { supabase } from "@/integrations/supabase/client";
+
+type RateLimitPurpose = string;
 
 export interface RateLimitDecision {
   allowed: boolean;
