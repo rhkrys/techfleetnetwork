@@ -31,7 +31,6 @@ const TurnstileChallenge = lazy(() =>
 );
 import { clearAuthLockout, formatAuthLockoutMessage, getAuthLockoutState, maybeAutoHealAuthLockout, recordInvalidAuthAttempt, resetAuthLockoutForEmailChange } from "@/lib/auth-lockout";
 import { logCaptchaTelemetry } from "@/lib/auth-captcha-telemetry";
-import { isAuthThrottleCaptchaError } from "@/lib/auth-throttle-captcha";
 import { reportValidationRejection } from "@/services/error-reporter.service";
 import { normalizeSafeRedirectTarget } from "@/lib/security";
 import { recordLoginEvent, newAttemptId, flushPendingStaleChunkEvent } from "@/lib/login-telemetry";
@@ -229,6 +228,7 @@ export default function LoginPage() {
     const currentLockout = getAuthLockoutState();
     setLockoutState(currentLockout);
     if (currentLockout.locked) {
+      setTypedAuthError(null);
       setAuthError(formatAuthLockoutMessage(currentLockout.remainingSeconds));
       return;
     }
@@ -256,6 +256,7 @@ export default function LoginPage() {
       setErrors(fieldErrors);
       // Validation errors render inline only — no red banner, no lockout increment.
       setAuthError("");
+      setTypedAuthError(null);
       setCaptchaNotice("");
       scrollToFirstError();
       return;
@@ -266,10 +267,12 @@ export default function LoginPage() {
       // passed → too many attempts" flicker. Just nudge the user inline.
       setCaptchaNotice("Complete the human verification below before signing in.");
       setAuthError("");
+      setTypedAuthError(null);
       return;
     }
     setErrors({});
     setAuthError("");
+    setTypedAuthError(null);
     setCaptchaNotice("");
     setOauthHint(null);
     setLoading(true);
