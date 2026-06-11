@@ -74,11 +74,21 @@ export function LiveAnnouncer() {
 
   return (
     <>
+      {/*
+        translate="no" + data-no-translate guards against Google Translate,
+        Transover, and DeepL extensions wrapping these text nodes — the wrap
+        moves the original Text out from under React, and the next update
+        throws "Failed to execute 'insertBefore' on 'Node'" (root cause of
+        the 2026-06-07 ui_render_error pair). The bridge layer
+        `installDomTranslator()` already respects [data-no-translate].
+      */}
       <div
         aria-live="polite"
         aria-atomic="true"
         role="status"
         className="sr-only"
+        translate="no"
+        data-no-translate
       >
         {polite}
       </div>
@@ -87,6 +97,8 @@ export function LiveAnnouncer() {
         aria-atomic="true"
         role="alert"
         className="sr-only"
+        translate="no"
+        data-no-translate
       >
         {assertive}
       </div>
