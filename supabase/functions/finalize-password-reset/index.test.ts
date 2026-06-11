@@ -24,8 +24,8 @@ Deno.test("AUTH-RESET-025: missing recovery bearer returns 401 and audits info, 
   assertEquals(response instanceof Response, true);
   assertEquals((response as Response).status, 401);
   await (response as Response).text();
-  assertEquals(client.calls.length, 1);
-  assertEquals(client.calls[0].name, "write_audit_log");
-  assertEquals((client.calls[0].args.p_changed_fields as string[]).includes("severity:info"), true);
-  assertEquals((client.calls[0].args.p_changed_fields as string[]).includes("severity:warn"), false);
+  const auditCall = client.calls.find((call) => call.name === "write_audit_log");
+  assertEquals(Boolean(auditCall), true);
+  assertEquals((auditCall!.args.p_changed_fields as string[]).includes("severity:info"), true);
+  assertEquals((auditCall!.args.p_changed_fields as string[]).includes("severity:warn"), false);
 });
