@@ -8,7 +8,7 @@ import { validatePasswordSet, type PasswordSetValue } from "@/lib/auth/password-
 import { createAuthThrottleCaptchaError, isAuthThrottleCaptchaError } from "@/lib/auth-throttle-captcha";
 import { validateEmailDomainExists } from "@/lib/email-domain-validation";
 import { getLastActivityAt } from "@/lib/session-activity";
-import { classifyAuthError, purgeLocalAuthState } from "@/lib/auth/session-health";
+import { classifyAuthError, ClientSessionWriteError, purgeLocalAuthState } from "@/lib/auth/session-health";
 
 
 const log = createLogger("AuthService");
@@ -233,6 +233,7 @@ export const AuthService = {
       });
 
       if (error) {
+        if (error instanceof ClientSessionWriteError) throw error;
         const fnError = await readFunctionError(error);
         log.error("signInWithPassword", `Authentication failed for ${safeEmail}: ${fnError.message}`, { email: safeEmail, errorCode: fnError.status ?? fnError.code }, error);
         void logAccountActivity("login_failed", { email: safeEmail, errorMessage: fnError.message, errorCode: fnError.status ?? fnError.code });
@@ -259,6 +260,9 @@ export const AuthService = {
         credentialError.status = fnError.status ?? 401;
         credentialError.code = fnError.code === "invalid_credentials" ? "invalid_credentials" : "invalid_credentials";
         throw credentialError;
+      }
+      if (!data.session?.access_token) {
+        throw new ClientSessionWriteError("set_session_rejected", "Sign-in didn't complete — please try again.");
       }
       // LCL-FIX-004 (revised): Post-setSession round-trip validation is
       // non-fatal. The supabase client already validated tokens during
