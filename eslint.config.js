@@ -254,10 +254,10 @@ export default tseslint.config(
     // Catching screen-layer imports of auth.service / auth-lockout /
     // auth-captcha / TurnstileChallenge / sign-in-password.flow stops the
     // three-parallel-paths spaghetti from reappearing on the new surface.
-    files: ["src/features/auth/ui/SignInScreen.tsx", "src/features/auth/ui/SignUpScreen.tsx", "src/features/auth/ui/ForgotPasswordScreen.tsx", "src/features/auth/ui/ResetPasswordScreen.tsx"],
+    files: ["src/features/auth/ui/SignInScreen.tsx", "src/features/auth/ui/SignUpScreen.tsx", "src/features/auth/ui/ForgotPasswordScreen.tsx", "src/features/auth/ui/ResetPasswordScreen.tsx", "src/features/auth/ui/RegisterScreen.tsx"],
     rules: {
       "no-restricted-imports": [
-        "warn",
+        "error",
         {
           paths: [
             { name: "@/services/auth.service", message: "Screens must consume the engine hook, not AuthService directly." },
