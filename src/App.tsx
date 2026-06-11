@@ -60,7 +60,9 @@ const PWAInstallPrompt = lazy(() => import("./components/PWAInstallPrompt").then
 
 // Lazily loaded routes (reduce initial JS bundle)
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
-const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage"));
+// AUTH REBUILD Ship 3 (2026-06-11): /forgot-password now owned by ForgotPasswordScreen
+// over useForgotPasswordEngine. Legacy ForgotPasswordPage stays on disk until Ship 5.
+const ForgotPasswordPage = lazy(() => import("@/features/auth/ui/ForgotPasswordScreen"));
 const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
 const ConfirmRecoveryLinkPage = lazy(() => import("./pages/ConfirmRecoveryLinkPage"));
 const ProfileSetupPage = lazy(() => import("./pages/ProfileSetupPage"));
