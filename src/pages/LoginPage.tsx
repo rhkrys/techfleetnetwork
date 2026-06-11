@@ -457,7 +457,7 @@ export default function LoginPage() {
                     setAuthError("");
                     setCaptchaNotice("");
                     setCaptchaToken("");
-                    setCaptchaFailureCount((c) => c + 1);
+                    setCaptchaSoftResetCount((c) => c + 1);
                   }}
                   className="underline hover:no-underline"
                 >
