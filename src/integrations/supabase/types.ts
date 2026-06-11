@@ -8187,7 +8187,7 @@ export type Database = {
           version: string
         }[]
       }
-      get_dashboard_overview: { Args: { p_user_id: string }; Returns: Json }
+      get_dashboard_overview: { Args: never; Returns: Json }
       get_deliverable_context: { Args: { p_id: string }; Returns: Json }
       get_email_outbox: {
         Args: {
