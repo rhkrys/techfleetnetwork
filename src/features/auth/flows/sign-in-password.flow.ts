@@ -3,24 +3,23 @@ import { classifyAuthErrorCode } from "../services/auth-classifier";
 import { setSessionSafe } from "../services/auth-flow.service";
 import { decideFailureActions } from "../services/auth-failure-policy";
 import { emitAuthBeacon, newCorrelationId } from "../services/auth-telemetry";
-import { supabase } from "@/integrations/supabase/client";
+import { AuthService } from "@/services/auth.service";
 
 /**
  * Typed sign-in-with-password flow. Single entry point for the UI:
  * returns `Result<AuthOk, AuthErr>` — no throws cross this boundary.
  *
- * Phase 2 implementation:
- *   - Calls `supabase.auth.signInWithPassword` directly (broker proxy
- *     route lands in Phase 3 once `supabase/functions/auth-broker/` is
- *     wired up end-to-end). Behavior is identical to today, but the
- *     contract is now typed and the Vichea-safe setSession lives below.
- *   - All failure attribution is delegated to `decideFailureActions`.
- *     This file MUST NOT call any counter RPC directly.
+ * Phase 2 (Vichea re-code 2026-06-11): routes through `AuthService.signInWithPassword`
+ * which calls the `login-with-captcha` edge function. Preserves the server-side
+ * CAPTCHA gate, throttle protection, and audit logging while exposing a typed
+ * code-first contract to the UI. The legacy LoginPage submit path can switch
+ * to this flow without losing the server CAPTCHA gate.
  */
 export interface SignInPasswordInput {
   email: string;
   password: string;
   captchaToken?: string;
+  attemptId?: string;
   correlationId?: string;
 }
 
@@ -31,49 +30,19 @@ export async function signInWithPassword(input: SignInPasswordInput): Promise<Au
   await emitAuthBeacon("auth.signin.start", { correlationId, route: "signin.password" });
 
   try {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: input.email,
-      password: input.password,
-      options: input.captchaToken ? { captchaToken: input.captchaToken } : undefined,
-    });
-
-    if (error) {
-      const code = classifyAuthErrorCode(error);
-      const actions = decideFailureActions(code);
-      await emitAuthBeacon(actions.beaconKind, {
-        correlationId,
-        route: "signin.password",
-        latencyMs: Date.now() - startedAt,
-        outcome: "err",
-        errorCode: code,
-      });
-      return err({ code, correlationId });
-    }
-
-    if (!data?.session?.access_token || !data.session.refresh_token) {
-      const code = "client_session_write_failed" as const;
-      const actions = decideFailureActions(code);
-      await emitAuthBeacon(actions.beaconKind, {
-        correlationId,
-        route: "signin.password",
-        latencyMs: Date.now() - startedAt,
-        outcome: "err",
-        errorCode: code,
-      });
-      return err({ code, correlationId });
-    }
-
-    // setSessionSafe is a no-op here — signInWithPassword already wrote the
-    // session via GoTrue — but we keep the typed contract identical to the
-    // Phase 3 broker path so the UI never branches on transport.
+    const data = await AuthService.signInWithPassword(
+      input.email,
+      input.password,
+      input.captchaToken ?? "",
+      input.attemptId,
+    );
     await emitAuthBeacon("auth.signin.success", {
       correlationId,
       route: "signin.password",
       latencyMs: Date.now() - startedAt,
       outcome: "ok",
     });
-
-    return ok({ kind: "signed_in", userId: data.user?.id ?? "", correlationId });
+    return ok({ kind: "signed_in", userId: data?.user?.id ?? "", correlationId });
   } catch (caught) {
     const code = classifyAuthErrorCode(caught);
     const actions = decideFailureActions(code);
@@ -90,3 +59,4 @@ export async function signInWithPassword(input: SignInPasswordInput): Promise<Au
 
 // Re-export so the future broker swap stays internal to this module.
 export { setSessionSafe };
+
