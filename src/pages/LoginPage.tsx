@@ -528,7 +528,7 @@ export default function LoginPage() {
             <div style={{ minHeight: 78 }} onFocusCapture={() => setTurnstileReady(true)}>
               {turnstileReady ? (
                 <Suspense fallback={<div style={{ height: 78 }} aria-hidden="true" />}>
-                  <TurnstileChallenge action="login" onTokenChange={setCaptchaToken} failureCount={captchaFailureCount} email={email} />
+                  <TurnstileChallenge action="login" onTokenChange={setCaptchaToken} failureCount={captchaFailureCount} softResetCount={captchaSoftResetCount} email={email} />
                 </Suspense>
               ) : (
                 <div style={{ height: 78 }} aria-hidden="true" />
