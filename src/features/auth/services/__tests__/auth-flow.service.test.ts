@@ -23,6 +23,7 @@ import { ClientSessionWriteError } from "@/lib/auth/session-health";
 // decode — `isLikelyJwt` only checks structural shape.
 const VALID_JWT =
   "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.signaturesignaturesignaturesignature";
+const VALID_SESSION = { access_token: VALID_JWT, refresh_token: "opaque-refresh-token-12345", user: { id: "user-1" } };
 
 describe("auth-flow.service (Vichea invariants)", () => {
   beforeEach(() => {
@@ -34,7 +35,7 @@ describe("auth-flow.service (Vichea invariants)", () => {
   });
 
   it("accepts an opaque (non-JWT) refresh token returned by GoTrue", async () => {
-    setSessionMock.mockResolvedValue({ error: null });
+    setSessionMock.mockResolvedValue({ data: { session: VALID_SESSION }, error: null });
     await expect(
       setSessionSafe({
         access_token: VALID_JWT,
@@ -60,11 +61,11 @@ describe("auth-flow.service (Vichea invariants)", () => {
   });
 
   it("single-flights concurrent setSession calls", async () => {
-    let resolve!: (v: { error: null }) => void;
+    let resolve!: (v: { data: { session: typeof VALID_SESSION }; error: null }) => void;
     setSessionMock.mockReturnValue(new Promise((r) => { resolve = r; }));
     const a = setSessionSafe({ access_token: VALID_JWT, refresh_token: "opaque-refresh-token-12345" });
     const b = setSessionSafe({ access_token: VALID_JWT, refresh_token: "opaque-refresh-token-12345" });
-    resolve({ error: null });
+    resolve({ data: { session: VALID_SESSION }, error: null });
     await Promise.all([a, b]);
     expect(setSessionMock).toHaveBeenCalledOnce();
   });
