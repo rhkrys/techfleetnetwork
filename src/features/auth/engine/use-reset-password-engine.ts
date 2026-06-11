@@ -356,6 +356,7 @@ export function useResetPasswordEngine(): ResetPasswordEngine {
         unknown: "update_unknown_error",
       };
       recordResetTelemetry({ branch: "update_submit", outcome: outcomeMap[code] ?? "update_unknown_error" });
+      recordAuthEngineEvent("auth_engine.reset_failed", { code });
 
       if (code === "service_unavailable") return;
 
