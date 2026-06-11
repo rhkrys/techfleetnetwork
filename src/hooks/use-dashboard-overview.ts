@@ -48,7 +48,10 @@ export function useDashboardOverview() {
     refetchInterval: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
     queryFn: async (): Promise<DashboardOverview> => {
-      const { data, error } = await supabase.rpc("get_dashboard_overview", { p_user_id: userId! });
+      // Identity comes from auth.uid() inside the RPC — single source of truth.
+      // No client-supplied p_user_id, so the JWT and the DB cannot disagree
+      // during a token refresh (which previously raised AppError: Unauthorized).
+      const { data, error } = await supabase.rpc("get_dashboard_overview");
       if (error) throw error;
       const raw = (data ?? {}) as Partial<DashboardOverview>;
       return {
