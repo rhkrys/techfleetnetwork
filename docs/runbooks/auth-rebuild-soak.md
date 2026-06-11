@@ -85,6 +85,19 @@ Any new fingerprint that wasn't present 24h before the deploy = investigate.
 
 ---
 
+## Ship 6 lock-in
+
+- **Telemetry path:** `src/features/auth/adapters/audit-telemetry.adapter.ts`
+  fires `auth_engine.*` kinds via the `record-auth-event` edge function
+  (verify_jwt=false, kind allowlist, 1 KB payload cap, severity=info).
+- **BDD scenarios:** 30 rows seeded under `AUTH-ENGINE-001..030` in
+  `bdd_scenarios` (test_type=unit|manual, status=not_built). Each ship
+  flips the scenarios it lands to status=implemented.
+- **Soak pass condition:** queries §1, §2, §3 all return zero rows at
+  T+24h. Any non-empty result blocks the rebuild from being declared Done
+  and is grounds for a one-revert rollback.
+
 **Owner:** whoever shipped the auth change.
 **Cadence:** run at T+1h, T+6h, T+24h after each Ship 2..6.
 **Escalation:** any non-empty result on §1, §2, or §3 → roll back the ship.
+
