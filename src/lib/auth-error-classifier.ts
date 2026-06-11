@@ -214,9 +214,12 @@ export function classifyAuthError(err: unknown): ClassifiedAuthError {
   };
 }
 
-// AUTH-ENGINE Ship 6: re-export the canonical client-session-write helpers
-// so legacy tests keep a single import surface.
+// AUTH-ENGINE Ship 6: re-export canonical session-health helpers so legacy
+// tests + callers keep a single import surface. ClientSessionWriteError is
+// re-exported as a value (class) so `new ClientSessionWriteError(...)` works.
 export {
+  ClientSessionWriteError,
   isClientSessionWriteError,
-  type ClientSessionWriteError,
+  isLikelyJwt,
+  isOpaqueRefreshToken,
 } from "@/lib/auth/session-health";
