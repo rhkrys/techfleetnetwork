@@ -24,7 +24,7 @@ describe("auth-flow.service.setSessionSafe — Vichea invariants", () => {
     const { setSessionSafe } = await importService();
     await expect(
       setSessionSafe({ access_token: VALID_ACCESS, refresh_token: OPAQUE_REFRESH }),
-    ).resolves.toBeUndefined();
+    ).resolves.toMatchObject({ access_token: VALID_ACCESS });
     expect(setSession).toHaveBeenCalledOnce();
   });
 
@@ -49,7 +49,7 @@ describe("auth-flow.service.setSessionSafe — Vichea invariants", () => {
     const { setSessionSafe } = await importService();
     await expect(
       setSessionSafe({ access_token: VALID_ACCESS, refresh_token: "x".repeat(64) }),
-    ).resolves.toBeUndefined();
+    ).resolves.toMatchObject({ access_token: VALID_ACCESS });
   });
 
   it("wraps a GoTrue rejection in ClientSessionWriteError (non-punitive)", async () => {
