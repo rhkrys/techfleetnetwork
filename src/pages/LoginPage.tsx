@@ -71,6 +71,14 @@ export default function LoginPage() {
   const [turnstileReady, setTurnstileReady] = useState(false);
   useEffect(() => {
     if (turnstileReady) return;
+    // Eager mount after a password reset, session-expired bounce, or any
+    // ?reason= handoff so the widget is interactive before the member
+    // clicks "Sign in" with autofilled credentials.
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("from") === "password-reset" || params.has("reason")) {
+      setTurnstileReady(true);
+      return;
+    }
     const arm = () => setTurnstileReady(true);
     const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
     const idleId = typeof ric === "function" ? ric(arm, { timeout: 2000 }) : window.setTimeout(arm, 1200);
