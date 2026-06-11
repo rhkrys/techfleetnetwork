@@ -335,12 +335,17 @@ export default function ResetPasswordPage() {
     try {
       const { otherDevicesRevoked: revoked } = await AuthService.updatePassword(passwordSet);
       setOtherDevicesRevoked(revoked);
+      // CLEAN HANDOFF (AUTH-RESET-HANDOFF-001): wipe every piece of stale auth
+      // state that could otherwise leak into the next sign-in attempt and
+      // re-create the Vichea reset-loop:
+      //   - device lockout counter (legitimate prior failed attempts before reset)
+      //   - reset-attempt counter (would block immediate sign-in retries)
+      //   - Turnstile captcha state (challenge sessionStorage)
+      //   - transient bad-jwt strike (a recovery session can leave one behind)
       clearAttempts();
       clearAuthLockout();
-      // Tell the browser + password manager to UPDATE the saved credential
-      // immediately. This is the structural fix that prevents the reset
-      // loop: without it, autofill keeps replaying the old password on
-      // next sign-in and the member ends up resetting again.
+      clearLoginCaptcha();
+      clearTransientStrike();
       await storeCredentialInBrowser(session.email ?? recoveryEmail, passwordSet.password);
       recordResetTelemetry({ branch: "update_submit", outcome: "update_success" });
       setSuccess(true);
