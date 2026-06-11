@@ -19,7 +19,7 @@ import { ExperienceAreasSelect } from "@/components/ExperienceAreasSelect";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ProfileService } from "@/services/profile.service";
-import { AuthService } from "@/services/auth.service";
+import { sessionPort } from "@/features/auth/ports/session.port";
 import { COUNTRIES } from "@/lib/countries";
 import { TIMEZONES } from "@/lib/timezones";
 import { useAuth } from "@/contexts/AuthContext";
@@ -164,7 +164,7 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
     if (!user?.email) return;
     setResetPasswordLoading(true);
     try {
-      await AuthService.resetPassword(user.email, `${window.location.origin}/reset-password`);
+      await sessionPort.resetPassword(user.email, `${window.location.origin}/reset-password`);
       toast.success("Password reset email sent", {
         description: "Check your inbox for a link to reset your password.",
       });
