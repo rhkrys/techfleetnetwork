@@ -17,8 +17,8 @@ import { recordPolicyAcknowledgment } from "@/lib/policies";
 import { validationBorderClass, getFieldValidationState } from "@/lib/form-validation";
 import techFleetLogo from "@/assets/tech-fleet-logo.svg";
 
-const TurnstileChallenge = lazy(() =>
-  import("@/components/auth/TurnstileChallenge").then((m) => ({ default: m.TurnstileChallenge })),
+const TurnstileCaptchaAdapter = lazy(() =>
+  import("@/features/auth/adapters/turnstile-captcha.adapter").then((m) => ({ default: m.TurnstileCaptchaAdapter })),
 );
 
 export default function SignInScreen() {
