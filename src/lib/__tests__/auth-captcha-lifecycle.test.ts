@@ -8,8 +8,7 @@
  *
  * Structural fixes locked down by this file:
  *   1. Classifier copy for CLIENT_SESSION_WRITE_FAILED + SESSION_INCOMPLETE
- *      uses the new "We need to retry sign-in" / "Your account is safe"
- *      member-safe text. No more "didn't complete cleanly".
+ *      avoids alarming legacy text and keeps the failure non-punitive.
  *   2. The string `"sign-in didn't complete"` was removed from
  *      NETWORK_PATTERNS — that pattern would have re-routed the typed
  *      ClientSessionWriteError through the network branch and stripped the
