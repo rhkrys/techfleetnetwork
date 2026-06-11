@@ -116,11 +116,13 @@ const noDirectSupabaseAuth = {
 };
 
 const FAILURE_POLICY_FILE = "src/features/auth/services/auth-failure-policy.ts";
+const ENGINE_FAILURE_POLICY_FILE = "src/features/auth/engine/failure-policy.ts";
 
 const noDirectFailureCounters = {
   meta: { type: "problem", docs: { description: "Auth failure counters must only fire from auth-failure-policy.ts." }, schema: [], messages: { forbidden: "Counter '{{name}}' may only be invoked from auth-failure-policy.ts." } },
   create(context) {
     if (fileEndsWith(context, FAILURE_POLICY_FILE)) return {};
+    if (fileEndsWith(context, ENGINE_FAILURE_POLICY_FILE)) return {};
     return {
       CallExpression(node) {
         const callee = node.callee;
