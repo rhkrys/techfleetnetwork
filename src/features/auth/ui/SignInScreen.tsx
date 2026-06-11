@@ -130,7 +130,7 @@ export default function SignInScreen() {
             <div style={{ minHeight: 78 }} onFocusCapture={e.armTurnstile}>
               {e.turnstileReady ? (
                 <Suspense fallback={<div style={{ height: 78 }} aria-hidden="true" />}>
-                  <TurnstileChallenge action="login" onTokenChange={e.setCaptchaToken} failureCount={e.captchaFailureCount} softResetCount={e.captchaSoftResetCount} email={e.email} />
+                  <TurnstileCaptchaAdapter action="login" onToken={e.setCaptchaToken} failureCount={e.captchaFailureCount} softResetCount={e.captchaSoftResetCount} email={e.email} />
                 </Suspense>
               ) : (
                 <div style={{ height: 78 }} aria-hidden="true" />
