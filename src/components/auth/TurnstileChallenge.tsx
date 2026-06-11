@@ -186,6 +186,21 @@ export function TurnstileChallenge({ action, onTokenChange, failureCount = 0, so
     lastFailureCountRef.current = failureCount;
   }, [failureCount]);
 
+  // Non-punitive soft reset: clears the current token and forces Cloudflare
+  // to issue a fresh one without incrementing the consecutive-failure
+  // counter (so no 30s lockout). Used after client_session_write_failed,
+  // network errors, and other errors the user is not responsible for.
+  useEffect(() => {
+    if (softResetCount > lastSoftResetCountRef.current) {
+      onTokenChange("");
+      setTransientError(null);
+      setRetrySeconds(0);
+      resetWidget();
+    }
+    lastSoftResetCountRef.current = softResetCount;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [softResetCount]);
+
   useEffect(() => {
     if (retrySeconds <= 0) return;
     const timer = window.setInterval(() => {
