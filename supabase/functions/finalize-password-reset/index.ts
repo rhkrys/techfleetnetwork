@@ -80,7 +80,7 @@ Deno.serve(withAuditWrapper("finalize-password-reset", async (req) => {
   if (req.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
 
   try {
-    const auth = await requireAuthenticatedRequest(req, "finalize-password-reset");
+    const auth = await requireAuthenticatedRequest(req, "finalize-password-reset", { missingTokenSeverity: "info" });
     if (auth instanceof Response) return auth;
 
     const parsed = BodySchema.safeParse(await parseJsonBody(req, 8 * 1024));

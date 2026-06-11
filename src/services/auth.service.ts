@@ -519,8 +519,20 @@ export const AuthService = {
         throw err;
       }
 
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession().catch(() => ({
+        data: { session: null },
+        error: new Error("Recovery session lookup failed"),
+      }));
+      const accessToken = sessionData.session?.access_token?.trim();
+      if (sessionError || !accessToken) {
+        const expired = new Error("Your password reset link expired. Request a new one to continue.") as Error & { code?: string };
+        expired.code = "session_expired";
+        throw expired;
+      }
+
       const { data, error } = await supabase.functions.invoke("finalize-password-reset", {
         body: { password: passwordSet.password },
+        headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (error) {
         const fnError = await readFunctionError(error);
