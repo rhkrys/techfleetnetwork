@@ -386,7 +386,6 @@ export default function LoginPage() {
       }
       const probeEmail = result.data.email;
       setTimeout(() => {
-        void checkOauthIdentityForEmail(probeEmail, captchaToken || undefined);
         window.dispatchEvent(new CustomEvent("tfn:probe-oauth-identity", { detail: { email: probeEmail } }));
       }, 0);
     } else {
