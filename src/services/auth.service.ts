@@ -264,15 +264,52 @@ export const AuthService = {
         body: { email: safeEmail, password, captchaToken: captchaToken.trim(), ...(attemptId ? { attemptId } : {}) },
       }).then(async (res) => {
         if (res.error) return { data: null, error: res.error };
-        if (res.data?.session?.access_token && res.data.session.refresh_token) {
-          const setSessionResult = await singleFlightSetSession({
-            access_token: res.data.session.access_token,
-            refresh_token: res.data.session.refresh_token,
-          });
-          return setSessionResult as { data: { session: AuthSession | null; user: AuthSession["user"] | null }; error: null } | { data: null; error: Error };
+        const srvSession = res.data?.session;
+        if (!srvSession?.access_token || !srvSession.refresh_token) {
+          return { data: null, error: new ClientSessionWriteError("set_session_rejected", "Sign-in didn't complete — please try again.") };
         }
-        return { data: null, error: new ClientSessionWriteError("set_session_rejected", "Sign-in didn't complete — please try again.") };
+        // AUTH-VICHEA-FIX (2026-06-11): self-healing setSession. If GoTrue's
+        // internal getUser races with storage and returns a null session
+        // (or throws), retry once after a short settle; if still null,
+        // accept the server-issued tokens as the authoritative session —
+        // they were just minted by GoTrue and setSession has already
+        // written them to storage. This prevents a successful 200 from the
+        // server from being surfaced to the user as a session-write failure.
+        const tokens = { access_token: srvSession.access_token, refresh_token: srvSession.refresh_token };
+        let setRes: { data: { session: AuthSession | null; user: AuthSession["user"] | null } | null; error: unknown } | null = null;
+        try {
+          setRes = await singleFlightSetSession(tokens) as typeof setRes;
+        } catch (setErr) {
+          // shape-invalid throws bubble; transient throws → retry once
+          if (setErr instanceof ClientSessionWriteError &&
+              (setErr.reason === "access_token_invalid" || setErr.reason === "refresh_token_invalid")) {
+            return { data: null, error: setErr };
+          }
+          await new Promise((r) => setTimeout(r, 150));
+          try {
+            setRes = await singleFlightSetSession(tokens) as typeof setRes;
+          } catch {
+            setRes = null;
+          }
+        }
+        if (setRes && !setRes.error && setRes.data?.session?.access_token) {
+          return setRes as { data: { session: AuthSession; user: AuthSession["user"] | null }; error: null };
+        }
+        // setSession returned null session or errored — retry once.
+        await new Promise((r) => setTimeout(r, 150));
+        try {
+          const retry = await singleFlightSetSession(tokens) as typeof setRes;
+          if (retry && !retry.error && retry.data?.session?.access_token) {
+            return retry as { data: { session: AuthSession; user: AuthSession["user"] | null }; error: null };
+          }
+        } catch { /* fall through to accept server tokens */ }
+        // Accept server-issued session as authoritative. Storage already
+        // holds the tokens (setSession writes before its internal getUser),
+        // and the onAuthStateChange listener will reconcile on next tick.
+        log.warn("signInWithPassword", "setSession returned null session; accepting server-issued tokens", { email: safeEmail });
+        return { data: { session: srvSession as AuthSession, user: res.data?.user ?? null }, error: null };
       });
+
       if (error) {
         const fnError = await readFunctionError(error);
         log.error("signInWithPassword", `Authentication failed for ${safeEmail}: ${fnError.message}`, { email: safeEmail, errorCode: fnError.status ?? fnError.code }, error);
