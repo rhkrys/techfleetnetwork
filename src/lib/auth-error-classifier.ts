@@ -203,7 +203,7 @@ export function classifyAuthError(err: unknown): ClassifiedAuthError {
     return {
       kind: "SESSION_INCOMPLETE",
       message:
-        "Your browser couldn't finish signing in. Your account is safe — please try once more.",
+        "We need to retry sign-in. Your account is safe — something interrupted the browser session, so we cleared the attempt. Complete verification below and sign in again.",
       countsAgainstUser: false,
     };
   }
