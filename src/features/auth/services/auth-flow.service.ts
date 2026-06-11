@@ -27,10 +27,12 @@ export interface SessionTokens {
   refresh_token: string;
 }
 
-// Single-flight mutex so a double-click cannot trigger two setSession calls.
-let inFlight: Promise<void> | null = null;
+export type SafeSession = NonNullable<Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]>;
 
-export async function setSessionSafe(tokens: SessionTokens): Promise<void> {
+// Single-flight mutex so a double-click cannot trigger two setSession calls.
+let inFlight: Promise<SafeSession> | null = null;
+
+export async function setSessionSafe(tokens: SessionTokens): Promise<SafeSession> {
   if (inFlight) return inFlight;
 
   if (!isLikelyJwt(tokens.access_token)) {
@@ -42,7 +44,7 @@ export async function setSessionSafe(tokens: SessionTokens): Promise<void> {
 
   inFlight = (async () => {
     try {
-      const { error } = await supabase.auth.setSession({
+      const { data, error } = await supabase.auth.setSession({
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,
       });
@@ -50,6 +52,17 @@ export async function setSessionSafe(tokens: SessionTokens): Promise<void> {
         log.warn("setSession", "setSession rejected", { msg: error.message });
         throw new ClientSessionWriteError("set_session_rejected", "Sign-in didn't complete — please try again.");
       }
+      if (data.session?.access_token) return data.session as SafeSession;
+
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      const { data: settled, error: settleError } = await supabase.auth.getSession();
+      if (settleError) {
+        log.warn("setSession", "getSession after setSession rejected", { msg: settleError.message });
+        throw new ClientSessionWriteError("set_session_rejected", "Sign-in didn't complete — please try again.");
+      }
+      if (settled.session?.access_token) return settled.session as SafeSession;
+
+      throw new ClientSessionWriteError("set_session_rejected", "Sign-in didn't complete — please try again.");
     } finally {
       inFlight = null;
     }
