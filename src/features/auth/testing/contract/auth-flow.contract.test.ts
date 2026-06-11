@@ -11,6 +11,7 @@ beforeEach(() => { setSession.mockReset(); });
 const VALID_ACCESS =
   "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ2aWNoZWEifQ.signature_part_base64url";
 const OPAQUE_REFRESH = "v1.MzAxYWY3NTQtMmNkNi00YjVjLWJjNzY";
+const VALID_SESSION = { access_token: VALID_ACCESS, refresh_token: OPAQUE_REFRESH, user: { id: "vichea" } };
 
 async function importService() {
   const mod = await import("../../services/auth-flow.service");
@@ -19,7 +20,7 @@ async function importService() {
 
 describe("auth-flow.service.setSessionSafe — Vichea invariants", () => {
   it("accepts opaque refresh token from GoTrue (the Vichea regression)", async () => {
-    setSession.mockResolvedValue({ error: null });
+    setSession.mockResolvedValue({ data: { session: VALID_SESSION }, error: null });
     const { setSessionSafe } = await importService();
     await expect(
       setSessionSafe({ access_token: VALID_ACCESS, refresh_token: OPAQUE_REFRESH }),
@@ -44,7 +45,7 @@ describe("auth-flow.service.setSessionSafe — Vichea invariants", () => {
 
   it("never applies the JWT shape check to refresh_token", async () => {
     // A refresh token that is NOT a JWT must be accepted.
-    setSession.mockResolvedValue({ error: null });
+    setSession.mockResolvedValue({ data: { session: VALID_SESSION }, error: null });
     const { setSessionSafe } = await importService();
     await expect(
       setSessionSafe({ access_token: VALID_ACCESS, refresh_token: "x".repeat(64) }),
@@ -61,8 +62,8 @@ describe("auth-flow.service.setSessionSafe — Vichea invariants", () => {
 
   it("single-flight: concurrent calls share one in-flight promise", async () => {
     let resolveIt: () => void = () => {};
-    setSession.mockReturnValue(new Promise<{ error: null }>((res) => {
-      resolveIt = () => res({ error: null });
+    setSession.mockReturnValue(new Promise<{ data: { session: typeof VALID_SESSION }; error: null }>((res) => {
+      resolveIt = () => res({ data: { session: VALID_SESSION }, error: null });
     }));
     const { setSessionSafe } = await importService();
     const a = setSessionSafe({ access_token: VALID_ACCESS, refresh_token: OPAQUE_REFRESH });
