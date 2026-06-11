@@ -42,7 +42,21 @@ type TurnstileErrorKind = "expired" | "network" | "challenge" | "unknown";
 type TurnstileChallengeProps = {
   action: "login" | "register" | "forgot_password" | "signup_confirmation_resend";
   onTokenChange: (token: string) => void;
+  /**
+   * Punitive failure counter. Incrementing this advances the consecutive-failure
+   * counter and, after 2 strikes, enters a 30s retry countdown. Use ONLY for
+   * confirmed user-attributable failures (invalid credentials, real CAPTCHA
+   * rejection). Never for client_session_write_failed / network / server.
+   */
   failureCount?: number;
+  /**
+   * Non-punitive soft-reset counter. Incrementing this remounts a fresh
+   * Turnstile token without bumping the consecutive-failure counter or
+   * triggering the 30s lockout. Use for client session-write failures,
+   * network errors, and any flow where the user is not at fault but the
+   * single-use token has been consumed and a fresh one is needed.
+   */
+  softResetCount?: number;
   /** Email to use for the magic-link fallback. Login surfaces this. */
   email?: string;
 };
