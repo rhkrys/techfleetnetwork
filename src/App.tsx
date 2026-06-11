@@ -43,7 +43,10 @@ if (typeof window !== "undefined") {
 }
 
 // Eagerly loaded routes (critical path — keep small to minimize initial JS on slow networks)
-import LoginPage from "./pages/LoginPage";
+// AUTH REBUILD Ship 2 (2026-06-11): /login is now owned by SignInScreen,
+// which is presentation-only over `useSignInEngine`. The legacy LoginPage
+// stays on disk until Ship 5 deletion + soak.
+import SignInScreen from "@/features/auth/ui/SignInScreen";
 import NotFound from "./pages/NotFound";
 
 // Lazily loaded — Index/Register only needed on their own routes
@@ -222,7 +225,7 @@ const App = () => (
                 <Suspense fallback={<RouteFallback />}>
                   <Routes>
                     <Route path="/" element={<Index />} />
-                    <Route path="/login" element={<LoginPage />} />
+                    <Route path="/login" element={<SignInScreen />} />
                     <Route path="/register" element={<RegisterPage />} />
                     <Route path="/forgot-password" element={<ForgotPasswordPage />} />
                     <Route path="/reset-password" element={<ResetPasswordPage />} />
