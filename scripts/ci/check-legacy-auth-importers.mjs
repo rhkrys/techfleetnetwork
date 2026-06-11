@@ -12,12 +12,13 @@
  *   node scripts/ci/check-legacy-auth-importers.mjs --update
  * locally to refresh the snapshot. CI only verifies; it never mutates.
  */
-import { readFileSync, writeFileSync } from "node:fs";
-import { execSync } from "node:child_process";
-import { resolve, dirname } from "node:path";
+import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
+import { resolve, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = resolve(__dirname, "..", "..");
+const SRC_ROOT = resolve(REPO_ROOT, "src");
 const SNAPSHOT_PATH = resolve(__dirname, "legacy-auth-importers.snapshot.json");
 
 const LEGACY_MODULES = [
@@ -32,16 +33,30 @@ const LEGACY_MODULES = [
   "@/features/auth/state/use-auth-machine",
 ];
 
-const pattern = LEGACY_MODULES.map((m) => `from ['"]${m.replace(/\./g, "\\.")}['"]`).join("|");
+const escaped = LEGACY_MODULES.map((m) => m.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+const RX = new RegExp(`from ["'](?:${escaped.join("|")})["']`);
+
+const EXTS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]);
+
+function walk(dir, out = []) {
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    const s = statSync(full);
+    if (s.isDirectory()) walk(full, out);
+    else if (EXTS.has(full.slice(full.lastIndexOf("."))) && !full.endsWith(".d.ts")) out.push(full);
+  }
+  return out;
+}
 
 function scan() {
-  try {
-    const out = execSync(`rg -l "${pattern}" src 2>/dev/null || true`, { encoding: "utf8" });
-    return out.split("\n").filter(Boolean).sort();
-  } catch {
-    return [];
+  const hits = [];
+  for (const file of walk(SRC_ROOT)) {
+    const text = readFileSync(file, "utf8");
+    if (RX.test(text)) hits.push(relative(REPO_ROOT, file).replace(/\\/g, "/"));
   }
+  return hits.sort();
 }
+
 
 const current = scan();
 
