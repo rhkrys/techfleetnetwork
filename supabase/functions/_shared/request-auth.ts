@@ -6,6 +6,7 @@ import {
 } from "./admin-client.ts";
 import { jsonResponse } from "./http.ts";
 import { auditEdgeEvent, getOrCreateTraceId } from "./audit.ts";
+import type { AuditSeverity } from "./audit.ts";
 
 export interface AuthenticatedRequestContext {
   authHeader: string;
@@ -22,6 +23,7 @@ export interface AuthenticatedRequestContext {
 export async function requireAuthenticatedRequest(
   req: Request,
   fn?: string,
+  options: { missingTokenSeverity?: AuditSeverity } = {},
 ): Promise<AuthenticatedRequestContext | Response> {
   const token = extractBearerToken(req);
   if (!token) {
@@ -29,7 +31,7 @@ export async function requireAuthenticatedRequest(
       void auditEdgeEvent(getAdminClient(), {
         fn,
         event: "authn_unauthorized",
-        severity: "warn",
+        severity: options.missingTokenSeverity ?? "warn",
         traceId: getOrCreateTraceId(req),
         fields: ["reason:missing_token"],
       });
