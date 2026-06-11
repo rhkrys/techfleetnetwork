@@ -287,9 +287,9 @@ export default function LoginPage() {
     // successful logins earlier in the same 15-minute window from triggering
     // a "too many attempts" error on a legitimate user's first retry.
     const rateCheck = await RateLimitService.peek(result.data.email, "login_attempt").catch(() => ({
-      allowed: false,
-      remaining: 0,
-      retry_after: 60,
+      allowed: true,
+      remaining: 5,
+      retry_after: 0,
     }));
     if (!rateCheck.allowed) {
       const minutes = Math.max(1, Math.ceil(rateCheck.retry_after / 60));
