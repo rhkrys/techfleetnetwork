@@ -38,7 +38,7 @@ export default function RegisterScreen() {
             </p>
           )}
           <div className="mt-6 grid gap-3">
-            <TurnstileChallenge action="signup_confirmation_resend" onTokenChange={e.setResendCaptchaToken} failureCount={e.resendCaptchaFailureCount} />
+            <TurnstileCaptchaAdapter action="signup_confirmation_resend" onToken={e.setResendCaptchaToken} failureCount={e.resendCaptchaFailureCount} />
             <Button type="button" onClick={e.handleResendConfirmation} disabled={e.resending}>
               {e.resending ? "Sending verification…" : "Resend verification email"}
             </Button>
