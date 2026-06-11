@@ -1,6 +1,5 @@
 import { type AuthResult, ok, err } from "../domain/auth-result";
 import { classifyAuthErrorCode } from "../services/auth-classifier";
-import { setSessionSafe } from "../services/auth-flow.service";
 import { decideFailureActions } from "../services/auth-failure-policy";
 import { emitAuthBeacon, newCorrelationId } from "../services/auth-telemetry";
 import { AuthService } from "@/services/auth.service";
@@ -9,11 +8,10 @@ import { AuthService } from "@/services/auth.service";
  * Typed sign-in-with-password flow. Single entry point for the UI:
  * returns `Result<AuthOk, AuthErr>` — no throws cross this boundary.
  *
- * Phase 2 (Vichea re-code 2026-06-11): routes through `AuthService.signInWithPassword`
- * which calls the `login-with-captcha` edge function. Preserves the server-side
- * CAPTCHA gate, throttle protection, and audit logging while exposing a typed
- * code-first contract to the UI. The legacy LoginPage submit path can switch
- * to this flow without losing the server CAPTCHA gate.
+ * AUTH-DIRECT-SIGNIN-001 (2026-06-11): routes through
+ * `AuthService.signInWithPassword`, which uses the auth SDK as the sole
+ * password-session owner. The removed edge-token handoff cannot re-enter the
+ * active login path.
  */
 export interface SignInPasswordInput {
   email: string;
@@ -57,6 +55,4 @@ export async function signInWithPassword(input: SignInPasswordInput): Promise<Au
   }
 }
 
-// Re-export so the future broker swap stays internal to this module.
-export { setSessionSafe };
 
