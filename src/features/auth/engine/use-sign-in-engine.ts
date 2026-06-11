@@ -21,16 +21,21 @@ import { MfaService } from "@/services/mfa.service";
 import { loginSchema } from "@/lib/validators/auth";
 import { reportValidationRejection } from "@/services/error-reporter.service";
 import { normalizeSafeRedirectTarget } from "@/lib/security";
-import { clearLoginCaptcha, getLoginCaptchaState, recordFailedLoginAttempt, refreshLoginCaptcha } from "@/features/auth/ports/captcha-state.port";
+import { clearLoginCaptcha, getLoginCaptchaState, refreshLoginCaptcha } from "@/features/auth/ports/captcha-state.port";
 import {
   clearAuthLockout,
   formatAuthLockoutMessage,
   getAuthLockoutState,
   maybeAutoHealAuthLockout,
-  recordInvalidAuthAttempt,
   resetAuthLockoutForEmailChange,
 } from "@/features/auth/ports/lockout.port";
 import { telemetryPort } from "@/features/auth/ports/telemetry.port";
+import {
+  applyCaptchaFailedLogin,
+  applyCredentialFailureRpc,
+  applyInvalidAttempt,
+  applyServerRateLimitFailure,
+} from "@/features/auth/engine/failure-policy";
 import { flushPendingStaleChunkEvent, newAttemptId, recordLoginEvent } from "@/lib/login-telemetry";
 
 export interface SignInEngine {
@@ -360,13 +365,7 @@ export function useSignInEngine(): SignInEngine {
       setLockoutState(nextLockout);
       lastFailedEmailRef.current = result.data.email.trim().toLowerCase();
       if (actions.recordCredentialFailureRpc) {
-        void (async () => {
-          await sessionPort.rpc("record_failed_login", {
-            _email: result.data.email,
-            _ip: null,
-            _user_agent: navigator.userAgent.substring(0, 200),
-          });
-        })().catch(() => undefined);
+        applyCredentialFailureRpc(result.data.email, navigator.userAgent);
       }
       if (actions.recordServerRateLimitFailure) {
         applyServerRateLimitFailure(result.data.email, "login_attempt");

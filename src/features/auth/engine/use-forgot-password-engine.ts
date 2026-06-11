@@ -14,9 +14,9 @@ import {
   clearAuthLockout,
   formatAuthLockoutMessage,
   getAuthLockoutState,
-  recordInvalidAuthAttempt,
 } from "@/features/auth/ports/lockout.port";
 import { telemetryPort } from "@/features/auth/ports/telemetry.port";
+import { applyInvalidAttempt, applyServerRateLimitFailure } from "@/features/auth/engine/failure-policy";
 import { isAuthThrottleCaptchaError } from "@/lib/auth-throttle-captcha";
 import { validateEmailDomainExists } from "@/lib/email-domain-validation";
 import { getCanonicalAppOrigin } from "@/lib/canonical-origin";
