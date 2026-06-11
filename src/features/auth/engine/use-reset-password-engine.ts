@@ -25,6 +25,7 @@ import { clearAuthLockout } from "@/lib/auth-lockout";
 import { clearLoginCaptcha } from "@/lib/auth-captcha";
 import { clearTransientStrike } from "@/lib/auth/session-health";
 import { recordResetTelemetry, type ResetBranch, type ResetOutcome } from "@/lib/auth/reset-telemetry";
+import { recordAuthEngineEvent } from "@/features/auth/adapters/audit-telemetry.adapter";
 
 export const MAX_REJECTIONS = 3;
 const RESET_ATTEMPTS_KEY = "tfn:reset-attempts";
@@ -330,6 +331,7 @@ export function useResetPasswordEngine(): ResetPasswordEngine {
       clearTransientStrike();
       await storeCredentialInBrowser(session.email ?? recoveryEmail, passwordSet.password);
       recordResetTelemetry({ branch: "update_submit", outcome: "update_success" });
+      recordAuthEngineEvent("auth_engine.reset_succeeded", { email: session.email ?? recoveryEmail ?? null, other_devices_revoked: revoked });
       setSuccess(true);
     } catch (err) {
       const e2 = err as Error & { code?: string };
@@ -337,6 +339,7 @@ export function useResetPasswordEngine(): ResetPasswordEngine {
 
       if (code === "session_expired") {
         recordResetTelemetry({ branch: "update_submit", outcome: "update_session_expired" });
+        recordAuthEngineEvent("auth_engine.reset_failed", { code: "session_expired" });
         setLinkExpired(true);
         setValidRecovery(false);
         return;
