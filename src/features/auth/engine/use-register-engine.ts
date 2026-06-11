@@ -28,6 +28,7 @@ import { validateEmailDomainExists } from "@/lib/email-domain-validation";
 import { getCanonicalAppOrigin } from "@/lib/canonical-origin";
 import { recordPolicyAcknowledgment } from "@/lib/policies";
 import { loadConsent } from "@/lib/consent/manager";
+import { recordAuthEngineEvent } from "@/features/auth/adapters/audit-telemetry.adapter";
 import { showFormErrors, scrollToFirstError } from "@/lib/form-validation";
 import { reportValidationRejection } from "@/services/error-reporter.service";
 
@@ -236,6 +237,8 @@ export function useRegisterEngine(): RegisterEngine {
     setErrors({});
     setLoading(true);
     setAuthError("");
+    recordAuthEngineEvent("auth_engine.sign_up_started", { email: result.data.email });
+
 
     try {
       const rateCheck = await RateLimitService.peek(result.data.email, "signup_attempt");
@@ -258,9 +261,11 @@ export function useRegisterEngine(): RegisterEngine {
       );
       await recordPolicyAcknowledgment("registration", { electronicCommsConsent: true });
       clearAuthLockout();
+      recordAuthEngineEvent("auth_engine.sign_up_succeeded", { email: result.data.email });
       setSubmitted(true);
     } catch (err) {
       const e = err as { code?: string; message?: string };
+      recordAuthEngineEvent("auth_engine.sign_up_failed", { email: result.data.email, code: e?.code ?? "unknown" });
       if (isAuthThrottleCaptchaError(err)) {
         logCaptchaTelemetry("auth_captcha_fetch_blocked", { surface: "register", reason: "client_auth_throttle_429" });
         setCaptchaState(refreshLoginCaptcha());
