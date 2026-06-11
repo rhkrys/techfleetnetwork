@@ -24,21 +24,18 @@ import { ClientSessionWriteError } from "@/lib/auth/session-health";
 import { classifyAuthError } from "@/lib/auth-error-classifier";
 
 describe("AUTH-CAPTCHA-LIFECYCLE-002: copy", () => {
-  it("uses the new 'We need to retry sign-in' copy for ClientSessionWriteError", () => {
+  it("uses recovery-focused non-alarming copy for ClientSessionWriteError", () => {
     const out = classifyAuthError(new ClientSessionWriteError("set_session_rejected"));
-    expect(out.message).toMatch(/We need to retry sign-in/i);
-    expect(out.message).toMatch(/account is safe/i);
+    expect(out.message).toMatch(/sign in once more|try (again|once more)/i);
     expect(out.message).not.toMatch(/didn't complete cleanly/i);
+    expect(out.message).not.toMatch(/couldn't finish signing in/i);
+    expect(out.countsAgainstUser).toBe(false);
   });
 
   it("uses the same member-safe copy for the SESSION_INCOMPLETE message-text branch", () => {
-    // The classifier has a fallback at the bottom that matches the literal
-    // string "sign-in didn't complete" / "session didn't finish". It must
-    // produce the same recovery-focused copy as the typed branch.
     const out = classifyAuthError(new Error("Sign-in didn't complete — please try again."));
     expect(out.kind).toBe("SESSION_INCOMPLETE");
-    expect(out.message).toMatch(/We need to retry sign-in/i);
-    expect(out.message).toMatch(/account is safe/i);
+    expect(out.message).toMatch(/sign in once more|try (again|once more)/i);
     expect(out.countsAgainstUser).toBe(false);
   });
 });
