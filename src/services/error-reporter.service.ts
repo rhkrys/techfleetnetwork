@@ -392,6 +392,21 @@ export function reportError(
   source = "unknown",
   optionsOrUserId: ReportOptions | string = {},
 ) {
+  // Structural ZodError drop — covers thrown ZodError instances whose
+  // toString() doesn't include the literal "ZodError: [..." payload that
+  // `handleZodErrorMessage` regex-matches below. These are form-validation
+  // rejections that the form UI already surfaces to the user; they are not
+  // ops-level errors and must never reach `agent_fix_queue` or the daily
+  // digest. Aggregate count is still flushed via the suppression counter.
+  if (err && typeof err === "object") {
+    const e = err as { name?: unknown; issues?: unknown };
+    const looksLikeZod =
+      e.name === "ZodError" || (Array.isArray(e.issues) && e.issues.length > 0);
+    if (looksLikeZod) {
+      recordSuppression("__zod_structural__");
+      return;
+    }
+  }
   const msg = formatThrowable(err);
   if (isOpaqueScriptErrorMessage(msg)) return;
   if (isSuppressed(msg)) return;
