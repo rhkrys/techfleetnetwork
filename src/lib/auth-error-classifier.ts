@@ -196,11 +196,11 @@ export function classifyAuthError(err: unknown): ClassifiedAuthError {
     };
   }
 
-  if (msg.includes("sign-in didn't complete")) {
+  if (msg.includes("sign-in didn't complete") || msg.includes("session didn't finish")) {
     return {
       kind: "SESSION_INCOMPLETE",
       message:
-        "Sign-in didn't complete cleanly. Please try again — your account is safe.",
+        "Your browser couldn't finish signing in. Your account is safe — please try once more.",
       countsAgainstUser: false,
     };
   }
