@@ -202,11 +202,11 @@ export function useRegisterEngine(): RegisterEngine {
 
     if (countryCode) {
       try {
-        const { data: sanctionsResult } = await sessionPort.invokeEdge("screen-sanctions", {
+        const { data: sanctionsResult } = await sessionPort.invokeEdge<{ decision?: string }>("screen-sanctions", {
           body: { email: result.data.email, country_code: countryCode },
         });
         if (sanctionsResult?.decision === "deny") {
-          setAuthError("We're sorry — Tech Fleet cannot create accounts for users in this country due to U.S. export-control and sanctions laws.");
+          setAuthError("We're sorry — Tech Fleet cannot create accounts for members in this country due to U.S. export-control and sanctions laws.");
           return;
         }
       } catch { /* fail-open */ }
