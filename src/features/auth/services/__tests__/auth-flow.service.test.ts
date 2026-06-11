@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const setSessionMock = vi.fn();
+const getSessionMock = vi.fn();
 const signOutMock = vi.fn();
 
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     auth: {
       setSession: (...args: unknown[]) => setSessionMock(...args),
+      getSession: (...args: unknown[]) => getSessionMock(...args),
       signOut: (...args: unknown[]) => signOutMock(...args),
     },
   },
@@ -28,6 +30,7 @@ const VALID_SESSION = { access_token: VALID_JWT, refresh_token: "opaque-refresh-
 describe("auth-flow.service (Vichea invariants)", () => {
   beforeEach(() => {
     setSessionMock.mockReset();
+    getSessionMock.mockReset();
     signOutMock.mockReset();
   });
   afterEach(() => {
@@ -68,6 +71,14 @@ describe("auth-flow.service (Vichea invariants)", () => {
     resolve({ data: { session: VALID_SESSION }, error: null });
     await Promise.all([a, b]);
     expect(setSessionMock).toHaveBeenCalledOnce();
+  });
+
+  it("rejects null setSession results unless getSession confirms a live session", async () => {
+    setSessionMock.mockResolvedValue({ data: { session: null }, error: null });
+    getSessionMock.mockResolvedValue({ data: { session: null }, error: null });
+    await expect(
+      setSessionSafe({ access_token: VALID_JWT, refresh_token: "opaque-refresh-token-12345" }),
+    ).rejects.toBeInstanceOf(ClientSessionWriteError);
   });
 
   it("signOutSafe swallows provider errors (revocation row is authoritative)", async () => {
