@@ -251,6 +251,7 @@ export const AuthService = {
       });
 
       if (error) {
+        if (error instanceof ClientSessionWriteError) throw error;
         const fnError = await readFunctionError(error);
         log.error("signInWithPassword", `Authentication failed for ${safeEmail}: ${fnError.message}`, { email: safeEmail, errorCode: fnError.status ?? fnError.code }, error);
         void logAccountActivity("login_failed", { email: safeEmail, errorMessage: fnError.message, errorCode: fnError.status ?? fnError.code });
