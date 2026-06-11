@@ -2,11 +2,12 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { ClientSessionWriteError } from "@/lib/auth/session-health";
 
 const setSession = vi.fn();
+const getSession = vi.fn();
 vi.mock("@/integrations/supabase/client", () => ({
-  supabase: { auth: { setSession: (...args: unknown[]) => setSession(...args) } },
+  supabase: { auth: { setSession: (...args: unknown[]) => setSession(...args), getSession: (...args: unknown[]) => getSession(...args) } },
 }));
 
-beforeEach(() => { setSession.mockReset(); });
+beforeEach(() => { setSession.mockReset(); getSession.mockReset(); });
 
 const VALID_ACCESS =
   "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ2aWNoZWEifQ.signature_part_base64url";
@@ -54,6 +55,15 @@ describe("auth-flow.service.setSessionSafe — Vichea invariants", () => {
 
   it("wraps a GoTrue rejection in ClientSessionWriteError (non-punitive)", async () => {
     setSession.mockResolvedValue({ error: { message: "boom" } });
+    const { setSessionSafe } = await importService();
+    await expect(
+      setSessionSafe({ access_token: VALID_ACCESS, refresh_token: OPAQUE_REFRESH }),
+    ).rejects.toBeInstanceOf(ClientSessionWriteError);
+  });
+
+  it("never treats a null setSession result as login success", async () => {
+    setSession.mockResolvedValue({ data: { session: null }, error: null });
+    getSession.mockResolvedValue({ data: { session: null }, error: null });
     const { setSessionSafe } = await importService();
     await expect(
       setSessionSafe({ access_token: VALID_ACCESS, refresh_token: OPAQUE_REFRESH }),
