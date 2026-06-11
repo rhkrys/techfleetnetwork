@@ -30,6 +30,7 @@
     "audit:signatures": "npm audit signatures",
     "scan:secrets": "node scripts/secret-scan.mjs",
     "check:audit-triggers": "bash scripts/ci/check-audit-triggers.sh",
+    "check:auth-direct-signin": "node scripts/ci/check-auth-direct-signin.mjs",
     "check:legacy-auth-importers": "node scripts/ci/check-legacy-auth-importers.mjs",
     "prepare": "husky || true",
     "format": "prettier --write .",
