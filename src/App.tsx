@@ -65,7 +65,11 @@ const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 // AUTH REBUILD Ship 3 (2026-06-11): /forgot-password now owned by ForgotPasswordScreen
 // over useForgotPasswordEngine. Legacy ForgotPasswordPage stays on disk until Ship 5.
 const ForgotPasswordPage = lazy(() => import("@/features/auth/ui/ForgotPasswordScreen"));
-const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
+// AUTH REBUILD Ship 3 (2026-06-11): /reset-password now owned by ResetPasswordScreen
+// over useResetPasswordEngine. Pure mechanical extraction; recovery-session
+// invariant + prefetch gate + CLEAN HANDOFF preserved byte-for-byte. Legacy
+// ResetPasswordPage stays on disk until Ship 5.
+const ResetPasswordPage = lazy(() => import("@/features/auth/ui/ResetPasswordScreen"));
 const ConfirmRecoveryLinkPage = lazy(() => import("./pages/ConfirmRecoveryLinkPage"));
 const ProfileSetupPage = lazy(() => import("./pages/ProfileSetupPage"));
 const WelcomeWizard = lazy(() => import("./pages/WelcomeWizard"));
