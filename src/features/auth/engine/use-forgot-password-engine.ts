@@ -101,7 +101,7 @@ export function useForgotPasswordEngine(): ForgotPasswordEngine {
         setLoading(false);
         return;
       }
-      await AuthService.resetPassword(result.data, `${getCanonicalAppOrigin()}/reset-password`, captchaToken);
+      await sessionPort.resetPassword(result.data, `${getCanonicalAppOrigin()}/reset-password`, captchaToken);
       clearAuthLockout();
       recordAuthEngineEvent("auth_engine.forgot_succeeded", { email: result.data });
       setSubmitted(true);
