@@ -310,12 +310,22 @@ export default function LoginPage() {
         // outages, and CAPTCHA-throttle errors MUST NOT count — that was
         // the Vichea bug (one client error inflated four counters and locked
         // real users out for days).
+        //
+        // CAPTCHA LIFECYCLE FIX (2026-06-11): Cloudflare Turnstile tokens are
+        // SINGLE-USE — every submit consumes the token regardless of whether
+        // the auth call succeeded or failed. Previously only the
+        // countsAgainstUser=true branch bumped failureCount, so a
+        // client-session-write failure left the widget showing green
+        // "Success" while React state held an empty token, blocking every
+        // subsequent submit with "complete human verification below" that
+        // the user could not actually complete. Always bump failureCount on
+        // failure so TurnstileChallenge remounts a fresh token.
         const innerClassified = classifyAuthError(err);
+        setCaptchaToken("");
+        setCaptchaFailureCount((count) => count + 1);
         if (innerClassified.countsAgainstUser) {
           const nextCaptcha = recordFailedLoginAttempt();
           setCaptchaState(nextCaptcha);
-          setCaptchaToken("");
-          setCaptchaFailureCount((count) => count + 1);
           try {
             await supabase.rpc("record_failed_login", {
               _email: result.data.email,
@@ -323,11 +333,6 @@ export default function LoginPage() {
               _user_agent: navigator.userAgent.substring(0, 200),
             });
           } catch { /* non-blocking */ }
-        } else {
-          // Token is consumed by the failed attempt regardless; widget will
-          // issue a new one on the next render. But the failure does NOT
-          // increment the lockout counter or the server rate-limit row.
-          setCaptchaToken("");
         }
         throw err;
       }
