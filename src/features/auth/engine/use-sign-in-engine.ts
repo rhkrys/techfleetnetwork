@@ -32,6 +32,7 @@ import {
 } from "@/lib/auth-lockout";
 import { logCaptchaTelemetry } from "@/lib/auth-captcha-telemetry";
 import { flushPendingStaleChunkEvent, newAttemptId, recordLoginEvent } from "@/lib/login-telemetry";
+import { recordAuthEngineEvent } from "@/features/auth/adapters/audit-telemetry.adapter";
 
 export interface SignInEngine {
   // form state
@@ -288,6 +289,7 @@ export function useSignInEngine(): SignInEngine {
     const attemptId = newAttemptId();
     const attemptStarted = Date.now();
     recordLoginEvent(attemptId, "started", { email: result.data.email });
+    recordAuthEngineEvent("auth_engine.sign_in_started", { email: result.data.email, attempt_id: attemptId });
 
     const rateCheck = await RateLimitService.peek(result.data.email, "login_attempt").catch(() => ({
       allowed: true, remaining: 5, retry_after: 0,
@@ -323,6 +325,7 @@ export function useSignInEngine(): SignInEngine {
       clearAuthLockout();
       clearLoginCaptcha();
       recordLoginEvent(attemptId, "redirected", { email: result.data.email, durationMs: Date.now() - attemptStarted });
+      recordAuthEngineEvent("auth_engine.sign_in_succeeded", { email: result.data.email, attempt_id: attemptId, duration_ms: Date.now() - attemptStarted });
       navigate(redirectTarget, { replace: true });
       return;
     }
@@ -336,6 +339,19 @@ export function useSignInEngine(): SignInEngine {
       : flowError.code === "network_error" ? "network_error"
       : flowError.code === "service_unavailable" ? "server_error"
       : "unknown", { email: result.data.email, durationMs: Date.now() - attemptStarted });
+
+    // Vichea invariant: client_session_write_failed must be reported but
+    // never punish — verified by docs/runbooks/auth-rebuild-soak.md query 1.
+    if (flowError.code === "client_session_write_failed") {
+      recordAuthEngineEvent("auth_engine.client_session_write_failed", { email: result.data.email, attempt_id: attemptId });
+    } else if (flowError.code === "captcha_required" || flowError.code === "captcha_failed") {
+      recordAuthEngineEvent("auth_engine.captcha_failed", { email: result.data.email, attempt_id: attemptId, code: flowError.code });
+      recordAuthEngineEvent("auth_engine.captcha_reset", { attempt_id: attemptId });
+    } else if (flowError.code === "rate_limited" || flowError.code === "account_locked") {
+      recordAuthEngineEvent("auth_engine.sign_in_blocked", { email: result.data.email, reason: flowError.code });
+    } else {
+      recordAuthEngineEvent("auth_engine.sign_in_failed", { email: result.data.email, code: flowError.code, attempt_id: attemptId });
+    }
 
     setCaptchaToken("");
     if (actions.incrementDeviceLockout) {

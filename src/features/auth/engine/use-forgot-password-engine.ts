@@ -20,6 +20,7 @@ import { isAuthThrottleCaptchaError } from "@/lib/auth-throttle-captcha";
 import { validateEmailDomainExists } from "@/lib/email-domain-validation";
 import { getCanonicalAppOrigin } from "@/lib/canonical-origin";
 import { reportValidationRejection } from "@/services/error-reporter.service";
+import { recordAuthEngineEvent } from "@/features/auth/adapters/audit-telemetry.adapter";
 
 export interface ForgotPasswordEngine {
   email: string;
@@ -90,6 +91,7 @@ export function useForgotPasswordEngine(): ForgotPasswordEngine {
     }
     setError("");
     setLoading(true);
+    recordAuthEngineEvent("auth_engine.forgot_started", { email: result.data });
     try {
       const rateCheck = await RateLimitService.peek(result.data, "password_reset");
       if (!rateCheck.allowed) {
@@ -100,9 +102,11 @@ export function useForgotPasswordEngine(): ForgotPasswordEngine {
       }
       await AuthService.resetPassword(result.data, `${getCanonicalAppOrigin()}/reset-password`, captchaToken);
       clearAuthLockout();
+      recordAuthEngineEvent("auth_engine.forgot_succeeded", { email: result.data });
       setSubmitted(true);
     } catch (err) {
       const code = (err as { code?: string } | null | undefined)?.code;
+      recordAuthEngineEvent("auth_engine.forgot_failed", { email: result.data, code: code ?? "unknown" });
       const status = (err as { status?: number } | null | undefined)?.status;
       const message = (err as { message?: string } | null | undefined)?.message ?? "";
       setCaptchaToken("");
