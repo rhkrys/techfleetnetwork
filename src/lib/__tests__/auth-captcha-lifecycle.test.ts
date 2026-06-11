@@ -20,7 +20,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { ClientSessionWriteError } from "@/lib/auth/session-health";
-import { classifyAuthError } from "@/lib/auth-error-classifier";
+import { classifyAuthError } from "@/lib/auth/session-health";
 
 describe("AUTH-CAPTCHA-LIFECYCLE-002: copy", () => {
   it("uses recovery-focused non-alarming copy for ClientSessionWriteError", () => {
