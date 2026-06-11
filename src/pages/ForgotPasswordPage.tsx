@@ -92,6 +92,13 @@ export default function ForgotPasswordPage() {
       const code = (err as { code?: string } | null | undefined)?.code;
       const status = (err as { status?: number } | null | undefined)?.status;
       const message = (err as { message?: string } | null | undefined)?.message ?? "";
+      // CAPTCHA LIFECYCLE FIX (2026-06-11): Turnstile tokens are single-use.
+      // Always clear + bump failureCount after a failed attempt so the widget
+      // remounts with a fresh token, otherwise the next click is blocked by
+      // "complete human verification below" with a green widget the user
+      // cannot interact with.
+      setCaptchaToken("");
+      setCaptchaFailureCount((count) => count + 1);
       if (code === GOOGLE_ONLY_ACCOUNT_CODE) {
         // Provider mismatch — Google owns the password, not us. Never penalize
         // the password_reset bucket: the platform cannot reset this account by
@@ -102,8 +109,6 @@ export default function ForgotPasswordPage() {
       if (isAuthThrottleCaptchaError(err)) {
         logCaptchaTelemetry("auth_captcha_fetch_blocked", { surface: "forgot_password", reason: "client_auth_throttle_429" });
         setCaptchaState(refreshLoginCaptcha());
-        setCaptchaToken("");
-        setCaptchaFailureCount((count) => count + 1);
         setError(err.message);
         return;
       }
