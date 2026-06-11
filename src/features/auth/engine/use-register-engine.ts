@@ -11,7 +11,6 @@ import { useLocation } from "react-router-dom";
 import { sessionPort } from "@/features/auth/ports/session.port";
 import { RateLimitService } from "@/services/rate-limit.service";
 import { registerSchema, ageInYears, GUARDIAN_MIN_AGE } from "@/lib/validators/auth";
-import { sessionPort } from "@/features/auth/ports/session.port";
 import { logAccountActivity } from "@/lib/account-activity";
 import { getLoginCaptchaState, refreshLoginCaptcha } from "@/features/auth/ports/captcha-state.port";
 import {

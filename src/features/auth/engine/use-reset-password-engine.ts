@@ -18,7 +18,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { sessionPort } from "@/features/auth/ports/session.port";
-import { sessionPort } from "@/features/auth/ports/session.port";
 import { reportValidationRejection } from "@/services/error-reporter.service";
 import { validatePasswordSet } from "@/lib/auth/password-set";
 import { clearAuthLockout } from "@/features/auth/ports/lockout.port";
