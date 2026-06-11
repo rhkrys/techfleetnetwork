@@ -89,7 +89,7 @@ function injectScript(onReady: () => void): HTMLScriptElement {
   return script;
 }
 
-export function TurnstileChallenge({ action, onTokenChange, failureCount = 0, email }: TurnstileChallengeProps) {
+export function TurnstileChallenge({ action, onTokenChange, failureCount = 0, softResetCount = 0, email }: TurnstileChallengeProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<string | null>(null);
   const [scriptReady, setScriptReady] = useState(Boolean(window.turnstile));
@@ -99,6 +99,7 @@ export function TurnstileChallenge({ action, onTokenChange, failureCount = 0, em
   const [magicLinkState, setMagicLinkState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const consecutiveFailuresRef = useRef(0);
   const lastFailureCountRef = useRef(failureCount);
+  const lastSoftResetCountRef = useRef(softResetCount);
   const retryCountRef = useRef(0);
 
   const resetWidget = () => {
