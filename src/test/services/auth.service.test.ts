@@ -59,6 +59,7 @@ describe("AuthService session max-age marker", () => {
     vi.clearAllMocks();
     vi.mocked(supabase.auth.getSession).mockReset();
     vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: makeSession("reset-user") }, error: null });
+    vi.mocked(supabase.auth.signInWithPassword).mockReset();
     sessionStorage.clear();
     localStorage.clear();
     vi.mocked(supabase.rpc).mockResolvedValue({ data: false, error: null });
@@ -73,8 +74,7 @@ describe("AuthService session max-age marker", () => {
 
   it("writes a distinct audit event when an admin signs in", async () => {
     const session = makeSession("admin-user");
-    vi.mocked(supabase.functions.invoke).mockResolvedValue({ data: { session, user: session.user }, error: null });
-    vi.mocked(supabase.auth.setSession).mockResolvedValue({ data: { session, user: session.user }, error: null });
+    vi.mocked(supabase.auth.signInWithPassword).mockResolvedValue({ data: { session, user: session.user }, error: null });
     vi.mocked(supabase.from).mockReturnValue({
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
@@ -83,6 +83,13 @@ describe("AuthService session max-age marker", () => {
     vi.mocked(supabase.rpc).mockResolvedValue({ data: null, error: null });
 
     await AuthService.signInWithPassword("admin@example.com", "ValidPass123!", "valid-turnstile-token-with-enough-length");
+    expect(supabase.auth.signInWithPassword).toHaveBeenCalledWith({
+      email: "admin@example.com",
+      password: "ValidPass123!",
+      options: { captchaToken: "valid-turnstile-token-with-enough-length" },
+    });
+    expect(supabase.functions.invoke).not.toHaveBeenCalledWith("login-with-captcha", expect.anything());
+    expect(supabase.auth.setSession).not.toHaveBeenCalled();
     await vi.waitFor(() => expect(supabase.rpc).toHaveBeenCalledWith("write_audit_log", expect.objectContaining({
       p_event_type: "authn_admin_login_success",
       p_user_id: "admin-user",
@@ -94,6 +101,25 @@ describe("AuthService session max-age marker", () => {
     await expect(AuthService.signInWithPassword("admin@example.com", "ValidPass123!")).rejects.toThrow("Complete the human verification");
     expect(supabase.auth.signInWithPassword).not.toHaveBeenCalled();
     expect(supabase.functions.invoke).not.toHaveBeenCalledWith("login-with-captcha", expect.anything());
+  });
+
+  it("AUTH-DIRECT-SIGNIN-003: signs in with the auth SDK, not login-with-captcha", async () => {
+    const session = makeSession("vichea-user");
+    vi.mocked(supabase.auth.signInWithPassword).mockResolvedValue({ data: { session, user: session.user }, error: null });
+
+    await expect(AuthService.signInWithPassword("vtephang@gmail.com", "ValidPass123!", "valid-turnstile-token-with-enough-length")).resolves.toMatchObject({
+      session,
+      user: session.user,
+    });
+
+    expect(supabase.auth.signInWithPassword).toHaveBeenCalledWith({
+      email: "vtephang@gmail.com",
+      password: "ValidPass123!",
+      options: { captchaToken: "valid-turnstile-token-with-enough-length" },
+    });
+    expect(supabase.functions.invoke).not.toHaveBeenCalledWith("login-with-captcha", expect.anything());
+    expect(supabase.auth.setSession).not.toHaveBeenCalled();
+    expect(logAccountActivity).toHaveBeenCalledWith("login_succeeded", { email: "vtephang@gmail.com", userId: "vichea-user" });
   });
 
   it("AUTH-RESET-010: refuses mismatched password updates before backend call", async () => {
