@@ -179,7 +179,7 @@ export default function RegisterScreen() {
             </div>
             {e.errors.agreedToTerms && <p className="text-sm text-destructive flex items-center gap-1" role="alert"><span className="h-3 w-3 shrink-0">⚠</span> {e.errors.agreedToTerms}</p>}
 
-            <TurnstileChallenge action="register" onTokenChange={e.setCaptchaToken} failureCount={e.captchaFailureCount} />
+            <TurnstileCaptchaAdapter action="register" onToken={e.setCaptchaToken} failureCount={e.captchaFailureCount} />
 
             <Button type="submit" className="w-full" disabled={e.loading || e.lockoutState.locked} aria-describedby={e.lockoutState.locked ? "register-lockout-status" : undefined}>
               {e.loading ? "Creating account…" : e.lockoutState.locked ? `Try again in ${e.lockoutState.remainingSeconds}s` : "Create account"}
