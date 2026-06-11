@@ -249,6 +249,32 @@ export default tseslint.config(
     },
   },
   {
+    // AUTH REBUILD Ship 2 (2026-06-11): new auth screens under
+    // src/features/auth/ui/ must depend only on the engine + UI primitives.
+    // Catching screen-layer imports of auth.service / auth-lockout /
+    // auth-captcha / TurnstileChallenge / sign-in-password.flow stops the
+    // three-parallel-paths spaghetti from reappearing on the new surface.
+    files: ["src/features/auth/ui/SignInScreen.tsx", "src/features/auth/ui/SignUpScreen.tsx", "src/features/auth/ui/ForgotPasswordScreen.tsx", "src/features/auth/ui/ResetPasswordScreen.tsx"],
+    rules: {
+      "no-restricted-imports": [
+        "warn",
+        {
+          paths: [
+            { name: "@/services/auth.service", message: "Screens must consume the engine hook, not AuthService directly." },
+            { name: "@/lib/auth-lockout", message: "Lockout is owned by the engine hook." },
+            { name: "@/lib/auth-captcha", message: "Captcha state is owned by the engine hook." },
+            { name: "@/lib/auth-error-classifier", message: "Use AuthErrorMessage + AuthErr from the engine." },
+            { name: "@/features/auth/flows/sign-in-password.flow", message: "Call the engine hook, not the flow directly." },
+            { name: "@/features/auth/services/auth-failure-policy", message: "Failure-policy decisions belong inside the engine hook." },
+          ],
+          patterns: [
+            { group: ["**/auth-lockout", "**/auth-captcha", "**/auth-error-classifier"], message: "Screens must consume the engine hook." },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // jsx-a11y/label-has-associated-control crashes under eslint-plugin-jsx-a11y@6.x
     // with minimatch v10 (TypeError: minimatch is not a function). The rule is
     // already covered by label-has-for + label requirements elsewhere.
