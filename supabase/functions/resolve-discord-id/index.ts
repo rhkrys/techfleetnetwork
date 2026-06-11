@@ -437,16 +437,19 @@ serve(withAuditWrapper("resolve-discord-id", async (req) => {
       candidateNicks,
     });
     if (candidates.length === 0) {
+      // severity:info — this is expected UX (member typed a handle that isn't
+      // in the guild yet), not a system error. Triage discovery skips non-error
+      // severities (mem://features/triage-discovery-severity-gate).
       await auditLog(
         "discord_username_not_found",
         `No match for "${cleanUsername}" — Discord returned 0 members`,
-        [`username:${cleanUsername}`, `result_count:0`]
+        [`username:${cleanUsername}`, `result_count:0`, `severity:info`]
       );
     } else {
       await auditLog(
         "discord_username_candidates_returned",
         `Returned ${candidates.length} selectable candidate(s) for "${cleanUsername}" — usernames=[${candidateUsernames.join(",")}] display_names=[${candidateGlobalNames.join(",")}] nicknames=[${candidateNicks.join(",")}]`,
-        [`username:${cleanUsername}`, `result_count:${candidates.length}`, ...candidateUsernames.map((u: string) => `candidate:${u}`)]
+        [`username:${cleanUsername}`, `result_count:${candidates.length}`, `severity:info`, ...candidateUsernames.map((u: string) => `candidate:${u}`)]
       );
     }
     return new Response(

@@ -61,7 +61,11 @@ export const DEFAULT_POLICY: PolicyConfig = {
   baseBackoffSeconds: 60,
   maxBackoffSeconds: 900,
   workspaceQuotaCapSeconds: 120,
-  cbOpenThreshold429s: 3,
+  // 2026-06-11 — tightened from 3 → 2 after the 06-01 announcement blast
+  // produced 29 vendor 429s before the previous threshold tripped. With the
+  // bulk lane now on v2 (bitmask bit 4), opening on the 2nd 429 stops the
+  // bleed into auth/recovery lanes that share the workspace token bucket.
+  cbOpenThreshold429s: 2,
   cbOpenWindowSeconds: 600,
   cbHalfOpenProbeSeconds: 30,
   cbCloseSuccessThreshold: 5,

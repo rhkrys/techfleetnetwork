@@ -18,7 +18,15 @@ Deno.serve(async (req) => {
   const admin = getAdminClient();
   const { error } = await admin.rpc("refresh_support_monthly_report");
   if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-  // Best-effort prune of webhook events (7-day rolling window)
-  await admin.rpc("support_prune_webhook_events").catch(() => null);
+  // Best-effort prune of webhook events (7-day rolling window). The Supabase
+  // PostgrestFilterBuilder is awaitable but not a Promise — chaining `.catch`
+  // throws "catch is not a function" at runtime (root cause of 18 email_failed
+  // rows on 2026-06-05). Always `await` and inspect `{ error }`.
+  try {
+    const { error: pruneErr } = await admin.rpc("support_prune_webhook_events");
+    if (pruneErr) console.warn("support_prune_webhook_events failed:", pruneErr.message);
+  } catch (e) {
+    console.warn("support_prune_webhook_events threw:", e instanceof Error ? e.message : String(e));
+  }
   return jsonResponse({ ok: true });
 });
