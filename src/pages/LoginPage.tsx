@@ -315,27 +315,21 @@ export default function LoginPage() {
         });
         navigate(from, { replace: true });
       } catch (err: unknown) {
-        // AUTH-VICHEA-001: failure attribution must be SINGLE-WRITER. Only
-        // confirmed credential rejections (classifier says countsAgainstUser)
-        // may increment CAPTCHA refresh or the server `record_failed_login`
-        // RPC. Client-side session-write failures, network errors, service
-        // outages, and CAPTCHA-throttle errors MUST NOT count — that was
-        // the Vichea bug (one client error inflated four counters and locked
-        // real users out for days).
-        //
-        // CAPTCHA LIFECYCLE FIX (2026-06-11): Cloudflare Turnstile tokens are
-        // SINGLE-USE — every submit consumes the token regardless of whether
-        // the auth call succeeded or failed. Previously only the
-        // countsAgainstUser=true branch bumped failureCount, so a
-        // client-session-write failure left the widget showing green
-        // "Success" while React state held an empty token, blocking every
-        // subsequent submit with "complete human verification below" that
-        // the user could not actually complete. Always bump failureCount on
-        // failure so TurnstileChallenge remounts a fresh token.
+        // AUTH-VICHEA-001 + CAPTCHA-LIFECYCLE-002: Turnstile tokens are
+        // single-use, so the consumed token MUST be cleared on every error.
+        // But the way we refresh the widget depends on attribution:
+        //   - countsAgainstUser=true (invalid credentials, real CAPTCHA
+        //     rejection)  → bump `captchaFailureCount` (punitive, may trigger
+        //     30s retry lockout after 2 strikes).
+        //   - countsAgainstUser=false (client_session_write_failed, network,
+        //     server, rate_limited, session_incomplete) → bump
+        //     `captchaSoftResetCount` (non-punitive). Widget reissues a fresh
+        //     token immediately, no lockout, no "complete verification below"
+        //     trap for users who did nothing wrong.
         const innerClassified = classifyAuthError(err);
         setCaptchaToken("");
-        setCaptchaFailureCount((count) => count + 1);
         if (innerClassified.countsAgainstUser) {
+          setCaptchaFailureCount((count) => count + 1);
           const nextCaptcha = recordFailedLoginAttempt();
           setCaptchaState(nextCaptcha);
           try {
@@ -345,6 +339,8 @@ export default function LoginPage() {
               _user_agent: navigator.userAgent.substring(0, 200),
             });
           } catch { /* non-blocking */ }
+        } else {
+          setCaptchaSoftResetCount((count) => count + 1);
         }
         throw err;
       }
