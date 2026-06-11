@@ -112,7 +112,7 @@ export function classifyAuthError(err: unknown): ClassifiedAuthError {
   if (isClientSessionWriteError(err)) {
     return {
       kind: "CLIENT_SESSION_WRITE_FAILED",
-      message: "We need to retry sign-in. Your account is safe — something interrupted the browser session, so we cleared the attempt and refreshed verification below. Please complete it and sign in again.",
+      message: "Almost there — please tap Sign in once more. We refreshed the verification below.",
       countsAgainstUser: false,
     };
   }
