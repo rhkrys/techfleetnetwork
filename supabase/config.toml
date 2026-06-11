@@ -133,6 +133,14 @@ project_id = "iqsjhrhsjlgjiaedzmtz"
     # in-code: strict enum allow-lists, body cap, per-IP rate limit,
     # daily-salted IP hash. No tokens, emails, or full URLs accepted.
     verify_jwt = false
+  [functions.record-auth-event]
+    # AUTH-ENGINE Ship 6: client-emitted `auth_engine.*` state-transition
+    # pings (started/succeeded/failed/captcha_failed/reset_succeeded/…).
+    # Fires before a session exists (e.g. on the /login screen), so JWT
+    # cannot be required. Hardened in-code by a kind allowlist + 1KB
+    # payload cap; writes via record_event(sink='ops_events', severity='info')
+    # so rows never reach Triage. See docs/runbooks/auth-rebuild-soak.md.
+    verify_jwt = false
   [functions.process-freescout-events]
     # Cron-poked worker that drains the Freescout webhook queue. Validates the
     # service-role bearer in code (same pattern as process-email-queue).
