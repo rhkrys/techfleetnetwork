@@ -109,7 +109,7 @@ export function classifyAuthError(err: unknown): ClassifiedAuthError {
   if (isClientSessionWriteError(err)) {
     return {
       kind: "CLIENT_SESSION_WRITE_FAILED",
-      message: "Sign-in didn't complete cleanly. Please try again — your account is safe and no attempts were counted.",
+      message: "Your browser couldn't finish signing in. Your account is safe — we refreshed the verification below, please try once more.",
       countsAgainstUser: false,
     };
   }
