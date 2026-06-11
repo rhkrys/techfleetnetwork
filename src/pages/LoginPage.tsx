@@ -303,11 +303,11 @@ export default function LoginPage() {
       attemptId,
     });
 
-    if (flowResult.ok) {
+    if (flowResult.ok === true) {
       recordLoginEvent(attemptId, "session_set", {
         email: result.data.email,
         durationMs: Date.now() - attemptStarted,
-        userId: flowResult.value.userId || null,
+        userId: flowResult.value.kind === "signed_in" ? flowResult.value.userId : null,
       });
       const { needsChallenge } = await MfaService.getMfaGateDecision();
       if (needsChallenge) {
@@ -326,7 +326,8 @@ export default function LoginPage() {
       return;
     }
 
-    const actions = decideFailureActions(flowResult.error.code);
+    const flowError = flowResult.error;
+    const actions = decideFailureActions(flowError.code);
     const outcomeMap: Record<AuthErr["code"], "invalid_credentials" | "auth_throttle" | "captcha_failed" | "network_error" | "server_error" | "client_session_write_failed" | "unknown"> = {
       invalid_credentials: "invalid_credentials",
       account_locked: "auth_throttle",
@@ -347,7 +348,7 @@ export default function LoginPage() {
       service_unavailable: "server_error",
       unexpected: "unknown",
     };
-    recordLoginEvent(attemptId, outcomeMap[flowResult.error.code] ?? "unknown", {
+    recordLoginEvent(attemptId, outcomeMap[flowError.code] ?? "unknown", {
       email: result.data.email,
       durationMs: Date.now() - attemptStarted,
     });
@@ -361,11 +362,13 @@ export default function LoginPage() {
       setLockoutState(nextLockout);
       lastFailedEmailRef.current = result.data.email.trim().toLowerCase();
       if (actions.recordCredentialFailureRpc) {
-        void supabase.rpc("record_failed_login", {
-          _email: result.data.email,
-          _ip: null,
-          _user_agent: navigator.userAgent.substring(0, 200),
-        }).catch(() => undefined);
+        void (async () => {
+          await supabase.rpc("record_failed_login", {
+            _email: result.data.email,
+            _ip: null,
+            _user_agent: navigator.userAgent.substring(0, 200),
+          });
+        })().catch(() => undefined);
       }
       if (actions.recordServerRateLimitFailure) {
         void RateLimitService.recordFailure(result.data.email, "login_attempt").catch(() => undefined);
@@ -375,7 +378,7 @@ export default function LoginPage() {
         setAuthError(formatAuthLockoutMessage(nextLockout.remainingSeconds));
       } else {
         setAuthError("");
-        setTypedAuthError(flowResult.error);
+        setTypedAuthError(flowError);
       }
       const probeEmail = result.data.email;
       setTimeout(() => {
@@ -383,13 +386,13 @@ export default function LoginPage() {
         window.dispatchEvent(new CustomEvent("tfn:probe-oauth-identity", { detail: { email: probeEmail } }));
       }, 0);
     } else {
-      if (flowResult.error.code === "rate_limited") {
+      if (flowError.code === "rate_limited") {
         logCaptchaTelemetry("auth_captcha_fetch_blocked", { surface: "login", reason: "client_auth_throttle_429" });
         setCaptchaState(refreshLoginCaptcha());
       }
       setCaptchaSoftResetCount((count) => count + 1);
       setAuthError("");
-      setTypedAuthError(flowResult.error);
+      setTypedAuthError(flowError);
     }
     setLoading(false);
   };
