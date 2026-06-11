@@ -51,7 +51,9 @@ import NotFound from "./pages/NotFound";
 
 // Lazily loaded — Index/Register only needed on their own routes
 const Index = lazy(() => import("./pages/Index"));
-const RegisterPage = lazy(() => import("./pages/RegisterPage"));
+// AUTH REBUILD Ship 4 (2026-06-11): /register now owned by RegisterScreen
+// over useRegisterEngine. Legacy RegisterPage stays on disk until Ship 5.
+const RegisterPage = lazy(() => import("@/features/auth/ui/RegisterScreen"));
 const GetHelpPage = lazy(() => import("./pages/community/GetHelpPage"));
 
 // Heavy non-critical widgets — defer until after first paint to free up the
