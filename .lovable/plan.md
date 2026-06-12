@@ -1,61 +1,48 @@
-## Root cause
+## Evidence found
 
-The backend accepted `vtephang@gmail.com` twice at **04:21:28** and **04:21:42**: `login-with-captcha` returned `200 branch=ok`. The failure is **not credentials, not CAPTCHA, not rate limit**.
+- **Live route ownership:** `src/App.tsx` has `/login` routed to `SignInScreen` at lines 49 and 236.
+- **Active login chain:** `SignInScreen` → `useSignInEngine` → `sign-in-password.flow.ts` → currently `AuthService.signInWithPassword` → `supabase.auth.signInWithPassword`.
+- **Current active path does not call:** `login-with-captcha`, `setSessionSafe`, or `supabase.auth.setSession` during password login.
+- **Remaining risk:** mixed auth ownership still exists: `sign-in-password.flow.ts` imports `AuthService`, `session.port.ts` wraps `AuthService`, and legacy `auth-flow.service.ts` still exposes `setSessionSafe`.
+- **Line inventory:** `App.tsx` 319, `SignInScreen.tsx` 164, `use-sign-in-engine.ts` 406, `sign-in-password.flow.ts` 58, `supabase-session.adapter.ts` 89, `auth-flow.service.ts` 81, `auth.service.ts` 723, `auth.service.test.ts` 324, `check-auth-direct-signin.mjs` 36.
+- **Trail query blocker:** direct email trail lookup cannot call `_login_hash` from the client because that helper is intentionally permission-restricted.
 
-The app then failed in the browser-only step that writes the returned session into the client auth store, which produced `auth_engine.client_session_write_failed` twice. The current code still does this as a two-step custom auth flow:
+## Plan
 
-```text
-login form → edge function verifies CAPTCHA + password → returns raw tokens → browser calls setSessionSafe(tokens)
-```
+1. **Make the sign-in engine the only login owner**
+   - Add password sign-in to `sessionPort` backed by `supabaseSessionAdapter.signInPassword`.
+   - Refactor `sign-in-password.flow.ts` to call the port/adapter directly, not `AuthService.signInWithPassword`.
+   - Preserve CAPTCHA token passing, result classification, non-punitive `client_session_write_failed`, login success telemetry, MFA handoff, redirects, and admin audit side effects.
 
-That custom token handoff is the weak link. It creates a session-write failure after the server has already authenticated the member.
+2. **Physically remove the old login method from active use**
+   - Remove or reduce `AuthService.signInWithPassword` so no active login form can call it.
+   - Keep non-login auth functions intact: accounts, profiles, roles, sessions, MFA, audit tables, reset flow, and rate-limit tables stay untouched.
+   - Leave `login-with-captcha` deployed only if still needed by legacy references, but CI will prove `/login` cannot call it.
 
-## Permanent fix
+3. **Add guardrails that fail on regression**
+   - Strengthen `scripts/ci/check-auth-direct-signin.mjs` to scan the active login flow for:
+     - `login-with-captcha`
+     - `setSessionSafe`
+     - `supabase.auth.setSession`
+     - `AuthService.signInWithPassword`
+     - direct captcha/lockout storage access outside the approved ports/policy layer
+   - Add the guard to the existing package scripts without changing build behavior beyond the explicit check.
 
-Refactor email/password sign-in to remove the raw-token handoff entirely.
+4. **Update focused tests**
+   - Update auth service tests to stop treating `AuthService.signInWithPassword` as the login owner.
+   - Add/adjust tests proving:
+     - `/login` flow calls SDK password sign-in through the port/adapter.
+     - no `login-with-captcha` or `setSession` path runs after credentials are accepted.
+     - `client_session_write_failed` remains non-punitive.
+     - classifier and failure policy still map real provider errors cleanly.
 
-```text
-login form → browser auth SDK signInWithPassword({ email, password, captchaToken }) → session is created by the auth SDK directly
-```
+5. **Add safe login-trail diagnostics**
+   - Add a security-definer admin/service RPC for querying recent login trail rows by email without exposing `_login_hash`.
+   - Grant only authenticated admins and service role access through the function body and grants.
+   - Add BDD rows with tri-layer Then clauses for the diagnostics and one-engine login invariant.
 
-This makes the auth SDK the only owner of session creation, instead of asking an edge function to mint tokens and then asking the browser to re-hydrate them.
-
-## Implementation plan
-
-1. **Replace the sign-in path**
-   - Update `AuthService.signInWithPassword` to call `supabase.auth.signInWithPassword` directly with the Turnstile token.
-   - Keep the existing input validation, activity logging, admin-login audit, MFA gate compatibility, and success marker.
-   - Stop calling `login-with-captcha` for password sign-in.
-
-2. **Preserve safety controls without punishing the member**
-   - Keep `client_session_write_failed` non-punitive for any remaining SDK/session edge cases.
-   - Keep CAPTCHA required before submit.
-   - Keep `invalid_credentials` as the only path that increments login counters.
-   - Keep existing lockout/rate-limit behavior for real bad-password attempts only.
-
-3. **Move observability to the client-side auth flow**
-   - Continue writing `started`, `session_set`, `redirected`, `invalid_credentials`, `network_error`, and `server_error` login events.
-   - Add enough typed logging around direct SDK failures so the next incident shows the real SDK code/status instead of generic copy.
-   - Add `client_session_write_failed` to the allowed login outcome list so it records correctly when it does happen.
-
-4. **Retire the broken production dependency, not necessarily delete it yet**
-   - Leave `login-with-captcha` deployed for rollback/legacy references, but remove it from the active sign-in path.
-   - Update comments/tests that currently describe it as the active password-login path.
-
-5. **Regression coverage**
-   - Update `src/test/services/auth.service.test.ts` to prove valid email/password + CAPTCHA uses `supabase.auth.signInWithPassword`, not `login-with-captcha`.
-   - Add a regression test for the exact Vichea failure: successful SDK sign-in writes `login_succeeded` and does not produce `client_session_write_failed`.
-   - Keep contract tests proving `client_session_write_failed` never increments counters.
-
-6. **Database migration**
-   - Update `_login_outcome_allowed()` to include `client_session_write_failed`, because the client already emits that outcome but the DB function currently drops it.
-   - Add BDD scenarios for:
-     - accepted credentials produce a signed-in session without edge-token handoff;
-     - SDK session-write errors are non-punitive;
-     - `login-with-captcha` is no longer used by the active login form.
-
-## Confidence checks after build
-
-- Query the login trail for `vtephang@gmail.com` again: no new `edge_entered branch=ok` followed by `client_session_write_failed` from the active path.
-- Run focused auth tests for `AuthService.signInWithPassword`, auth classifier, and failure policy.
-- Verify the auth SDK logs show either clean sign-in or a real provider error code, not the current post-success session-write failure.
+6. **Validate after build**
+   - Run focused auth tests for sign-in, classifier, and failure policy.
+   - Run the auth direct-signin guard.
+   - Query the new diagnostic RPC for `vtephang@gmail.com` and confirm no new `edge_entered branch=ok` followed by `client_session_write_failed` from the active path.
+   - Verify browser/provider logs show either clean SDK sign-in or a real provider error code, not post-success session-write failure.
