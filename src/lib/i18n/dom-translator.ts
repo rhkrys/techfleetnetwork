@@ -78,14 +78,26 @@ const state: {
   inflight: false,
 };
 
+// React-volatile ARIA roles: regions React swaps text in/out of constantly.
+// Translating these text nodes races React's reconciler and throws
+// NotFoundError: removeChild (System Health 2026-06-11 AutosaveStatus regression).
+const VOLATILE_ROLES = new Set(["status", "alert", "log", "timer"]);
+
 function shouldSkipElement(el: Element | null): boolean {
   if (!el) return false;
   let cur: Element | null = el;
   while (cur) {
     if (SKIP_TAGS.has(cur.tagName)) return true;
     if (cur.hasAttribute?.("data-no-translate")) return true;
+    if (cur.hasAttribute?.("n")) return true; // legacy boolean opt-out (back-compat)
+    if (cur.getAttribute?.("translate") === "no") return true;
     if (cur.getAttribute?.("aria-hidden") === "true") return true;
     if (cur.getAttribute?.("contenteditable") === "true") return true;
+    // ARIA live regions are inherently React-volatile — never translate.
+    const live = cur.getAttribute?.("aria-live");
+    if (live === "polite" || live === "assertive") return true;
+    const role = cur.getAttribute?.("role");
+    if (role && VOLATILE_ROLES.has(role)) return true;
     cur = cur.parentElement;
   }
   return false;
