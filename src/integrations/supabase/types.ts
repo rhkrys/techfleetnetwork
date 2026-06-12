@@ -7579,6 +7579,18 @@ export type Database = {
         Args: { _is_test: boolean; _user_id: string }
         Returns: boolean
       }
+      admin_user_progress_snapshot: {
+        Args: { p_email: string }
+        Returns: {
+          badges_awarded: number
+          course_completion_recorded: boolean
+          course_key: string
+          missing: number
+          phase: Database["public"]["Enums"]["journey_phase"]
+          required_lessons: number
+          user_has_completed: number
+        }[]
+      }
       approve_and_publish_class: {
         Args: { p_class_id: string }
         Returns: undefined
