@@ -152,6 +152,9 @@ jobs:
       - name: Verify plpgsql RETURNS TABLE functions guard against OUT-param shadowing
         run: node scripts/ci/check-plpgsql-variable-conflict.mjs
 
+      - name: Verify journey/course reads filter by session user.id (JOURNEY-IDENTITY-003)
+        run: node scripts/ci/check-progress-read-identity.mjs
+
       - name: Verify email subsystem v2 layering (domain pure, application port-only)
         run: node scripts/ci/check-email-architecture.mjs
 
