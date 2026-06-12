@@ -34,12 +34,20 @@ const checks = [
   { file: "src/services/auth.service.ts", forbidden: ["async signInWithPassword(", "signInWithPassword:"] },
 ];
 
+function stripComments(src) {
+  // Drop /* ... */ block comments and // ... line comments so the guard
+  // doesn't false-positive on the comments that document the invariant.
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+}
+
 const failures = [];
 
 for (const check of checks) {
   let text;
   try {
-    text = readFileSync(resolve(root, check.file), "utf8");
+    text = stripComments(readFileSync(resolve(root, check.file), "utf8"));
   } catch {
     failures.push(`${check.file}: required guarded file is missing`);
     continue;
@@ -48,6 +56,7 @@ for (const check of checks) {
     if (text.includes(token)) failures.push(`${check.file}: forbidden token '${token}'`);
   }
 }
+
 
 if (failures.length) {
   console.error("\nAuth direct-signin guard FAILED:\n");
