@@ -210,89 +210,15 @@ function classifyPasswordUpdateError(err: { message?: string; code?: string; sta
 }
 
 
+/**
+ * AUTH-DIRECT-SIGNIN-004 (2026-06-12): `AuthService.signInWithPassword` was
+ * deleted. The ONE password-sign-in owner is
+ * `src/features/auth/services/sign-in.service.ts`, called by the active
+ * login flow `src/features/auth/flows/sign-in-password.flow.ts`.
+ * CI guard `scripts/ci/check-auth-direct-signin.mjs` blocks reintroduction.
+ */
 export const AuthService = {
-  async signInWithPassword(email: string, password: string, captchaToken?: string, attemptId?: string) {
-    const parsedEmail = emailInputSchema.safeParse(email);
-    if (!parsedEmail.success || !loginPasswordSchema.safeParse(password).success) {
-      throw blockedAuthInputError;
-    }
-    if (!captchaToken?.trim()) {
-      throw new Error("Complete the human verification before trying again.");
-    }
-    const safeEmail = parsedEmail.data;
-    // AUTH-DIRECT-SIGNIN-001: password sign-in must let the auth SDK create
-    // the browser session directly. The removed edge-token handoff accepted
-    // credentials server-side, returned raw tokens, then asked the browser to
-    // re-hydrate them — the exact source of Vichea's recurring
-    // client_session_write_failed loop.
-    void logAccountActivity("login_attempt_started", { email: safeEmail });
-    return log.track("signInWithPassword", `Authenticating user ${safeEmail}`, { email: safeEmail }, async () => {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: safeEmail,
-        password,
-        options: { captchaToken: captchaToken.trim() },
-      });
 
-      if (error) {
-        if (error instanceof ClientSessionWriteError) throw error;
-        const fnError = await readFunctionError(error);
-        log.error("signInWithPassword", `Authentication failed for ${safeEmail}: ${fnError.message}`, { email: safeEmail, errorCode: fnError.status ?? fnError.code }, error);
-        void logAccountActivity("login_failed", { email: safeEmail, errorMessage: fnError.message, errorCode: fnError.status ?? fnError.code });
-        if (fnError.status === 429 || fnError.code === "rate_limited" || fnError.message.toLowerCase().includes("too many rapid auth attempts")) throw createAuthThrottleCaptchaError();
-        if (typeof fnError.status === "number" && fnError.status >= 500) {
-          const serviceError = new Error("The sign-in service hit a snag. Please try again in a moment.") as Error & { status?: number; code?: string };
-          serviceError.status = fnError.status;
-          serviceError.code = "service_unavailable";
-          throw serviceError;
-        }
-        if (fnError.code === "CAPTCHA_REQUIRED" || fnError.message.toLowerCase().includes("human verification")) {
-          const captchaError = new Error("Complete the human verification below before signing in.") as Error & { status?: number; code?: string };
-          captchaError.status = fnError.status;
-          captchaError.code = "captcha_required";
-          throw captchaError;
-        }
-        if (fnError.code?.toLowerCase() === "captcha_failed" || fnError.message.toLowerCase().includes("captcha")) {
-          const captchaError = new Error("Complete the human verification below before signing in.") as Error & { status?: number; code?: string };
-          captchaError.status = fnError.status;
-          captchaError.code = "captcha_failed";
-          throw captchaError;
-        }
-        const credentialError = new Error("Invalid email or password. Please try again.") as Error & { status?: number; code?: string };
-        credentialError.status = fnError.status ?? 401;
-        credentialError.code = fnError.code === "invalid_credentials" ? "invalid_credentials" : "invalid_credentials";
-        throw credentialError;
-      }
-      if (!data.session?.access_token) {
-        throw new ClientSessionWriteError("set_session_rejected", "Sign-in didn't complete — please try again.");
-      }
-      // LCL-FIX-004 (revised): Post-setSession round-trip validation is
-      // non-fatal. The supabase client already validated tokens during
-      // setSession; an extra getUser() call here can race against residual
-      // `sb-*-auth-token` entries from a just-ended session and return
-      // `bad_jwt` even though the new session is valid. If it fails, retry
-      // once after letting the storage write settle; if it still fails, log
-      // and continue — the onAuthStateChange listener and subsequent API
-      // calls will surface any real problem.
-      try {
-        let { data: userCheck, error: userErr } = await supabase.auth.getUser();
-        if (userErr || !userCheck?.user) {
-          await new Promise((r) => setTimeout(r, 120));
-          ({ data: userCheck, error: userErr } = await supabase.auth.getUser());
-        }
-        if (userErr || !userCheck?.user) {
-          log.warn("signInWithPassword", "Post-setSession getUser() did not confirm a user; continuing (session was set successfully).", { email: safeEmail }, userErr ?? undefined);
-        }
-      } catch (validationErr) {
-        log.warn("signInWithPassword", "Post-setSession validation threw; continuing without forcing sign-out.", { email: safeEmail }, validationErr);
-      }
-
-      if (data.session) writeSessionMarker(data.session);
-      log.info("signInWithPassword", `User ${safeEmail} authenticated successfully`, { userId: data.user?.id });
-      void logAccountActivity("login_succeeded", { email: safeEmail, userId: data.user?.id });
-      void logAdminLoginIfElevated(data.user?.id);
-      return data;
-    });
-  },
 
 
   async signUp(email: string, password: string, firstName: string, lastName: string, redirectTo: string, captchaToken: string, birthYear?: number) {
