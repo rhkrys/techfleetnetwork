@@ -27,6 +27,7 @@ const PROGRESS_QUERY_KEYS = [
   "quest-self-report",
   "quest-system-verification",
   "course-completion-counts",
+  "dashboard-overview",
   "course_completions",
   "course-completions",
   "badges-awarded",
