@@ -247,6 +247,7 @@ const App = () => (
                     <Route path="/my-journey/quest/:pathId" element={<ProtectedRoute><QuestDetailPage /></ProtectedRoute>} />
                     
                     <Route path="/courses" element={<ProtectedRoute><TrainingPage /></ProtectedRoute>} />
+                    <Route path="/curriculum" element={<ProtectedRoute><TrainingPage /></ProtectedRoute>} />
                     <Route path="/courses/connect-discord" element={<ProtectedRoute><ConnectDiscordPage /></ProtectedRoute>} />
                     <Route path="/courses/onboarding" element={<ProtectedRoute><FirstStepsPage /></ProtectedRoute>} />
                     <Route path="/courses/agile-mindset" element={<ProtectedRoute><SecondStepsPage /></ProtectedRoute>} />
