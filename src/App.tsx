@@ -214,6 +214,7 @@ const App = () => (
               {/* AuthRedirectHandler stays eager — it gates routing decisions and
                   must run on first paint. The rest are non-critical and deferred. */}
               <AuthRedirectHandler />
+              <ProgressCacheIdentityGuard />
               <RouteTitle />
               <IdleMount>
                 <Suspense fallback={null}>
