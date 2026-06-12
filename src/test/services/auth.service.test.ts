@@ -72,55 +72,14 @@ describe("AuthService session max-age marker", () => {
     } as never);
   });
 
-  it("writes a distinct audit event when an admin signs in", async () => {
-    const session = makeSession("admin-user");
-    vi.mocked(supabase.auth.signInWithPassword).mockResolvedValue({ data: { session, user: session.user }, error: null });
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      then: (resolve: (value: unknown) => void) => resolve({ count: 1, error: null }),
-    } as never);
-    vi.mocked(supabase.rpc).mockResolvedValue({ data: null, error: null });
-
-    await AuthService.signInWithPassword("admin@example.com", "ValidPass123!", "valid-turnstile-token-with-enough-length");
-    expect(supabase.auth.signInWithPassword).toHaveBeenCalledWith({
-      email: "admin@example.com",
-      password: "ValidPass123!",
-      options: { captchaToken: "valid-turnstile-token-with-enough-length" },
-    });
-    expect(supabase.functions.invoke).not.toHaveBeenCalledWith("login-with-captcha", expect.anything());
-    expect(supabase.auth.setSession).not.toHaveBeenCalled();
-    await vi.waitFor(() => expect(supabase.rpc).toHaveBeenCalledWith("write_audit_log", expect.objectContaining({
-      p_event_type: "authn_admin_login_success",
-      p_user_id: "admin-user",
-    })));
-    expect(logAccountActivity).toHaveBeenCalledWith("login_succeeded", expect.objectContaining({ userId: "admin-user" }));
+  it("AUTH-DIRECT-SIGNIN-004: removed AuthService.signInWithPassword (sign-in.service is the owner)", () => {
+    // The active /login form routes through `signInWithPasswordService`.
+    // AuthService must not regrow a sign-in method (CI-guarded by
+    // `scripts/ci/check-auth-direct-signin.mjs`).
+    expect((AuthService as unknown as { signInWithPassword?: unknown }).signInWithPassword).toBeUndefined();
   });
 
-  it("requires CAPTCHA before any password login auth request", async () => {
-    await expect(AuthService.signInWithPassword("admin@example.com", "ValidPass123!")).rejects.toThrow("Complete the human verification");
-    expect(supabase.auth.signInWithPassword).not.toHaveBeenCalled();
-    expect(supabase.functions.invoke).not.toHaveBeenCalledWith("login-with-captcha", expect.anything());
-  });
 
-  it("AUTH-DIRECT-SIGNIN-003: signs in with the auth SDK, not login-with-captcha", async () => {
-    const session = makeSession("vichea-user");
-    vi.mocked(supabase.auth.signInWithPassword).mockResolvedValue({ data: { session, user: session.user }, error: null });
-
-    await expect(AuthService.signInWithPassword("vtephang@gmail.com", "ValidPass123!", "valid-turnstile-token-with-enough-length")).resolves.toMatchObject({
-      session,
-      user: session.user,
-    });
-
-    expect(supabase.auth.signInWithPassword).toHaveBeenCalledWith({
-      email: "vtephang@gmail.com",
-      password: "ValidPass123!",
-      options: { captchaToken: "valid-turnstile-token-with-enough-length" },
-    });
-    expect(supabase.functions.invoke).not.toHaveBeenCalledWith("login-with-captcha", expect.anything());
-    expect(supabase.auth.setSession).not.toHaveBeenCalled();
-    expect(logAccountActivity).toHaveBeenCalledWith("login_succeeded", { email: "vtephang@gmail.com", userId: "vichea-user" });
-  });
 
   it("AUTH-RESET-010: refuses mismatched password updates before backend call", async () => {
     await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass124!" })).rejects.toThrow(/passwords do not match/i);
