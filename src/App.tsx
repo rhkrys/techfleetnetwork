@@ -15,6 +15,7 @@ import { IdleTimeoutGuard } from "@/components/IdleTimeoutGuard";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ScopedErrorBoundary } from "@/components/ScopedErrorBoundary";
 import { AuthRedirectHandler } from "@/components/AuthRedirectHandler";
+import { ProgressCacheIdentityGuard } from "@/components/ProgressCacheIdentityGuard";
 import { RouteTitle } from "@/components/RouteTitle";
 import { IdleMount } from "@/components/IdleMount";
 import { Suspense } from "react";
@@ -214,6 +215,7 @@ const App = () => (
               {/* AuthRedirectHandler stays eager — it gates routing decisions and
                   must run on first paint. The rest are non-critical and deferred. */}
               <AuthRedirectHandler />
+              <ProgressCacheIdentityGuard />
               <RouteTitle />
               <IdleMount>
                 <Suspense fallback={null}>
