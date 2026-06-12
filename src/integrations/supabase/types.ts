@@ -7559,6 +7559,20 @@ export type Database = {
       }
       admin_2fa_grace_active: { Args: { _user_id: string }; Returns: boolean }
       admin_2fa_grace_deadline: { Args: { _user_id: string }; Returns: string }
+      admin_recent_login_attempts: {
+        Args: { p_email: string; p_hours?: number; p_max_rows?: number }
+        Returns: {
+          attempt_id: string
+          branch: string
+          created_at: string
+          duration_ms: number
+          http_status: number
+          origin_host: string
+          outcome: string
+          user_agent_short: string
+          user_id: string
+        }[]
+      }
       admin_recompute_stats: { Args: never; Returns: Json }
       admin_reconcile_parity: { Args: never; Returns: Json }
       admin_set_test_account: {
