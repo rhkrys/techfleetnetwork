@@ -18,6 +18,11 @@ function makeClient() {
   qc.setQueryData(["journey-progress", "old-user", "first_steps"], [{ task_id: "x", completed: true }]);
   qc.setQueryData(["journey-completed", "old-user", "first_steps", "__all__"], 5);
   qc.setQueryData(["quest-all-journey-progress", "old-user"], { count: 5 });
+  qc.setQueryData(["quest-selections", "old-user"], [{ path_id: "observer" }]);
+  qc.setQueryData(["quest-self-report", "old-user"], { count: 1 });
+  qc.setQueryData(["quest-system-verification", "old-user"], { verified: true });
+  qc.setQueryData(["course-completion-counts", "stable"], { onboarding: 1 });
+  qc.setQueryData(["dashboard-overview", "old-user"], { phase_counts: { first_steps: 0 } });
   qc.setQueryData(["course_completions", "old-user"], [{ course_key: "onboarding" }]);
   qc.setQueryData(["unrelated", "old-user"], "keep me");
   return qc;
@@ -51,8 +56,26 @@ describe("ProgressCacheIdentityGuard (JOURNEY-IDENTITY-002)", () => {
     expect(qc.getQueryData(["journey-progress", "old-user", "first_steps"])).toBeUndefined();
     expect(qc.getQueryData(["journey-completed", "old-user", "first_steps", "__all__"])).toBeUndefined();
     expect(qc.getQueryData(["quest-all-journey-progress", "old-user"])).toBeUndefined();
+    expect(qc.getQueryData(["quest-selections", "old-user"])).toBeUndefined();
+    expect(qc.getQueryData(["quest-self-report", "old-user"])).toBeUndefined();
+    expect(qc.getQueryData(["quest-system-verification", "old-user"])).toBeUndefined();
+    expect(qc.getQueryData(["course-completion-counts", "stable"])).toBeUndefined();
+    expect(qc.getQueryData(["dashboard-overview", "old-user"])).toBeUndefined();
     expect(qc.getQueryData(["course_completions", "old-user"])).toBeUndefined();
     // Non-progress caches are untouched.
+    expect(qc.getQueryData(["unrelated", "old-user"])).toBe("keep me");
+  });
+
+  it("removes stale progress entries when auth hydrates from signed out to signed in", () => {
+    const qc = makeClient();
+    authState.user = null;
+    const { rerender } = render(<Harness qc={qc} />);
+
+    authState.user = { id: "new-user" };
+    rerender(<Harness qc={qc} />);
+
+    expect(qc.getQueryData(["journey-progress", "old-user", "first_steps"])).toBeUndefined();
+    expect(qc.getQueryData(["course_completions", "old-user"])).toBeUndefined();
     expect(qc.getQueryData(["unrelated", "old-user"])).toBe("keep me");
   });
 

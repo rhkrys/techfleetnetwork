@@ -8478,6 +8478,16 @@ export type Database = {
         Args: { _session_hash: string }
         Returns: boolean
       }
+      member_progress_self_check: {
+        Args: never
+        Returns: {
+          auth_user_id: string
+          badge_rows: number
+          completed_rows: number
+          course_completion_rows: number
+          journey_rows: number
+        }[]
+      }
       move_to_dlq: {
         Args: {
           dlq_name: string

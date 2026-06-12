@@ -155,6 +155,9 @@ jobs:
       - name: Verify journey/course reads filter by session user.id (JOURNEY-IDENTITY-003)
         run: node scripts/ci/check-progress-read-identity.mjs
 
+      - name: Verify signed-in members can read own progress rows (JOURNEY-IDENTITY-001)
+        run: node scripts/ci/check-progress-identity-sql-smoke.mjs
+
       - name: Verify email subsystem v2 layering (domain pure, application port-only)
         run: node scripts/ci/check-email-architecture.mjs
 
