@@ -28,14 +28,21 @@ export function AutosaveStatus({ status, lastSavedAt, onRetry, className }: Prop
   if (status === "idle") return null;
 
   const base = "inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md border";
+  // data-no-translate + translate="no" prevent the runtime DOM translator from
+  // mutating the text nodes React owns in this aria-live region. Without this,
+  // React's reconciler can throw NotFoundError on removeChild when state flips
+  // (saving → saved). The translator also skips aria-live regions defensively;
+  // this is belt + suspenders.
+  const a11y = {
+    role: "status" as const,
+    "aria-live": "polite" as const,
+    translate: "no" as const,
+    "data-no-translate": true,
+  };
 
   if (status === "saving") {
     return (
-      <span
-        className={cn(base, "bg-muted/50 border-border text-muted-foreground", className)}
-        role="status"
-        aria-live="polite"
-      >
+      <span className={cn(base, "bg-muted/50 border-border text-muted-foreground", className)} {...a11y}>
         <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
         Saving…
       </span>
@@ -44,11 +51,7 @@ export function AutosaveStatus({ status, lastSavedAt, onRetry, className }: Prop
 
   if (status === "dirty") {
     return (
-      <span
-        className={cn(base, "bg-muted/50 border-border text-muted-foreground", className)}
-        role="status"
-        aria-live="polite"
-      >
+      <span className={cn(base, "bg-muted/50 border-border text-muted-foreground", className)} {...a11y}>
         Unsaved changes
       </span>
     );
@@ -56,11 +59,7 @@ export function AutosaveStatus({ status, lastSavedAt, onRetry, className }: Prop
 
   if (status === "saved") {
     return (
-      <span
-        className={cn(base, "bg-success/10 border-success/30 text-success", className)}
-        role="status"
-        aria-live="polite"
-      >
+      <span className={cn(base, "bg-success/10 border-success/30 text-success", className)} {...a11y}>
         <Check className="h-3 w-3" aria-hidden="true" />
         Saved · {relativeLabel(lastSavedAt)}
       </span>
@@ -69,11 +68,7 @@ export function AutosaveStatus({ status, lastSavedAt, onRetry, className }: Prop
 
   // error
   return (
-    <span
-      className={cn(base, "bg-destructive/10 border-destructive/30 text-destructive", className)}
-      role="status"
-      aria-live="polite"
-    >
+    <span className={cn(base, "bg-destructive/10 border-destructive/30 text-destructive", className)} {...a11y}>
       <CircleAlert className="h-3 w-3" aria-hidden="true" />
       Save failed
       {onRetry && (

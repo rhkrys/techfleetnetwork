@@ -167,19 +167,30 @@ export const QuestService = {
 
   async completeSelfReportStep(userId: string, stepId: string, completed: boolean): Promise<void> {
     return log.track("completeSelfReportStep", `${completed ? "Completing" : "Uncompleting"} step ${stepId}`, { userId, stepId }, async () => {
+      if (!completed) {
+        // Uncomplete path must go through the SECURITY DEFINER RPC so the
+        // journey_progress uncomplete-guard trigger sees app.allow_uncomplete=on.
+        // QUEST-UNCOMPLETE-001.
+        const { error } = await supabase.rpc("set_self_report_step_incomplete", { p_step_id: stepId });
+        if (error) {
+          log.error("completeSelfReportStep", error.message, { userId, stepId, completed }, error);
+          throw new Error("We couldn't update that step. Please try again.");
+        }
+        return;
+      }
       const { error } = await supabase.from("journey_progress").upsert(
         {
           user_id: userId,
           phase: "first_steps" as const,
           task_id: `quest-step-${stepId}`,
-          completed,
-          completed_at: completed ? new Date().toISOString() : null,
+          completed: true,
+          completed_at: new Date().toISOString(),
         },
         { onConflict: "user_id,phase,task_id" }
       );
       if (error) {
         log.error("completeSelfReportStep", error.message, { userId, stepId }, error);
-        throw new Error("We couldn't update that step. Please try again. progress");
+        throw new Error("We couldn't update that step. Please try again.");
       }
     });
   },
