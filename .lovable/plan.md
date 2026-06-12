@@ -1,48 +1,41 @@
-## Evidence found
+## What I confirmed in the database (no data loss)
 
-- **Live route ownership:** `src/App.tsx` has `/login` routed to `SignInScreen` at lines 49 and 236.
-- **Active login chain:** `SignInScreen` → `useSignInEngine` → `sign-in-password.flow.ts` → currently `AuthService.signInWithPassword` → `supabase.auth.signInWithPassword`.
-- **Current active path does not call:** `login-with-captcha`, `setSessionSafe`, or `supabase.auth.setSession` during password login.
-- **Remaining risk:** mixed auth ownership still exists: `sign-in-password.flow.ts` imports `AuthService`, `session.port.ts` wraps `AuthService`, and legacy `auth-flow.service.ts` still exposes `setSessionSafe`.
-- **Line inventory:** `App.tsx` 319, `SignInScreen.tsx` 164, `use-sign-in-engine.ts` 406, `sign-in-password.flow.ts` 58, `supabase-session.adapter.ts` 89, `auth-flow.service.ts` 81, `auth.service.ts` 723, `auth.service.test.ts` 324, `check-auth-direct-signin.mjs` 36.
-- **Trail query blocker:** direct email trail lookup cannot call `_login_hash` from the client because that helper is intentionally permission-restricted.
+For `mdenner@techfleet.org` (user_id `52ffef70-…82c2`):
 
-## Plan
+- `journey_progress`: **95 rows, all `completed=true`** across all 7 phases (first_steps 11, second_steps 25, third_steps 12, observer 8, project_training 14, volunteer 6, discord_learning 19).
+- `course_completions`: **8 rows** — agile-teamwork, project-training, volunteer-teams, discord-learning, connect-discord, onboarding, agile-mindset, observer-course.
+- `badges_awarded`: **10 rows**.
+- `lesson_catalog`: lesson counts match phase counts 1:1 for every course.
+- Last journey write: 2026-05-14. No recent destructive migration. No code change to `journey.service.ts` / `quest.service.ts` / `GenericCoursePage` / step pages in the past 7 days.
 
-1. **Make the sign-in engine the only login owner**
-   - Add password sign-in to `sessionPort` backed by `supabaseSessionAdapter.signInPassword`.
-   - Refactor `sign-in-password.flow.ts` to call the port/adapter directly, not `AuthService.signInWithPassword`.
-   - Preserve CAPTCHA token passing, result classification, non-punitive `client_session_write_failed`, login success telemetry, MFA handoff, redirects, and admin audit side effects.
+**Conclusion:** the regression is not data and not a recent journey/course code change. It is a read-path bug — almost certainly auth identity (recent sign-in refactor) returning a session whose `auth.uid()` no longer matches your `profiles.user_id`, so the RLS-scoped `journey_progress` / `course_completions` SELECTs come back empty and every course renders "not started".
 
-2. **Physically remove the old login method from active use**
-   - Remove or reduce `AuthService.signInWithPassword` so no active login form can call it.
-   - Keep non-login auth functions intact: accounts, profiles, roles, sessions, MFA, audit tables, reset flow, and rate-limit tables stay untouched.
-   - Leave `login-with-captcha` deployed only if still needed by legacy references, but CI will prove `/login` cannot call it.
+## Fix plan
 
-3. **Add guardrails that fail on regression**
-   - Strengthen `scripts/ci/check-auth-direct-signin.mjs` to scan the active login flow for:
-     - `login-with-captcha`
-     - `setSessionSafe`
-     - `supabase.auth.setSession`
-     - `AuthService.signInWithPassword`
-     - direct captcha/lockout storage access outside the approved ports/policy layer
-   - Add the guard to the existing package scripts without changing build behavior beyond the explicit check.
+### 1. Verify the identity mismatch hypothesis (1 query + 1 screenshot)
+- Capture from the live preview: the exact `journey_progress` and `course_completions` network responses for the logged-in session (count of rows + status).
+- Compare `auth.uid()` reported by the browser session vs `profiles.user_id` for `mdenner@techfleet.org`. If they differ → root cause confirmed.
 
-4. **Update focused tests**
-   - Update auth service tests to stop treating `AuthService.signInWithPassword` as the login owner.
-   - Add/adjust tests proving:
-     - `/login` flow calls SDK password sign-in through the port/adapter.
-     - no `login-with-captcha` or `setSession` path runs after credentials are accepted.
-     - `client_session_write_failed` remains non-punitive.
-     - classifier and failure policy still map real provider errors cleanly.
+### 2. Root-cause fix (the right one based on §1)
+Two candidates, both shippable in one turn:
 
-5. **Add safe login-trail diagnostics**
-   - Add a security-definer admin/service RPC for querying recent login trail rows by email without exposing `_login_hash`.
-   - Grant only authenticated admins and service role access through the function body and grants.
-   - Add BDD rows with tri-layer Then clauses for the diagnostics and one-engine login invariant.
+- **A. Session identity drift** — the sign-in service refactor must hydrate `profile.user_id` from the SDK session's `user.id`, not from any cached/legacy `profile.id`. Same pattern as the Get Help self-heal: lookup by `user_id`, never by `id`. Audit `useAuth`, `useProfile`, and every `from('journey_progress')`/`from('course_completions')` call site to ensure they use `session.user.id` directly.
+- **B. RLS regression** — re-verify `journey_progress` and `course_completions` SELECT policies still resolve `auth.uid() = user_id`. If a recent security migration tightened them, restore correct grants in a follow-up migration.
 
-6. **Validate after build**
-   - Run focused auth tests for sign-in, classifier, and failure policy.
-   - Run the auth direct-signin guard.
-   - Query the new diagnostic RPC for `vtephang@gmail.com` and confirm no new `edge_entered branch=ok` followed by `client_session_write_failed` from the active path.
-   - Verify browser/provider logs show either clean SDK sign-in or a real provider error code, not post-success session-write failure.
+### 3. Add a permanent guard (no more silent revert)
+- New CI check `scripts/ci/check-progress-read-identity.mjs`: every `from('journey_progress'|'course_completions'|'badges_awarded'|'journey_phase_definitions')` must filter by `session.user.id` (or service role), never `profile.id`.
+- New SQL smoke test: `select count(*) from journey_progress where user_id = auth.uid()` run as the test member must return > 0 when seeded.
+- BDD scenarios `JOURNEY-IDENTITY-001..003` (UI/DB/Code tri-layer) asserting: when a member with completed courses signs in, every previously-completed course renders as done and no row is silently re-created.
+
+### 4. Receipts after ship
+- Network capture of `/journey_progress?select=...` returning 95 rows for your session.
+- `course_completions` returning 8 rows for your session.
+- Curriculum + Journey pages screenshot showing all 8 courses as Completed.
+- CI guard green; new BDD scenarios passing.
+
+## What I will NOT touch
+- Your data. No upserts, no backfills, no deletes — your 95/8/10 rows stay exactly as they are.
+- `auth.users`, `profiles`, `user_roles`, `badges_awarded`, `class_certifications`, `project_certifications` schemas.
+
+## One blocker before I build
+I need a 5-second confirmation from the live preview so I fix the right candidate (A vs B) and don't ship a guess: open the Curriculum page while signed in as `mdenner@techfleet.org`, then send me the screenshot + the row counts from the `journey_progress` and `course_completions` requests in the Network tab. If you'd rather I just probe via an admin RPC, I'll add `admin_user_progress_snapshot(p_email)` as part of step 3 and run it myself.
