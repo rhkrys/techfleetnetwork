@@ -34,13 +34,14 @@ export function ProgressCacheIdentityGuard() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const lastIdRef = useRef<string | null>(null);
+  const hasSeenAuthStateRef = useRef(false);
 
   useEffect(() => {
     const currentId = user?.id ?? null;
     const previousId = lastIdRef.current;
 
-    if (previousId !== null && previousId !== currentId) {
-      // Identity changed (sign-out, sign-in as different user, account switch).
+    if (hasSeenAuthStateRef.current && previousId !== currentId) {
+      // Identity changed (sign-out, sign-in, account switch, SDK hydration).
       // Drop every cached progress row so the new identity sees its true state.
       for (const key of PROGRESS_QUERY_KEYS) {
         qc.removeQueries({ queryKey: [key] });
@@ -53,6 +54,7 @@ export function ProgressCacheIdentityGuard() {
     }
 
     lastIdRef.current = currentId;
+    hasSeenAuthStateRef.current = true;
   }, [user?.id, qc]);
 
   return null;
