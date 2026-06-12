@@ -8743,6 +8743,10 @@ export type Database = {
         Args: { p_id: string; p_reason?: string; p_status: string }
         Returns: undefined
       }
+      set_self_report_step_incomplete: {
+        Args: { p_step_id: string }
+        Returns: undefined
+      }
       sign_community_agreement: {
         Args: { p_application_id: string; p_user_agent?: string }
         Returns: {
