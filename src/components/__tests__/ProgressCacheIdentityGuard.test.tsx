@@ -22,6 +22,7 @@ function makeClient() {
   qc.setQueryData(["quest-self-report", "old-user"], { count: 1 });
   qc.setQueryData(["quest-system-verification", "old-user"], { verified: true });
   qc.setQueryData(["course-completion-counts", "stable"], { onboarding: 1 });
+  qc.setQueryData(["dashboard-overview", "old-user"], { phase_counts: { first_steps: 0 } });
   qc.setQueryData(["course_completions", "old-user"], [{ course_key: "onboarding" }]);
   qc.setQueryData(["unrelated", "old-user"], "keep me");
   return qc;
@@ -59,6 +60,7 @@ describe("ProgressCacheIdentityGuard (JOURNEY-IDENTITY-002)", () => {
     expect(qc.getQueryData(["quest-self-report", "old-user"])).toBeUndefined();
     expect(qc.getQueryData(["quest-system-verification", "old-user"])).toBeUndefined();
     expect(qc.getQueryData(["course-completion-counts", "stable"])).toBeUndefined();
+    expect(qc.getQueryData(["dashboard-overview", "old-user"])).toBeUndefined();
     expect(qc.getQueryData(["course_completions", "old-user"])).toBeUndefined();
     // Non-progress caches are untouched.
     expect(qc.getQueryData(["unrelated", "old-user"])).toBe("keep me");
