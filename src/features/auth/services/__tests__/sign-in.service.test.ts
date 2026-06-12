@@ -62,7 +62,7 @@ describe("sign-in.service — AUTH-DIRECT-SIGNIN-004 (one password-sign-in owner
       eq: vi.fn().mockReturnThis(),
       then: (resolve: (v: unknown) => void) => resolve({ count: 0, error: null }),
     } as never);
-    vi.mocked(supabase.rpc).mockResolvedValue({ data: null, error: null });
+    vi.mocked(supabase.rpc).mockResolvedValue({ data: null, error: null } as never);
   });
 
   it("calls the auth SDK directly with the captcha token (no edge-token handoff)", async () => {
