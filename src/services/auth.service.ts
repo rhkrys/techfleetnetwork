@@ -3,7 +3,7 @@ import { createLogger } from "@/services/logger.service";
 import { logAccountActivity } from "@/lib/account-activity";
 import { getSessionPolicyFailureReason } from "@/lib/security";
 import { clearOAuthUiMarker, hasFreshOAuthUiMarker, isRootOAuthCallback, stripRootOAuthCallbackUrl } from "@/lib/oauth-ui-guard";
-import { emailInputSchema, loginPasswordSchema, passwordSchema } from "@/lib/validators/auth";
+import { emailInputSchema, passwordSchema } from "@/lib/validators/auth";
 import { validatePasswordSet, type PasswordSetValue } from "@/lib/auth/password-set";
 import { createAuthThrottleCaptchaError, isAuthThrottleCaptchaError } from "@/lib/auth-throttle-captcha";
 import { validateEmailDomainExists } from "@/lib/email-domain-validation";
@@ -123,34 +123,10 @@ async function recoverFromInvalidRefreshToken(error: unknown, source: string) {
   await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
 }
 
-async function logAdminLoginIfElevated(userId?: string | null) {
-  if (!userId) return;
+// `logAdminLoginIfElevated` moved to `src/features/auth/services/sign-in.service.ts`
+// alongside the active password-sign-in owner (AUTH-DIRECT-SIGNIN-004).
 
-  try {
-    const { count, error } = await supabase
-      .from("user_roles")
-      .select("id", { head: true, count: "exact" })
-      .eq("user_id", userId)
-      .eq("role", "admin");
 
-    if (error || (count ?? 0) === 0) return;
-
-    await supabase.rpc("write_audit_log", {
-      p_event_type: "authn_admin_login_success",
-      p_table_name: "auth.users",
-      p_record_id: userId,
-      p_user_id: userId,
-      p_changed_fields: [
-        `origin:${window.location.origin}`,
-        `path:${window.location.pathname}`,
-        `user_agent:${navigator.userAgent.slice(0, 160)}`,
-      ],
-      p_error_message: null,
-    });
-  } catch {
-    // Admin login telemetry must never block a successful login.
-  }
-}
 
 async function readFunctionError(error: unknown): Promise<{ status?: number; message: string; code?: string }> {
   const fallback = error instanceof Error ? error.message : String((error as { message?: string } | null | undefined)?.message ?? "Unknown error");
