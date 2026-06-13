@@ -1,13 +1,15 @@
 import { z } from "zod";
 import { safeMultilineTextSchema, safeRequiredTextSchema, safeShortTextSchema, safeStringArraySchema, safeUrlSchema } from "@/lib/validators/shared-input";
+import { EXPERIENCE_AREAS } from "@/lib/application-options";
 
 /**
- * Maximum experience areas a member may select. Shared by the schema (this
- * file) AND the UI picker so the client can disable extra checkboxes once
- * the cap is reached — eliminating the `validation_rejected: experience_areas`
- * event class (7 events / 4 users in the 7d window before this fix).
+ * Maximum experience areas a member may select. Derived from the canonical
+ * EXPERIENCE_AREAS list so the cap automatically tracks any future additions
+ * to the Tech Fleet framework — members can never be blocked by a stale cap
+ * (root cause of the `validation_rejected: experience_areas` outage when the
+ * list grew from 30 to 66 options).
  */
-export const MAX_EXPERIENCE_AREAS = 30;
+export const MAX_EXPERIENCE_AREAS = EXPERIENCE_AREAS.length;
 
 
 // A03: Input validation with strict sanitization
