@@ -1,34 +1,49 @@
 ## Problem
-`MAX_EXPERIENCE_AREAS` is capped at 30, but `EXPERIENCE_AREAS` lists 66 options. Members who already have (or want) more than 30 areas selected hit a `too_big` schema validation error on `EditProfilePage.handleSubmit` and cannot save their profile.
+Production users on cached bundle `index-DI5FAA9R.js` are calling the legacy 1-arg `get_dashboard_overview(p_user_id)`. Database only has the 0-arg version (post-refactor), so PostgREST returns `PGRST202` "function not found in schema cache" and the dashboard fails to load. This is the same fingerprint that was auto-closed last week — it keeps recurring whenever a member returns with a stale HTML/JS pair.
 
-## Solution
-Raise the cap to match the full option list so no member is blocked.
+## Root Cause
+Removing the 1-arg overload was a breaking change for any tab that loaded the app before the refactor and hasn't refreshed. `<UpdateAvailableBanner/>` only nudges; it doesn't force a refresh, so cached bundles can survive for days.
 
-## Changes
+## Permanent Fix
+Add a thin backward-compatible 1-arg overload that delegates to the canonical 0-arg version. This:
+- Restores the dashboard for every stale tab immediately, with no user action.
+- Costs nothing at runtime (single function call passthrough).
+- Future-proofs against the next time we refactor the signature — old bundles keep working until they naturally refresh.
 
-### Code
-1. **`src/lib/validators/profile.ts`**
-   - Change `MAX_EXPERIENCE_AREAS` from `30` to `66` (or derive from `EXPERIENCE_AREAS.length` to prevent future drift).
-   - No other validator changes needed; `safeStringArraySchema` already uses this constant.
+### Migration
+```sql
+CREATE OR REPLACE FUNCTION public.get_dashboard_overview(p_user_id uuid)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  -- Back-compat shim for cached bundles that still pass p_user_id.
+  -- Canonical implementation is the 0-arg overload, which reads auth.uid().
+  -- p_user_id is intentionally ignored to prevent privilege escalation.
+  SELECT public.get_dashboard_overview();
+$$;
 
-2. **`src/components/ExperienceAreasSelect.tsx`**
-   - No changes required. It already imports `MAX_EXPERIENCE_AREAS` from the schema and will pick up the new cap automatically.
+REVOKE ALL ON FUNCTION public.get_dashboard_overview(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_dashboard_overview(uuid) TO authenticated, service_role;
+```
 
-3. **`src/pages/EditProfilePage.tsx`, `src/components/ProfileEditPanel.tsx`, `src/components/ProfileSetupDialog.tsx`, etc.**
-   - No changes required. All use the shared `profileSchema`.
+### Auto-resolve stale queue rows
+Re-run `resolve_stale_fingerprints_on_deploy('%get_dashboard_overview(p_user_id)%', 'permanent 1-arg shim deployed')`.
 
-### Database
-- None. The `profiles.experience_areas` column is `text[]` with no length constraint.
+### BDD
+Insert `DASHBOARD-RPC-COMPAT-001`:
+- Given a member is on a cached bundle calling `get_dashboard_overview(p_user_id)`
+- When the dashboard loads
+- Then [UI] dashboard renders with no error toast
+- Then [DB] PostgREST resolves the 1-arg overload and returns the same JSON as the 0-arg form
+- Then [Code] no `PGRST202`/`schema cache` error is reported to `agent_fix_queue`
 
-### Tests / BDD
-- Add BDD scenario `PROFILE-EXP-001` to `bdd_scenarios`:
-  - Given a member edits their profile
-  - When they select all 66 experience areas
-  - Then [UI] the counter shows "66 of 66 selected"
-  - Then [DB] the save succeeds with no validation_rejected event
-  - Then [Code] `profileSchema.safeParse` returns `success=true`
+### Memory
+Add `mem://constraints/rpc-signature-backcompat`: "Never remove an RPC argument signature without leaving a shim overload — cached browser bundles keep calling the old shape for days. Add the shim in the same migration as the refactor."
 
-## Verification
-- `ExperienceAreasSelect` counter label updates to "X of 66 selected".
-- Members with >30 existing areas can now save without truncation or errors.
-- No regression: the "I'm not sure yet" mutual-exclusion logic remains unchanged.
+## Out of Scope
+- Source code: no changes needed (`use-dashboard-overview.ts` already calls 0-arg).
+- Auth, RLS, profiles, journey_progress, course_completions: untouched.
+- Deploy-watcher behavior: unchanged (per `mem://features/no-auto-reload-on-deploy`).
