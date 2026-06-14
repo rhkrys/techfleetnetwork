@@ -15,11 +15,17 @@ import { join, relative } from "node:path";
 const ROOT = process.cwd();
 const SRC = join(ROOT, "src");
 
-// Components that internally render aria-live but are known-safe (translator
-// already skips them, or they only render translated keys via t()).
+// Snapshot of files that already render aria-live / volatile roles. The runtime
+// translator natively skips those regions via shouldSkipElement, so the lack of
+// data-no-translate on these is safe today — but we still want NEW additions to
+// add the belt+suspenders attr. Regenerate intentionally by editing the JSON.
+const SNAPSHOT = JSON.parse(
+  readFileSync(join(ROOT, "scripts/ci/translator-volatile-regions.snapshot.json"), "utf8"),
+);
 const ALLOW_FILES = new Set([
-  "src/components/LiveAnnouncer.tsx",   // role+aria-live wrappers; child <span> empty until announce()
-  "src/components/ui/AutosaveStatus.tsx", // already carries data-no-translate
+  ...SNAPSHOT.allow_files,
+  "src/components/LiveAnnouncer.tsx",
+  "src/components/ui/AutosaveStatus.tsx",
 ]);
 
 const VOLATILE_RE = /\b(aria-live\s*=\s*["'](polite|assertive)["']|role\s*=\s*["'](status|alert|log|timer)["'])/;
