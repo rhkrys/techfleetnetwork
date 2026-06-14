@@ -8710,6 +8710,10 @@ export type Database = {
         Args: { p_action: string; p_identifier: string }
         Returns: undefined
       }
+      resolve_stale_fingerprints_on_deploy: {
+        Args: { p_fingerprint_like: string; p_reason: string }
+        Returns: number
+      }
       resume_email_lane: { Args: { p_lane: string }; Returns: undefined }
       retry_pending_discord_role_grants: { Args: never; Returns: number }
       retry_stuck_fanout_jobs: { Args: never; Returns: number }
