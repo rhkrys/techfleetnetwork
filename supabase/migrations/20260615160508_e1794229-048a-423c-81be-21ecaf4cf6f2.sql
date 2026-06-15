@@ -1,0 +1,14 @@
+INSERT INTO public.bdd_scenarios (scenario_id, feature_area, feature_area_number, title, gherkin, status) VALUES
+('AUTH-ARCH-CUTOVER-013','auth/architecture',1100,'Session lifecycle extracted to features/auth/services/session.service.ts',
+ E'Given the auth cutover phase 3\nWhen src/features/auth/services/session.service.ts is inspected\nThen [Code] it owns getSession, signOut, signOutAllDevices, onAuthStateChange, clearLocalAuthState only\nAnd [Code] it imports zero auth use-case logic\nAnd [DB] no schema changes occur','implemented'),
+('AUTH-ARCH-CUTOVER-014','auth/architecture',1100,'session.port.ts has zero dependency on legacy AuthService',
+ E'Given the auth cutover phase 3\nWhen src/features/auth/ports/session.port.ts is inspected\nThen [Code] it imports sessionService and per-use-case services only\nAnd [Code] grep AuthService against the file returns zero matches\nAnd [UI] all non-auth callers keep working','implemented'),
+('AUTH-ARCH-CUTOVER-015','auth/architecture',1100,'Legacy src/services/auth.service.ts is physically deleted and CI-locked',
+ E'Given the auth cutover phase 8\nWhen the repo is scanned\nThen [Code] src/services/auth.service.ts does not exist\nAnd [Code] scripts/ci/check-no-legacy-auth-service.mjs exits 0\nAnd [Code] re-introducing the file fails CI immediately','implemented'),
+('AUTH-ARCH-CUTOVER-016','auth/architecture',1100,'Legacy auth importer snapshot shrank after cutover',
+ E'Given the cutover removed session.port and the legacy test file as importers\nWhen scripts/ci/check-legacy-auth-importers.mjs runs\nThen [Code] the snapshot lists 14 files (down from 16)\nAnd [Code] session.port.ts is no longer in the allowlist','implemented'),
+('AUTH-ARCH-CUTOVER-017','auth/architecture',1100,'Session and reset tests moved to src/test/features/auth/',
+ E'Given the test for AuthService was the last non-port importer of @/services/auth.service\nWhen the suite runs after the cutover\nThen [Code] it lives at src/test/features/auth/session-and-reset.service.test.ts\nAnd [Code] it imports sessionService and per-use-case services\nAnd [Code] zero src files import @/services/auth.service','implemented'),
+('AUTH-ARCH-CUTOVER-018','auth/architecture',1100,'Regression workflow runs the no-legacy-auth-service guard',
+ E'Given the CI workflow is the merge gate\nWhen .github/workflows/regression.yml is inspected\nThen [Code] it invokes scripts/ci/check-no-legacy-auth-service.mjs\nAnd [Code] the job fails if the legacy file is reintroduced','implemented')
+ON CONFLICT (scenario_id) DO UPDATE SET status=EXCLUDED.status, gherkin=EXCLUDED.gherkin, title=EXCLUDED.title, updated_at=now();
