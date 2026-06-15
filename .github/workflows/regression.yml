@@ -188,6 +188,11 @@ jobs:
       - name: Verify auth screens only import their engine (AUTH-ARCH-CUTOVER-022)
         run: node scripts/ci/check-auth-screen-imports.mjs
 
+      - name: Verify auth-invariants warn-level ratchet (AUTH-ARCH-CUTOVER-023)
+        run: node scripts/ci/check-auth-warn-snapshot.mjs
+
+
+
 
 
 
