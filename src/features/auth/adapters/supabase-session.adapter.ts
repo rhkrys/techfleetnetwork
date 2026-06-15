@@ -42,7 +42,7 @@ export const supabaseSessionAdapter = {
   },
 
   // AUTH-ARCH-CUTOVER-004: Google OAuth has exactly ONE entrypoint —
-  // `<GoogleSignInButton/>` → `lovable.auth.signInWithOAuth("google", …)`.
+  // `<GoogleSignInButton/>` calling the managed-OAuth helper.
   // The previous `signInGoogle` helper here is intentionally removed.
   // Adding it back will fail `scripts/ci/check-no-direct-google-oauth.mjs`.
 
