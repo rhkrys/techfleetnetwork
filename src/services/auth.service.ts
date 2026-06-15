@@ -3,36 +3,26 @@ import { createLogger } from "@/services/logger.service";
 import { logAccountActivity } from "@/lib/account-activity";
 import { getSessionPolicyFailureReason } from "@/lib/security";
 import { clearOAuthUiMarker, hasFreshOAuthUiMarker, isRootOAuthCallback, stripRootOAuthCallbackUrl } from "@/lib/oauth-ui-guard";
-import { emailInputSchema, passwordSchema } from "@/lib/validators/auth";
-import { validatePasswordSet, type PasswordSetValue } from "@/lib/auth/password-set";
-import { createAuthThrottleCaptchaError, isAuthThrottleCaptchaError } from "@/lib/auth-throttle-captcha";
-import { validateEmailDomainExists } from "@/lib/email-domain-validation";
 import { getLastActivityAt } from "@/lib/session-activity";
-import { classifyAuthError, ClientSessionWriteError, purgeLocalAuthState } from "@/lib/auth/session-health";
-
+import { classifyAuthError, purgeLocalAuthState } from "@/lib/auth/session-health";
+// AUTH-ARCH-CUTOVER-007/008/009/010 (2026-06-15) — auth use-case logic moved
+// out of this file. New code MUST import sessionPort or the service directly.
+import { signUp as signUpService, resendSignupConfirmation as resendSignupConfirmationService } from "@/features/auth/services/sign-up.service";
+import { requestPasswordReset as requestPasswordResetService } from "@/features/auth/services/request-password-reset.service";
+import { completePasswordReset as completePasswordResetService } from "@/features/auth/services/complete-password-reset.service";
+import { checkAccountIdentity as checkAccountIdentityService } from "@/features/auth/services/identity-hint.service";
 
 const log = createLogger("AuthService");
-// Per product policy: users should only be signed out after 1 hour of inactivity.
-// No absolute max-age cutoff — set to effectively unbounded so it never triggers
-// a mid-session logout on its own. Idle timeout is the only client-side enforced policy.
 const MAX_SESSION_AGE_MS = Number.POSITIVE_INFINITY;
 const IDLE_SESSION_AGE_MS = 60 * 60 * 1000; // 1 hour
 const SESSION_STARTED_AT_KEY = "session_started_at";
 const SESSION_MARKER_VERSION = 1;
 const AUTH_STORAGE_KEY_PATTERN = /^sb-.*-auth-token$/;
-const blockedAuthInputError = new Error("Enter a valid email address.");
 export const GOOGLE_ONLY_ACCOUNT_CODE = "GOOGLE_ONLY_ACCOUNT";
 export const GOOGLE_ONLY_ACCOUNT_MESSAGE = "This account uses Google sign-in. Use Google to continue; password reset is not available for this account.";
 
-type AuthSession = NonNullable<Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]>;
 
-type PasswordUpdateRejectCode =
-  | "same_password"
-  | "weak_password"
-  | "session_expired"
-  | "rate_limited"
-  | "service_unavailable"
-  | "unknown";
+type AuthSession = NonNullable<Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]>;
 
 interface SessionMarker {
   version: number;
@@ -49,8 +39,6 @@ function writeSessionMarker(session: Pick<AuthSession, "user">, startedAtMs = Da
 }
 
 function touchSessionMarker(session: Pick<AuthSession, "user">, marker: { startedAtMs: number }) {
-  // Persist the most recent of (now, cross-tab activity timestamp) so that
-  // activity in any other tab is preserved into this tab's marker too.
   const lastActivityAtMs = Math.max(Date.now(), getLastActivityAt());
   sessionStorage.setItem(
     SESSION_STARTED_AT_KEY,
@@ -59,10 +47,6 @@ function touchSessionMarker(session: Pick<AuthSession, "user">, marker: { starte
 }
 
 function readSessionMarker(session: Pick<AuthSession, "user">): { startedAtMs: number; lastActivityAtMs: number; resetReason: string | null } {
-  // Real DOM activity (mouse, keyboard, scroll, video playback) ALWAYS wins
-  // over the stored marker — the marker is only refreshed when getSession()
-  // runs, but a user can be active for an hour without triggering that.
-  // 0 means "no activity ever observed yet" — treat fresh-tab as `now`.
   const liveActivity = getLastActivityAt();
   const freshDefault = liveActivity > 0 ? liveActivity : Date.now();
   const raw = sessionStorage.getItem(SESSION_STARTED_AT_KEY);
@@ -89,11 +73,8 @@ function isInvalidRefreshTokenError(error: unknown) {
 }
 
 function clearLocalAuthArtifacts(reason: "manual" | "refresh_invalid" | "jwt_corrupt" = "manual") {
-  // Single source of truth — delegate to the shared purger so every layer
-  // (bootstrap, fetch-guard, signin/signout, OAuth) clears the same keys.
   purgeLocalAuthState({ reason, source: "signout", silent: reason === "manual" });
 }
-
 
 function hasStoredAuthSession() {
   const url = new URL(window.location.href);
@@ -123,333 +104,20 @@ async function recoverFromInvalidRefreshToken(error: unknown, source: string) {
   await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
 }
 
-// `logAdminLoginIfElevated` moved to `src/features/auth/services/sign-in.service.ts`
-// alongside the active password-sign-in owner (AUTH-DIRECT-SIGNIN-004).
-
-
-
-async function readFunctionError(error: unknown): Promise<{ status?: number; message: string; code?: string }> {
-  const fallback = error instanceof Error ? error.message : String((error as { message?: string } | null | undefined)?.message ?? "Unknown error");
-  const directStatus = (error as { status?: unknown } | null | undefined)?.status;
-  const directCode = (error as { code?: unknown } | null | undefined)?.code;
-  const response = (error as { context?: { response?: Response } } | null | undefined)?.context?.response;
-  let message = fallback;
-  let code: string | undefined;
-  try {
-    const body = response ? await response.clone().json().catch(() => null) as { error?: string; message?: string; code?: string } | null : null;
-    message = body?.error || body?.message || fallback;
-    code = body?.code;
-  } catch {
-    // Use fallback message.
-  }
-  return {
-    status: response?.status ?? (typeof directStatus === "number" ? directStatus : undefined),
-    message,
-    code: code ?? (typeof directCode === "string" ? directCode : undefined),
-  };
-}
-
-function classifyPasswordUpdateError(err: { message?: string; code?: string; status?: number }): { code: PasswordUpdateRejectCode; message: string } {
-  const code = (err.code || "").toLowerCase();
-  const msg = (err.message || "").toLowerCase();
-
-  if (code === "same_password" || msg.includes("should be different from") || msg.includes("same as the old")) {
-    return { code: "same_password", message: "Pick a password you haven't used here before." };
-  }
-  if (code === "weak_password" || msg.includes("pwned") || msg.includes("breach") || msg.includes("weak password")) {
-    return { code: "weak_password", message: "This password appeared in a known data breach. Choose a different one." };
-  }
-  if (
-    code === "session_expired" ||
-    code === "session_not_found" ||
-    code === "no_authorization" ||
-    code === "bad_jwt" ||
-    code === "user_not_found" ||
-    err.status === 401 ||
-    msg.includes("auth session missing") ||
-    msg.includes("missing auth session") ||
-    msg.includes("not authenticated") ||
-    msg.includes("user from sub claim in jwt does not exist") ||
-    msg.includes("invalid claim") ||
-    (msg.includes("session") && (msg.includes("expired") || msg.includes("not found"))) ||
-    msg.includes("jwt expired")
-  ) {
-    return { code: "session_expired", message: "Your password reset link expired. Request a new one to continue." };
-  }
-  if (code === "over_request_rate_limit" || code === "rate_limited" || err.status === 429 || msg.includes("rate limit")) {
-    return { code: "rate_limited", message: "Too many attempts in a short time. Please wait a minute and try again." };
-  }
-  if (!err.status || err.status >= 500 || msg.includes("failed to fetch") || msg.includes("network")) {
-    return { code: "service_unavailable", message: "The password update service is temporarily unavailable. Please try again." };
-  }
-  return { code: "unknown", message: "We couldn't update your password. Please try again or request a new reset link." };
-}
-
-
 /**
- * AUTH-DIRECT-SIGNIN-004 (2026-06-12): `AuthService.signInWithPassword` was
- * deleted. The ONE password-sign-in owner is
- * `src/features/auth/services/sign-in.service.ts`, called by the active
- * login flow `src/features/auth/flows/sign-in-password.flow.ts`.
- * CI guard `scripts/ci/check-auth-direct-signin.mjs` blocks reintroduction.
+ * AUTH-DIRECT-SIGNIN-004 (2026-06-12): `AuthService.signInWithPassword` deleted.
+ * AUTH-ARCH-CUTOVER-007/008/009/010 (2026-06-15): signUp/resendSignupConfirmation/
+ * resetPassword/updatePassword/checkAccountIdentity moved to per-use-case services
+ * under `src/features/auth/services/`. AuthService keeps only session lifecycle
+ * helpers (getSession, signOut*, onAuthStateChange) — Ship 6 candidate.
  */
 export const AuthService = {
+  signUp: signUpService,
+  resendSignupConfirmation: resendSignupConfirmationService,
+  resetPassword: requestPasswordResetService,
+  checkAccountIdentity: checkAccountIdentityService,
+  updatePassword: completePasswordResetService,
 
-
-
-  async signUp(email: string, password: string, firstName: string, lastName: string, redirectTo: string, captchaToken: string, birthYear?: number) {
-    const parsedEmail = emailInputSchema.safeParse(email);
-    if (!parsedEmail.success || !passwordSchema.safeParse(password).success) {
-      throw blockedAuthInputError;
-    }
-    const safeCaptchaToken = captchaToken.trim();
-    if (!safeCaptchaToken) throw new Error("Complete the human verification before trying again.");
-    const safeEmail = parsedEmail.data;
-    const domainCheck = await validateEmailDomainExists(safeEmail);
-    if (!domainCheck.valid) throw new Error(domainCheck.message ?? "Use an email address with a real domain.");
-    void logAccountActivity("signup_attempt_started", { email: safeEmail, details: { hasName: Boolean(firstName && lastName) } });
-    return log.track("signUp", `Registering new user ${safeEmail}`, { email: safeEmail, firstName, lastName }, async () => {
-      const attempt = async () =>
-        supabase.auth.signUp({
-          email: safeEmail,
-          password,
-          options: {
-            data: {
-              full_name: `${firstName} ${lastName}`.trim(),
-              first_name: firstName,
-              last_name: lastName,
-              ...(birthYear ? { birth_year: birthYear } : {}),
-            },
-            emailRedirectTo: redirectTo,
-            captchaToken: safeCaptchaToken,
-          },
-        });
-
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Sign-up request timed out. Please try again.")), 30_000)
-      );
-
-      // Auto-retry once on transient 5xx / network blips before surfacing.
-      let lastErr: { message: string; status?: number; code?: string } | null = null;
-      let data: any = null;
-      for (let i = 0; i < 2; i++) {
-        try {
-          const res = await Promise.race([attempt(), timeoutPromise]);
-          if (!res.error) { data = res.data; lastErr = null; break; }
-          if (res.error.status === 429 || res.error.message.toLowerCase().includes("too many rapid auth attempts")) throw createAuthThrottleCaptchaError();
-          lastErr = { message: res.error.message, status: res.error.status, code: (res.error as any).code };
-          const transient = !res.error.status || res.error.status >= 500 || res.error.status === 0;
-          if (!transient) break;
-          await new Promise(r => setTimeout(r, 600 * (i + 1)));
-        } catch (networkErr: any) {
-          if (isAuthThrottleCaptchaError(networkErr)) throw networkErr;
-          // Catches the timeoutPromise rejection AND any fetch-level network failures (offline, DNS, CORS).
-          lastErr = { message: networkErr?.message ?? "Network error", status: 0 };
-          void logAccountActivity("signup_network_error", { email: safeEmail, errorMessage: lastErr.message });
-          break;
-        }
-      }
-
-      if (lastErr) {
-        // Persist the REAL Supabase error so admins can diagnose, but surface a friendly mapped message to the user.
-        log.error("signUp", `Registration failed for ${safeEmail}: [${lastErr.status ?? "?"}] ${lastErr.message}`,
-          { email: safeEmail, errorCode: lastErr.status, errorName: lastErr.code }, lastErr as Error);
-        void logAccountActivity("signup_supabase_error", {
-          email: safeEmail,
-          errorMessage: lastErr.message,
-          errorCode: lastErr.status ?? lastErr.code ?? "unknown",
-        });
-
-        const m = (lastErr.message || "").toLowerCase();
-        // Map common Supabase auth errors to actionable user messaging.
-        if (m.includes("already registered") || m.includes("already been registered") || m.includes("user already")) {
-          const e: any = new Error("ACCOUNT_EXISTS");
-          e.code = "ACCOUNT_EXISTS";
-          throw e;
-        }
-        if (m.includes("pwned") || m.includes("compromised")) {
-          throw new Error("This password has appeared in a known data breach. Please choose a different password.");
-        }
-        if (m.includes("weak") || m.includes("password should") || m.includes("password must")) {
-          throw new Error(`Password rejected: ${lastErr.message}`);
-        }
-        if (m.includes("rate") || lastErr.status === 429) {
-          throw new Error("Too many signup attempts from your network. Please wait a few minutes and try again.");
-        }
-        if (m.includes("invalid") && m.includes("email")) {
-          throw new Error("That email address looks invalid. Please double-check and try again.");
-        }
-        if (m.includes("signup") && m.includes("disabled")) {
-          throw new Error("Account creation is temporarily unavailable. Please contact support.");
-        }
-        if (lastErr.status && lastErr.status >= 500) {
-          throw new Error("The signup service is temporarily unavailable. Please try again in a minute.");
-        }
-        // Last-resort: surface the actual server message so the user (and we) can act on it.
-        throw new Error(lastErr.message || "Unable to create account. Please try again or use a different email.");
-      }
-
-      // Supabase anti-enumeration: when an email is already registered, the
-      // server returns a fake "success" with a user object whose identities
-      // array is empty and no session. Detect and surface as ACCOUNT_EXISTS so
-      // the UI can show a "sign in instead" CTA rather than a misleading
-      // "check your email" screen.
-      const looksLikeExistingUser =
-        data?.user &&
-        Array.isArray(data.user.identities) &&
-        data.user.identities.length === 0 &&
-        !data.session;
-      if (looksLikeExistingUser) {
-        log.info("signUp", `Signup blocked: account already exists for ${safeEmail}`, { email: safeEmail });
-        void logAccountActivity("signup_blocked_existing_account", { email: safeEmail });
-        const e: any = new Error("ACCOUNT_EXISTS");
-        e.code = "ACCOUNT_EXISTS";
-        throw e;
-      }
-
-      log.info("signUp", `User ${safeEmail} registered successfully, confirmation email sent`, {
-        userId: data?.user?.id,
-        confirmationRequired: !data?.session,
-      });
-      void logAccountActivity("signup_succeeded", {
-        email: safeEmail,
-        userId: data?.user?.id,
-        details: { confirmationRequired: !data?.session },
-      });
-      return data;
-    });
-  },
-
-  async resendSignupConfirmation(email: string, redirectTo: string, captchaToken: string) {
-    const parsedEmail = emailInputSchema.safeParse(email);
-    if (!parsedEmail.success) throw blockedAuthInputError;
-    const safeCaptchaToken = captchaToken.trim();
-    if (!safeCaptchaToken) throw new Error("Complete the human verification before trying again.");
-    const safeEmail = parsedEmail.data;
-    const domainCheck = await validateEmailDomainExists(safeEmail);
-    if (!domainCheck.valid) throw new Error(domainCheck.message ?? "Use an email address with a real domain.");
-    void logAccountActivity("signup_confirmation_resend_requested", { email: safeEmail });
-    return log.track("resendSignupConfirmation", `Requesting signup confirmation email for ${safeEmail}`, { email: safeEmail }, async () => {
-      const { error } = await supabase.auth.resend({
-        type: "signup",
-        email: safeEmail,
-        options: { emailRedirectTo: redirectTo, captchaToken: safeCaptchaToken },
-      });
-
-      if (error) {
-        log.warn("resendSignupConfirmation", `Confirmation resend failed for ${safeEmail}: ${error.message}`, { email: safeEmail, errorCode: error.status }, error);
-        void logAccountActivity("signup_confirmation_resend_failed", {
-          email: safeEmail,
-          errorMessage: error.message,
-          errorCode: error.status,
-        });
-
-        const message = error.message.toLowerCase();
-        if (message.includes("rate") || error.status === 429) {
-          throw new Error("Too many verification email requests. Please wait a few minutes and try again.");
-        }
-        throw new Error("We could not resend the verification email right now. Please try again in a minute.");
-      }
-
-      log.info("resendSignupConfirmation", `Confirmation resend accepted for ${safeEmail}`, { email: safeEmail });
-      void logAccountActivity("signup_confirmation_resend_succeeded", { email: safeEmail });
-    });
-  },
-
-  async resetPassword(email: string, redirectTo: string, captchaToken?: string) {
-    const parsedEmail = emailInputSchema.safeParse(email);
-    if (!parsedEmail.success) throw blockedAuthInputError;
-    const safeCaptchaToken = captchaToken?.trim();
-    if (captchaToken !== undefined && !safeCaptchaToken) throw new Error("Complete the human verification before trying again.");
-    const safeEmail = parsedEmail.data;
-    const domainCheck = await validateEmailDomainExists(safeEmail);
-    if (!domainCheck.valid) throw new Error(domainCheck.message ?? "Use an email address with a real domain.");
-    return log.track("resetPassword", `Sending password reset for ${safeEmail}`, { email: safeEmail }, async () => {
-      const identity = await AuthService.checkAccountIdentity(safeEmail, safeCaptchaToken);
-      if (identity.has_google && !identity.has_password) {
-        void logAccountActivity("password_reset_google_only_blocked", { email: safeEmail });
-        const err = new Error(GOOGLE_ONLY_ACCOUNT_MESSAGE) as Error & { code?: string };
-        err.code = GOOGLE_ONLY_ACCOUNT_CODE;
-        throw err;
-      }
-
-      const { error } = await supabase.auth.resetPasswordForEmail(safeEmail, {
-        redirectTo,
-        ...(safeCaptchaToken ? { captchaToken: safeCaptchaToken } : {}),
-      });
-      if (error) {
-        log.warn("resetPassword", `Password reset request failed for ${safeEmail}: ${error.message}`, { email: safeEmail }, error);
-        void logAccountActivity("password_reset_failed", { email: safeEmail, errorMessage: error.message, errorCode: error.status });
-        if (error.status === 429 || error.message.toLowerCase().includes("too many rapid auth attempts")) throw createAuthThrottleCaptchaError();
-        throw new Error("If an account exists with that email, a reset link has been sent.");
-      }
-      log.info("resetPassword", `Password reset email sent for ${safeEmail}`, { email: safeEmail });
-      void logAccountActivity("password_reset_requested", { email: safeEmail });
-    });
-  },
-
-  async checkAccountIdentity(email: string, captchaToken?: string): Promise<{ has_password: boolean; has_google: boolean }> {
-    const parsedEmail = emailInputSchema.safeParse(email);
-    if (!parsedEmail.success) return { has_password: false, has_google: false };
-    try {
-      const body: Record<string, string> = { email: parsedEmail.data };
-      const safeCaptchaToken = captchaToken?.trim();
-      if (safeCaptchaToken) body.captchaToken = safeCaptchaToken;
-      const { data, error } = await supabase.functions.invoke("check-account-identity", { body });
-      if (error || !data) return { has_password: true, has_google: false };
-      const r = data as { has_password?: boolean; has_google?: boolean };
-      return { has_password: r.has_password === true, has_google: r.has_google === true };
-    } catch {
-      return { has_password: true, has_google: false };
-    }
-  },
-
-  async updatePassword(passwordSet: PasswordSetValue): Promise<{ otherDevicesRevoked: boolean }> {
-    return log.track("updatePassword", "Updating user password", undefined, async () => {
-      const validation = validatePasswordSet(passwordSet);
-      if (!validation.isValid) {
-        const err = new Error(validation.passwordError || validation.confirmError) as Error & { code?: string };
-        err.code = "weak_password_client";
-        throw err;
-      }
-
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession().catch(() => ({
-        data: { session: null },
-        error: new Error("Recovery session lookup failed"),
-      }));
-      const accessToken = sessionData.session?.access_token?.trim();
-      if (sessionError || !accessToken) {
-        const expired = new Error("Your password reset link expired. Request a new one to continue.") as Error & { code?: string };
-        expired.code = "session_expired";
-        throw expired;
-      }
-
-      const { data, error } = await supabase.functions.invoke("finalize-password-reset", {
-        body: { password: passwordSet.password },
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      if (error) {
-        const fnError = await readFunctionError(error);
-        const classified = classifyPasswordUpdateError(fnError);
-        log.error("updatePassword", `Password update failed: ${fnError.message} [${classified.code}]`, { errorCode: classified.code || fnError.status });
-        const wrapped = new Error(classified.message) as Error & { code?: string };
-        wrapped.code = classified.code;
-        throw wrapped;
-      }
-
-      log.info("updatePassword", "Password updated successfully");
-      void logAccountActivity("password_updated", { details: { confirmed: true } });
-      await (async () => {
-        const { error: cleanupError } = await supabase.rpc("clear_own_auth_rate_limits_after_password_reset");
-        if (cleanupError) {
-          log.warn("updatePassword", `Rate-limit cleanup after reset failed: ${cleanupError.message}`);
-        }
-      })().catch((err) => {
-        log.warn("updatePassword", `Rate-limit cleanup after reset failed: ${(err as Error)?.message ?? String(err)}`);
-      });
-      return { otherDevicesRevoked: Boolean((data as { other_devices_revoked?: boolean } | null)?.other_devices_revoked) };
-    });
-  },
 
 
   async signOut() {

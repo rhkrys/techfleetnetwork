@@ -16,26 +16,29 @@
  */
 import { AuthService } from "@/services/auth.service";
 import { supabase } from "@/integrations/supabase/client";
+import { signUp as signUpService, resendSignupConfirmation as resendSignupConfirmationService } from "@/features/auth/services/sign-up.service";
+import { requestPasswordReset as requestPasswordResetService } from "@/features/auth/services/request-password-reset.service";
+import { completePasswordReset as completePasswordResetService } from "@/features/auth/services/complete-password-reset.service";
 
 export const sessionPort = {
-  /** GoTrue session bootstrap with idle-policy enforcement. */
+  /** GoTrue session bootstrap with idle-policy enforcement (still in AuthService — Ship 6 candidate). */
   getSession: AuthService.getSession.bind(AuthService),
-  /** GoTrue auth-state subscription (SIGNED_IN / SIGNED_OUT / TOKEN_REFRESHED / …). */
+  /** GoTrue auth-state subscription. */
   onAuthStateChange: AuthService.onAuthStateChange.bind(AuthService),
   /** Clears local sb-* tokens + session marker. Best-effort; never throws. */
   clearLocalAuthState: AuthService.clearLocalAuthState.bind(AuthService),
-  /** Single-device sign-out (this browser). */
+  /** Single-device sign-out. */
   signOut: AuthService.signOut.bind(AuthService),
   /** Global sign-out — revokes all refresh tokens for the user. */
   signOutAllDevices: AuthService.signOutAllDevices.bind(AuthService),
-  /** Triggers a password-reset email via Supabase + RateLimitService. */
-  resetPassword: AuthService.resetPassword.bind(AuthService),
-  /** Final step of the reset flow — calls update-password-confirmed edge fn. */
-  updatePassword: AuthService.updatePassword.bind(AuthService),
-  /** New-account sign-up (email/password + captcha + metadata). */
-  signUp: AuthService.signUp.bind(AuthService),
-  /** Resend the email-confirmation link to a not-yet-verified account. */
-  resendSignupConfirmation: AuthService.resendSignupConfirmation.bind(AuthService),
+  /** AUTH-ARCH-CUTOVER-008: now owned by request-password-reset.service. */
+  resetPassword: requestPasswordResetService,
+  /** AUTH-ARCH-CUTOVER-010: now owned by complete-password-reset.service. */
+  updatePassword: completePasswordResetService,
+  /** AUTH-ARCH-CUTOVER-007: now owned by sign-up.service. */
+  signUp: signUpService,
+  /** AUTH-ARCH-CUTOVER-007: now owned by sign-up.service. */
+  resendSignupConfirmation: resendSignupConfirmationService,
   /** Re-validate the active member against GoTrue. */
   getUser: () => supabase.auth.getUser(),
   /** Verify a one-time recovery token (password-reset email link). */

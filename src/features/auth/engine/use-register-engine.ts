@@ -318,7 +318,14 @@ export function useRegisterEngine(): RegisterEngine {
       setResendStatus("success");
       setResendMessage("If this email is still waiting for verification, a fresh link has been sent. Check your inbox and spam folder.");
     } catch (err) {
-      const e = err as { message?: string };
+      const e = err as { message?: string; status?: number; code?: string };
+      // AUTH-ARCH-CUTOVER-011: never swallow — record the delivery-unverified
+      // event so a silent resend outage is observable in ops.
+      telemetryPort.record("auth_engine.resend_confirmation_email_delivery_unverified", {
+        email,
+        code: e?.code ?? "unknown",
+        status: e?.status ?? null,
+      });
       setResendStatus("error");
       setResendMessage(e?.message ?? "We could not resend the verification email right now. Please try again in a minute.");
     } finally {

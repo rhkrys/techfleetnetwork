@@ -36,6 +36,8 @@ export type AuthEngineKind =
   | "auth_engine.reset_started"
   | "auth_engine.reset_succeeded"
   | "auth_engine.reset_failed"
+  // AUTH-ARCH-CUTOVER-011 — typed resend outcome.
+  | "auth_engine.resend_confirmation_email_delivery_unverified"
   | "auth_engine.bad_jwt_transient";
 
 export function recordAuthEngineEvent(
