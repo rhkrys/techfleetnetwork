@@ -7617,6 +7617,7 @@ export type Database = {
         Args: { p_cohort_id: string; p_reason: string }
         Returns: undefined
       }
+      check_auth_email_delivery_contract: { Args: never; Returns: Json }
       check_chat_system_rate_limit: { Args: never; Returns: Json }
       check_fleety_user_quota: {
         Args: { _user_id: string }

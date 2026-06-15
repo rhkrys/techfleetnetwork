@@ -185,6 +185,9 @@ jobs:
       - name: Verify legacy src/services/auth.service.ts stays deleted (AUTH-ARCH-CUTOVER-015)
         run: node scripts/ci/check-no-legacy-auth-service.mjs
 
+      - name: Verify auth screens only import their engine (AUTH-ARCH-CUTOVER-022)
+        run: node scripts/ci/check-auth-screen-imports.mjs
+
 
 
 
