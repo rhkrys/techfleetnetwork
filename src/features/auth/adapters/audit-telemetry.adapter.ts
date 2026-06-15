@@ -25,6 +25,14 @@ export type AuthEngineKind =
   | "auth_engine.forgot_started"
   | "auth_engine.forgot_succeeded"
   | "auth_engine.forgot_failed"
+  // AUTH-ARCH-CUTOVER-003 — typed forgot-password outcomes. The UI still shows
+  // the constant-shape success screen (anti-enumeration), but engines emit
+  // distinct telemetry so ops can detect silent delivery / throttle failures.
+  | "auth_engine.forgot_accepted"
+  | "auth_engine.forgot_email_delivery_unverified"
+  | "auth_engine.forgot_rate_limited"
+  | "auth_engine.forgot_google_only_blocked"
+  | "auth_engine.forgot_validation_rejected"
   | "auth_engine.reset_started"
   | "auth_engine.reset_succeeded"
   | "auth_engine.reset_failed"

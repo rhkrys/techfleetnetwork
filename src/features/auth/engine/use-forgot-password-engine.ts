@@ -65,6 +65,7 @@ export function useForgotPasswordEngine(): ForgotPasswordEngine {
     const result = emailInputSchema.safeParse(email);
     if (!result.success) {
       reportValidationRejection("emailInputSchema", result.error.issues, "ForgotPasswordScreen.handleSubmit");
+      telemetryPort.record("auth_engine.forgot_validation_rejected", { reason: "email_format" });
       setError(result.error.issues[0].message);
       const nextLockout = applyInvalidAttempt();
       setLockoutState(nextLockout);
@@ -73,6 +74,7 @@ export function useForgotPasswordEngine(): ForgotPasswordEngine {
     }
     const domainCheck = await validateEmailDomainExists(result.data);
     if (!domainCheck.valid) {
+      telemetryPort.record("auth_engine.forgot_validation_rejected", { reason: "email_domain" });
       setError(domainCheck.message ?? "Use an email address with a real domain.");
       const nextLockout = applyInvalidAttempt();
       setLockoutState(nextLockout);
@@ -96,27 +98,33 @@ export function useForgotPasswordEngine(): ForgotPasswordEngine {
       const rateCheck = await RateLimitService.peek(result.data, "password_reset");
       if (!rateCheck.allowed) {
         const minutes = Math.ceil(rateCheck.retry_after / 60);
+        telemetryPort.record("auth_engine.forgot_rate_limited", { email: result.data, retry_after_sec: rateCheck.retry_after, source: "client_peek" });
         setError(`Too many requests. Please try again in ${minutes} minute${minutes > 1 ? "s" : ""}.`);
         setLoading(false);
         return;
       }
       await sessionPort.resetPassword(result.data, `${getCanonicalAppOrigin()}/reset-password`, captchaToken);
       clearAuthLockout();
+      // AUTH-ARCH-CUTOVER-003: backend accepted the request. We do NOT change
+      // the UI copy (anti-enumeration must hold), but ops now sees a distinct
+      // `forgot_accepted` event so a silent delivery outage is observable.
+      telemetryPort.record("auth_engine.forgot_accepted", { email: result.data });
       telemetryPort.record("auth_engine.forgot_succeeded", { email: result.data });
       setSubmitted(true);
     } catch (err) {
       const code = (err as { code?: string } | null | undefined)?.code;
-      telemetryPort.record("auth_engine.forgot_failed", { email: result.data, code: code ?? "unknown" });
       const status = (err as { status?: number } | null | undefined)?.status;
       const message = (err as { message?: string } | null | undefined)?.message ?? "";
       setCaptchaToken("");
       setCaptchaSoftResetCount((c) => c + 1);
       if (code === GOOGLE_ONLY_ACCOUNT_CODE) {
+        telemetryPort.record("auth_engine.forgot_google_only_blocked", { email: result.data });
         setError(GOOGLE_ONLY_ACCOUNT_MESSAGE);
         return;
       }
       if (isAuthThrottleCaptchaError(err)) {
         telemetryPort.captcha("auth_captcha_fetch_blocked", { surface: "forgot_password", reason: "client_auth_throttle_429" });
+        telemetryPort.record("auth_engine.forgot_rate_limited", { email: result.data, source: "auth_throttle_429" });
         setCaptchaState(refreshLoginCaptcha());
         setError(err.message);
         return;
@@ -124,6 +132,19 @@ export function useForgotPasswordEngine(): ForgotPasswordEngine {
       const isBackendRateLimit = status === 429 || /too many|rate limit/i.test(message);
       if (isBackendRateLimit) {
         applyServerRateLimitFailure(result.data, "password_reset");
+        telemetryPort.record("auth_engine.forgot_rate_limited", { email: result.data, source: "backend", status: status ?? null });
+      } else {
+        // AUTH-ARCH-CUTOVER-003: the backend rejected the reset request and it
+        // was NOT a known rate-limit. The user still sees the success screen
+        // (anti-enumeration), but ops gets an explicit delivery-unverified
+        // signal so the auth-email-hook outage class (June 11–15, 2026)
+        // surfaces immediately instead of being swallowed.
+        telemetryPort.record("auth_engine.forgot_email_delivery_unverified", {
+          email: result.data,
+          code: code ?? "unknown",
+          status: status ?? null,
+        });
+        telemetryPort.record("auth_engine.forgot_failed", { email: result.data, code: code ?? "unknown" });
       }
       // Email-enumeration guard: always show success.
       setSubmitted(true);

@@ -173,6 +173,13 @@ jobs:
       - name: Verify legacy auth importer allowlist (Ship 5 of auth rebuild)
         run: node scripts/ci/check-legacy-auth-importers.mjs
 
+      - name: Verify single Google OAuth entrypoint (AUTH-ARCH-CUTOVER-004)
+        run: node scripts/ci/check-no-direct-google-oauth.mjs
+
+      - name: Verify password sign-in single owner (AUTH-DIRECT-SIGNIN)
+        run: node scripts/ci/check-auth-direct-signin.mjs
+
+
 
 
       - name: Verify no opaque "Script error." rows landed in last 24h

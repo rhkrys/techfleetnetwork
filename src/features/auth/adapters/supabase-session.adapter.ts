@@ -41,13 +41,10 @@ export const supabaseSessionAdapter = {
     });
   },
 
-  /** OAuth handoff to Google. */
-  signInGoogle(redirectTo: string) {
-    return supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo },
-    });
-  },
+  // AUTH-ARCH-CUTOVER-004: Google OAuth has exactly ONE entrypoint —
+  // `<GoogleSignInButton/>` calling the managed-OAuth helper.
+  // The previous `signInGoogle` helper here is intentionally removed.
+  // Adding it back will fail `scripts/ci/check-no-direct-google-oauth.mjs`.
 
   /** New-account sign-up. */
   signUp({ email, password, captchaToken, emailRedirectTo, data }: SignUpInput) {
