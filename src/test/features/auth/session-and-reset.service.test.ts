@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { sessionService } from "@/features/auth/services/session.service";
 import { requestPasswordReset } from "@/features/auth/services/request-password-reset.service";
 import { completePasswordReset } from "@/features/auth/services/complete-password-reset.service";
-const AuthService = { ...sessionService, resetPassword: requestPasswordReset, updatePassword: completePasswordReset } as any;
+const authPort = { ...sessionService, resetPassword: requestPasswordReset, updatePassword: completePasswordReset } as any;
 import { supabase } from "@/integrations/supabase/client";
 import { logAccountActivity } from "@/lib/account-activity";
 
@@ -57,7 +57,7 @@ const makeSession = (userId: string, issuedAgoMs = 60_000) => ({
   },
 });
 
-describe("AuthService session max-age marker", () => {
+describe("authPort session max-age marker", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(supabase.auth.getSession).mockReset();
@@ -75,17 +75,17 @@ describe("AuthService session max-age marker", () => {
     } as never);
   });
 
-  it("AUTH-DIRECT-SIGNIN-004: removed AuthService.signInWithPassword (sign-in.service is the owner)", () => {
+  it("AUTH-DIRECT-SIGNIN-004: removed authPort.signInWithPassword (sign-in.service is the owner)", () => {
     // The active /login form routes through `signInWithPasswordService`.
-    // AuthService must not regrow a sign-in method (CI-guarded by
+    // authPort must not regrow a sign-in method (CI-guarded by
     // `scripts/ci/check-auth-direct-signin.mjs`).
-    expect((AuthService as unknown as { signInWithPassword?: unknown }).signInWithPassword).toBeUndefined();
+    expect((authPort as unknown as { signInWithPassword?: unknown }).signInWithPassword).toBeUndefined();
   });
 
 
 
   it("AUTH-RESET-010: refuses mismatched password updates before backend call", async () => {
-    await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass124!" })).rejects.toThrow(/passwords do not match/i);
+    await expect(authPort.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass124!" })).rejects.toThrow(/passwords do not match/i);
     expect(supabase.functions.invoke).not.toHaveBeenCalledWith("update-password-confirmed", expect.anything());
     expect(supabase.auth.updateUser).not.toHaveBeenCalled();
   });
@@ -93,7 +93,7 @@ describe("AuthService session max-age marker", () => {
   it("AUTH-RESET-011: finalizes confirmed recovery passwords server-side and revokes other sessions", async () => {
     vi.mocked(supabase.functions.invoke).mockResolvedValue({ data: { other_devices_revoked: true }, error: null });
 
-    await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).resolves.toEqual({ otherDevicesRevoked: true });
+    await expect(authPort.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).resolves.toEqual({ otherDevicesRevoked: true });
 
     expect(supabase.auth.updateUser).not.toHaveBeenCalled();
     expect(supabase.functions.invoke).toHaveBeenCalledWith("finalize-password-reset", {
@@ -106,7 +106,7 @@ describe("AuthService session max-age marker", () => {
   it("AUTH-RESET-GOOGLE-ONLY-001: blocks Google-only reset before the password reset service", async () => {
     vi.mocked(supabase.functions.invoke).mockResolvedValue({ data: { has_google: true, has_password: false }, error: null });
 
-    await expect(AuthService.resetPassword("google@example.com", "https://techfleet.network/reset-password", "valid-turnstile-token-with-enough-length")).rejects.toThrow(/Google sign-in/i);
+    await expect(authPort.resetPassword("google@example.com", "https://techfleet.network/reset-password", "valid-turnstile-token-with-enough-length")).rejects.toThrow(/Google sign-in/i);
 
     expect(supabase.auth.resetPasswordForEmail).not.toHaveBeenCalled();
     expect(logAccountActivity).toHaveBeenCalledWith("password_reset_google_only_blocked", { email: "google@example.com" });
@@ -116,7 +116,7 @@ describe("AuthService session max-age marker", () => {
     vi.mocked(supabase.functions.invoke).mockResolvedValue({ data: { has_google: false, has_password: true }, error: null });
     vi.mocked(supabase.auth.resetPasswordForEmail).mockResolvedValue({ data: {}, error: null });
 
-    await expect(AuthService.resetPassword("member@example.com", "https://techfleet.network/reset-password", "valid-turnstile-token-with-enough-length")).resolves.toBeUndefined();
+    await expect(authPort.resetPassword("member@example.com", "https://techfleet.network/reset-password", "valid-turnstile-token-with-enough-length")).resolves.toBeUndefined();
 
     expect(supabase.auth.resetPasswordForEmail).toHaveBeenCalledWith("member@example.com", {
       redirectTo: "https://techfleet.network/reset-password",
@@ -128,7 +128,7 @@ describe("AuthService session max-age marker", () => {
   it("AUTH-RESET-TRANSIENT-001: treats password update transport failures as service unavailable", async () => {
     vi.mocked(supabase.functions.invoke).mockResolvedValue({ data: null, error: { message: "Failed to fetch", status: 0 } });
 
-    await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).rejects.toMatchObject({ code: "service_unavailable" });
+    await expect(authPort.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).rejects.toMatchObject({ code: "service_unavailable" });
 
     expect(supabase.functions.invoke).toHaveBeenCalledWith("finalize-password-reset", expect.objectContaining({
       body: { password: "StrongPass123!" },
@@ -139,7 +139,7 @@ describe("AuthService session max-age marker", () => {
   it("AUTH-RESET-SESSION-002: maps missing recovery session to expired link", async () => {
     vi.mocked(supabase.functions.invoke).mockResolvedValue({ data: null, error: { message: "Auth session missing", status: 401 } });
 
-    await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).rejects.toMatchObject({ code: "session_expired" });
+    await expect(authPort.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).rejects.toMatchObject({ code: "session_expired" });
 
     expect(supabase.functions.invoke).toHaveBeenCalledWith("finalize-password-reset", expect.objectContaining({
       body: { password: "StrongPass123!" },
@@ -150,7 +150,7 @@ describe("AuthService session max-age marker", () => {
   it("AUTH-RESET-025: refuses to finalize when the recovery session is missing", async () => {
     vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: null }, error: null });
 
-    await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).rejects.toMatchObject({ code: "session_expired" });
+    await expect(authPort.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).rejects.toMatchObject({ code: "session_expired" });
 
     expect(supabase.functions.invoke).not.toHaveBeenCalledWith("finalize-password-reset", expect.anything());
   });
@@ -160,7 +160,7 @@ describe("AuthService session max-age marker", () => {
     vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session }, error: null });
     vi.mocked(supabase.functions.invoke).mockResolvedValue({ data: { other_devices_revoked: false }, error: null });
 
-    await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).resolves.toEqual({ otherDevicesRevoked: false });
+    await expect(authPort.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).resolves.toEqual({ otherDevicesRevoked: false });
 
     expect(supabase.functions.invoke).toHaveBeenCalledWith("finalize-password-reset", {
       body: { password: "StrongPass123!" },
@@ -170,12 +170,12 @@ describe("AuthService session max-age marker", () => {
 
   it("AUTH-RESET-SESSION-005: maps 'User from sub claim in JWT does not exist' to session_expired", async () => {
     vi.mocked(supabase.functions.invoke).mockResolvedValue({ data: null, error: { message: "User from sub claim in JWT does not exist", status: 403 } });
-    await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).rejects.toMatchObject({ code: "session_expired" });
+    await expect(authPort.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).rejects.toMatchObject({ code: "session_expired" });
   });
 
   it("AUTH-RESET-SESSION-006: maps 'JWT expired' to session_expired (not service_unavailable)", async () => {
     vi.mocked(supabase.functions.invoke).mockResolvedValue({ data: null, error: { message: "JWT expired", status: 401 } });
-    await expect(AuthService.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).rejects.toMatchObject({ code: "session_expired" });
+    await expect(authPort.updatePassword({ password: "StrongPass123!", confirmPassword: "StrongPass123!" })).rejects.toMatchObject({ code: "session_expired" });
   });
 
 
@@ -186,7 +186,7 @@ describe("AuthService session max-age marker", () => {
     sessionStorage.setItem("session_started_at", JSON.stringify({ version: 1, userId: "different-user", startedAtMs: Date.now() - 5 * 60 * 60 * 1000 }));
     vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session }, error: null });
 
-    await expect(AuthService.getSession()).resolves.toEqual(session);
+    await expect(authPort.getSession()).resolves.toEqual(session);
     expect(supabase.auth.signOut).not.toHaveBeenCalled();
     expect(JSON.parse(sessionStorage.getItem("session_started_at") ?? "{}")).toMatchObject({ userId: "current-user" });
   });
@@ -197,7 +197,7 @@ describe("AuthService session max-age marker", () => {
     sessionStorage.setItem("session_started_at", String(Date.now() - 5 * 60 * 60 * 1000));
     vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session }, error: null });
 
-    await expect(AuthService.getSession()).resolves.toEqual(session);
+    await expect(authPort.getSession()).resolves.toEqual(session);
     expect(supabase.auth.signOut).not.toHaveBeenCalled();
     expect(JSON.parse(sessionStorage.getItem("session_started_at") ?? "{}")).toMatchObject({ userId: "legacy-user" });
   });
@@ -211,7 +211,7 @@ describe("AuthService session max-age marker", () => {
     );
     vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session }, error: null });
 
-    await expect(AuthService.getSession()).resolves.toBeNull();
+    await expect(authPort.getSession()).resolves.toBeNull();
     expect(supabase.auth.signOut).toHaveBeenCalledOnce();
   });
 
@@ -224,7 +224,7 @@ describe("AuthService session max-age marker", () => {
     );
     vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session }, error: null });
 
-    await expect(AuthService.getSession()).resolves.toBeNull();
+    await expect(authPort.getSession()).resolves.toBeNull();
     expect(supabase.auth.signOut).toHaveBeenCalledOnce();
     expect(logAccountActivity).toHaveBeenCalledWith("session_idle_timeout", expect.objectContaining({ userId: "idle-user" }));
   });
@@ -241,19 +241,19 @@ describe("AuthService session max-age marker", () => {
     );
     vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session }, error: null });
 
-    await expect(AuthService.getSession()).resolves.toEqual(session);
+    await expect(authPort.getSession()).resolves.toEqual(session);
     expect(supabase.auth.signOut).not.toHaveBeenCalled();
   });
 
   it("does not call the backend when no auth token is stored locally", async () => {
-    await expect(AuthService.getSession()).resolves.toBeNull();
+    await expect(authPort.getSession()).resolves.toBeNull();
     expect(supabase.auth.getSession).not.toHaveBeenCalled();
   });
 
   it("blocks direct OAuth callback URLs unless OAuth was initiated from the UI", async () => {
     window.history.replaceState({}, "", "/?code=direct-oauth-code");
 
-    await expect(AuthService.getSession()).resolves.toBeNull();
+    await expect(authPort.getSession()).resolves.toBeNull();
     expect(supabase.auth.getSession).not.toHaveBeenCalled();
     expect(window.location.search).toBe("");
   });
@@ -266,7 +266,7 @@ describe("AuthService session max-age marker", () => {
       error: { message: "Invalid Refresh Token: Refresh Token Not Found", status: 400 },
     });
 
-    await expect(AuthService.getSession()).resolves.toBeNull();
+    await expect(authPort.getSession()).resolves.toBeNull();
     expect(localStorage.getItem("sb-project-auth-token")).toBeNull();
     expect(sessionStorage.getItem("session_started_at")).toBeNull();
     expect(supabase.auth.signOut).toHaveBeenCalledWith({ scope: "local" });
@@ -278,7 +278,7 @@ describe("AuthService session max-age marker", () => {
     sessionStorage.setItem("session_started_at", JSON.stringify({ version: 1, userId: "user", startedAtMs: Date.now() }));
     vi.mocked(supabase.auth.getSession).mockRejectedValue(new Error("Invalid Refresh Token: refresh token already used"));
 
-    await expect(AuthService.getSession()).resolves.toBeNull();
+    await expect(authPort.getSession()).resolves.toBeNull();
     expect(localStorage.getItem("sb-project-auth-token")).toBeNull();
     expect(sessionStorage.getItem("sb-project-auth-token")).toBeNull();
     expect(sessionStorage.getItem("session_started_at")).toBeNull();
