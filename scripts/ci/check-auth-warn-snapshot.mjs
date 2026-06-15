@@ -26,11 +26,19 @@ const RULES = [
 ];
 
 function collect() {
-  const raw = execSync("npx eslint src/ -f json", {
-    encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024,
-    stdio: ["ignore", "pipe", "ignore"],
-  });
+  let raw;
+  try {
+    raw = execSync("npx eslint src/ -f json", {
+      encoding: "utf8",
+      maxBuffer: 256 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  } catch (e) {
+    // ESLint exits non-zero when it finds error-level rule violations. We only
+    // care about parsing its JSON report; surface stdout regardless of exit.
+    raw = e.stdout ? e.stdout.toString() : "";
+    if (!raw) throw e;
+  }
   const data = JSON.parse(raw);
   const counts = {};
   for (const f of data) {
@@ -48,6 +56,7 @@ function collect() {
       return a;
     }, {});
 }
+
 
 const current = collect();
 
