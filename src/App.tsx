@@ -240,6 +240,12 @@ const App = () => (
                     <Route path="/forgot-password" element={<ForgotPasswordPage />} />
                     <Route path="/reset-password" element={<ResetPasswordPage />} />
                     <Route path="/reset-password/confirm" element={<ConfirmRecoveryLinkPage />} />
+                    {/* AUTH-ARCH-CUTOVER-002: legacy reset links generated before
+                        2026-06-11 pointed at /reset-password/<anything>. Any
+                        unrecognized sub-path forwards to the live ResetPasswordScreen
+                        with the original query/hash preserved so the token still
+                        verifies instead of 404'ing. */}
+                    <Route path="/reset-password/*" element={<ResetPasswordPage />} />
                     <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
                     <Route path="/profile-setup" element={<ProtectedRoute><ProfileSetupPage /></ProtectedRoute>} />
                     <Route path="/welcome" element={<ProtectedRoute><WelcomeWizard /></ProtectedRoute>} />

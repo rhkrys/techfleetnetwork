@@ -26,6 +26,13 @@ const ALLOWED_KINDS = new Set<string>([
   "auth_engine.forgot_started",
   "auth_engine.forgot_succeeded",
   "auth_engine.forgot_failed",
+  // AUTH-ARCH-CUTOVER-003 — typed forgot-password outcomes so anti-enumeration
+  // UI copy stays intact while ops gets distinct evidence of upstream failures.
+  "auth_engine.forgot_accepted",
+  "auth_engine.forgot_email_delivery_unverified",
+  "auth_engine.forgot_rate_limited",
+  "auth_engine.forgot_google_only_blocked",
+  "auth_engine.forgot_validation_rejected",
   "auth_engine.reset_started",
   "auth_engine.reset_succeeded",
   "auth_engine.reset_failed",
