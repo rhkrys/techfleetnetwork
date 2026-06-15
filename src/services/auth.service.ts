@@ -3,26 +3,24 @@ import { createLogger } from "@/services/logger.service";
 import { logAccountActivity } from "@/lib/account-activity";
 import { getSessionPolicyFailureReason } from "@/lib/security";
 import { clearOAuthUiMarker, hasFreshOAuthUiMarker, isRootOAuthCallback, stripRootOAuthCallbackUrl } from "@/lib/oauth-ui-guard";
-import { emailInputSchema, passwordSchema } from "@/lib/validators/auth";
-import { validatePasswordSet, type PasswordSetValue } from "@/lib/auth/password-set";
-import { createAuthThrottleCaptchaError, isAuthThrottleCaptchaError } from "@/lib/auth-throttle-captcha";
-import { validateEmailDomainExists } from "@/lib/email-domain-validation";
 import { getLastActivityAt } from "@/lib/session-activity";
-import { classifyAuthError, ClientSessionWriteError, purgeLocalAuthState } from "@/lib/auth/session-health";
-
+import { classifyAuthError, purgeLocalAuthState } from "@/lib/auth/session-health";
+// AUTH-ARCH-CUTOVER-007/008/009/010 (2026-06-15) — auth use-case logic moved
+// out of this file. New code MUST import sessionPort or the service directly.
+import { signUp as signUpService, resendSignupConfirmation as resendSignupConfirmationService } from "@/features/auth/services/sign-up.service";
+import { requestPasswordReset as requestPasswordResetService } from "@/features/auth/services/request-password-reset.service";
+import { completePasswordReset as completePasswordResetService } from "@/features/auth/services/complete-password-reset.service";
+import { checkAccountIdentity as checkAccountIdentityService } from "@/features/auth/services/identity-hint.service";
 
 const log = createLogger("AuthService");
-// Per product policy: users should only be signed out after 1 hour of inactivity.
-// No absolute max-age cutoff — set to effectively unbounded so it never triggers
-// a mid-session logout on its own. Idle timeout is the only client-side enforced policy.
 const MAX_SESSION_AGE_MS = Number.POSITIVE_INFINITY;
 const IDLE_SESSION_AGE_MS = 60 * 60 * 1000; // 1 hour
 const SESSION_STARTED_AT_KEY = "session_started_at";
 const SESSION_MARKER_VERSION = 1;
 const AUTH_STORAGE_KEY_PATTERN = /^sb-.*-auth-token$/;
-const blockedAuthInputError = new Error("Enter a valid email address.");
 export const GOOGLE_ONLY_ACCOUNT_CODE = "GOOGLE_ONLY_ACCOUNT";
 export const GOOGLE_ONLY_ACCOUNT_MESSAGE = "This account uses Google sign-in. Use Google to continue; password reset is not available for this account.";
+
 
 type AuthSession = NonNullable<Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]>;
 
