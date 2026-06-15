@@ -30,8 +30,11 @@ const checks = [
   { file: "src/features/auth/flows/sign-in-password.flow.ts", forbidden: FORBIDDEN_IN_ACTIVE_PATH },
   { file: "src/features/auth/engine/use-sign-in-engine.ts", forbidden: FORBIDDEN_IN_ACTIVE_PATH },
   { file: "src/features/auth/ui/SignInScreen.tsx", forbidden: FORBIDDEN_IN_ACTIVE_PATH },
-  // The legacy AuthService must NOT regrow a signInWithPassword method.
-  { file: "src/services/auth.service.ts", forbidden: ["async signInWithPassword(", "signInWithPassword:"] },
+  // AUTH-ARCH-CUTOVER-013..015 (2026-06-15): the legacy
+  // `src/services/auth.service.ts` is deleted; deletion is locked by
+  // `scripts/ci/check-no-legacy-auth-service.mjs`. The session lifecycle
+  // owner (`session.service.ts`) must never regrow a password sign-in.
+  { file: "src/features/auth/services/session.service.ts", forbidden: ["signInWithPassword"] },
 ];
 
 function stripComments(src) {

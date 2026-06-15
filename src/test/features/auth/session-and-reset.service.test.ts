@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AuthService } from "@/services/auth.service";
+import { sessionService } from "@/features/auth/services/session.service";
+import { requestPasswordReset } from "@/features/auth/services/request-password-reset.service";
+import { completePasswordReset } from "@/features/auth/services/complete-password-reset.service";
+const AuthService = { ...sessionService, resetPassword: requestPasswordReset, updatePassword: completePasswordReset } as any;
 import { supabase } from "@/integrations/supabase/client";
 import { logAccountActivity } from "@/lib/account-activity";
 

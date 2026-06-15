@@ -1,26 +1,39 @@
+/**
+ * AUTH-ARCH-CUTOVER-013 (2026-06-15) — Session lifecycle service.
+ *
+ * Owns ONLY session lifecycle:
+ *   - getSession (with idle-policy + server-side revocation enforcement)
+ *   - onAuthStateChange
+ *   - signOut (single device)
+ *   - signOutAllDevices (revoke-all via edge fn)
+ *   - clearLocalAuthState (best-effort local purge)
+ *
+ * Does NOT own: sign-up, sign-in, password reset, identity hint, MFA. Those
+ * live in dedicated per-use-case services under `src/features/auth/services/`.
+ *
+ * Physical successor to the deleted `src/services/auth.service.ts` (the
+ * 625-line mixed-responsibility legacy file). Importers go through
+ * `sessionPort` (see `src/features/auth/ports/session.port.ts`).
+ */
 import { supabase } from "@/integrations/supabase/client";
 import { createLogger } from "@/services/logger.service";
 import { logAccountActivity } from "@/lib/account-activity";
 import { getSessionPolicyFailureReason } from "@/lib/security";
-import { clearOAuthUiMarker, hasFreshOAuthUiMarker, isRootOAuthCallback, stripRootOAuthCallbackUrl } from "@/lib/oauth-ui-guard";
+import {
+  clearOAuthUiMarker,
+  hasFreshOAuthUiMarker,
+  isRootOAuthCallback,
+  stripRootOAuthCallbackUrl,
+} from "@/lib/oauth-ui-guard";
 import { getLastActivityAt } from "@/lib/session-activity";
 import { classifyAuthError, purgeLocalAuthState } from "@/lib/auth/session-health";
-// AUTH-ARCH-CUTOVER-007/008/009/010 (2026-06-15) — auth use-case logic moved
-// out of this file. New code MUST import sessionPort or the service directly.
-import { signUp as signUpService, resendSignupConfirmation as resendSignupConfirmationService } from "@/features/auth/services/sign-up.service";
-import { requestPasswordReset as requestPasswordResetService } from "@/features/auth/services/request-password-reset.service";
-import { completePasswordReset as completePasswordResetService } from "@/features/auth/services/complete-password-reset.service";
-import { checkAccountIdentity as checkAccountIdentityService } from "@/features/auth/services/identity-hint.service";
 
-const log = createLogger("AuthService");
+const log = createLogger("SessionService");
 const MAX_SESSION_AGE_MS = Number.POSITIVE_INFINITY;
 const IDLE_SESSION_AGE_MS = 60 * 60 * 1000; // 1 hour
 const SESSION_STARTED_AT_KEY = "session_started_at";
 const SESSION_MARKER_VERSION = 1;
 const AUTH_STORAGE_KEY_PATTERN = /^sb-.*-auth-token$/;
-export const GOOGLE_ONLY_ACCOUNT_CODE = "GOOGLE_ONLY_ACCOUNT";
-export const GOOGLE_ONLY_ACCOUNT_MESSAGE = "This account uses Google sign-in. Use Google to continue; password reset is not available for this account.";
-
 
 type AuthSession = NonNullable<Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]>;
 
@@ -104,22 +117,7 @@ async function recoverFromInvalidRefreshToken(error: unknown, source: string) {
   await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
 }
 
-/**
- * AUTH-DIRECT-SIGNIN-004 (2026-06-12): `AuthService.signInWithPassword` deleted.
- * AUTH-ARCH-CUTOVER-007/008/009/010 (2026-06-15): signUp/resendSignupConfirmation/
- * resetPassword/updatePassword/checkAccountIdentity moved to per-use-case services
- * under `src/features/auth/services/`. AuthService keeps only session lifecycle
- * helpers (getSession, signOut*, onAuthStateChange) — Ship 6 candidate.
- */
-export const AuthService = {
-  signUp: signUpService,
-  resendSignupConfirmation: resendSignupConfirmationService,
-  resetPassword: requestPasswordResetService,
-  checkAccountIdentity: checkAccountIdentityService,
-  updatePassword: completePasswordResetService,
-
-
-
+export const sessionService = {
   async signOut() {
     log.info("signOut", "Signing out user");
     clearLocalAuthArtifacts();
@@ -156,8 +154,6 @@ export const AuthService = {
           body: { keep_current: keepCurrent, reason },
         });
         if (error) {
-          // Non-fatal: surface as warning so password reset / settings flows
-          // never get blocked by transient GoTrue / network errors.
           log.warn("signOutAllDevices", `Edge revoke returned error: ${error.message}`, undefined, error);
           void logAccountActivity("signout_local", { errorMessage: error.message });
         } else {
@@ -216,15 +212,11 @@ export const AuthService = {
     }
 
     if (data.session) {
-      let currentTokenIssuedAtMs = Date.now();
-      // Server-side revocation check: if an admin or auto-detection revoked sessions
-      // after this token was issued, force sign-out immediately.
       try {
         const issuedAt = new Date((data.session as { user: { created_at?: string } }).user.created_at ?? data.session.user.last_sign_in_at ?? new Date().toISOString());
         const tokenIssuedAt = data.session.expires_at
           ? new Date((data.session.expires_at - (data.session.expires_in ?? 600)) * 1000)
           : issuedAt;
-        currentTokenIssuedAtMs = tokenIssuedAt.getTime();
         const { data: revoked } = await supabase.rpc("is_session_revoked", {
           _user_id: data.session.user.id,
           _issued_at: tokenIssuedAt.toISOString(),
@@ -291,3 +283,5 @@ export const AuthService = {
     return supabase.auth.onAuthStateChange(callback);
   },
 };
+
+export type SessionService = typeof sessionService;

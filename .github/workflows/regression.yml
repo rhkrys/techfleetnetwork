@@ -182,6 +182,9 @@ jobs:
       - name: Verify auth engines never swallow errors (AUTH-ARCH-CUTOVER-011)
         run: node scripts/ci/check-auth-engine-swallow.mjs
 
+      - name: Verify legacy src/services/auth.service.ts stays deleted (AUTH-ARCH-CUTOVER-015)
+        run: node scripts/ci/check-no-legacy-auth-service.mjs
+
 
 
 
