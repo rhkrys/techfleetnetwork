@@ -24,14 +24,6 @@ export const GOOGLE_ONLY_ACCOUNT_MESSAGE = "This account uses Google sign-in. Us
 
 type AuthSession = NonNullable<Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]>;
 
-type PasswordUpdateRejectCode =
-  | "same_password"
-  | "weak_password"
-  | "session_expired"
-  | "rate_limited"
-  | "service_unavailable"
-  | "unknown";
-
 interface SessionMarker {
   version: number;
   userId: string;
@@ -47,8 +39,6 @@ function writeSessionMarker(session: Pick<AuthSession, "user">, startedAtMs = Da
 }
 
 function touchSessionMarker(session: Pick<AuthSession, "user">, marker: { startedAtMs: number }) {
-  // Persist the most recent of (now, cross-tab activity timestamp) so that
-  // activity in any other tab is preserved into this tab's marker too.
   const lastActivityAtMs = Math.max(Date.now(), getLastActivityAt());
   sessionStorage.setItem(
     SESSION_STARTED_AT_KEY,
@@ -57,10 +47,6 @@ function touchSessionMarker(session: Pick<AuthSession, "user">, marker: { starte
 }
 
 function readSessionMarker(session: Pick<AuthSession, "user">): { startedAtMs: number; lastActivityAtMs: number; resetReason: string | null } {
-  // Real DOM activity (mouse, keyboard, scroll, video playback) ALWAYS wins
-  // over the stored marker — the marker is only refreshed when getSession()
-  // runs, but a user can be active for an hour without triggering that.
-  // 0 means "no activity ever observed yet" — treat fresh-tab as `now`.
   const liveActivity = getLastActivityAt();
   const freshDefault = liveActivity > 0 ? liveActivity : Date.now();
   const raw = sessionStorage.getItem(SESSION_STARTED_AT_KEY);
@@ -87,11 +73,8 @@ function isInvalidRefreshTokenError(error: unknown) {
 }
 
 function clearLocalAuthArtifacts(reason: "manual" | "refresh_invalid" | "jwt_corrupt" = "manual") {
-  // Single source of truth — delegate to the shared purger so every layer
-  // (bootstrap, fetch-guard, signin/signout, OAuth) clears the same keys.
   purgeLocalAuthState({ reason, source: "signout", silent: reason === "manual" });
 }
-
 
 function hasStoredAuthSession() {
   const url = new URL(window.location.href);
@@ -121,93 +104,20 @@ async function recoverFromInvalidRefreshToken(error: unknown, source: string) {
   await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
 }
 
-// `logAdminLoginIfElevated` moved to `src/features/auth/services/sign-in.service.ts`
-// alongside the active password-sign-in owner (AUTH-DIRECT-SIGNIN-004).
-
-
-
-async function readFunctionError(error: unknown): Promise<{ status?: number; message: string; code?: string }> {
-  const fallback = error instanceof Error ? error.message : String((error as { message?: string } | null | undefined)?.message ?? "Unknown error");
-  const directStatus = (error as { status?: unknown } | null | undefined)?.status;
-  const directCode = (error as { code?: unknown } | null | undefined)?.code;
-  const response = (error as { context?: { response?: Response } } | null | undefined)?.context?.response;
-  let message = fallback;
-  let code: string | undefined;
-  try {
-    const body = response ? await response.clone().json().catch(() => null) as { error?: string; message?: string; code?: string } | null : null;
-    message = body?.error || body?.message || fallback;
-    code = body?.code;
-  } catch {
-    // Use fallback message.
-  }
-  return {
-    status: response?.status ?? (typeof directStatus === "number" ? directStatus : undefined),
-    message,
-    code: code ?? (typeof directCode === "string" ? directCode : undefined),
-  };
-}
-
-function classifyPasswordUpdateError(err: { message?: string; code?: string; status?: number }): { code: PasswordUpdateRejectCode; message: string } {
-  const code = (err.code || "").toLowerCase();
-  const msg = (err.message || "").toLowerCase();
-
-  if (code === "same_password" || msg.includes("should be different from") || msg.includes("same as the old")) {
-    return { code: "same_password", message: "Pick a password you haven't used here before." };
-  }
-  if (code === "weak_password" || msg.includes("pwned") || msg.includes("breach") || msg.includes("weak password")) {
-    return { code: "weak_password", message: "This password appeared in a known data breach. Choose a different one." };
-  }
-  if (
-    code === "session_expired" ||
-    code === "session_not_found" ||
-    code === "no_authorization" ||
-    code === "bad_jwt" ||
-    code === "user_not_found" ||
-    err.status === 401 ||
-    msg.includes("auth session missing") ||
-    msg.includes("missing auth session") ||
-    msg.includes("not authenticated") ||
-    msg.includes("user from sub claim in jwt does not exist") ||
-    msg.includes("invalid claim") ||
-    (msg.includes("session") && (msg.includes("expired") || msg.includes("not found"))) ||
-    msg.includes("jwt expired")
-  ) {
-    return { code: "session_expired", message: "Your password reset link expired. Request a new one to continue." };
-  }
-  if (code === "over_request_rate_limit" || code === "rate_limited" || err.status === 429 || msg.includes("rate limit")) {
-    return { code: "rate_limited", message: "Too many attempts in a short time. Please wait a minute and try again." };
-  }
-  if (!err.status || err.status >= 500 || msg.includes("failed to fetch") || msg.includes("network")) {
-    return { code: "service_unavailable", message: "The password update service is temporarily unavailable. Please try again." };
-  }
-  return { code: "unknown", message: "We couldn't update your password. Please try again or request a new reset link." };
-}
-
-
 /**
- * AUTH-DIRECT-SIGNIN-004 (2026-06-12): `AuthService.signInWithPassword` was
- * deleted. The ONE password-sign-in owner is
- * `src/features/auth/services/sign-in.service.ts`.
- *
- * AUTH-ARCH-CUTOVER-007/008/009/010 (2026-06-15): signUp,
- * resendSignupConfirmation, resetPassword, updatePassword, and
- * checkAccountIdentity moved out of this file into per-use-case services
- * under `src/features/auth/services/`. The methods below are kept as thin
- * delegators so any straggler legacy importer keeps working until the
- * legacy-importer snapshot drops to zero; new code MUST import sessionPort
- * or the use-case service directly.
+ * AUTH-DIRECT-SIGNIN-004 (2026-06-12): `AuthService.signInWithPassword` deleted.
+ * AUTH-ARCH-CUTOVER-007/008/009/010 (2026-06-15): signUp/resendSignupConfirmation/
+ * resetPassword/updatePassword/checkAccountIdentity moved to per-use-case services
+ * under `src/features/auth/services/`. AuthService keeps only session lifecycle
+ * helpers (getSession, signOut*, onAuthStateChange) — Ship 6 candidate.
  */
-import { signUp as signUpService, resendSignupConfirmation as resendSignupConfirmationService } from "@/features/auth/services/sign-up.service";
-import { requestPasswordReset as requestPasswordResetService } from "@/features/auth/services/request-password-reset.service";
-import { completePasswordReset as completePasswordResetService } from "@/features/auth/services/complete-password-reset.service";
-import { checkAccountIdentity as checkAccountIdentityService } from "@/features/auth/services/identity-hint.service";
-
 export const AuthService = {
   signUp: signUpService,
   resendSignupConfirmation: resendSignupConfirmationService,
   resetPassword: requestPasswordResetService,
   checkAccountIdentity: checkAccountIdentityService,
   updatePassword: completePasswordResetService,
+
 
 
   async signOut() {
