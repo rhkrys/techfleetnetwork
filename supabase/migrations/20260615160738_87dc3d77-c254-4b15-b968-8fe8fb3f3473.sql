@@ -1,0 +1,4 @@
+INSERT INTO public.bdd_scenarios (scenario_id, feature_area, feature_area_number, title, gherkin, status) VALUES
+('AUTH-ARCH-CUTOVER-022','auth/architecture',1100,'Auth screens cannot bypass their engine',
+ E'Given the cutover phase 9 boundary rule\nWhen scripts/ci/check-auth-screen-imports.mjs scans src/features/auth/ui/\nThen [Code] zero screen files import the backend client, session port, services, flows, or rate-limit/captcha/lockout libraries directly\nAnd [Code] adding such an import in any screen file fails the regression workflow\nAnd [UI] the active /login /register /forgot-password /reset-password screens keep working with engine-only dependencies','implemented')
+ON CONFLICT (scenario_id) DO UPDATE SET status=EXCLUDED.status, gherkin=EXCLUDED.gherkin, title=EXCLUDED.title, updated_at=now();
