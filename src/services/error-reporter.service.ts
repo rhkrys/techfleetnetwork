@@ -198,7 +198,10 @@ export type ReportEventType =
   // by the DB trigger reject_self_healing_on_agent_fix_queue.
   | "chunk_stale"
   | "query_failed"
-  | "mutation_failed";
+  | "mutation_failed"
+  // Transient PG/PostgREST/HTTP infra errors. Always non-actionable; never
+  // reaches agent_fix_queue (TS NON_ACTIONABLE + DB is_actionable_event_type).
+  | "infra_transient";
 
 
 interface ReportOptions {
