@@ -26,7 +26,7 @@ export interface ClassifiedError {
   /** Should this error be reported to audit_log / agent_fix_queue? */
   report: boolean;
   /** Reason for dropping (logged locally, not reported). */
-  reason?: "extension_frame" | "offline" | "hidden_tab_fetch" | "aborted" | "dom_extension_mutation";
+  reason?: "extension_frame" | "offline" | "hidden_tab_fetch" | "aborted" | "dom_extension_mutation" | "infra_transient";
   /** Should the caller retry transparently? */
   retriable: boolean;
 }
