@@ -101,5 +101,14 @@ export function classify(value: unknown): ClassifiedError {
     return { report: false, reason: "hidden_tab_fetch", retriable: true };
   }
 
+  // 5. Transient PG / PostgREST / HTTP infra errors. Mirrors the DB function
+  //    public.is_actionable_event_type (event_type='infra_transient') so a
+  //    single source of truth (isTransientError) governs every reporter
+  //    entrypoint AND React Query's QueryCache.onError. Stops PGRST002,
+  //    statement-timeout 57014, 429s, etc. from flooding Triage.
+  if (isTransientError(value)) {
+    return { report: false, reason: "infra_transient", retriable: true };
+  }
+
   return { report: true, retriable: isFetchTypeError(value) };
 }
