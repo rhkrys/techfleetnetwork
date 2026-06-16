@@ -125,6 +125,7 @@ export default tseslint.config(
       // bitmask=7 + 72h soak per mem://features/email-subsystem-v2.
       "email-v2/no-legacy-email-send": "warn",
       "tab-switch/no-focus-listener": "error",
+      "auth-bootstrap/no-refresh-session": "error",
       "auth-invariants/no-bare-password-set-input": "error",
       "auth-invariants/no-raw-password-update": "error",
       // Rebuild §8 — single source of truth guards. Warn-only initially so
