@@ -20,13 +20,13 @@ const log = createLogger("MfaEnforcementGuard");
  * elevation done in another tab is picked up without needing a manual focus
  * listener.
  *
- * NO-RELOAD-TAB-002 (2026-06-16): the previous `window.addEventListener("focus")`
- * handler called `supabase.auth.getSession()` on every tab return and could
- * `window.location.replace("/login")` if the SDK transiently returned no
+ * NO-RELOAD-TAB-002 (2026-06-16): the previous global focus handler called
+ * `supabase.auth.getSession()` on every tab return and could
+ * `window.location.replace` to /login if the SDK transiently returned no
  * session — that landed users (especially admins on /admin/activity-log) on a
  * full-page navigation that destroyed their scroll, filters, search, and page
- * index. The focus listener is intentionally removed; `onAuthStateChange` is
- * the single re-eval channel.
+ * index. The focus-event handler is intentionally removed; `onAuthStateChange`
+ * is the single re-eval channel.
  *
  * Loop-prevention: after a successful verify we silence re-checks for 10s so
  * the TOKEN_REFRESHED storm that immediately follows can't race the JWT cache
