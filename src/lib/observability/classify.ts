@@ -10,6 +10,8 @@
  * onError (decides whether to forward to the reporter at all).
  */
 
+import { isTransientError } from "@/lib/transient-error";
+
 const EXTENSION_FRAME_RE = /(chrome|moz|safari-web)-extension:\/\//i;
 const ABOUT_FRAME_RE = /(^|\s)at\s+about:/i;
 // Translation extensions (Google Translate, Transover, DeepL, etc.) mutate the
