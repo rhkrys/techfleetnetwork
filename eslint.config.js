@@ -61,6 +61,10 @@ export default tseslint.config(
       // justification. Prevents another MfaEnforcementGuard-style regression
       // that reloads /admin/activity-log on tab return.
       "tab-switch": noFocusListener,
+      // AUTH-WEDGE-013..015 (2026-06-16) — bootstrap MUST NOT call
+      // refreshSession() against a flapping GoTrue on first transient
+      // bad_jwt; it bypasses the two-strike protection.
+      "auth-bootstrap": authBootstrapNoRefresh,
       "auth-invariants": authInvariants,
       // Part 1 §1.5 — chunk-load brick + AuthProvider hoist invariants.
       lazy: lazyRequiresRetry,
