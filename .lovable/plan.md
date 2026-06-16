@@ -1,90 +1,124 @@
+## Triage queue current state (live evidence)
 
-# Fix the Activity Log "reloads on tab return" — permanently
+`agent_fix_queue` has 8 `pending` rows. All of them collapse into 3 root causes:
 
-## What's actually happening (evidence + math)
+| # | Fingerprint / source | Root cause |
+|---|---|---|
+| 1–2 | `process-email-queue` `email_rate_limited` ×2 | Worker upserts directly into `agent_fix_queue` with `severity='error'` for the transactional lane on Resend 429 cooldown. The DB trigger that's supposed to block non-actionable event types **does not list `email_rate_limited`**, even though the JS reporter does (`NON_ACTIONABLE_EVENT_TYPES`) and so does `discover_audit_fingerprints` (`v_excluded_events`). Three sources of truth, only two agree → direct insert wins. |
+| 3 | `email_send_log` `email_failed` "Failed to mint unsubscribe token" | `auth-email-hook` upsert→re-SELECT pattern (lines 332–352) overwrites a freshly minted token with `null` when the upsert errors for ANY reason (not just a unique-violation race). On a transient PostgREST blip (`PGRST002`/`57014`) the re-SELECT also returns empty, so `unsubscribeToken` becomes `null` and the function inserts a synthetic `failed` row. The status='failed' trigger then emits `email_failed` into `audit_log`; discover queues it at `severity='error'`. |
+| 4–8 | `getReadIds` 57014, `getNetworkStats` PGRST002, `query.public-project-openings` upstream timeout, `frontend` "Failed to load progress" PGRST002, `unhandledrejection` "Failed to count progress" 57014 | Transient Postgres/PostgREST infra errors that are **already classified by `src/lib/transient-error.ts`** (codes `PGRST002`, `57014`, `57P0x`, `53300`, …) but that classifier is **never consulted by `reportError()` or `classify()`**. So `handleServiceError` and direct service-layer reports flag every transient blip as `severity='error'` → triage queue. |
 
-I read every reload path in the repo and the live page, and traced exactly which ones can fire when you switch tabs and come back to `/admin/activity-log`. There are **two real root causes** still in the code (everything else is already neutralized). Both must be fixed together or the symptom returns.
+## Why this is a single architectural defect, not 8 bugs
 
-### Root cause 1 — Focus listeners that touch the network can trigger a remount that destroys page state
+There are three independent paths that can land a row in `agent_fix_queue` at `severity='error'`:
 
-Even though our React Query defaults disable `refetchOnWindowFocus`, two surfaces still attach raw `focus`/`visibilitychange` listeners and, on the regain, can either redirect or surface state that React treats as a fresh render path:
+```text
+A. Direct insert  (process-email-queue, send-project-blast, etc.)
+B. reportError → write_audit_log → triage RPC upsert_fix_queue_entry
+C. audit_log → cron discover_audit_fingerprints → queue insert
+```
 
-- `src/components/MfaEnforcementGuard.tsx:89` — `window.addEventListener("focus", onFocus)` calls `supabase.auth.getSession()` on every tab return. If it gets `needsChallenge` (or, on the cancel branch, line 110) it calls `window.location.replace("/login")`. That is a **full navigation** the user perceives as "the page reloaded itself." This guard is mounted globally inside `AppLayout`, so it runs on `/admin/activity-log` too.
-- `src/hooks/use-autosave.ts:217` and `src/hooks/use-server-draft.ts:267` — `visibilitychange` handlers fire a flush on hide. Harmless on their own, but they share the same `tab-becomes-hidden→tab-becomes-visible` cycle that we want to prove is reload-free end-to-end.
+Each path has its own non-actionable allowlist:
 
-### Root cause 2 — Activity Log keeps ALL UI state in `useState`, so any remount = lost place
+- A is governed only by the DB trigger `block_non_actionable_fix_queue_inserts`
+- B is governed by `NON_ACTIONABLE_EVENT_TYPES` in `error-reporter.service.ts`
+- C is governed by `v_excluded_events` in `discover_audit_fingerprints`
 
-`src/pages/ActivityLogPage.tsx:150-163` stores `page`, `search`, `eventFilter`, `layerFilter`, `severityFilter`, `dateFrom`, `dateTo` in `useState` only. The AG Grid wrapper itself persists column/sort/filter state per `gridId` (`AgGridImpl.tsx:98-106`), but the page-level filters, the current page index, the search box, and the scroll position are **lost on any remount** — whether triggered by:
+The three lists have drifted. None of the three knows about **infra-transient PG codes** at all. That's why every transient PGRST002/57014/429 reaches Triage no matter which path it enters by.
 
-- a redeploy (`UpdateAvailableBanner` → user clicks "Refresh now"),
-- an `MfaEnforcementGuard` redirect,
-- React Suspense re-mount after a chunk retry,
-- or even a normal browser refresh.
+## Permanent fix (one principle, applied uniformly)
 
-So even after we kill every silent reload, a user who taps refresh on purpose still loses their place. The permanent fix has to put state somewhere a reload can survive.
+> **There is exactly one source of truth for "what is actionable in Triage": a `public.is_actionable_event_type(event_type)` SQL function + a structural `isTransientError(err)` TS classifier. Every path consults both.**
 
-### What's already correct (do NOT regress)
+### 1. DB: single source of truth for actionable event types
 
-- `deploy-watcher.ts:97-101` — no `focus`/`visibilitychange`/`pageshow` listeners; only a 60s poll + `online`. ✅
-- `App.tsx:194` and `queryDefaults.ts:38` — `refetchOnWindowFocus: false` globally. ✅
-- `use-admin.ts:33-34` — `refetchOnMount:false`, `refetchOnWindowFocus:false`. ✅
-- `RouteChangeReloader.tsx` — no reload, only scrollTo. ✅
-- `lazy-with-retry.ts` + `index.html` pre-mount handler — chunk reloads are guarded and one-shot. ✅
-- `src/test/smoke/no-tab-switch-reload.test.ts` already locks deploy-watcher against focus listeners. ✅ (we'll extend it.)
+- New SQL function `public.is_actionable_event_type(p_event_type text, p_changed_fields text[]) returns boolean` that returns false for the union of all three current lists plus the missing items (`email_rate_limited`, `email_reconciled`, `email_frequency_capped`, `email_suppressed`, `validation_rejected`, `infra_transient`). Also returns false when `changed_fields` contains a `severity:` tag other than `severity:error` (consistent with `discover_audit_fingerprints`).
+- Rewrite `block_non_actionable_fix_queue_inserts()` and `discover_audit_fingerprints()` to call `is_actionable_event_type(...)`. Both paths now share one list — they cannot drift again.
 
-## The permanent fix
+### 2. TS reporter: consult the transient classifier before writing
 
-### Phase A — Remove the last focus-driven navigation paths
+- In `reportError()` (`src/services/error-reporter.service.ts`), before `reportToAuditLog(...)`:
+  ```ts
+  if (isTransientError(err)) {
+    options.eventType = "infra_transient";
+    options.severity  = "info";
+  }
+  ```
+  `infra_transient` is added to `NON_ACTIONABLE_EVENT_TYPES` and to the new SQL function, so neither path B nor the audit row written for it can reach the queue.
+- In `src/lib/observability/classify.ts`, fold `isTransientError(value)` into `classify()`: when it matches, return `{ report: false, reason: "infra_transient", retriable: true }`. This stops React Query's `QueryCache.onError` from writing anything for transients (currently it writes `query_failed warn`, which is harmless but redundant).
+- `handleServiceError` (`src/lib/service-result.ts`) now passes the *original* error to `reportError(error, action, { ... })` instead of a pre-formatted message string, so the classifier can see `code` / `status` fields. Today it stringifies first and the classifier loses the structured fields — that's why PGRST002/57014 always slip through.
 
-1. **`MfaEnforcementGuard`**: replace the raw `focus` listener with a Supabase `onAuthStateChange` re-eval that is already wired (lines 66-72 handle `SIGNED_IN`/`TOKEN_REFRESHED`/`USER_UPDATED`). Drop lines 77-94. Result: no MFA gate re-check on tab return → no `/login` replace on tab return. AAL2 elevation is still picked up via `TOKEN_REFRESHED` from the SDK itself.
-2. **`MfaEnforcementGuard` cancel branch (line 110)**: change `window.location.replace("/login")` to `navigate("/login", { replace: true })` so the SPA stays mounted and React Query cache is preserved.
-3. Add an ESLint rule + smoke test entry that forbids `addEventListener("focus", …)` and `addEventListener("visibilitychange", …)` in any new file under `src/components` and `src/pages` **unless** the file declares `// reason: tab-switch-safe — <justification>` on the line above. `use-autosave.ts`/`use-server-draft.ts` get the marker (they only flush — no navigation, no setState, no reload).
+### 3. Email worker: stop the direct severity=error insert
 
-### Phase B — Make Activity Log state survive any reload
+In `supabase/functions/process-email-queue/index.ts` (line 675 block):
 
-4. In `ActivityLogPage.tsx`, replace the seven `useState` calls with a single `useSyncedTableState("activity-log", initial)` hook that:
-   - Initializes from `URLSearchParams` first (so the URL is shareable), falls back to `sessionStorage["tfn:activity-log:state"]`, then to defaults.
-   - Writes through to both `URLSearchParams` (via `useSearchParams` `replace:true`) and `sessionStorage` on every change, debounced 200ms.
-   - Restores **scroll position** on mount from `sessionStorage["tfn:activity-log:scroll"]` (set on `beforeunload` + `visibilitychange:hidden`).
-5. Pass `page`, `pageSize`, the active fingerprint/trace, and the current scroll offset through. AG Grid already restores its own column/sort/filter via `useGridState(gridId)` — keep that.
-6. Result: a real browser reload, an `UpdateAvailableBanner` refresh, or any remount lands the admin back on the exact same page number, filters, search, and scroll position — by design, not by luck.
+- Delete the direct `agent_fix_queue` upsert.
+- The same information already reaches admins via:
+  - `email_send_log` insert with `status='rate_limited'` → `audit_email_send_log` trigger writes `event_type='email_rate_limited'` to `audit_log`, which discover already excludes (no queue noise, but visible in System Health → Email tab and Activity Log).
+  - `email_send_state.consecutive_429_count_transactional` + cooldown row, which the System Health Email card already reads.
+- No information loss; one less drift surface.
 
-### Phase C — Lock the bug class
+### 4. Unsubscribe-token mint: atomic, race-free
 
-7. Extend `src/test/smoke/no-tab-switch-reload.test.ts`:
-   - Fail if `MfaEnforcementGuard.tsx` re-introduces `addEventListener("focus"`.
-   - Fail if any file under `src/pages/` or `src/components/` calls `window.location.reload|replace|assign(` without an inline `// reason:` justification comment.
-   - Fail if `ActivityLogPage.tsx` reverts to plain `useState` for `page`/`search`/`eventFilter` (regex: filename + missing `useSyncedTableState`).
-8. Add a Playwright regression `e2e/regression/incidents/activity-log-tab-switch.e2e.ts`:
-   - Sign in as admin (preview session), go to `/admin/activity-log`, paginate to page 3, filter by `severity=error`, scroll halfway, open a second tab for 5 seconds, return.
-   - Assert URL still has `?page=3&severity=error`, filter dropdown still shows "Error", grid scroll offset is within 50 px of where it was, and **no** `pageerror`/full navigation happened.
+In `supabase/functions/auth-email-hook/index.ts` (lines 332–352), replace the read-then-upsert-then-reread dance with a single atomic upsert:
 
-### Phase D — BDD scenarios (required by project rules)
+```ts
+const fresh = Array.from(crypto.getRandomValues(new Uint8Array(32)))
+  .map(b => b.toString(16).padStart(2, '0')).join('')
 
-9. Insert into `bdd_scenarios`:
-   - **NO-RELOAD-TAB-001** — tab hide/show on `/admin/activity-log` never fires `location.reload|replace|assign`. [UI] page DOM identity unchanged · [DB] zero new `audit_log` rows with `event_type='session_idle_timeout'` or `'authn_unauthorized'` · [Code] `deploy-watcher.__debug()` shows no extra version check.
-   - **NO-RELOAD-TAB-002** — `MfaEnforcementGuard` does not redirect on focus when AAL is satisfied. [UI] route is still `/admin/activity-log` · [DB] no `mfa_challenge_initiated` row · [Code] `onAuthStateChange` is the only re-eval channel.
-   - **ACTIVITY-LOG-STATE-001** — page/filter/search/scroll survive a hard reload. [UI] post-reload page index, filter chips, search input, and grid scroll offset match pre-reload · [DB] one read query, no writes · [Code] state hydrated from URL or `sessionStorage`, not from defaults.
+const { data: row, error: tokenErr } = await supabase
+  .from('email_unsubscribe_tokens')
+  .upsert(
+    { email: normalizedEmail, token: fresh },
+    { onConflict: 'email', ignoreDuplicates: false }
+  )
+  .select('token')
+  .single()
 
-## Technical details
+if (tokenErr || !row?.token) throw new Error(`mint_unsubscribe_token: ${tokenErr?.message ?? 'no row'}`)
+unsubscribeToken = row.token
+```
 
-### Files touched
+Why this is the permanent fix:
+- `ignoreDuplicates: false` + `onConflict: 'email'` + `.select().single()` is atomic in PostgREST; it always returns the canonical row (either the freshly inserted one or the existing one). No race window, no null overwrite.
+- Errors are propagated to the outer try/catch where they're handled once, not duplicated into `email_send_log` as a synthetic `failed` row.
+- The unique constraint on `email` makes this provably the row we want; there is no second SELECT to lose.
 
-- `src/components/MfaEnforcementGuard.tsx` — drop focus listener; switch cancel branch to `useNavigate`.
-- `src/pages/ActivityLogPage.tsx` — consume new state hook; restore scroll.
-- `src/hooks/use-synced-table-state.ts` — **new**, generic URL+session-backed state hook.
-- `src/test/smoke/no-tab-switch-reload.test.ts` — add three guards.
-- `e2e/regression/incidents/activity-log-tab-switch.e2e.ts` — **new** Playwright spec.
-- `scripts/lint/eslint-plugin-no-focus-listener.mjs` — **new**, marker-comment-enforced rule.
-- `eslint.config.js` — register the new rule.
-- `supabase/migrations/<ts>_activity_log_no_reload_bdd.sql` — insert the three BDD rows.
+### 5. Clean up the 8 stale rows once the fix ships
 
-### Why this is permanent, not another patch
+Add a deploy-time call to the existing `resolve_stale_fingerprints_on_deploy('email_rate_limited|Failed to mint unsubscribe token|Failed to load progress|Failed to count progress|Failed to load project openings|PGRST002|57014', 'permanent_fix_2026_06_16')` so the existing pending rows are auto-resolved with a documented reason — no manual UI clicks, auditable.
 
-- The two remaining causes are **structural** (a global focus listener that navigates; component-only state on a long-lived admin grid). Fixing them at the source removes the failure mode entirely.
-- The ESLint rule + extended smoke test + Playwright regression mean a future change that re-adds either pattern fails CI before it can ship.
-- BDD rows turn the contract into an enforceable, queryable scenario that the BDD gate workflow already checks on every PR touching these files.
+## Proof this prevents regression
 
-### Out of scope (per safety rails)
+- **Single SQL function** (`is_actionable_event_type`) is unit-tested and called by both write paths (trigger + discover). New event types must be added there or they're treated as non-actionable by default. Drift is structurally impossible.
+- **Structural classifier**: `isTransientError` already has 14 PG codes + 6 HTTP statuses + 16 message patterns covered by `src/test/...` smoke tests. Folding it into `classify()` and `reportError()` extends coverage to every reporter entry point in a single call — no per-callsite opt-in.
+- **Atomic upsert** removes the only code-level data race; PostgreSQL's `ON CONFLICT DO UPDATE` guarantees a returned row.
+- **Direct queue insert deleted** from `process-email-queue`; no other call sites do this for `email_rate_limited` (grep-verified).
+- **New BDD scenarios** (TRIAGE-ROOT-001..006) lock in:
+  - PGRST002 from any service never reaches `agent_fix_queue`
+  - 57014 from any service never reaches `agent_fix_queue`
+  - workspace 429 cooldowns never reach `agent_fix_queue`
+  - mint-token race produces exactly one row, returns its token, no `email_failed` audit row
+  - `block_non_actionable_fix_queue_inserts` and `discover_audit_fingerprints` agree byte-for-byte on the blocked set (asserted by SQL test).
+- **CI guard**: `scripts/ci/check-triage-actionable-parity.mjs` greps the JS `NON_ACTIONABLE_EVENT_TYPES` and asserts every entry is also returned `false` by `is_actionable_event_type` against a static fixture. Build fails if a future PR drifts the lists.
 
-No auth/account/session/MFA/audit/rate-limit table changes. No RLS edits. No new auth providers. No service workers. No extra clicks for members. AG Grid column/sort/filter persistence is unchanged.
+## Files changed
+
+- `supabase/migrations/<ts>_triage_actionable_single_source.sql` — new `is_actionable_event_type`; rewrite `block_non_actionable_fix_queue_inserts` + `discover_audit_fingerprints` to call it; add `infra_transient` event type to all event-type CHECK constraints if any.
+- `supabase/migrations/<ts>_resolve_stale_triage_2026_06_16.sql` — one-shot `resolve_stale_fingerprints_on_deploy(...)` call.
+- `src/services/error-reporter.service.ts` — short-circuit to `infra_transient`/`info` when `isTransientError(err)` matches; add `infra_transient` to `NON_ACTIONABLE_EVENT_TYPES` and `ReportEventType`.
+- `src/lib/observability/classify.ts` — fold `isTransientError` into `classify()`.
+- `src/lib/service-result.ts` — pass the structured error to `reportError`, not a pre-flattened string.
+- `supabase/functions/process-email-queue/index.ts` — delete direct `agent_fix_queue` upsert (lines 662–687 block).
+- `supabase/functions/auth-email-hook/index.ts` — replace read-upsert-reread with one atomic upsert returning the token.
+- `scripts/ci/check-triage-actionable-parity.mjs` — new CI guard.
+- `src/test/regression/incidents/triage-root-cause-2026-06-16.test.ts` — new TS tests for classifier integration.
+- `supabase/migrations/<ts>_bdd_triage_root_cause.sql` — TRIAGE-ROOT-001..006 BDD scenarios.
+
+## Non-goals / safety rails
+
+- No change to `audit_log` retention or hash-chain.
+- No RLS loosening on any table.
+- No change to actually-actionable event types (`client_error`, `ui_render_error`, `email_failed` for real send failures, etc.) — only transient/non-actionable categories are touched.
+- `process-email-queue` still records 429 cooldowns to `email_send_state` and `email_send_log`; the System Health Email card continues to show them. The only thing that disappears is the duplicate severity=error fix-queue row.
+- No member-facing UX changes.
