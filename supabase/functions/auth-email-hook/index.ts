@@ -329,40 +329,54 @@ async function handleWebhook(req: Request): Promise<Response> {
     })
   }
 
-  const { data: existingToken } = await supabase
-    .from('email_unsubscribe_tokens')
-    .select('token')
-    .eq('email', normalizedEmail)
-    .limit(1)
-  unsubscribeToken = existingToken?.[0]?.token ?? null
-  if (!unsubscribeToken) {
-    const fresh = crypto.getRandomValues(new Uint8Array(32))
-    unsubscribeToken = Array.from(fresh).map((b) => b.toString(16).padStart(2, '0')).join('')
-    const { error: tokenError } = await supabase
-      .from('email_unsubscribe_tokens')
-      .upsert({ email: normalizedEmail, token: unsubscribeToken }, { onConflict: 'email', ignoreDuplicates: true })
-    if (tokenError) {
-      const { data: raceRow } = await supabase
-        .from('email_unsubscribe_tokens')
-        .select('token')
-        .eq('email', normalizedEmail)
-        .limit(1)
-      unsubscribeToken = raceRow?.[0]?.token ?? null
-    }
-  }
+  // Mint (or fetch) the unsubscribe token in ONE atomic round-trip.
+  //
+  // The previous read → upsert(ignoreDuplicates) → re-read pattern had a
+  // data-race: if the upsert returned a transient PostgREST error
+  // (PGRST002 schema-cache, 57014 statement timeout, etc.) the recovery
+  // re-SELECT would also fail and overwrite the freshly generated token
+  // with `null`, producing a synthetic "Failed to mint unsubscribe token"
+  // email_send_log row that flooded the Triage queue.
+  //
+  // `onConflict:'email'` + `ignoreDuplicates:false` + `.select('token').single()`
+  // is a single ON CONFLICT DO UPDATE roundtrip: it returns the canonical
+  // row (existing or newly inserted) atomically, regardless of any race.
+  // The unique constraint on `email` guarantees exactly one row.
+  // See bdd_scenarios TRIAGE-ROOT-004.
+  const freshToken = Array.from(crypto.getRandomValues(new Uint8Array(32)))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
 
-  if (!unsubscribeToken) {
-    await supabase.from('email_send_log').insert({
-      message_id: messageId,
-      template_name: emailType,
-      recipient_email: payload.data.email,
-      status: 'failed',
-      error_message: 'Failed to mint unsubscribe token',
+  const { data: tokenRow, error: tokenError } = await supabase
+    .from('email_unsubscribe_tokens')
+    .upsert(
+      { email: normalizedEmail, token: freshToken },
+      { onConflict: 'email', ignoreDuplicates: false },
+    )
+    .select('token')
+    .single()
+
+  unsubscribeToken = tokenRow?.token ?? null
+
+  if (tokenError || !unsubscribeToken) {
+    // Do NOT write a synthetic email_send_log status='failed' row here.
+    // That generates an event_type='email_failed' audit_log entry which
+    // discover_audit_fingerprints (correctly) classifies as actionable —
+    // but the underlying cause is almost always a transient PostgREST
+    // schema-cache blip, not a code defect. Fail the request so the
+    // caller (Supabase auth hook) can retry, and surface the real cause
+    // in the error message for log inspection.
+    console.error('mint_unsubscribe_token failed', {
+      email: payload.data.email,
+      code: (tokenError as { code?: string } | null)?.code,
+      message: tokenError?.message,
     })
-    return new Response(JSON.stringify({ error: 'Failed to mint unsubscribe token' }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    return new Response(
+      JSON.stringify({
+        error: `mint_unsubscribe_token: ${tokenError?.message ?? 'no_row_returned'}`,
+      }),
+      { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    )
   }
 
   // ── Email subsystem v2 strangler fig (auth lane) ─────────────────────────
