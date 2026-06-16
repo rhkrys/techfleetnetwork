@@ -19,6 +19,7 @@ import noAnonymousMutation from "./scripts/lint/eslint-plugin-no-anonymous-mutat
 import noRpcThenCatch from "./scripts/lint/eslint-plugin-no-rpc-then-catch.mjs";
 import noLegacyEmailSend from "./scripts/lint/eslint-plugin-no-legacy-email-send.mjs";
 import noFocusListener from "./scripts/lint/eslint-plugin-no-focus-listener.mjs";
+import authBootstrapNoRefresh from "./scripts/lint/eslint-plugin-auth-bootstrap-no-refresh.mjs";
 
 export default tseslint.config(
   { ignores: ["dist"] },
