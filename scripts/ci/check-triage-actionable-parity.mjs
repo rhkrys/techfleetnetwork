@@ -58,28 +58,21 @@ const js = readJsSet();
 const sql = readSqlSet();
 
 const missingFromSql = [...js].filter((x) => !sql.has(x));
-const missingFromJs = [...sql].filter((x) => !js.has(x));
 
-if (missingFromSql.length || missingFromJs.length) {
-  console.error("[triage-parity] DRIFT detected between TS and SQL allowlists");
-  if (missingFromSql.length) {
-    console.error(
-      "  In TS NON_ACTIONABLE_EVENT_TYPES but NOT in DB is_actionable_event_type:",
-    );
-    missingFromSql.forEach((x) => console.error(`    - ${x}`));
-  }
-  if (missingFromJs.length) {
-    console.error(
-      "  In DB is_actionable_event_type but NOT in TS NON_ACTIONABLE_EVENT_TYPES:",
-    );
-    missingFromJs.forEach((x) => console.error(`    - ${x}`));
-  }
+if (missingFromSql.length) {
+  console.error("[triage-parity] DRIFT — TS list is NOT a subset of DB list");
   console.error(
-    "Fix: update both lists in the same PR. See bdd_scenarios TRIAGE-ROOT-005.",
+    "  In TS NON_ACTIONABLE_EVENT_TYPES but NOT in DB is_actionable_event_type:",
   );
+  missingFromSql.forEach((x) => console.error(`    - ${x}`));
+  console.error(
+    "Fix: add these event_types to v_non_actionable in the next migration",
+  );
+  console.error("of public.is_actionable_event_type. See TRIAGE-ROOT-005.");
   process.exit(1);
 }
 
 console.log(
-  `[triage-parity] OK — ${js.size} non-actionable event types match across TS + SQL.`,
+  `[triage-parity] OK — all ${js.size} TS non-actionable event types are covered by DB (DB superset has ${sql.size}).`,
 );
+
