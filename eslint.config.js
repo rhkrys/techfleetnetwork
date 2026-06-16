@@ -18,6 +18,7 @@ import useAuthRequiresProvider from "./scripts/lint/eslint-plugin-use-auth-requi
 import noAnonymousMutation from "./scripts/lint/eslint-plugin-no-anonymous-mutation.mjs";
 import noRpcThenCatch from "./scripts/lint/eslint-plugin-no-rpc-then-catch.mjs";
 import noLegacyEmailSend from "./scripts/lint/eslint-plugin-no-legacy-email-send.mjs";
+import noFocusListener from "./scripts/lint/eslint-plugin-no-focus-listener.mjs";
 
 export default tseslint.config(
   { ignores: ["dist"] },
@@ -54,6 +55,11 @@ export default tseslint.config(
       // Email subsystem v2 Phase 6 — bans direct invokes of legacy
       // send-* edge fns; routes must go through EnqueueEmail.
       "email-v2": { rules: { "no-legacy-email-send": noLegacyEmailSend } },
+      // NO-RELOAD-TAB-002 — focus/visibilitychange/pageshow listeners in
+      // components/pages require an inline `// reason: tab-switch-safe — …`
+      // justification. Prevents another MfaEnforcementGuard-style regression
+      // that reloads /admin/activity-log on tab return.
+      "tab-switch": noFocusListener,
       "auth-invariants": authInvariants,
       // Part 1 §1.5 — chunk-load brick + AuthProvider hoist invariants.
       lazy: lazyRequiresRetry,
@@ -113,6 +119,7 @@ export default tseslint.config(
       // Warn-only during v2 strangler-fig migration; promote to error after
       // bitmask=7 + 72h soak per mem://features/email-subsystem-v2.
       "email-v2/no-legacy-email-send": "warn",
+      "tab-switch/no-focus-listener": "error",
       "auth-invariants/no-bare-password-set-input": "error",
       "auth-invariants/no-raw-password-update": "error",
       // Rebuild §8 — single source of truth guards. Warn-only initially so

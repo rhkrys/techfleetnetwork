@@ -1,202 +1,90 @@
-## Evidence from the repo and live data
 
-### Current repo state proves the prior cutover stayed additive
-- `src/features/auth/ports/session.port.ts` is still a wrapper over legacy `AuthService`:
-  - Lines 17–18 import legacy service + generated backend client.
-  - Lines 22–38 bind `getSession`, `signOut`, `resetPassword`, `updatePassword`, `signUp`, and resend confirmation directly to `AuthService`.
-- `src/services/auth.service.ts` still exists as a 625-line mixed responsibility file:
-  - Lines 200–356 own signup and resend confirmation.
-  - Lines 359–388 own password reset request.
-  - Lines 407–452 own password update.
-  - Lines 455–625 own sign-out/session lifecycle.
-- `src/features/auth/adapters/supabase-session.adapter.ts` exists but is not the active session port:
-  - Lines 34–87 define the intended adapter.
-  - But `session.port.ts` does not import it.
-- Google sign-in has multiple paths:
-  - Active UI path: `src/components/GoogleSignInButton.tsx` lines 36–39 uses Lovable managed OAuth.
-  - Dead/duplicate path: `src/features/auth/flows/sign-in-google.flow.ts` lines 24–29 calls direct backend OAuth.
-  - Adapter duplicate: `src/features/auth/adapters/supabase-session.adapter.ts` lines 45–50 also has direct Google OAuth.
-- Active auth routes are owned by feature screens in `src/App.tsx`:
-  - `/login` → `SignInScreen` lines 50, 238.
-  - `/register` → `RegisterScreen` lines 57, 239.
-  - `/forgot-password` → `ForgotPasswordScreen` lines 68, 240.
-  - `/reset-password` → `ResetPasswordScreen` lines 73, 241.
-  - `/reset-password/confirm` → `ConfirmRecoveryLinkPage` lines 74, 242.
-- Legacy comments still say old pages “stay on disk until Ship 5” in `src/App.tsx` lines 47–72, but the actual remaining risk is legacy service ownership, not route ownership.
+# Fix the Activity Log "reloads on tab return" — permanently
 
-### Current live data proves the password-reset email issue is real
-- Email domain check: `notify.techfleet.org` is verified and ready.
-- Auth email send log query for the last 7 days returned only old rows:
-  - Last signup email row: `2026-06-11 06:00:14 UTC`.
-  - Last recovery email row: `2026-06-11 00:36:30 UTC`.
-  - No recovery/signup auth email rows after June 11.
-- Recent auth-email function logs:
-  - No matching `error` logs.
-  - No matching “Received auth event” logs.
-  - Analytics only showed one recent `OPTIONS` preflight, not a real webhook invocation.
-- `useForgotPasswordEngine.ts` preserves anti-enumeration but hides operational failure:
-  - Lines 103–106 set success after `sessionPort.resetPassword` resolves.
-  - Lines 107–129 catch most failures and still call `setSubmitted(true)`.
-  - It records only `auth_engine.forgot_failed`, not a delivery-contract failure that ops can page on.
+## What's actually happening (evidence + math)
 
-### Existing quality gates are useful but incomplete
-- Existing scripts:
-  - `scripts/ci/check-auth-direct-signin.mjs` locks only password sign-in.
-  - `scripts/ci/check-auth-layer-graph.mjs` checks auth feature import direction.
-  - `scripts/ci/check-legacy-auth-importers.mjs` snapshot-locks old importer growth.
-- Existing lint rules are not strict enough yet:
-  - `eslint.config.js` lines 122–124 keep direct auth calls, counter calls, and auth storage literals at `warn`, not `error`.
-- Existing backend broker exists but is not the active client owner:
-  - `supabase/functions/auth-broker/index.ts` routes sign-in, sign-up, reset request, reset complete, sign-out, identity check.
-  - Current active client flows still use mixed client SDK/service paths instead of broker-only ownership.
+I read every reload path in the repo and the live page, and traced exactly which ones can fire when you switch tabs and come back to `/admin/activity-log`. There are **two real root causes** still in the code (everything else is already neutralized). Both must be fixed together or the symptom returns.
 
-## Target architecture
+### Root cause 1 — Focus listeners that touch the network can trigger a remount that destroys page state
 
-```text
-Auth screens
-  ↓ presentation-only events
-Auth engines
-  ↓ typed Result<AuthOk, AuthErr>; no throws across boundary
-Auth flows
-  ↓ one call per use case
-Auth application services
-  ↓ one backend adapter only
-Auth broker / managed OAuth / session adapter
-  ↓ typed backend auth + telemetry + delivery contract
-Database/ops events/email send log/probers
-```
+Even though our React Query defaults disable `refetchOnWindowFocus`, two surfaces still attach raw `focus`/`visibilitychange` listeners and, on the regain, can either redirect or surface state that React treats as a fresh render path:
 
-### One auth engine only
-All login, signup, forgot password, reset password, captcha, lockout, session-write recovery, sign-out, and identity hint logic will route through `src/features/auth/**` only.
+- `src/components/MfaEnforcementGuard.tsx:89` — `window.addEventListener("focus", onFocus)` calls `supabase.auth.getSession()` on every tab return. If it gets `needsChallenge` (or, on the cancel branch, line 110) it calls `window.location.replace("/login")`. That is a **full navigation** the user perceives as "the page reloaded itself." This guard is mounted globally inside `AppLayout`, so it runs on `/admin/activity-log` too.
+- `src/hooks/use-autosave.ts:217` and `src/hooks/use-server-draft.ts:267` — `visibilitychange` handlers fire a flush on hide. Harmless on their own, but they share the same `tab-becomes-hidden→tab-becomes-visible` cycle that we want to prove is reload-free end-to-end.
 
-### Delete-first cutover rule
-No wrapping old code. The cutover is only done when:
-- `src/services/auth.service.ts` is deleted or reduced to a non-auth compatibility shell with zero auth logic.
-- `session.port.ts` imports the real adapter/use-case layer, not `AuthService`.
-- Duplicate Google OAuth flows are deleted.
-- CI fails if any removed path comes back.
+### Root cause 2 — Activity Log keeps ALL UI state in `useState`, so any remount = lost place
 
-## Build plan
+`src/pages/ActivityLogPage.tsx:150-163` stores `page`, `search`, `eventFilter`, `layerFilter`, `severityFilter`, `dateFrom`, `dateTo` in `useState` only. The AG Grid wrapper itself persists column/sort/filter state per `gridId` (`AgGridImpl.tsx:98-106`), but the page-level filters, the current page index, the search box, and the scroll position are **lost on any remount** — whether triggered by:
 
-### Phase 1 — Freeze the current evidence as tests and BDD
-- Add BDD rows `AUTH-ARCH-CUTOVER-001..012` with tri-layer `[UI]`, `[DB]`, `[Code]` Then clauses.
-- Add tests before refactor for:
-  - Forgot-password constant user copy + internal failure telemetry.
-  - Signup success/known failure typed outcomes.
-  - Reset-complete session-expired/weak/same/success outcomes.
-  - Google sign-in single Lovable managed OAuth path.
-  - No direct auth SDK use outside the adapter/broker boundary.
+- a redeploy (`UpdateAvailableBanner` → user clicks "Refresh now"),
+- an `MfaEnforcementGuard` redirect,
+- React Suspense re-mount after a chunk retry,
+- or even a normal browser refresh.
 
-### Phase 2 — Create the real auth use-case layer
-Add explicit use cases under `src/features/auth/services/`:
-- `request-password-reset.service.ts`
-- `complete-password-reset.service.ts`
-- `sign-up.service.ts`
-- `resend-signup-confirmation.service.ts`
-- `sign-out.service.ts`
-- `session.service.ts`
-- `identity-hint.service.ts`
-- `start-google-sign-in.service.ts`
+So even after we kill every silent reload, a user who taps refresh on purpose still loses their place. The permanent fix has to put state somewhere a reload can survive.
 
-Every use case returns a typed result, never raw thrown provider errors.
+### What's already correct (do NOT regress)
 
-### Phase 3 — Replace `session.port.ts`
-- Remove all `AuthService.*.bind(...)` calls.
-- Point `sessionPort` to the new use cases and adapter.
-- Keep only generic session methods that non-auth code still needs: get session, auth-state subscription, get user, clear local state, sign out.
-- Move password reset/signup/update out of the generic session port into auth-specific flows so session and credential operations stop being mixed.
+- `deploy-watcher.ts:97-101` — no `focus`/`visibilitychange`/`pageshow` listeners; only a 60s poll + `online`. ✅
+- `App.tsx:194` and `queryDefaults.ts:38` — `refetchOnWindowFocus: false` globally. ✅
+- `use-admin.ts:33-34` — `refetchOnMount:false`, `refetchOnWindowFocus:false`. ✅
+- `RouteChangeReloader.tsx` — no reload, only scrollTo. ✅
+- `lazy-with-retry.ts` + `index.html` pre-mount handler — chunk reloads are guarded and one-shot. ✅
+- `src/test/smoke/no-tab-switch-reload.test.ts` already locks deploy-watcher against focus listeners. ✅ (we'll extend it.)
 
-### Phase 4 — Cut password reset to the delivery contract
-- Forgot password keeps anti-enumeration UI copy, but internally records distinct outcomes:
-  - `auth_engine.forgot_started`
-  - `auth_engine.forgot_accepted`
-  - `auth_engine.forgot_email_delivery_unverified`
-  - `auth_engine.forgot_rate_limited`
-  - `auth_engine.forgot_google_only_blocked`
-- Add a backend health contract that alerts when reset/signup attempts happen but no auth email send-log row appears in the expected window.
-- Keep `/reset-password/confirm` as the inert link-preview-safe route.
-- Add `/reset-password/*` fallback to preserve old reset links and stop legacy 404s.
+## The permanent fix
 
-### Phase 5 — Cut signup/resend to typed use cases
-- Move signup and resend out of legacy service.
-- Preserve existing UI states:
-  - existing account path
-  - verification email sent path
-  - resend confirmation path
-  - captcha/lockout behavior
-  - domain validation
-  - sanctions fail-open behavior
-- Internally record email-delivery-unverified when the auth system accepts but no send-log row follows.
+### Phase A — Remove the last focus-driven navigation paths
 
-### Phase 6 — Cut sign-in/session/sign-out ownership
-- Keep the already improved password sign-in path, but remove remaining legacy session/sign-out ownership.
-- Ensure `client_session_write_failed` remains non-punitive.
-- Keep MFA behavior unchanged.
-- Keep session revocation behavior unchanged.
-- No changes to accounts, profiles, roles, MFA, audit, or rate-limit tables.
+1. **`MfaEnforcementGuard`**: replace the raw `focus` listener with a Supabase `onAuthStateChange` re-eval that is already wired (lines 66-72 handle `SIGNED_IN`/`TOKEN_REFRESHED`/`USER_UPDATED`). Drop lines 77-94. Result: no MFA gate re-check on tab return → no `/login` replace on tab return. AAL2 elevation is still picked up via `TOKEN_REFRESHED` from the SDK itself.
+2. **`MfaEnforcementGuard` cancel branch (line 110)**: change `window.location.replace("/login")` to `navigate("/login", { replace: true })` so the SPA stays mounted and React Query cache is preserved.
+3. Add an ESLint rule + smoke test entry that forbids `addEventListener("focus", …)` and `addEventListener("visibilitychange", …)` in any new file under `src/components` and `src/pages` **unless** the file declares `// reason: tab-switch-safe — <justification>` on the line above. `use-autosave.ts`/`use-server-draft.ts` get the marker (they only flush — no navigation, no setState, no reload).
 
-### Phase 7 — Delete duplicate Google paths
-- Keep one Google path: `GoogleSignInButton` → `start-google-sign-in.service.ts` → Lovable managed OAuth.
-- Delete `src/features/auth/flows/sign-in-google.flow.ts` if unused.
-- Remove `signInGoogle` from `supabase-session.adapter.ts`.
-- Add a “Trouble with Google?” help link/copy path without changing OAuth mechanics.
+### Phase B — Make Activity Log state survive any reload
 
-### Phase 8 — Delete or neutralize legacy service
-- Delete `src/services/auth.service.ts` if all importers are gone.
-- If non-auth modules still need session helpers, create a tiny compatibility file that re-exports `sessionPort` only and contains zero direct auth SDK calls.
-- Update `scripts/ci/legacy-auth-importers.snapshot.json` downward, not upward.
+4. In `ActivityLogPage.tsx`, replace the seven `useState` calls with a single `useSyncedTableState("activity-log", initial)` hook that:
+   - Initializes from `URLSearchParams` first (so the URL is shareable), falls back to `sessionStorage["tfn:activity-log:state"]`, then to defaults.
+   - Writes through to both `URLSearchParams` (via `useSearchParams` `replace:true`) and `sessionStorage` on every change, debounced 200ms.
+   - Restores **scroll position** on mount from `sessionStorage["tfn:activity-log:scroll"]` (set on `beforeunload` + `visibilitychange:hidden`).
+5. Pass `page`, `pageSize`, the active fingerprint/trace, and the current scroll offset through. AG Grid already restores its own column/sort/filter via `useGridState(gridId)` — keep that.
+6. Result: a real browser reload, an `UpdateAvailableBanner` refresh, or any remount lands the admin back on the exact same page number, filters, search, and scroll position — by design, not by luck.
 
-### Phase 9 — Make regression impossible to merge
-Promote/add CI rules that fail on:
-- Any `AuthService` import.
-- Any `src/services/auth.service.ts` auth logic returning.
-- Any direct `supabase.auth.*`/backend auth SDK call outside the one adapter/broker boundary.
-- Any direct Google OAuth call except Lovable managed OAuth.
-- Any auth screen importing backend clients, ports, rate-limit services, captcha libs, lockout libs, or flows directly.
-- Any auth engine catch block that swallows an error without telemetry.
-- Any hard-coded auth storage key outside `auth-storage-keys.ts`.
-- Any direct captcha/lockout counter mutation outside auth failure policy.
+### Phase C — Lock the bug class
 
-## Why this prevents the recurring bug classes
+7. Extend `src/test/smoke/no-tab-switch-reload.test.ts`:
+   - Fail if `MfaEnforcementGuard.tsx` re-introduces `addEventListener("focus"`.
+   - Fail if any file under `src/pages/` or `src/components/` calls `window.location.reload|replace|assign(` without an inline `// reason:` justification comment.
+   - Fail if `ActivityLogPage.tsx` reverts to plain `useState` for `page`/`search`/`eventFilter` (regex: filename + missing `useSyncedTableState`).
+8. Add a Playwright regression `e2e/regression/incidents/activity-log-tab-switch.e2e.ts`:
+   - Sign in as admin (preview session), go to `/admin/activity-log`, paginate to page 3, filter by `severity=error`, scroll halfway, open a second tab for 5 seconds, return.
+   - Assert URL still has `?page=3&severity=error`, filter dropdown still shows "Error", grid scroll offset is within 50 px of where it was, and **no** `pageerror`/full navigation happened.
 
-- **No silent reset-email failures:** forgot/signup flows will still avoid account enumeration, but ops gets typed evidence when email delivery is unverified.
-- **No duplicate Google paths:** one managed OAuth entrypoint means no stale direct-provider code can be accidentally revived.
-- **No legacy service gravity:** deleting `AuthService` removes the 625-line mixed-responsibility file that keeps pulling new work back into spaghetti.
-- **No counter inflation:** only the failure policy can increment captcha/lockout/rate-limit counters, preserving the Vichea/session-write invariant.
-- **No route drift:** route ownership stays in `App.tsx`, with tests proving reset and legacy reset paths render the right screens.
-- **No “warn-only” architecture:** guardrails become hard failures, so future changes cannot merge with old imports/direct SDK calls.
+### Phase D — BDD scenarios (required by project rules)
 
-## Why this is the recommended architecture
+9. Insert into `bdd_scenarios`:
+   - **NO-RELOAD-TAB-001** — tab hide/show on `/admin/activity-log` never fires `location.reload|replace|assign`. [UI] page DOM identity unchanged · [DB] zero new `audit_log` rows with `event_type='session_idle_timeout'` or `'authn_unauthorized'` · [Code] `deploy-watcher.__debug()` shows no extra version check.
+   - **NO-RELOAD-TAB-002** — `MfaEnforcementGuard` does not redirect on focus when AAL is satisfied. [UI] route is still `/admin/activity-log` · [DB] no `mfa_challenge_initiated` row · [Code] `onAuthStateChange` is the only re-eval channel.
+   - **ACTIVITY-LOG-STATE-001** — page/filter/search/scroll survive a hard reload. [UI] post-reload page index, filter chips, search input, and grid scroll offset match pre-reload · [DB] one read query, no writes · [Code] state hydrated from URL or `sessionStorage`, not from defaults.
 
-- It separates presentation, state, use cases, provider adapters, and monitoring.
-- It uses typed results instead of thrown provider strings across UI boundaries.
-- It preserves OWASP anti-enumeration while adding internal observability.
-- It follows the existing repo’s own intended pattern: `src/features/auth/README.md` already says only auth services should own auth calls, storage, failures, and flows.
-- It turns incidents into BDD + CI contracts, which matches the project rule that every feature/fix must be represented in `bdd_scenarios`.
+## Technical details
 
-## Receipts I will provide after implementation
+### Files touched
 
-- Deleted/neutralized files list, especially `src/services/auth.service.ts` and duplicate Google flow files.
-- Remaining auth entrypoint inventory with file:line ownership.
-- `rg` proof:
-  - zero `AuthService` imports
-  - zero direct Google backend OAuth calls
-  - zero direct auth SDK calls outside allowed boundary
-  - zero auth screens importing services/ports/backend clients directly
-- BDD rows inserted and query count for `AUTH-ARCH-CUTOVER-*`.
-- CI guard outputs and test outputs.
-- Live data proof:
-  - new forgot-password attempt creates telemetry
-  - recovery/signup auth email send-log rows appear again, or delivery-unverified alert fires
-  - no new live reset/login failure pattern appears in auth/edge logs after refresh
+- `src/components/MfaEnforcementGuard.tsx` — drop focus listener; switch cancel branch to `useNavigate`.
+- `src/pages/ActivityLogPage.tsx` — consume new state hook; restore scroll.
+- `src/hooks/use-synced-table-state.ts` — **new**, generic URL+session-backed state hook.
+- `src/test/smoke/no-tab-switch-reload.test.ts` — add three guards.
+- `e2e/regression/incidents/activity-log-tab-switch.e2e.ts` — **new** Playwright spec.
+- `scripts/lint/eslint-plugin-no-focus-listener.mjs` — **new**, marker-comment-enforced rule.
+- `eslint.config.js` — register the new rule.
+- `supabase/migrations/<ts>_activity_log_no_reload_bdd.sql` — insert the three BDD rows.
 
-## Explicit non-goals / safety rails
+### Why this is permanent, not another patch
 
-- No account/profile/role/session/MFA table rewrites.
-- No changes to profile emails.
-- No RLS loosening.
-- No new auth provider.
-- No auto-confirm signup.
-- No manual secret handling.
-- No deleting audit or rate-limit history.
-- No UX regression or extra member clicks.
+- The two remaining causes are **structural** (a global focus listener that navigates; component-only state on a long-lived admin grid). Fixing them at the source removes the failure mode entirely.
+- The ESLint rule + extended smoke test + Playwright regression mean a future change that re-adds either pattern fails CI before it can ship.
+- BDD rows turn the contract into an enforceable, queryable scenario that the BDD gate workflow already checks on every PR touching these files.
+
+### Out of scope (per safety rails)
+
+No auth/account/session/MFA/audit/rate-limit table changes. No RLS edits. No new auth providers. No service workers. No extra clicks for members. AG Grid column/sort/filter persistence is unchanged.
