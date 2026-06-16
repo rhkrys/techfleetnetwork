@@ -152,16 +152,35 @@ export default function ActivityLogPage() {
   const [profiles, setProfiles] = useState<Map<string, { email: string; name: string }>>(new Map());
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [search, setSearch] = useState("");
-  const [eventFilter, setEventFilter] = useState<string>("all");
-  const [layerFilter, setLayerFilter] = useState<string>("all");
-  const [severityFilter, setSeverityFilter] = useState<string>("all");
-  const [page, setPage] = useState(0);
-  const [totalCount, setTotalCount] = useState(0);
   const [triageMap, setTriageMap] = useState<Map<string, TriageState>>(new Map());
-  const [dateFrom, setDateFrom] = useState<string>("");
-  const [dateTo, setDateTo] = useState<string>("");
   const [exporting, setExporting] = useState(false);
+
+  // ACTIVITY-LOG-STATE-001 — page/filter/search/scroll survive a hard reload
+  // OR a remount (UpdateAvailableBanner refresh, auth redirect, Suspense
+  // retry, browser refresh). Hydration order: URL → sessionStorage → defaults.
+  const [tableState, setTableState] = useSyncedTableState("activity-log", {
+    search: "",
+    eventFilter: "all",
+    layerFilter: "all",
+    severityFilter: "all",
+    dateFrom: "",
+    dateTo: "",
+    page: 0,
+  });
+  const { search, eventFilter, layerFilter, severityFilter, dateFrom, dateTo, page } = tableState;
+  const setSearch = (v: string) => setTableState({ search: v });
+  const setEventFilter = (v: string) => setTableState({ eventFilter: v, page: 0 });
+  const setLayerFilter = (v: string) => setTableState({ layerFilter: v, page: 0 });
+  const setSeverityFilter = (v: string) => setTableState({ severityFilter: v, page: 0 });
+  const setDateFrom = (v: string) => setTableState({ dateFrom: v, page: 0 });
+  const setDateTo = (v: string) => setTableState({ dateTo: v, page: 0 });
+  const setPage = (next: number | ((prev: number) => number)) =>
+    setTableState((prev) => ({ page: typeof next === "function" ? (next as (p: number) => number)(prev.page as number) : next }));
+  const [totalCount, setTotalCount] = useState(0);
+
+  // Restore scroll position once entries land (so the rendered grid has height).
+  useSyncedScrollPosition("activity-log", entries.length > 0);
+
 
   const fetchProfiles = async () => {
       const { data } = await withTimeout<{ data: Array<{ user_id: string; email: string; first_name: string; last_name: string; display_name: string }> | null }>(
