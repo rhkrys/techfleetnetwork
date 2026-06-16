@@ -422,7 +422,19 @@ export function reportError(
   if (handleZodErrorMessage(msg, source)) return;
   const options: ReportOptions = typeof optionsOrUserId === "string"
     ? { userId: optionsOrUserId }
-    : optionsOrUserId;
+    : { ...optionsOrUserId };
+
+  // Transient PG/PostgREST/HTTP infra errors — classified at source and
+  // routed to event_type=infra_transient severity=info. This is the single
+  // chokepoint that keeps PGRST002, 57014, 53300, 429s, etc. out of the
+  // admin Triage queue regardless of which service raised them.
+  // Mirrors public.is_actionable_event_type() in the database (CI guard:
+  // scripts/ci/check-triage-actionable-parity.mjs).
+  if (isTransientError(err)) {
+    options.eventType = "infra_transient";
+    options.severity = "info";
+  }
+
   // Tag Postgres "column reference ... is ambiguous" errors with a stable
   // fingerprint keyed by the offending function so regressions of the
   // plpgsql OUT-param shadowing class group instantly in Triage.
@@ -437,6 +449,8 @@ export function reportError(
       `pg_error:column_ambiguous`,
     ];
     options.severity = "error";
+    // Ambiguity is a real code bug — never silently downgrade to infra_transient.
+    options.eventType = "client_error";
   }
   void reportToAuditLog(msg, source, options);
 
