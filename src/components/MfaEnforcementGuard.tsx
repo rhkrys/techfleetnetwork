@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { MfaService } from "@/services/mfa.service";
 import { MfaChallengeDialog } from "@/components/MfaChallengeDialog";
@@ -14,17 +15,28 @@ const log = createLogger("MfaEnforcementGuard");
  *
  * Resilience: derives the decision from `MfaService.getMfaGateDecision()`, which
  * does NOT rely on the (sometimes stale) `nextLevel` JWT claim. Re-evaluates on
- * `SIGNED_IN`, `TOKEN_REFRESHED`, `USER_UPDATED`, and on window focus so that
- * post-OAuth and post-refresh sessions are also caught.
+ * `SIGNED_IN`, `TOKEN_REFRESHED`, and `USER_UPDATED` — the SDK fires
+ * `TOKEN_REFRESHED` automatically when the access token rotates, so any AAL2
+ * elevation done in another tab is picked up without needing a manual focus
+ * listener.
+ *
+ * NO-RELOAD-TAB-002 (2026-06-16): the previous `window.addEventListener("focus")`
+ * handler called `supabase.auth.getSession()` on every tab return and could
+ * `window.location.replace("/login")` if the SDK transiently returned no
+ * session — that landed users (especially admins on /admin/activity-log) on a
+ * full-page navigation that destroyed their scroll, filters, search, and page
+ * index. The focus listener is intentionally removed; `onAuthStateChange` is
+ * the single re-eval channel.
  *
  * Loop-prevention: after a successful verify we silence re-checks for 10s so
- * the focus/TOKEN_REFRESHED storm that immediately follows can't race the JWT
- * cache update and re-prompt the user (AUTH-2FA-LOOP-001..003).
+ * the TOKEN_REFRESHED storm that immediately follows can't race the JWT cache
+ * update and re-prompt the user (AUTH-2FA-LOOP-001..003).
  */
 const POST_VERIFY_QUIET_MS = 10_000;
 
 export function MfaEnforcementGuard() {
   const { user, session, loading } = useAuth();
+  const navigate = useNavigate();
   const [challengeOpen, setChallengeOpen] = useState(false);
   const lastCheckedToken = useRef<string | null>(null);
   const inFlight = useRef(false);
@@ -63,6 +75,9 @@ export function MfaEnforcementGuard() {
 
     // Re-evaluate on auth state changes. Per Supabase guidance, never `await`
     // inside the callback — defer with queueMicrotask to avoid deadlocks.
+    // TOKEN_REFRESHED fires automatically on token rotation (including after
+    // an AAL2 elevation in another tab), which makes the prior focus listener
+    // redundant. See NO-RELOAD-TAB-002.
     const { data: sub } = supabase.auth.onAuthStateChange((event, newSession) => {
       if (!newSession?.access_token) return;
       if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "USER_UPDATED") {
@@ -71,26 +86,8 @@ export function MfaEnforcementGuard() {
       }
     });
 
-    // Re-evaluate on focus regain in case the gate was bypassed in another tab.
-    // Re-read the token from the SDK (not the stale closure) so a freshly
-    // elevated AAL2 token is honoured immediately.
-    const onFocus = async () => {
-      if (Date.now() - recentlyVerifiedAt.current < POST_VERIFY_QUIET_MS) return;
-      try {
-        const { data } = await supabase.auth.getSession();
-        const token = data.session?.access_token;
-        if (!token) return;
-        lastCheckedToken.current = null;
-        void runCheck(token);
-      } catch {
-        /* non-blocking */
-      }
-    };
-    window.addEventListener("focus", onFocus);
-
     return () => {
       sub.subscription.unsubscribe();
-      window.removeEventListener("focus", onFocus);
     };
   }, [user, session, loading]);
 
@@ -105,9 +102,11 @@ export function MfaEnforcementGuard() {
       }}
       onCancel={async () => {
         setChallengeOpen(false);
-        // User refused MFA — sign out fully to prevent half-authenticated AAL1 access
+        // User refused MFA — sign out fully to prevent half-authenticated AAL1 access.
+        // SPA navigation (not window.location.replace) so React Query cache,
+        // scroll, and any open admin grids survive the redirect. See NO-RELOAD-TAB-002.
         await supabase.auth.signOut();
-        window.location.replace("/login");
+        navigate("/login", { replace: true });
       }}
     />
   );
