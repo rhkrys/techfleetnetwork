@@ -23,6 +23,7 @@ import { getCurrentTraceId } from "@/lib/trace";
 import { checkNow as checkDeployNow } from "@/lib/deploy-watcher";
 import { isChunkLoadMessage } from "@/lib/lazy-with-retry";
 import { formatThrowable } from "@/lib/error-normalization";
+import { isTransientError } from "@/lib/transient-error";
 
 /**
  * Event types that are infrastructure / observability / aggregate notices.
@@ -53,6 +54,11 @@ const NON_ACTIONABLE_EVENT_TYPES: ReadonlySet<string> = new Set([
   "email_rate_limited",
   "email_frequency_capped",
   "email_suppressed",
+  // Transient PG/PostgREST/HTTP infra errors classified at source by
+  // isTransientError(). Single source of truth lives in DB function
+  // public.is_actionable_event_type — keep this list and that function in
+  // sync (CI guard: scripts/ci/check-triage-actionable-parity.mjs).
+  "infra_transient",
 ]);
 
 
@@ -192,7 +198,10 @@ export type ReportEventType =
   // by the DB trigger reject_self_healing_on_agent_fix_queue.
   | "chunk_stale"
   | "query_failed"
-  | "mutation_failed";
+  | "mutation_failed"
+  // Transient PG/PostgREST/HTTP infra errors. Always non-actionable; never
+  // reaches agent_fix_queue (TS NON_ACTIONABLE + DB is_actionable_event_type).
+  | "infra_transient";
 
 
 interface ReportOptions {
@@ -413,7 +422,19 @@ export function reportError(
   if (handleZodErrorMessage(msg, source)) return;
   const options: ReportOptions = typeof optionsOrUserId === "string"
     ? { userId: optionsOrUserId }
-    : optionsOrUserId;
+    : { ...optionsOrUserId };
+
+  // Transient PG/PostgREST/HTTP infra errors — classified at source and
+  // routed to event_type=infra_transient severity=info. This is the single
+  // chokepoint that keeps PGRST002, 57014, 53300, 429s, etc. out of the
+  // admin Triage queue regardless of which service raised them.
+  // Mirrors public.is_actionable_event_type() in the database (CI guard:
+  // scripts/ci/check-triage-actionable-parity.mjs).
+  if (isTransientError(err)) {
+    options.eventType = "infra_transient";
+    options.severity = "info";
+  }
+
   // Tag Postgres "column reference ... is ambiguous" errors with a stable
   // fingerprint keyed by the offending function so regressions of the
   // plpgsql OUT-param shadowing class group instantly in Triage.
@@ -428,6 +449,8 @@ export function reportError(
       `pg_error:column_ambiguous`,
     ];
     options.severity = "error";
+    // Ambiguity is a real code bug — never silently downgrade to infra_transient.
+    options.eventType = "client_error";
   }
   void reportToAuditLog(msg, source, options);
 

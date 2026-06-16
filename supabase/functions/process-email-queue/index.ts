@@ -659,32 +659,19 @@ Deno.serve(withAuditWrapper("process-email-queue", async (req) => {
           cooldownUntil[offenderLane] = until
           consecutive[offenderLane] = nextCount
 
-          // Admin signal — deduped per hour per offender lane via agent_fix_queue.
-          // Wrapped because the table is optional and failures here must not break sends.
-          try {
-            const hourBucket = new Date().toISOString().slice(0, 13) // YYYY-MM-DDTHH
-            // Severity is based on the OFFENDER lane: an auth burst that
-            // tripped the workspace quota is user-critical even when the
-            // 429 arrives on transactional. Bulk lane offenders stay at
-            // 'warn' since they're isolated by design.
-            const laneSeverity = offenderLane === 'bulk_emails' ? 'warn' : 'error'
-            const attributionNote =
-              offenderLane === queue
-                ? ''
-                : ` (workspace-quota 429 attributed from ${queue} to ${offenderLane})`
-            await supabase.from('agent_fix_queue').upsert(
-              {
-                fingerprint: `email_queue.rate_limited.${offenderLane}.${hourBucket}`,
-                event_type: 'email_rate_limited',
-                source: 'process-email-queue',
-                severity: laneSeverity,
-                error_message: `${offenderLane} paused ${retryAfterSecs}s after consecutive 429 #${nextCount}.${attributionNote} ${errorMsg.slice(0, 500)}`,
-              } as any,
-              { onConflict: 'fingerprint', ignoreDuplicates: false }
-            )
-          } catch (signalErr) {
-            console.warn('agent_fix_queue insert failed', { err: String(signalErr) })
-          }
+          // Cooldown is already recorded in email_send_state above. The
+          // email_send_log status='rate_limited' write below triggers
+          // audit_email_send_log → audit_log event_type='email_rate_limited',
+          // which discover_audit_fingerprints + is_actionable_event_type
+          // both classify as non-actionable. Visible to admins in System
+          // Health → Email tab and Activity Log without polluting Triage.
+          //
+          // 2026-06-16: Removed the legacy direct upsert into agent_fix_queue
+          // at severity='error' for the transactional lane. That bypassed
+          // the BEFORE-INSERT trigger's non-actionable allowlist and was the
+          // single source of recurring email_rate_limited rows in Triage.
+          // See plan: docs/runbooks/triage-actionable-single-source.md and
+          // bdd_scenarios TRIAGE-ROOT-001.
 
 
           // Stop THIS queue's batch; outer loop continues to the next queue

@@ -10,6 +10,8 @@
  * onError (decides whether to forward to the reporter at all).
  */
 
+import { isTransientError } from "@/lib/transient-error";
+
 const EXTENSION_FRAME_RE = /(chrome|moz|safari-web)-extension:\/\//i;
 const ABOUT_FRAME_RE = /(^|\s)at\s+about:/i;
 // Translation extensions (Google Translate, Transover, DeepL, etc.) mutate the
@@ -24,7 +26,7 @@ export interface ClassifiedError {
   /** Should this error be reported to audit_log / agent_fix_queue? */
   report: boolean;
   /** Reason for dropping (logged locally, not reported). */
-  reason?: "extension_frame" | "offline" | "hidden_tab_fetch" | "aborted" | "dom_extension_mutation";
+  reason?: "extension_frame" | "offline" | "hidden_tab_fetch" | "aborted" | "dom_extension_mutation" | "infra_transient";
   /** Should the caller retry transparently? */
   retriable: boolean;
 }
@@ -97,6 +99,15 @@ export function classify(value: unknown): ClassifiedError {
     isFetchTypeError(value)
   ) {
     return { report: false, reason: "hidden_tab_fetch", retriable: true };
+  }
+
+  // 5. Transient PG / PostgREST / HTTP infra errors. Mirrors the DB function
+  //    public.is_actionable_event_type (event_type='infra_transient') so a
+  //    single source of truth (isTransientError) governs every reporter
+  //    entrypoint AND React Query's QueryCache.onError. Stops PGRST002,
+  //    statement-timeout 57014, 429s, etc. from flooding Triage.
+  if (isTransientError(value)) {
+    return { report: false, reason: "infra_transient", retriable: true };
   }
 
   return { report: true, retriable: isFetchTypeError(value) };
