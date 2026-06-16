@@ -1,105 +1,68 @@
-# Why you got bounced back to the logged-out home page
+# Permanent fix: bootstrap bad_jwt no longer signs users out
 
-Your auth logs from the last hour are full of this pattern:
+## Root cause (proven)
+`src/contexts/AuthContext.tsx` bootstrap (lines 297–337):
+1. `setSession()` stores valid tokens
+2. `getUser()` → transient `bad_jwt` 403 (GoTrue hiccup)
+3. `decidePurgeOnBadJwt()` returns `shouldPurge=false` (first strike — correct)
+4. Bootstrap **then calls `refreshSession()`** against the same flapping backend
+5. Refresh returns `bad_jwt` → `isUnrecoverableAuthError=true` → purge + signOut
+6. User lands on `/`
 
-```
-GET /user → 403 bad_jwt
-"token is malformed: token contains an invalid number of segments"
-```
+Step 4 bypasses the documented two-strike contract (`AUTH-WEDGE-001..012`). The fetch-guard never does this — bootstrap is the lone outlier.
 
-Many different AWS IPs, all hitting GoTrue's `/user` endpoint. That's a backend GoTrue / auth-proxy hiccup — not a problem with your account. This morning it was healthy, around the time you logged in it started returning `bad_jwt` sporadically.
+## The fix (one block, ~12 lines)
+**File:** `src/contexts/AuthContext.tsx` — bootstrap self-heal block (lines 297–337)
 
-We already have a documented protection for this exact case (memory: *AUTH-WEDGE: a single transient bad_jwt MUST NEVER sign out an active user*). But there's a hole in the implementation that exactly matches your three bounces.
+Replace the "first strike → immediate `refreshSession()` → purge on refresh error" path with "first strike → trust stored session, beacon, return". Keep unchanged:
+- `shape_invalid` / `expired` / second-strike → purge
+- `onAuthStateChange('SIGNED_OUT' | 'TOKEN_REFRESHED')` handlers
+- fetch-guard's own two-strike purge
 
-# Root cause (proven from code, not guessed)
-
-`src/contexts/AuthContext.tsx` (bootstrap, lines 297–337) runs this after Google OAuth returns:
-
-```text
-1. setSession(access_token, refresh_token)       ← stores fresh, valid tokens
-2. supabase.auth.getUser()                       ← validates against GoTrue
-   └─ returns bad_jwt 403  (GoTrue hiccup)
-3. decidePurgeOnBadJwt() → shouldPurge = false   ← first strike, GOOD
-4. supabase.auth.refreshSession()                ← IMMEDIATE retry
-   └─ also returns a bad_jwt-class error
-5. isUnrecoverableAuthError(refreshError) = true ← per classifyAuthError
-6. purgeLocalAuthState() + signOut({local}) + setSession(null) + setUser(null)
-   → app re-renders as logged-out → you land on `/`
-```
-
-Step 5 is the bug. The two-strike gate at step 3 correctly says "don't purge". But step 4 immediately fires a refresh against the same misbehaving GoTrue, and step 5 treats that second hiccup as unrecoverable — bypassing the two-strike protection in one round-trip.
-
-`classifyAuthError` (`src/lib/auth/session-health.ts` lines 40–67) matches `bad_jwt`, `invalid jwt`, `invalid number of segments`, `token is malformed`, `parse or verify signature` → returns `jwt_corrupt` → `isUnrecoverableAuthError = true` → purge. So any backend hiccup that flaps `/user` AND `/token?refresh` (they share infra) deterministically signs you out, three logins in a row.
-
-The stored token at step 1 is structurally fine (3 segments, unexpired). There is no actual corruption. The SDK's own background auto-refresh would have recovered on its next tick — but we never gave it that chance.
-
-# The fix (root cause, one change, no band-aids)
-
-Honor the two-strike contract literally: on the **first** transient `bad_jwt` against a stored token that is structurally valid and unexpired, do NOT immediately call `refreshSession()` against the same flapping backend. Trust the stored session and let:
-
-- the GoTrue auto-refresh timer (already running in the SDK), and
-- the next real API call (which will re-classify on its own strike)
-
-heal the session. The two-strike window (15s) + fetch-guard already catch a true corruption on the second hit.
-
-## Code change
-
-**File:** `src/contexts/AuthContext.tsx` (lines 297–337, bootstrap self-heal block)
-
-Replace the "first strike → immediate refresh → purge on refresh error" branch with "first strike → no-op, trust stored session". Keep:
-
-- shape_invalid / expired / second-strike paths → purge (unchanged)
-- `onAuthStateChange` SIGNED_OUT and TOKEN_REFRESHED handlers (unchanged)
-- fetch-guard's own purge on second strike (unchanged)
-
-Pseudocode of the new branch:
-
-```text
+New branch:
+```ts
 if (resolvedSession?.access_token) {
   const { error } = await supabase.auth.getUser();
   if (error && isUnrecoverableAuthError(error)) {
     const decision = decidePurgeOnBadJwt();
     if (decision.shouldPurge) {
-      // shape_invalid OR expired OR second strike → purge as today
-      purgeLocalAuthState(...); signOut({local}); clear state; return;
+      // shape_invalid | expired | second strike → purge (unchanged)
+      purgeLocalAuthState(...); await supabase.auth.signOut({ scope: 'local' });
+      setSession(null); setUser(null); return;
     }
-    // First transient strike with a structurally valid, unexpired token:
-    // DO NOT call refreshSession() here. Background auto-refresh + the
-    // 15s two-strike gate handle recovery. Just keep the user signed in.
-    beacon("transient_bad_jwt", { source: "bootstrap", swallowed: true });
+    // First transient strike, structurally valid + unexpired stored token.
+    // Do NOT call refreshSession() against the same flapping backend.
+    // SDK auto-refresh + 15s two-strike gate + fetch-guard heal this.
+    beacon('transient_bad_jwt', { source: 'bootstrap', swallowed: true });
   }
 }
 ```
 
-This is a 12-line replacement of an existing 40-line block. No new state, no new storage keys, no new timers, no new dependencies.
+No new state, storage keys, timers, or deps.
 
-## Why this is the permanent fix, not a band-aid
+## Why this is permanent, not a band-aid
+- Matches documented `AUTH-WEDGE-001..012` contract literally.
+- Symmetric with runtime fetch-guard (already uses `decidePurgeOnBadJwt` without forced refresh).
+- Doesn't weaken security: `getStoredAccessTokenHealth()` still catches truly corrupt/expired tokens BEFORE the two-strike branch; real second strike within 15s still purges.
+- Doesn't hide real refresh failures: SDK background auto-refresh + `onAuthStateChange('SIGNED_OUT')` handle genuine expiry.
+- Closes the bug class: any future GoTrue flap that hits `/user` + `/token` together can no longer sign users out in one round-trip.
 
-1. **Matches the documented contract** in memory `AUTH-WEDGE-001..012`: "a single transient bad_jwt NEVER signs an active user out."
-2. **Symmetric with fetch-guard**: the runtime fetch guard already uses `decidePurgeOnBadJwt()` without a forced refresh — bootstrap was the lone outlier.
-3. **Does not weaken security**: a truly corrupt stored token is caught at `getStoredAccessTokenHealth()` (shape_invalid / expired) BEFORE the two-strike branch, and a real second strike within 15s still purges.
-4. **Does not hide real refresh failures**: when the access token genuinely expires, the SDK's auto-refresh runs on its own schedule; if THAT call returns refresh_invalid, the existing `onAuthStateChange("SIGNED_OUT")` and `TOKEN_REFRESHED` paths handle it cleanly.
-5. **Closes the regression class**: any future GoTrue/edge hiccup that flaps `/user` + `/token` together can no longer sign users out in one round-trip.
-
-## Guardrails to lock the bug class
-
-- **Unit test** `src/lib/auth/__tests__/bootstrap-self-heal.test.ts`: simulate `getUser → bad_jwt` AND `refreshSession → bad_jwt` with a structurally valid stored token; assert session stays set, no `purgeLocalAuthState` call, beacon emits `transient_bad_jwt`.
-- **Unit test**: same scenario twice within 15s → second call purges (existing two-strike path still works).
-- **Unit test**: stored token shape_invalid → purges on first strike (unchanged behavior).
-- **ESLint guard** (extend existing `eslint-plugin-no-focus-listener`-style local rule): forbid new `supabase.auth.refreshSession()` calls inside `AuthContext.tsx` bootstrap to prevent re-introduction.
-- **BDD scenarios** (added to `bdd_scenarios` table per workspace rules):
-  - `AUTH-WEDGE-013` Transient bad_jwt on bootstrap does not sign user out
-  - `AUTH-WEDGE-014` Two transient bad_jwt within 15s purges as designed
-  - `AUTH-WEDGE-015` Google OAuth + GoTrue /user 403 keeps user signed in
+## Guardrails (lock the regression class)
+1. `src/lib/auth/__tests__/bootstrap-self-heal.test.ts` (new):
+   - `getUser→bad_jwt` + `refreshSession→bad_jwt` with valid stored token → session stays, no purge, beacon fires
+   - Two strikes within 15s → second purges
+   - `shape_invalid` stored token → purges on first strike
+2. ESLint local rule: forbid `supabase.auth.refreshSession()` inside `AuthContext.tsx` bootstrap.
+3. BDD scenarios inserted via migration into `bdd_scenarios`:
+   - `AUTH-WEDGE-013` Transient bad_jwt on bootstrap does not sign user out
+   - `AUTH-WEDGE-014` Two transient bad_jwt within 15s purges as designed
+   - `AUTH-WEDGE-015` Google OAuth + GoTrue /user 403 keeps user signed in
+4. Update memory `mem://features/auth/wedge-recovery` to `..015` noting bootstrap MUST NOT call `refreshSession()` on first transient strike.
 
 ## Receipts after ship
-
-- `git diff --stat` showing only `src/contexts/AuthContext.tsx` + new test file + BDD migration.
-- Tests pass (existing AUTH-WEDGE suite + 3 new cases).
-- Memory `AUTH-WEDGE-001..012` updated to `..015` with the bootstrap clarification.
-- Beacon `transient_bad_jwt` visible in `ops_events` (already wired) so future hiccups are observable without being destructive.
+- `git diff --stat`: only `src/contexts/AuthContext.tsx`, new test file, ESLint rule, BDD migration, memory update.
+- Existing AUTH-WEDGE suite + 3 new tests pass.
+- `transient_bad_jwt` beacon visible in `ops_events` next time GoTrue flaps — observable, non-destructive.
 
 ## Out of scope
-
-- The underlying GoTrue/edge `bad_jwt` flapping is a platform-side issue; we can't fix it from app code. This change makes the app survive it gracefully.
-- No changes to login UI, OAuth provider config, RLS, profiles, MFA, captcha, or rate-limit tables.
+GoTrue `bad_jwt` flapping itself (platform-side). No changes to login UI, OAuth config, RLS, profiles, MFA, captcha, rate-limit tables.
