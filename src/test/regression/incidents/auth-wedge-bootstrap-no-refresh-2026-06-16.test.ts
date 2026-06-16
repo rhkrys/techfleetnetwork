@@ -31,7 +31,12 @@ describe("AUTH-WEDGE-013..015 — bootstrap must not refreshSession on first tra
     expect(start).toBeGreaterThan(0);
     expect(end).toBeGreaterThan(start);
     const block = AUTH_CONTEXT_SRC.slice(start, end);
-    expect(block).not.toMatch(/refreshSession\s*\(/);
+    // Strip comments before asserting: comments may mention refreshSession()
+    // historically, but no executable call may remain.
+    const codeOnly = block
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+    expect(codeOnly).not.toMatch(/\bsupabase\.auth\.refreshSession\s*\(/);
   });
 
   it("AUTH-WEDGE-014 — bootstrap self-heal beacons transient_bad_jwt on first strike", () => {
