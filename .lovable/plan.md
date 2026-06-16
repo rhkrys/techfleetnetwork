@@ -1,124 +1,105 @@
-## Triage queue current state (live evidence)
+# Why you got bounced back to the logged-out home page
 
-`agent_fix_queue` has 8 `pending` rows. All of them collapse into 3 root causes:
+Your auth logs from the last hour are full of this pattern:
 
-| # | Fingerprint / source | Root cause |
-|---|---|---|
-| 1–2 | `process-email-queue` `email_rate_limited` ×2 | Worker upserts directly into `agent_fix_queue` with `severity='error'` for the transactional lane on Resend 429 cooldown. The DB trigger that's supposed to block non-actionable event types **does not list `email_rate_limited`**, even though the JS reporter does (`NON_ACTIONABLE_EVENT_TYPES`) and so does `discover_audit_fingerprints` (`v_excluded_events`). Three sources of truth, only two agree → direct insert wins. |
-| 3 | `email_send_log` `email_failed` "Failed to mint unsubscribe token" | `auth-email-hook` upsert→re-SELECT pattern (lines 332–352) overwrites a freshly minted token with `null` when the upsert errors for ANY reason (not just a unique-violation race). On a transient PostgREST blip (`PGRST002`/`57014`) the re-SELECT also returns empty, so `unsubscribeToken` becomes `null` and the function inserts a synthetic `failed` row. The status='failed' trigger then emits `email_failed` into `audit_log`; discover queues it at `severity='error'`. |
-| 4–8 | `getReadIds` 57014, `getNetworkStats` PGRST002, `query.public-project-openings` upstream timeout, `frontend` "Failed to load progress" PGRST002, `unhandledrejection` "Failed to count progress" 57014 | Transient Postgres/PostgREST infra errors that are **already classified by `src/lib/transient-error.ts`** (codes `PGRST002`, `57014`, `57P0x`, `53300`, …) but that classifier is **never consulted by `reportError()` or `classify()`**. So `handleServiceError` and direct service-layer reports flag every transient blip as `severity='error'` → triage queue. |
+```
+GET /user → 403 bad_jwt
+"token is malformed: token contains an invalid number of segments"
+```
 
-## Why this is a single architectural defect, not 8 bugs
+Many different AWS IPs, all hitting GoTrue's `/user` endpoint. That's a backend GoTrue / auth-proxy hiccup — not a problem with your account. This morning it was healthy, around the time you logged in it started returning `bad_jwt` sporadically.
 
-There are three independent paths that can land a row in `agent_fix_queue` at `severity='error'`:
+We already have a documented protection for this exact case (memory: *AUTH-WEDGE: a single transient bad_jwt MUST NEVER sign out an active user*). But there's a hole in the implementation that exactly matches your three bounces.
+
+# Root cause (proven from code, not guessed)
+
+`src/contexts/AuthContext.tsx` (bootstrap, lines 297–337) runs this after Google OAuth returns:
 
 ```text
-A. Direct insert  (process-email-queue, send-project-blast, etc.)
-B. reportError → write_audit_log → triage RPC upsert_fix_queue_entry
-C. audit_log → cron discover_audit_fingerprints → queue insert
+1. setSession(access_token, refresh_token)       ← stores fresh, valid tokens
+2. supabase.auth.getUser()                       ← validates against GoTrue
+   └─ returns bad_jwt 403  (GoTrue hiccup)
+3. decidePurgeOnBadJwt() → shouldPurge = false   ← first strike, GOOD
+4. supabase.auth.refreshSession()                ← IMMEDIATE retry
+   └─ also returns a bad_jwt-class error
+5. isUnrecoverableAuthError(refreshError) = true ← per classifyAuthError
+6. purgeLocalAuthState() + signOut({local}) + setSession(null) + setUser(null)
+   → app re-renders as logged-out → you land on `/`
 ```
 
-Each path has its own non-actionable allowlist:
+Step 5 is the bug. The two-strike gate at step 3 correctly says "don't purge". But step 4 immediately fires a refresh against the same misbehaving GoTrue, and step 5 treats that second hiccup as unrecoverable — bypassing the two-strike protection in one round-trip.
 
-- A is governed only by the DB trigger `block_non_actionable_fix_queue_inserts`
-- B is governed by `NON_ACTIONABLE_EVENT_TYPES` in `error-reporter.service.ts`
-- C is governed by `v_excluded_events` in `discover_audit_fingerprints`
+`classifyAuthError` (`src/lib/auth/session-health.ts` lines 40–67) matches `bad_jwt`, `invalid jwt`, `invalid number of segments`, `token is malformed`, `parse or verify signature` → returns `jwt_corrupt` → `isUnrecoverableAuthError = true` → purge. So any backend hiccup that flaps `/user` AND `/token?refresh` (they share infra) deterministically signs you out, three logins in a row.
 
-The three lists have drifted. None of the three knows about **infra-transient PG codes** at all. That's why every transient PGRST002/57014/429 reaches Triage no matter which path it enters by.
+The stored token at step 1 is structurally fine (3 segments, unexpired). There is no actual corruption. The SDK's own background auto-refresh would have recovered on its next tick — but we never gave it that chance.
 
-## Permanent fix (one principle, applied uniformly)
+# The fix (root cause, one change, no band-aids)
 
-> **There is exactly one source of truth for "what is actionable in Triage": a `public.is_actionable_event_type(event_type)` SQL function + a structural `isTransientError(err)` TS classifier. Every path consults both.**
+Honor the two-strike contract literally: on the **first** transient `bad_jwt` against a stored token that is structurally valid and unexpired, do NOT immediately call `refreshSession()` against the same flapping backend. Trust the stored session and let:
 
-### 1. DB: single source of truth for actionable event types
+- the GoTrue auto-refresh timer (already running in the SDK), and
+- the next real API call (which will re-classify on its own strike)
 
-- New SQL function `public.is_actionable_event_type(p_event_type text, p_changed_fields text[]) returns boolean` that returns false for the union of all three current lists plus the missing items (`email_rate_limited`, `email_reconciled`, `email_frequency_capped`, `email_suppressed`, `validation_rejected`, `infra_transient`). Also returns false when `changed_fields` contains a `severity:` tag other than `severity:error` (consistent with `discover_audit_fingerprints`).
-- Rewrite `block_non_actionable_fix_queue_inserts()` and `discover_audit_fingerprints()` to call `is_actionable_event_type(...)`. Both paths now share one list — they cannot drift again.
+heal the session. The two-strike window (15s) + fetch-guard already catch a true corruption on the second hit.
 
-### 2. TS reporter: consult the transient classifier before writing
+## Code change
 
-- In `reportError()` (`src/services/error-reporter.service.ts`), before `reportToAuditLog(...)`:
-  ```ts
-  if (isTransientError(err)) {
-    options.eventType = "infra_transient";
-    options.severity  = "info";
+**File:** `src/contexts/AuthContext.tsx` (lines 297–337, bootstrap self-heal block)
+
+Replace the "first strike → immediate refresh → purge on refresh error" branch with "first strike → no-op, trust stored session". Keep:
+
+- shape_invalid / expired / second-strike paths → purge (unchanged)
+- `onAuthStateChange` SIGNED_OUT and TOKEN_REFRESHED handlers (unchanged)
+- fetch-guard's own purge on second strike (unchanged)
+
+Pseudocode of the new branch:
+
+```text
+if (resolvedSession?.access_token) {
+  const { error } = await supabase.auth.getUser();
+  if (error && isUnrecoverableAuthError(error)) {
+    const decision = decidePurgeOnBadJwt();
+    if (decision.shouldPurge) {
+      // shape_invalid OR expired OR second strike → purge as today
+      purgeLocalAuthState(...); signOut({local}); clear state; return;
+    }
+    // First transient strike with a structurally valid, unexpired token:
+    // DO NOT call refreshSession() here. Background auto-refresh + the
+    // 15s two-strike gate handle recovery. Just keep the user signed in.
+    beacon("transient_bad_jwt", { source: "bootstrap", swallowed: true });
   }
-  ```
-  `infra_transient` is added to `NON_ACTIONABLE_EVENT_TYPES` and to the new SQL function, so neither path B nor the audit row written for it can reach the queue.
-- In `src/lib/observability/classify.ts`, fold `isTransientError(value)` into `classify()`: when it matches, return `{ report: false, reason: "infra_transient", retriable: true }`. This stops React Query's `QueryCache.onError` from writing anything for transients (currently it writes `query_failed warn`, which is harmless but redundant).
-- `handleServiceError` (`src/lib/service-result.ts`) now passes the *original* error to `reportError(error, action, { ... })` instead of a pre-formatted message string, so the classifier can see `code` / `status` fields. Today it stringifies first and the classifier loses the structured fields — that's why PGRST002/57014 always slip through.
-
-### 3. Email worker: stop the direct severity=error insert
-
-In `supabase/functions/process-email-queue/index.ts` (line 675 block):
-
-- Delete the direct `agent_fix_queue` upsert.
-- The same information already reaches admins via:
-  - `email_send_log` insert with `status='rate_limited'` → `audit_email_send_log` trigger writes `event_type='email_rate_limited'` to `audit_log`, which discover already excludes (no queue noise, but visible in System Health → Email tab and Activity Log).
-  - `email_send_state.consecutive_429_count_transactional` + cooldown row, which the System Health Email card already reads.
-- No information loss; one less drift surface.
-
-### 4. Unsubscribe-token mint: atomic, race-free
-
-In `supabase/functions/auth-email-hook/index.ts` (lines 332–352), replace the read-then-upsert-then-reread dance with a single atomic upsert:
-
-```ts
-const fresh = Array.from(crypto.getRandomValues(new Uint8Array(32)))
-  .map(b => b.toString(16).padStart(2, '0')).join('')
-
-const { data: row, error: tokenErr } = await supabase
-  .from('email_unsubscribe_tokens')
-  .upsert(
-    { email: normalizedEmail, token: fresh },
-    { onConflict: 'email', ignoreDuplicates: false }
-  )
-  .select('token')
-  .single()
-
-if (tokenErr || !row?.token) throw new Error(`mint_unsubscribe_token: ${tokenErr?.message ?? 'no row'}`)
-unsubscribeToken = row.token
+}
 ```
 
-Why this is the permanent fix:
-- `ignoreDuplicates: false` + `onConflict: 'email'` + `.select().single()` is atomic in PostgREST; it always returns the canonical row (either the freshly inserted one or the existing one). No race window, no null overwrite.
-- Errors are propagated to the outer try/catch where they're handled once, not duplicated into `email_send_log` as a synthetic `failed` row.
-- The unique constraint on `email` makes this provably the row we want; there is no second SELECT to lose.
+This is a 12-line replacement of an existing 40-line block. No new state, no new storage keys, no new timers, no new dependencies.
 
-### 5. Clean up the 8 stale rows once the fix ships
+## Why this is the permanent fix, not a band-aid
 
-Add a deploy-time call to the existing `resolve_stale_fingerprints_on_deploy('email_rate_limited|Failed to mint unsubscribe token|Failed to load progress|Failed to count progress|Failed to load project openings|PGRST002|57014', 'permanent_fix_2026_06_16')` so the existing pending rows are auto-resolved with a documented reason — no manual UI clicks, auditable.
+1. **Matches the documented contract** in memory `AUTH-WEDGE-001..012`: "a single transient bad_jwt NEVER signs an active user out."
+2. **Symmetric with fetch-guard**: the runtime fetch guard already uses `decidePurgeOnBadJwt()` without a forced refresh — bootstrap was the lone outlier.
+3. **Does not weaken security**: a truly corrupt stored token is caught at `getStoredAccessTokenHealth()` (shape_invalid / expired) BEFORE the two-strike branch, and a real second strike within 15s still purges.
+4. **Does not hide real refresh failures**: when the access token genuinely expires, the SDK's auto-refresh runs on its own schedule; if THAT call returns refresh_invalid, the existing `onAuthStateChange("SIGNED_OUT")` and `TOKEN_REFRESHED` paths handle it cleanly.
+5. **Closes the regression class**: any future GoTrue/edge hiccup that flaps `/user` + `/token` together can no longer sign users out in one round-trip.
 
-## Proof this prevents regression
+## Guardrails to lock the bug class
 
-- **Single SQL function** (`is_actionable_event_type`) is unit-tested and called by both write paths (trigger + discover). New event types must be added there or they're treated as non-actionable by default. Drift is structurally impossible.
-- **Structural classifier**: `isTransientError` already has 14 PG codes + 6 HTTP statuses + 16 message patterns covered by `src/test/...` smoke tests. Folding it into `classify()` and `reportError()` extends coverage to every reporter entry point in a single call — no per-callsite opt-in.
-- **Atomic upsert** removes the only code-level data race; PostgreSQL's `ON CONFLICT DO UPDATE` guarantees a returned row.
-- **Direct queue insert deleted** from `process-email-queue`; no other call sites do this for `email_rate_limited` (grep-verified).
-- **New BDD scenarios** (TRIAGE-ROOT-001..006) lock in:
-  - PGRST002 from any service never reaches `agent_fix_queue`
-  - 57014 from any service never reaches `agent_fix_queue`
-  - workspace 429 cooldowns never reach `agent_fix_queue`
-  - mint-token race produces exactly one row, returns its token, no `email_failed` audit row
-  - `block_non_actionable_fix_queue_inserts` and `discover_audit_fingerprints` agree byte-for-byte on the blocked set (asserted by SQL test).
-- **CI guard**: `scripts/ci/check-triage-actionable-parity.mjs` greps the JS `NON_ACTIONABLE_EVENT_TYPES` and asserts every entry is also returned `false` by `is_actionable_event_type` against a static fixture. Build fails if a future PR drifts the lists.
+- **Unit test** `src/lib/auth/__tests__/bootstrap-self-heal.test.ts`: simulate `getUser → bad_jwt` AND `refreshSession → bad_jwt` with a structurally valid stored token; assert session stays set, no `purgeLocalAuthState` call, beacon emits `transient_bad_jwt`.
+- **Unit test**: same scenario twice within 15s → second call purges (existing two-strike path still works).
+- **Unit test**: stored token shape_invalid → purges on first strike (unchanged behavior).
+- **ESLint guard** (extend existing `eslint-plugin-no-focus-listener`-style local rule): forbid new `supabase.auth.refreshSession()` calls inside `AuthContext.tsx` bootstrap to prevent re-introduction.
+- **BDD scenarios** (added to `bdd_scenarios` table per workspace rules):
+  - `AUTH-WEDGE-013` Transient bad_jwt on bootstrap does not sign user out
+  - `AUTH-WEDGE-014` Two transient bad_jwt within 15s purges as designed
+  - `AUTH-WEDGE-015` Google OAuth + GoTrue /user 403 keeps user signed in
 
-## Files changed
+## Receipts after ship
 
-- `supabase/migrations/<ts>_triage_actionable_single_source.sql` — new `is_actionable_event_type`; rewrite `block_non_actionable_fix_queue_inserts` + `discover_audit_fingerprints` to call it; add `infra_transient` event type to all event-type CHECK constraints if any.
-- `supabase/migrations/<ts>_resolve_stale_triage_2026_06_16.sql` — one-shot `resolve_stale_fingerprints_on_deploy(...)` call.
-- `src/services/error-reporter.service.ts` — short-circuit to `infra_transient`/`info` when `isTransientError(err)` matches; add `infra_transient` to `NON_ACTIONABLE_EVENT_TYPES` and `ReportEventType`.
-- `src/lib/observability/classify.ts` — fold `isTransientError` into `classify()`.
-- `src/lib/service-result.ts` — pass the structured error to `reportError`, not a pre-flattened string.
-- `supabase/functions/process-email-queue/index.ts` — delete direct `agent_fix_queue` upsert (lines 662–687 block).
-- `supabase/functions/auth-email-hook/index.ts` — replace read-upsert-reread with one atomic upsert returning the token.
-- `scripts/ci/check-triage-actionable-parity.mjs` — new CI guard.
-- `src/test/regression/incidents/triage-root-cause-2026-06-16.test.ts` — new TS tests for classifier integration.
-- `supabase/migrations/<ts>_bdd_triage_root_cause.sql` — TRIAGE-ROOT-001..006 BDD scenarios.
+- `git diff --stat` showing only `src/contexts/AuthContext.tsx` + new test file + BDD migration.
+- Tests pass (existing AUTH-WEDGE suite + 3 new cases).
+- Memory `AUTH-WEDGE-001..012` updated to `..015` with the bootstrap clarification.
+- Beacon `transient_bad_jwt` visible in `ops_events` (already wired) so future hiccups are observable without being destructive.
 
-## Non-goals / safety rails
+## Out of scope
 
-- No change to `audit_log` retention or hash-chain.
-- No RLS loosening on any table.
-- No change to actually-actionable event types (`client_error`, `ui_render_error`, `email_failed` for real send failures, etc.) — only transient/non-actionable categories are touched.
-- `process-email-queue` still records 429 cooldowns to `email_send_state` and `email_send_log`; the System Health Email card continues to show them. The only thing that disappears is the duplicate severity=error fix-queue row.
-- No member-facing UX changes.
+- The underlying GoTrue/edge `bad_jwt` flapping is a platform-side issue; we can't fix it from app code. This change makes the app survive it gracefully.
+- No changes to login UI, OAuth provider config, RLS, profiles, MFA, captcha, or rate-limit tables.

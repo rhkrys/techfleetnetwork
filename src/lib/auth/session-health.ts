@@ -311,7 +311,7 @@ export function ensureClientFingerprint(): void {
 const BEACON_DEDUPE_KEY = "tfn_auth_wedge_beacon_last_ms";
 const BEACON_DEDUPE_WINDOW_MS = 5_000;
 
-function beaconWedge(reason: string, source: string): void {
+export function beaconWedge(reason: string, source: string): void {
   try {
     const now = Date.now();
     const last = Number(sessionStorage.getItem(BEACON_DEDUPE_KEY) ?? "0");
