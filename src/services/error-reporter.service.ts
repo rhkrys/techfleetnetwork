@@ -54,6 +54,11 @@ const NON_ACTIONABLE_EVENT_TYPES: ReadonlySet<string> = new Set([
   "email_rate_limited",
   "email_frequency_capped",
   "email_suppressed",
+  // Transient PG/PostgREST/HTTP infra errors classified at source by
+  // isTransientError(). Single source of truth lives in DB function
+  // public.is_actionable_event_type — keep this list and that function in
+  // sync (CI guard: scripts/ci/check-triage-actionable-parity.mjs).
+  "infra_transient",
 ]);
 
 
