@@ -8413,6 +8413,10 @@ export type Database = {
         Returns: boolean
       }
       invoke_email_dispatcher_cron: { Args: never; Returns: undefined }
+      is_actionable_event_type: {
+        Args: { p_changed_fields?: string[]; p_event_type: string }
+        Returns: boolean
+      }
       is_elevated: { Args: { _user_id: string }; Returns: boolean }
       is_remediation_allowed: { Args: { p_fn: string }; Returns: boolean }
       is_session_revoked: {
