@@ -23,6 +23,7 @@ import { getCurrentTraceId } from "@/lib/trace";
 import { checkNow as checkDeployNow } from "@/lib/deploy-watcher";
 import { isChunkLoadMessage } from "@/lib/lazy-with-retry";
 import { formatThrowable } from "@/lib/error-normalization";
+import { isTransientError } from "@/lib/transient-error";
 
 /**
  * Event types that are infrastructure / observability / aggregate notices.
