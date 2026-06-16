@@ -60,13 +60,15 @@ export function handleServiceError(error: ServiceErrorLike | null | undefined, o
   );
 
   // Mirror to audit_log so admins see service-layer failures in /admin/activity-log.
-  // Lazy-import so this module stays usable in non-browser test contexts.
+  // CRITICAL: pass the STRUCTURED error (with .code/.status fields) — not a
+  // pre-flattened message string — so reportError's isTransientError() check
+  // can recognize PGRST002 / 57014 / 429 and downgrade to event_type=
+  // infra_transient. Stringifying first loses those fields and lets transient
+  // infra blips flood the Triage queue.
   void (async () => {
     try {
-      const detail = error.code
-        ? `${error.message} (code:${error.code})`
-        : error.message;
-      reportError(detail, options.action, { severity: level });
+      const structured = error as unknown;
+      reportError(structured, options.action, { severity: level });
     } catch { /* never throw from telemetry */ }
   })();
 
