@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { getSessionSafe } from "@/lib/auth/session-port";
 import { MessageSquare, UserPlus, UserMinus, Loader2, AlertTriangle, CheckCircle2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,7 +37,7 @@ export function DiscordRoleAssignment({
     if (!discordRoleId || !applicantDiscordUserId) return;
     setAssigning(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const session = await getSessionSafe();
       if (!session) throw new Error("Not authenticated");
 
       const res = await supabase.functions.invoke("manage-discord-roles", {
@@ -62,7 +63,7 @@ export function DiscordRoleAssignment({
     if (!discordRoleId || !applicantDiscordUserId) return;
     setRemoving(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const session = await getSessionSafe();
       if (!session) throw new Error("Not authenticated");
 
       const res = await supabase.functions.invoke("manage-discord-roles", {

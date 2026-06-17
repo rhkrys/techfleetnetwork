@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { getSessionSafe } from "@/lib/auth/session-port";
 import { Search, Plus, Check, Loader2, MessageSquare, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -37,7 +38,7 @@ export function DiscordRolePicker({
   const fetchRoles = useCallback(async (query?: string) => {
     setLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const session = await getSessionSafe();
       if (!session) throw new Error("Not authenticated");
 
       const res = await supabase.functions.invoke("manage-discord-roles", {
@@ -82,7 +83,7 @@ export function DiscordRolePicker({
     if (!name) return;
     setCreating(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const session = await getSessionSafe();
       if (!session) throw new Error("Not authenticated");
 
       const res = await supabase.functions.invoke("manage-discord-roles", {

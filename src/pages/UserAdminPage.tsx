@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
+import { getSessionSafe } from "@/lib/auth/session-port";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -175,7 +176,7 @@ export default function UserAdminPage() {
   const handlePromote = async (targetUser: UserRow) => {
     setPromoting(targetUser.user_id);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const session = await getSessionSafe();
       if (!session) throw new Error("Not authenticated");
       const res = await invokeWithStepUp(
         "promote-to-admin",
@@ -203,7 +204,7 @@ export default function UserAdminPage() {
   const handleResendInvite = async (targetUser: UserRow) => {
     setPromoting(targetUser.user_id);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const session = await getSessionSafe();
       if (!session) throw new Error("Not authenticated");
       const res = await invokeWithStepUp(
         "promote-to-admin",
@@ -232,7 +233,7 @@ export default function UserAdminPage() {
   const handleDeleteUser = async (targetUser: UserRow) => {
     setPromoting(targetUser.user_id);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const session = await getSessionSafe();
       if (!session) throw new Error("Not authenticated");
       const res = await invokeWithStepUp(
         "admin-purge-auth-user",

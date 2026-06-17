@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { getUserSafe } from "@/lib/auth/session-port";
 import { cn } from "@/lib/utils";
 
 export interface CompletenessMeterProps {
@@ -44,8 +45,8 @@ export function CompletenessMeter({ userId, className, compact }: CompletenessMe
       try {
         let uid = userId;
         if (!uid) {
-          const { data: auth } = await supabase.auth.getUser();
-          uid = auth.user?.id;
+          const user = await getUserSafe();
+          uid = user?.id;
         }
         if (!uid) {
           if (!cancelled) setLoading(false);

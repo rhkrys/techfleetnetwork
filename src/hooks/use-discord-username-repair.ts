@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { getSessionSafe } from "@/lib/auth/session-port";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { isUsableDiscordUsername } from "@/lib/discord/username";
@@ -69,7 +70,7 @@ export function useDiscordUsernameRepair() {
 
     void (async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const session = await getSessionSafe();
         if (!session) return;
         const res = await supabase.functions.invoke("repair-discord-username", {
           headers: { Authorization: `Bearer ${session.access_token}` },

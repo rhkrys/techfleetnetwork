@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { getUserSafe } from "@/lib/auth/session-port";
 
 export type ClassEmailAction = "submitted" | "approved" | "changes_requested" | "archived";
 
@@ -16,7 +17,7 @@ interface AdminRecipientRow {
 }
 
 async function getActorName(): Promise<string | undefined> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getUserSafe();
   if (!user) return undefined;
   const { data } = await supabase
     .from("profiles")

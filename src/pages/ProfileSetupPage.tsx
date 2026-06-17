@@ -1,4 +1,5 @@
 import { useState, useEffect, type FormEvent } from "react";
+import { getSessionSafe } from "@/lib/auth/session-port";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -189,9 +190,7 @@ export default function ProfileSetupPage() {
 
       // If user doesn't have Discord, generate their personal invite (fire & forget)
       if (!form.has_discord_account) {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
+        const session = await getSessionSafe();
 
         if (session) {
           supabase.functions

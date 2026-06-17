@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { getSessionSafe } from "@/lib/auth/session-port";
 import { MessageSquare, ExternalLink, Copy, Check, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
@@ -25,7 +26,7 @@ export function DiscordInviteBanner() {
   const generateInvite = async () => {
     setGenerating(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const session = await getSessionSafe();
       if (!session) throw new Error("Not authenticated");
 
       const res = await supabase.functions.invoke("generate-discord-invite", {

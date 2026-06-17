@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionSafe } from "@/lib/auth/session-port";
 import { reportActivity } from "@/services/error-reporter.service";
 import { newTraceId } from "@/lib/trace";
 
@@ -12,8 +13,8 @@ export async function invokeFreescout<T = unknown>(body: FreescoutActionBody, si
   const action = typeof body.action === "string" ? body.action : "unknown";
   const traceId = newTraceId();
 
-  const { data: sess } = await supabase.auth.getSession();
-  const token = sess?.session?.access_token;
+  const session = await getSessionSafe();
+  const token = session?.access_token;
   if (!token) {
     // Route guard wraps /community/get-help, so missing token is a routing bug.
     // Surface it instead of papering over it.

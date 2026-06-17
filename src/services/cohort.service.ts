@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { getUserSafe } from "@/lib/auth/session-port";
 import type { CohortFormValues } from "@/lib/validators/cohort";
 import { assertWritten } from "@/lib/db-helpers";
 
@@ -89,8 +90,8 @@ export const CohortService = {
   },
 
   async recordRegistrationClick(cohortId: string, referrer?: string): Promise<void> {
-    const { data: u } = await supabase.auth.getUser();
-    const userId = u?.user?.id;
+    const user = await getUserSafe();
+    const userId = user?.id;
     if (!userId) return;
     const { error } = await (supabase as any).rpc("register_for_cohort_click", {
       _cohort_id: cohortId,
