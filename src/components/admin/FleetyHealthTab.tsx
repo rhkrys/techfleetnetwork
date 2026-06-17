@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { getUserSafe } from "@/lib/auth/session-port";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -140,7 +141,7 @@ export function FleetyHealthTab() {
       toast.error("Question pattern and answer are required.");
       return;
     }
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getUserSafe();
     const { error } = await supabase.from("fleety_canned_answers").insert({
       question_pattern: draft.pattern.trim(),
       answer_md: draft.answer.trim(),

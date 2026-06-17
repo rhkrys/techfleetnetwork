@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { getSessionSafe } from "@/lib/auth/session-port";
 import { Send, Loader2, Volume2, VolumeX, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SafeMarkdown } from "@/components/security/SafeMarkdown";
@@ -24,7 +25,7 @@ async function streamChat({
   onDone: () => void;
 }) {
   // ASVS V13.2.1: Use session-bound JWT, not static publishable key
-  const { data: { session } } = await supabase.auth.getSession();
+  const session = await getSessionSafe();
   const token = session?.access_token;
   if (!token) throw new Error("Authentication required. Please sign in again.");
 

@@ -30,7 +30,7 @@ import { TIMEZONES } from "@/lib/timezones";
 import { cn } from "@/lib/utils";
 import { AvatarUpload } from "@/components/AvatarUpload";
 import { supabase } from "@/integrations/supabase/client";
-import { signOutSafe } from "@/lib/auth/session-port";
+import { signOutSafe, getSessionSafe } from "@/lib/auth/session-port";
 import { TotpMfaManagement } from "@/components/TotpMfaManagement";
 import { toast } from "sonner";
 import { usePageHeader } from "@/contexts/PageHeaderContext";
@@ -261,7 +261,7 @@ export default function EditProfilePage() {
     if (deleteConfirmText !== "Delete") return;
     setDeleting(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const session = await getSessionSafe();
       if (!session) throw new Error("Not authenticated");
       const res = await supabase.functions.invoke("delete-account", {
         headers: { Authorization: `Bearer ${session.access_token}` },

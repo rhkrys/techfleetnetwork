@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { getSessionSafe } from "@/lib/auth/session-port";
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { CommunityEvent } from "@/components/events/CommunityEventCard";
@@ -9,7 +10,7 @@ const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
 
 async function fetchRange(from: Date, to: Date): Promise<CommunityEvent[]> {
   const qs = new URLSearchParams({ from: from.toISOString(), to: to.toISOString() });
-  const { data: { session } } = await supabase.auth.getSession();
+  const session = await getSessionSafe();
   const token = session?.access_token ?? ANON_KEY;
   const res = await fetch(`${FUNCTIONS_URL}?${qs.toString()}`, {
     method: "GET",

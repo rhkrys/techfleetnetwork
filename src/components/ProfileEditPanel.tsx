@@ -24,7 +24,7 @@ import { COUNTRIES } from "@/lib/countries";
 import { TIMEZONES } from "@/lib/timezones";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { signOutSafe } from "@/lib/auth/session-port";
+import { signOutSafe, getSessionSafe } from "@/lib/auth/session-port";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { ProfileDiscordConnector } from "@/components/profile/ProfileDiscordConnector";
@@ -180,7 +180,7 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
     if (deleteConfirmText !== "Delete") return;
     setDeleting(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const session = await getSessionSafe();
       if (!session) throw new Error("Not authenticated");
 
       const res = await supabase.functions.invoke("delete-account", {

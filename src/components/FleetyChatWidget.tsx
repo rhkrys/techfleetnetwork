@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { getSessionSafe } from "@/lib/auth/session-port";
 import { X, Send, Bot, User, Loader2, Volume2, VolumeX, Plus, MessageSquare, Trash2, ThumbsUp, ThumbsDown, MessageCircleQuestion } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -38,7 +39,7 @@ async function streamChat({
   onFollowups: (followups: string[]) => void;
   onDone: () => void;
 }) {
-  const { data: { session } } = await supabase.auth.getSession();
+  const session = await getSessionSafe();
   const token = session?.access_token;
   if (!token) throw new Error("Authentication required. Please sign in again.");
 

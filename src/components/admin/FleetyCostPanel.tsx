@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { getUserSafe } from "@/lib/auth/session-port";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -57,7 +58,7 @@ export function FleetyCostPanel() {
 
   const setMode = async (mode: Projection["guard_mode"]) => {
     setSavingMode(true);
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getUserSafe();
     const { error } = await supabase
       .from("fleety_cost_guard_state")
       .update({ mode, updated_at: new Date().toISOString(), updated_by: user?.id ?? null })

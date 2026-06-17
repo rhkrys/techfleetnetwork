@@ -20,6 +20,7 @@
  * picker + tutorial), error prevention (server-side resolve before write).
  */
 import { useEffect, useRef, useState } from "react";
+import { getSessionSafe } from "@/lib/auth/session-port";
 import {
   AlertTriangle,
   Check,
@@ -159,7 +160,7 @@ export function ProfileDiscordConnector({
     setGenerating(true);
     setStatus("Generating your personal Discord invite…");
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const session = await getSessionSafe();
       if (!session) throw new Error("Not authenticated");
       const res = await supabase.functions.invoke("generate-discord-invite", {
         headers: { Authorization: `Bearer ${session.access_token}` },
@@ -196,7 +197,7 @@ export function ProfileDiscordConnector({
   };
 
   const assignCommunityRole = async (discordUserId: string) => {
-    const { data: { session } } = await supabase.auth.getSession();
+    const session = await getSessionSafe();
     if (!session) throw new Error("Not authenticated");
     const res = await supabase.functions.invoke("manage-discord-roles", {
       headers: { Authorization: `Bearer ${session.access_token}` },

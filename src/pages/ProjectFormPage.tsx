@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
+import { getSessionSafe } from "@/lib/auth/session-port";
 import { useAutosave } from "@/hooks/use-autosave";
 import { useServerDraft } from "@/hooks/use-server-draft";
 import { DraftRestoredBanner } from "@/components/forms/DraftRestoredBanner";
@@ -295,7 +296,7 @@ export default function ProjectFormPage() {
   ) => {
     try {
       const clientName = clientMap.get(values.client_id)?.name || "Unknown Client";
-      const { data: { session } } = await supabase.auth.getSession();
+      const session = await getSessionSafe();
       if (!session) return;
       await supabase.functions.invoke("discord-project-update", {
         headers: { Authorization: `Bearer ${session.access_token}` },

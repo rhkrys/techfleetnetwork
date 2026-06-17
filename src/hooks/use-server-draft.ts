@@ -16,6 +16,7 @@
  *   - failure → exponential backoff (1s/3s/8s), then status='error'.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getSessionSafe, getUserSafe } from "@/lib/auth/session-port";
 import { supabase } from "@/integrations/supabase/client";
 import { normalizeThrownError } from "@/lib/error-normalization";
 import { reportError } from "@/services/error-reporter.service";
@@ -100,7 +101,7 @@ export function useServerDraft<T>({
     let cancelled = false;
     (async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await getUserSafe();
         if (!user || cancelled) { setHydrating(false); return; }
         userIdRef.current = user.id;
 
@@ -229,7 +230,7 @@ export function useServerDraft<T>({
       const current = valueRef.current;
       if (equalsRef.current(current, lastSavedValueRef.current)) return;
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const session = await getSessionSafe();
         if (!session) return;
         const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-form-draft`;
         const body = JSON.stringify({

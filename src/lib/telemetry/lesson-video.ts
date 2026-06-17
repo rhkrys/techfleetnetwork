@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { getUserSafe } from "@/lib/auth/session-port";
 
 export type LessonVideoEvent =
   | "opened"
@@ -24,7 +25,7 @@ export interface LessonVideoEventInput {
  */
 export async function recordLessonVideoEvent(input: LessonVideoEventInput): Promise<void> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getUserSafe();
     if (!user) return;
 
     const courseSlug = input.courseSlug ?? deriveCourseSlug();
