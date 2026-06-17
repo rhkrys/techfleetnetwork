@@ -136,6 +136,12 @@ export default tseslint.config(
       "auth-invariants/no-direct-failure-counters": "warn",
       "auth-invariants/no-auth-storage-literals": "warn",
       "auth-invariants/no-auth-booleans-in-ui": "error",
+      // AUTH-RESILIENCE-001..006 — session-mutating auth methods (signOut,
+      // setSession, signInWithPassword, signInWithOAuth, refreshSession) MUST
+      // route through src/lib/auth/session-port.ts or src/features/auth/**.
+      // Hard error: this is the rule that prevents the "side door bounces
+      // logged-in member to /login on backend hiccup" class.
+      "auth-invariants/no-direct-auth-mutations": "error",
       // Part 1 §1.5 — bare React.lazy white-screens on stale chunks after a
       // deploy; the wrapper retries 3× then surfaces <UpdateAvailableBanner/>.
       "lazy/requires-retry": "warn",

@@ -174,6 +174,64 @@ const noAuthBooleansInUi = {
   },
 };
 
+// AUTH-RESILIENCE-001..006 — bans the SESSION-MUTATING auth methods outside
+// the canonical entrypoints. These are the calls that can kick a user out
+// when the backend stutters: `signOut`, `setSession`, `updateUser`,
+// `signInWithPassword`, `signInWithOAuth`, `refreshSession`. Read-only
+// methods (`getSession`, `getUser`, `onAuthStateChange`, `mfa.*`) are
+// covered by the warn-level `no-direct-supabase-auth` rule and migrated
+// gradually through the session-port.
+const SESSION_PORT_FILE = "src/lib/auth/session-port.ts";
+const GOOGLE_BUTTON_FILE = "src/components/GoogleSignInButton.tsx";
+const CACHED_SESSION_FILE = "src/lib/cached-session.ts";
+const SESSION_HEALTH_FILE = "src/lib/auth/session-health.ts";
+const AUTH_CONTEXT_FILE = "src/contexts/AuthContext.tsx";
+const FORBIDDEN_MUTATIONS = new Set([
+  "signOut",
+  "setSession",
+  "signInWithPassword",
+  "signInWithOAuth",
+  "refreshSession",
+]);
+
+const noDirectAuthMutations = {
+  meta: {
+    type: "problem",
+    docs: { description: "Session-mutating auth methods must route through src/lib/auth/session-port.ts or src/features/auth/**." },
+    schema: [],
+    messages: {
+      forbidden:
+        "Direct `{{root}}.auth.{{prop}}()` call. Route session mutations through `signOutSafe` / `src/features/auth/**` so backend hiccups can never bounce members to /login.",
+    },
+  },
+  create(context) {
+    if (fileInAuthFeature(context)) return {};
+    if (fileEndsWith(context, AUTH_SERVICE_LEGACY)) return {};
+    if (fileEndsWith(context, AUTO_CLIENT)) return {};
+    if (fileEndsWith(context, SESSION_PORT_FILE)) return {};
+    if (fileEndsWith(context, GOOGLE_BUTTON_FILE)) return {};
+    if (fileEndsWith(context, CACHED_SESSION_FILE)) return {};
+    if (fileEndsWith(context, SESSION_HEALTH_FILE)) return {};
+    if (fileEndsWith(context, AUTH_CONTEXT_FILE)) return {};
+    return {
+      CallExpression(node) {
+        const callee = node.callee;
+        if (callee?.type !== "MemberExpression") return;
+        const propName = callee.property?.type === "Identifier" ? callee.property.name : null;
+        if (!propName || !FORBIDDEN_MUTATIONS.has(propName)) return;
+        // callee.object must be `<root>.auth`
+        const obj = callee.object;
+        if (obj?.type !== "MemberExpression") return;
+        if (obj.property?.type !== "Identifier" || obj.property.name !== "auth") return;
+        const root = obj.object;
+        if (root?.type !== "Identifier") return;
+        if (root.name !== "supabase" && root.name !== "lovable") return;
+        context.report({ node, messageId: "forbidden", data: { root: root.name, prop: propName } });
+      },
+    };
+  },
+};
+
 export default {
   rules: {
     "no-bare-password-set-input": noBarePasswordSetInput,
@@ -182,5 +240,7 @@ export default {
     "no-direct-failure-counters": noDirectFailureCounters,
     "no-auth-storage-literals": noAuthStorageLiterals,
     "no-auth-booleans-in-ui": noAuthBooleansInUi,
+    "no-direct-auth-mutations": noDirectAuthMutations,
   },
 };
+
