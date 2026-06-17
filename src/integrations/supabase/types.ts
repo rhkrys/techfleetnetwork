@@ -8172,6 +8172,15 @@ export type Database = {
           two_strike: boolean
         }[]
       }
+      get_auth_resilience_counters: {
+        Args: { p_hours?: number }
+        Returns: {
+          bucket_hour: string
+          flaps: number
+          read_failures: number
+          signouts: number
+        }[]
+      }
       get_class_email_recipients: {
         Args: { p_class_id: string }
         Returns: {
