@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getSessionSafe } from "@/lib/auth/session-port";
 import { useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+
 import type { CommunityEvent } from "@/components/events/CommunityEventCard";
 import { addWeeks } from "@/lib/events/weekRange";
 
