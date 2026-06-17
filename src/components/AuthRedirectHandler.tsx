@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { normalizeSafeRedirectTarget } from "@/lib/security";
+import { isOAuthCallbackPending } from "@/lib/auth/oauth-callback-pending";
 
 const AUTH_REDIRECT_KEY = "auth_redirect";
 
@@ -25,6 +26,9 @@ export function AuthRedirectHandler() {
 
   useEffect(() => {
     if (loading || !user) return;
+    // Never navigate while the OAuth callback consumer is mid-flight — would
+    // race AuthContext stripping the hash + redirecting to the stored target.
+    if (isOAuthCallbackPending()) return;
     const storedRedirect = readStoredRedirect();
     const isAuthLandingPage = location.pathname === "/" || location.pathname === "/login";
     if (!storedRedirect && !isAuthLandingPage) return;

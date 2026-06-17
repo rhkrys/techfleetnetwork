@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button";
 import { lovable } from "@/integrations/lovable/index";
 import { isSafeRedirectUrl } from "@/lib/security";
 import { markOAuthUiInitiated } from "@/lib/oauth-ui-guard";
+import { markOAuthCallbackPending } from "@/lib/auth/oauth-callback-pending";
+import { beaconWedge } from "@/lib/auth/session-health";
 import { toast } from "sonner";
 
 interface GoogleSignInButtonProps {
@@ -33,12 +35,16 @@ export function GoogleSignInButton({ label = "Sign in with Google", className, o
         storeAuthRedirect(redirectTo);
       }
       markOAuthUiInitiated("google");
+      // Arm the callback-pending guard so when Google bounces us back with
+      // `?code=` or `#access_token=…`, ProtectedRoute / AuthRedirectHandler
+      // defer redirects until the consumer finishes (12s watchdog).
+      markOAuthCallbackPending();
+      try { beaconWedge("oauth_start", "google_sign_in_button"); } catch { /* noop */ }
       const result = await lovable.auth.signInWithOAuth("google", {
         redirect_uri: window.location.origin,
         extraParams: { prompt: "select_account" },
       });
       if (result.error) {
-        // Log generic message only — no PII or tokens
         console.error("OAuth provider error occurred");
         toast.error("Google sign-in could not start. Please try again.", { duration: 30000, position: "top-center" });
       }
