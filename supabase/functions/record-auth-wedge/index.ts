@@ -81,6 +81,47 @@ Deno.serve(async (req: Request) => {
     });
   }
 
+  // AUTH-RESILIENCE-006 — new lightweight resilience beacons route to
+  // ops_events (telemetry sink, 90d retention) instead of auth_wedge_events.
+  // These are NOT wedge events — they are recovery/flap counters.
+  const RESILIENCE_KINDS = new Set([
+    "auth_flap_detected",
+    "auth_signout",
+    "auth_read_failed",
+  ]);
+  const kind = typeof body.kind === "string" ? body.kind : null;
+  if (kind && RESILIENCE_KINDS.has(kind)) {
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+      { auth: { persistSession: false } },
+    );
+    const payload: Record<string, unknown> = {};
+    if (typeof body.source === "string") payload.source = body.source.slice(0, 64);
+    if (typeof body.route === "string") payload.route = body.route.slice(0, 200);
+    if (typeof body.retries === "number") payload.retries = body.retries;
+    if (typeof body.reason === "string") payload.reason = body.reason.slice(0, 64);
+    if (typeof body.scope === "string") payload.scope = body.scope.slice(0, 16);
+    if (typeof body.class === "string") payload.class = body.class.slice(0, 32);
+    payload.ip_hash = await hashIp(ip);
+    const { error } = await supabase.rpc("record_event", {
+      p_sink: "ops_events",
+      p_kind: kind,
+      p_payload: payload,
+      p_severity: kind === "auth_flap_detected" ? "info" : "warn",
+    });
+    if (error) {
+      return new Response(JSON.stringify({ ok: false, error: error.message }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   const reason = String(body.reason ?? "");
   const source = String(body.source ?? "other");
   if (!ALLOWED_REASONS.has(reason) || !ALLOWED_SOURCES.has(source)) {
