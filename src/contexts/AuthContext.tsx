@@ -219,6 +219,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               clearOAuthUiMarker();
               stripRootOAuthCallbackUrl();
             }
+            // Release the OAuth callback-pending guard now that a real session
+            // exists — ProtectedRoute can stop showing "Finishing sign-in…".
+            try {
+              void import("@/lib/auth/oauth-callback-pending").then((m) => m.clearOAuthCallbackPending());
+            } catch { /* noop */ }
             if (!sessionStorage.getItem(SESSION_STARTED_AT_KEY)) {
               sessionStorage.setItem(
                 SESSION_STARTED_AT_KEY,
