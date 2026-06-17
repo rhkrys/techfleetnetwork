@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { getUserSafe } from "@/lib/auth/session-port";
 import { cn } from "@/lib/utils";
 
 export interface CompletenessMeterProps {
