@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAdmin } from "@/hooks/use-admin";
 import { MfaService } from "@/services/mfa.service";
 import { supabase } from "@/integrations/supabase/client";
+import { signOutSafe } from "@/lib/auth/session-port";
 
 /**
  * Persistent setup popup shown to admins who:

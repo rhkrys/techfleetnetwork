@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { MfaService } from "@/services/mfa.service";
 import { MfaChallengeDialog } from "@/components/MfaChallengeDialog";
 import { supabase } from "@/integrations/supabase/client";
+import { signOutSafe } from "@/lib/auth/session-port";
 import { createLogger } from "@/services/logger.service";
 
 const log = createLogger("MfaEnforcementGuard");

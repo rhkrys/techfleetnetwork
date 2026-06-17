@@ -30,6 +30,7 @@ import { TIMEZONES } from "@/lib/timezones";
 import { cn } from "@/lib/utils";
 import { AvatarUpload } from "@/components/AvatarUpload";
 import { supabase } from "@/integrations/supabase/client";
+import { signOutSafe } from "@/lib/auth/session-port";
 import { TotpMfaManagement } from "@/components/TotpMfaManagement";
 import { toast } from "sonner";
 import { usePageHeader } from "@/contexts/PageHeaderContext";

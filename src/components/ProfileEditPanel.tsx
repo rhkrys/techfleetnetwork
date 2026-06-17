@@ -24,6 +24,7 @@ import { COUNTRIES } from "@/lib/countries";
 import { TIMEZONES } from "@/lib/timezones";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { signOutSafe } from "@/lib/auth/session-port";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { ProfileDiscordConnector } from "@/components/profile/ProfileDiscordConnector";
