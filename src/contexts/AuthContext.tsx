@@ -272,10 +272,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const type = hash.get("type");
         if (!at || !rt) return;
         if (type === "recovery") return;
-        const { error } = await supabase.auth.setSession({ access_token: at, refresh_token: rt });
-        if (!error) {
-          // Strip hash so a refresh doesn't re-consume (and to keep the URL clean).
-          window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+        // Defer ProtectedRoute / AuthRedirectHandler redirects until SIGNED_IN
+        // fires (or the 12s watchdog trips). Without this, the brief window
+        // between hash discovery and setSession() resolution bounces members
+        // back to /login.
+        const { markOAuthCallbackPending, clearOAuthCallbackPending } =
+          await import("@/lib/auth/oauth-callback-pending");
+        markOAuthCallbackPending();
+        try {
+          const { error } = await supabase.auth.setSession({ access_token: at, refresh_token: rt });
+          if (!error) {
+            window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+            beaconWedge("oauth_callback_consumed", "bootstrap_hash");
+          } else {
+            beaconWedge("oauth_callback_no_session", "bootstrap_hash");
+          }
+        } finally {
+          clearOAuthCallbackPending();
         }
       } catch {
         // Fall through to normal bootstrap.
