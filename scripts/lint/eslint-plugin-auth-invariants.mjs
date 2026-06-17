@@ -186,6 +186,11 @@ const GOOGLE_BUTTON_FILE = "src/components/GoogleSignInButton.tsx";
 const CACHED_SESSION_FILE = "src/lib/cached-session.ts";
 const SESSION_HEALTH_FILE = "src/lib/auth/session-health.ts";
 const AUTH_CONTEXT_FILE = "src/contexts/AuthContext.tsx";
+// Legitimate MFA flows — these write a session AAL2 upgrade or reauth a
+// password challenge before unenrolling TOTP. They are not "side doors";
+// they are the canonical place those mutations happen.
+const MFA_SERVICE_FILE = "src/services/mfa.service.ts";
+const TOTP_MGMT_FILE = "src/components/TotpMfaManagement.tsx";
 const FORBIDDEN_MUTATIONS = new Set([
   "signOut",
   "setSession",
@@ -193,6 +198,7 @@ const FORBIDDEN_MUTATIONS = new Set([
   "signInWithOAuth",
   "refreshSession",
 ]);
+
 
 const noDirectAuthMutations = {
   meta: {
