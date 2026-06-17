@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { SafeMarkdown } from "@/components/security/SafeMarkdown";
 import { toast } from "sonner";
 import fleetyIcon from "@/assets/fleety-icon.png";
-import { supabase } from "@/integrations/supabase/client";
+
 
 type Msg = { role: "user" | "assistant"; content: string; followups?: string[] };
 
