@@ -219,6 +219,8 @@ const noDirectAuthMutations = {
     if (fileEndsWith(context, CACHED_SESSION_FILE)) return {};
     if (fileEndsWith(context, SESSION_HEALTH_FILE)) return {};
     if (fileEndsWith(context, AUTH_CONTEXT_FILE)) return {};
+    if (fileEndsWith(context, MFA_SERVICE_FILE)) return {};
+    if (fileEndsWith(context, TOTP_MGMT_FILE)) return {};
     return {
       CallExpression(node) {
         const callee = node.callee;
