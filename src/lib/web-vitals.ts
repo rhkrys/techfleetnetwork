@@ -103,8 +103,8 @@ export function installWebVitalsBeacon({ userId }: ReportInit = {}): void {
       let resolvedUserId: string | null = userId ?? null;
       if (!resolvedUserId) {
         try {
-          const { data } = await supabase.auth.getSession();
-          resolvedUserId = data.session?.user?.id ?? null;
+          const session = await getSessionSafe();
+          resolvedUserId = session?.user?.id ?? null;
         } catch {
           resolvedUserId = null;
         }
