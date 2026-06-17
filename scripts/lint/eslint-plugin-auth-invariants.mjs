@@ -214,6 +214,9 @@ const noDirectAuthMutations = {
     if (fileInAuthFeature(context)) return {};
     if (fileEndsWith(context, AUTH_SERVICE_LEGACY)) return {};
     if (fileEndsWith(context, AUTO_CLIENT)) return {};
+    // Generated Lovable Cloud auth SDK — the only place `lovable.auth.*`
+    // raw mutations are implemented.
+    if (normalisedFilename(context).includes("src/integrations/lovable/")) return {};
     if (fileEndsWith(context, SESSION_PORT_FILE)) return {};
     if (fileEndsWith(context, GOOGLE_BUTTON_FILE)) return {};
     if (fileEndsWith(context, CACHED_SESSION_FILE)) return {};
