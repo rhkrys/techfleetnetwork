@@ -18,6 +18,7 @@
  *  - Survives client-side route changes — re-instrumented on each navigation.
  */
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionSafe } from "@/lib/auth/session-port";
 
 const ENDPOINT = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/record-web-vital`;
 const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? "";
