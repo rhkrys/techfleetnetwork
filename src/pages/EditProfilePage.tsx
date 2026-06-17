@@ -268,7 +268,7 @@ export default function EditProfilePage() {
       if (res.error) throw new Error("Failed to delete account");
       toast.success("Your account has been deleted.", { duration: 5000, position: "top-center" });
       setDeleteDialogOpen(false);
-      await supabase.auth.signOut({ scope: "local" });
+      await signOutSafe({ scope: "local", reason: "profile_update" });
       navigate("/", { replace: true });
     } catch (err: any) {
       toast.error(err.message || "We couldn't delete your account. Please try again.", { duration: 30000, position: "top-center" });

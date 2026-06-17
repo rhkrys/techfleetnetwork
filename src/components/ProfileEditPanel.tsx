@@ -191,7 +191,7 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
       toast.success("Your account has been deleted.");
       setDeleteDialogOpen(false);
       onOpenChange(false);
-      await supabase.auth.signOut({ scope: "local" });
+      await signOutSafe({ scope: "local", reason: "profile_update" });
       navigate("/", { replace: true });
     } catch (err: any) {
       toast.error(err.message || "Failed to delete account. Please try again.");

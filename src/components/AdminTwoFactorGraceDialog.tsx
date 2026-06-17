@@ -94,7 +94,7 @@ export function AdminTwoFactorGraceDialog() {
   })();
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
+    await signOutSafe({ scope: "global", reason: "admin_action" });
     window.location.replace("/login");
   };
 
