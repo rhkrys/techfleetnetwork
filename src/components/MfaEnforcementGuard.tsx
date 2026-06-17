@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { MfaService } from "@/services/mfa.service";
 import { MfaChallengeDialog } from "@/components/MfaChallengeDialog";
 import { supabase } from "@/integrations/supabase/client";
+import { signOutSafe } from "@/lib/auth/session-port";
 import { createLogger } from "@/services/logger.service";
 
 const log = createLogger("MfaEnforcementGuard");
@@ -105,7 +106,7 @@ export function MfaEnforcementGuard() {
         // User refused MFA — sign out fully to prevent half-authenticated AAL1 access.
         // SPA navigation (not window.location.replace) so React Query cache,
         // scroll, and any open admin grids survive the redirect. See NO-RELOAD-TAB-002.
-        await supabase.auth.signOut();
+        await signOutSafe({ scope: "global", reason: "mfa_refused" });
         navigate("/login", { replace: true });
       }}
     />

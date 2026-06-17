@@ -24,6 +24,7 @@ import { COUNTRIES } from "@/lib/countries";
 import { TIMEZONES } from "@/lib/timezones";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { signOutSafe } from "@/lib/auth/session-port";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { ProfileDiscordConnector } from "@/components/profile/ProfileDiscordConnector";
@@ -191,7 +192,7 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
       toast.success("Your account has been deleted.");
       setDeleteDialogOpen(false);
       onOpenChange(false);
-      await supabase.auth.signOut({ scope: "local" });
+      await signOutSafe({ scope: "local", reason: "profile_update" });
       navigate("/", { replace: true });
     } catch (err: any) {
       toast.error(err.message || "Failed to delete account. Please try again.");
