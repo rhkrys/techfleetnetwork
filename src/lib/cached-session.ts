@@ -33,21 +33,31 @@ export async function getCachedSession(): Promise<Session | null> {
   if (cached && cached.expiresAt > now) return cached.session;
   if (inflight) return inflight;
 
-  inflight = supabase.auth
-    .getSession()
-    .then(({ data }) => {
-      cached = { session: data.session ?? null, expiresAt: Date.now() + TTL_MS };
-      return cached.session;
-    })
-    .catch((err) => {
-      cached = null;
-      throw err;
+  inflight = readOnce()
+    .catch(async (err) => {
+      // AUTH-RESILIENCE-004 — single transient retry with 250ms backoff so
+      // a one-off GoTrue/network hiccup never bubbles a throw to UI code.
+      // The two-strike gate in decidePurgeOnBadJwt is still the only path
+      // that can decide a session is truly dead.
+      await new Promise((r) => setTimeout(r, 250));
+      try {
+        return await readOnce();
+      } catch {
+        cached = null;
+        throw err;
+      }
     })
     .finally(() => {
       inflight = null;
     });
 
   return inflight;
+}
+
+async function readOnce(): Promise<Session | null> {
+  const { data } = await supabase.auth.getSession();
+  cached = { session: data.session ?? null, expiresAt: Date.now() + TTL_MS };
+  return cached.session;
 }
 
 /** Force a refresh on the next call. Use after explicit sign-in/out flows. */
