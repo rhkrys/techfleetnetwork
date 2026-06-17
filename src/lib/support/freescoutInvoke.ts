@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionSafe } from "@/lib/auth/session-port";
 import { reportActivity } from "@/services/error-reporter.service";
 import { newTraceId } from "@/lib/trace";
 
