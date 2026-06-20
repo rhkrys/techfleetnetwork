@@ -216,8 +216,39 @@ function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, max - 3) + "..." : s;
 }
 
+/**
+ * Collapse dynamic identifiers in a fingerprint key so the same defect seen
+ * by N users / N task-lists / N quest-paths produces ONE row in
+ * `agent_fix_queue` instead of N. Without this, `source` strings like
+ * `query.journey-completed.<uuid>.<phase>.<task,ids,...>` create a fresh
+ * fingerprint per occurrence and never dedupe (TRIAGE-NOISE-013).
+ *
+ * Rules:
+ *   - UUIDs → `:id`
+ *   - Numeric ids (>=8 digits) → `:id`
+ *   - Hex-ish blobs (>=12 chars) → `:hash`
+ *   - Comma-separated lists with > 2 tokens → `:list`
+ *   - Long dot-segmented slug runs (> 3 slug tokens after the second dot) →
+ *     collapsed to `:list`
+ */
+export function normalizeFingerprintKey(input: string): string {
+  if (!input) return input;
+  let s = input;
+  // UUID v1-v5
+  s = s.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, ":id");
+  // Long hex blobs (sha-ish)
+  s = s.replace(/\b[0-9a-f]{12,}\b/gi, ":hash");
+  // Long numeric ids (timestamps, bigints)
+  s = s.replace(/\b\d{8,}\b/g, ":id");
+  // Comma-separated slug lists (>= 3 tokens)
+  s = s.replace(/([a-z0-9_-]+(?:,[a-z0-9_-]+){2,})/gi, ":list");
+  return s;
+}
+
 function fingerprint(msg: string, source: string): string {
-  return `${source}::${msg.slice(0, 200)}`;
+  const normSource = normalizeFingerprintKey(source);
+  const normMsg = normalizeFingerprintKey(msg.slice(0, 200));
+  return `${normSource}::${normMsg}`;
 }
 
 function checkRateLimit(eventType: string, capPerMinute: number): boolean {
@@ -616,13 +647,20 @@ export function isOpaqueScriptErrorMessage(msg: string): boolean {
   // stack trace, so the message may be MULTI-LINE — we must only inspect the
   // first non-empty line.
   //
-  // The payload carries no actionable stack/file/message — by definition not
-  // debuggable. Drop unconditionally at every reporter entrypoint.
+  // Also covers React Query's `SerializationError: Non-Error thrown: {...}`
+  // wrapper when the thrown value carries no message — by definition no
+  // actionable stack/file/message (TRIAGE-NOISE-014).
+  //
+  // Drop unconditionally at every reporter entrypoint.
   const firstLine = (msg ?? "")
     .split(/\r?\n/)
     .map((l) => l.trim())
     .find((l) => l.length > 0) ?? "";
-  return /^(error:\s*)?script error\.?$/i.test(firstLine);
+  if (/^(error:\s*)?script error\.?$/i.test(firstLine)) return true;
+  // SerializationError with empty payload / empty message — opaque by design.
+  if (/^SerializationError:\s*Non-Error thrown:\s*\{?\s*"?message"?\s*:\s*""\s*\}?\s*$/i.test(firstLine)) return true;
+  if (/^SerializationError:\s*Non-Error thrown:\s*\{\s*\}?\s*$/i.test(firstLine)) return true;
+  return false;
 }
 
 // Back-compat wrapper for the window.onerror caller (uses ErrorEvent shape).

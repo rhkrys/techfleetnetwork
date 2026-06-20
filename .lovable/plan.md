@@ -1,88 +1,69 @@
-## Goal
+## What's actually in triage right now
 
-Make sign-in and session handling so resilient that **no backend hiccup, proxy timeout, or transient bad-JWT can ever bounce a logged-in member to the login page again** — and prove it with tests + CI guards so it can't quietly come back.
+29 pending error-fingerprints (32 occurrences). Real distribution:
 
----
+| Bucket | Pending fingerprints | Occurrences | Root cause |
+|---|---|---|---|
+| A. `journey-completed: Failed to count progress` | **19** | 21 | Each per-user × per-phase × per-task-list is a unique fingerprint (`source = query.journey-completed.<userId>.<phase>.<task-ids…>`). One transient RLS/PostgREST blip on a busy day = 19 new "incidents" that all share one root cause. |
+| B. `SerializationError: Non-Error thrown: {"message":""}` | 5 | 6 | Empty-payload React Query throw; opaque, non-actionable, already a known-noise class. |
+| C. `Failed to load project openings` / `quest paths` / `quest selections` | 3 | 3 | Same shape as A — `source` carries a user/quest UUID so every user is a new fingerprint. |
+| D. `get_dashboard_overview(p_user_id) not in schema cache` | 1 | 1 | Stale cached bundle calling old RPC signature; backcompat shim is already deployed (per memory `RPC Signature Backcompat`). Residue, not an active bug. |
+| E. one-off `Failed to count progress` from unhandledrejection | 1 | 3 | Same as A, different reporter entrypoint. |
 
-## "Unguarded auth path" — 5th-grade version
+**Common pattern:** the queue is full of *the same bug seen by N different users*, not N different bugs. The current fingerprint function is `${source}::${msg.slice(0,200)}` and `source` embeds UUIDs + dynamic lists, so dedupe never fires.
 
-Your app is a house. The **front door** is the Google button + AuthContext bootstrap we already hardened with safety locks (bad-JWT two-strike gate, OAuth callback watchdog, deferred redirects).
+## The 4 permanent fixes
 
-A quick scan found **40+ side doors** — other files that still talk to the auth system directly (`supabase.auth.getSession`, `signOut`, `setSession`, `getUser`). Most just *peek* (safe-ish), but a few can *kick the user out* (`signOut`, `setSession`, raw `getUser`) when the backend stutters. Those are the unguarded paths.
+### Fix 1 — Normalize fingerprint sources (kills buckets A, C, E)
 
-We're going to **make every door go through the same hardened front door**, and put an alarm on any new door someone tries to add.
+In `src/services/error-reporter.service.ts` `fingerprint(msg, source)`:
 
----
+- Strip UUIDs from `source` → replace `/[0-9a-f]{8}-[0-9a-f]{4}-…/i` with `:id`.
+- Collapse trailing dot-separated id-lists (length > 1 comma-separated tokens or > 3 dot tokens of slugs) to `:list`.
+- Same for the message body before the slice.
 
-## The 6 hardening layers
+Result: 19 pending journey fingerprints collapse to **1** (`query.journey-completed:id.first_steps:list::Failed to count progress`). Future per-user occurrences increment `occurrence_count` on that single row instead of opening 19 new triage items. New unit tests in `src/test/services/error-reporter.fingerprint.test.ts` lock the normalization. DB-side discover_audit_fingerprints already has its own grouping; no DB change needed.
 
-### Layer 1 — One canonical session port (the only front door)
-Create `src/lib/auth/session-port.ts` exposing:
-- `getSessionSafe()` — cached, never throws, returns `null` on transient errors instead of bubbling
-- `getUserSafe()` — same, with bad-JWT classifier wired in (reuses `decidePurgeOnBadJwt`)
-- `signOutSafe({ scope, reason })` — always best-effort, logs reason, never throws
-- `setSessionSafe()` — only callable from AuthContext + OAuth callback module
+### Fix 2 — Graceful degrade on `getCompletedCount` (root-causes bucket A)
 
-Everything else in `src/` must import from here.
+In `src/services/journey.service.ts`:
 
-### Layer 2 — Migrate the 40+ side doors
-Sweep all `supabase.auth.*` callsites outside `src/integrations/**`, `src/features/auth/**`, `src/contexts/AuthContext.tsx`, and `src/lib/auth/**` to use the port. Highest-risk first:
-- `signOut` callers (EditProfilePage, ProfileEditPanel, MfaEnforcementGuard, AdminTwoFactorGraceDialog) → `signOutSafe`
-- `setSession` callers (mfa.service) → `setSessionSafe` via port
-- `getSession`/`getUser` callers (~35 files) → `getSessionSafe`/`getUserSafe`
+- Wrap the count query with `isTransientError` check (PostgREST 5xx, network, abort) → return `0` silently, no throw.
+- On **structural** error (RLS denial, 404 table, code bug) → still throw, but caller is hardened to render the phase with `?` count rather than crashing the dashboard tile.
+- Caller (`useJourneyProgress`) gets `placeholderData: previous` so a single blip is invisible to the member.
 
-### Layer 3 — Expand the ESLint guardrail
-Tighten `eslint-plugin-auth-invariants/no-direct-supabase-auth` so it bans **all** `supabase.auth.*` and `lovable.auth.*` outside:
-- `src/integrations/**` (generated)
-- `src/lib/auth/**` (the port)
-- `src/contexts/AuthContext.tsx` (bootstrap)
-- `src/components/GoogleSignInButton.tsx` (managed OAuth entrypoint)
+Net effect: even if Fix 1 weren't in place, a backend hiccup during journey load no longer opens any triage row at all; only a true regression does.
 
-CI fails on any new violation. Existing violations get migrated in Layer 2, not allow-listed.
+### Fix 3 — Drop opaque `SerializationError: Non-Error thrown` (kills bucket B)
 
-### Layer 4 — Network-level resilience
-Wrap the supabase auth client's underlying fetch with:
-- **Retry with jitter** on `/token` and `/user` for 5xx / network errors (max 2 retries, 250ms + 500ms)
-- **Circuit breaker** per endpoint (existing `CircuitBreaker` util) — when open, return cached session instead of failing
-- **Transient bad-JWT classifier** already exists (`decidePurgeOnBadJwt`); make sure it's the ONLY place that decides to purge a session
+In `src/services/error-reporter.service.ts` `isReporterNoise()` (the same gate that already filters opaque `Script error.`), add a pattern: messages matching `/^SerializationError: Non-Error thrown:\s*\{?"?message"?:\s*""?\}?$/` are dropped at the reporter entrypoint AND added to `known_issue_catalog` as a 30-day DB backstop, matching the existing opaque-error pattern from memory `Triage Noise Suppression`.
 
-Result: a backend hiccup becomes invisible to the user — the app waits, retries, and keeps them logged in.
+### Fix 4 — Sweep stale RPC residue (kills bucket D and future cousins)
 
-### Layer 5 — Always-on alarms
-- **Beacon `auth_flap_detected`** when `getSessionSafe` sees a transient failure that resolves on retry. Fires into `ops_events` (telemetry sink, 90d retention).
-- **System Health → Auth tab** counter: flaps/hr, OAuth callback timeouts/hr, forced signouts/hr.
-- **Critical-push rule:** if forced-signout-rate > 5/min platform-wide → page admins (reuses existing critical-push cron).
+One-time migration calls the existing `resolve_stale_fingerprints_on_deploy(pattern, reason)` RPC (already in memory `RPC Signature Backcompat`) with patterns:
+- `%get_dashboard_overview(p_user_id)%` → reason `shim_deployed_2026-06-14`
+- `%Could not find the function public.%in the schema cache%` older than 7 days → reason `stale_bundle_post_shim`
 
-So if it *ever* starts flaking again, you find out in minutes, not after a member complains.
+Also wire this into the deploy-watcher hook so any future RPC-rename leaves no triage debris after a deploy.
 
-### Layer 6 — Regression tests + BDD
-- Unit tests for `session-port.ts` covering: transient 5xx, bad-JWT shapes, network timeout, circuit-open replay.
-- Regression test: "transient `/user` 403 during bootstrap does NOT sign user out" (extends `oauth-callback-pending-defers-redirect.test.ts` pattern).
-- BDD scenarios `AUTH-RESILIENCE-001..006` in `bdd_scenarios` table with tri-layer [UI]/[DB]/[Code] expected results.
+## What this changes (and what it doesn't)
 
----
+**Changes (code-only, no schema, no UX):**
+- `src/services/error-reporter.service.ts` — normalize fingerprints, add Non-Error-thrown to noise gate.
+- `src/services/journey.service.ts` — graceful-degrade on transient count failures.
+- `src/hooks/use-journey-progress.ts` — `placeholderData: previous`.
+- `src/lib/known-issues.ts` (or equivalent) — add the SerializationError pattern.
+- One SQL migration: a single `SELECT resolve_stale_fingerprints_on_deploy(...)` cleanup call (no DDL).
 
-## What this does NOT change
+**Does not change:** any table, RLS policy, edge function, member-facing UI, auth path, or memory rules. Stays inside the Triage Noise Suppression and Idempotency contracts already in memory.
 
-- No changes to `accounts`, `profiles`, `sessions`, `auth.users`, `user_roles`, `revoked_sessions`, `login_rate_limits`, or any MFA table.
-- No changes to OAuth provider config — Google managed OAuth stays as-is.
-- No changes to login UX — same button, same redirects, same speed.
-- No edge functions added or modified for the user-facing path.
+## Receipts you'll get
 
----
+1. Unit tests for fingerprint normalization (5 cases: UUID, task-id list, mixed, no-op, message-only).
+2. Unit test that `getCompletedCount` returns `0` on transient and re-throws on structural.
+3. Before/after count from `agent_fix_queue` showing pending dropped from 29 → ≤ 3 (anything not in the 4 buckets above stays — those are real and need attention individually).
+4. New BDD: `TRIAGE-NOISE-013..016` covering the four fixes with tri-layer asserts.
 
-## Receipts you'll get after build
+## Why this finally clears triage for good
 
-1. **Auth entrypoints list** — every file that still touches auth, and which port function it now uses.
-2. **Removed/guarded paths** — diff of `supabase.auth.*` callsites (before vs after).
-3. **CI proof** — ESLint rule output showing 0 violations; test suite output showing all new tests green.
-4. **Beacon proof** — sample `auth_flap_detected` row in `ops_events` from a simulated transient failure.
-5. **Zero-schema-change proof** — `git diff supabase/migrations/` showing only the BDD-scenarios insert migration.
-
----
-
-## Why this finally stops the 2-day pattern
-
-The previous fix hardened the **bootstrap** and **Google callback** — the loudest doors. The remaining flakiness comes from quieter doors (a `getSession` in a side panel, a `signOut` in a settings page) that still react to a hiccup by signing the user out or showing a broken state.
-
-After this plan: **one door, one lock, one alarm**. A backend stutter becomes a logged warning, not a logout.
+Today every user who sees the same blip opens a new row. After these 4 fixes the queue shows **one row per real defect**, transient blips never reach the queue, opaque payloads are dropped at the door, and stale-bundle residue is auto-swept on each deploy. The queue stops being a noise generator and starts being an actual to-do list.
