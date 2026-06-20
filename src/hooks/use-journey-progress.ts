@@ -23,6 +23,9 @@ export function useCompletedCount(
     queryKey: queryKeys.journeyCompleted(userId!, phase, taskKey),
     queryFn: () => JourneyService.getCompletedCount(userId!, phase, validTaskIds),
     enabled: !!userId,
+    // Keep the previous count visible during refetch / transient blip so a
+    // backend hiccup never flashes "0/N" in the dashboard (TRIAGE-NOISE-015).
+    placeholderData: (prev) => prev,
     ...CACHE_USER_MUTABLE, // 60s stale — invalidated on task upsert
   });
 }
@@ -32,6 +35,7 @@ export function useJourneyProgress(userId: string | undefined, phase: JourneyPha
     queryKey: queryKeys.journeyProgress(userId!, phase),
     queryFn: () => JourneyService.getProgress(userId!, phase),
     enabled: !!userId,
+    placeholderData: (prev) => prev,
     ...CACHE_USER_MUTABLE, // 60s stale — invalidated on task upsert
   });
 }
