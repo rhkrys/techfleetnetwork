@@ -244,16 +244,18 @@ export function normalizeFingerprintKey(input: string): string {
   // Trailing dot-separated task/id lists (e.g. obs-1.obs-2.obs-3.obs-4).
   // Preserve stable source prefixes and prior normalized identifiers.
   const parts = s.split(".");
-  for (let i = 2; i <= parts.length - 4; i++) {
-    const tail = parts.slice(i);
-    const isDynamicTail =
-      tail.length > 3 &&
-      tail.every((part) => /^[a-z0-9_-]+$/i.test(part)) &&
-      tail.some((part) => /[-_0-9]/.test(part));
-    if (isDynamicTail) {
-      s = `${parts.slice(0, i).join(".")}.:list`;
-      break;
-    }
+  let dynamicTailStart = parts.length;
+  while (
+    dynamicTailStart > 2 &&
+    /^[a-z0-9_-]+$/i.test(parts[dynamicTailStart - 1] ?? "") &&
+    /[-_0-9]/.test(parts[dynamicTailStart - 1] ?? "")
+  ) {
+    dynamicTailStart -= 1;
+  }
+  if (parts.length - dynamicTailStart > 3) {
+    s = `${parts.slice(0, dynamicTailStart).join(".")}.:list`;
+  } else if (parts.length > 5 && parts.slice(-4).every((part) => /^[a-z0-9_-]+$/i.test(part))) {
+    s = `${parts.slice(0, -4).join(".")}.:list`;
   }
   return s;
 }
