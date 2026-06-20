@@ -27,6 +27,16 @@ describe("normalizeFingerprintKey (TRIAGE-NOISE-013)", () => {
     expect(out).not.toContain("foo,bar,baz");
   });
 
+  it("collapses two-token task lists to :list", () => {
+    const out = normalizeFingerprintKey("query.journey-completed.:id.first_steps.profile,connect-discord");
+    expect(out).toBe("query.journey-completed.:id.first_steps.:list");
+  });
+
+  it("collapses trailing dot-separated task/id lists to :list", () => {
+    const out = normalizeFingerprintKey("query.journey-completed.:id.observer.obs-1.obs-2.obs-3.obs-4");
+    expect(out).toBe("query.journey-completed.:id.observer.:list");
+  });
+
   it("strips long hex blobs as :hash", () => {
     const out = normalizeFingerprintKey("error.sha-abc123def456789ffeed");
     expect(out).toContain(":hash");
