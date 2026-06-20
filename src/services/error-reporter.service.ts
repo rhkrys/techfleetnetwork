@@ -647,13 +647,20 @@ export function isOpaqueScriptErrorMessage(msg: string): boolean {
   // stack trace, so the message may be MULTI-LINE — we must only inspect the
   // first non-empty line.
   //
-  // The payload carries no actionable stack/file/message — by definition not
-  // debuggable. Drop unconditionally at every reporter entrypoint.
+  // Also covers React Query's `SerializationError: Non-Error thrown: {...}`
+  // wrapper when the thrown value carries no message — by definition no
+  // actionable stack/file/message (TRIAGE-NOISE-014).
+  //
+  // Drop unconditionally at every reporter entrypoint.
   const firstLine = (msg ?? "")
     .split(/\r?\n/)
     .map((l) => l.trim())
     .find((l) => l.length > 0) ?? "";
-  return /^(error:\s*)?script error\.?$/i.test(firstLine);
+  if (/^(error:\s*)?script error\.?$/i.test(firstLine)) return true;
+  // SerializationError with empty payload / empty message — opaque by design.
+  if (/^SerializationError:\s*Non-Error thrown:\s*\{?\s*"?message"?\s*:\s*""\s*\}?\s*$/i.test(firstLine)) return true;
+  if (/^SerializationError:\s*Non-Error thrown:\s*\{\s*\}?\s*$/i.test(firstLine)) return true;
+  return false;
 }
 
 // Back-compat wrapper for the window.onerror caller (uses ErrorEvent shape).
