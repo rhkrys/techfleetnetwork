@@ -104,16 +104,31 @@ export const JourneyService = {
 
       const { count, error } = await query;
       if (error) {
+        // Transient PostgREST/network/5xx blip — graceful-degrade to 0
+        // rather than throwing. The user sees a momentarily-stale progress
+        // count on the next refetch; the triage queue never opens a row.
+        // (TRIAGE-NOISE-015)
+        const wrapped = Object.assign(new Error(error.message), {
+          code: (error as { code?: string }).code,
+          status: (error as { status?: number }).status,
+        });
+        if (isTransientError(wrapped)) {
+          log.warn("getCompletedCount", `Transient count blip for ${phase}; degrading to 0`, {
+            userId, phase, errorCode: (error as { code?: string }).code,
+          });
+          return 0;
+        }
         log.error("getCompletedCount", `Count query failed: ${error.message}`, { userId, phase }, error);
-        // Preserve PostgREST classification fields so QueryCache.onError can
-        // call isTransientError(err) and skip noisy reportError() for blips.
-        const wrapped = new Error("Failed to count progress") as Error & {
+        // Structural error (RLS denial, schema mismatch, code bug) — surface
+        // it. Preserve PostgREST classification fields so callers / React
+        // Query's onError can re-check isTransientError().
+        const surfaced = new Error("Failed to count progress") as Error & {
           code?: string; status?: number; cause?: unknown;
         };
-        wrapped.code = (error as { code?: string }).code;
-        wrapped.status = (error as { status?: number }).status;
-        wrapped.cause = error;
-        throw wrapped;
+        surfaced.code = (error as { code?: string }).code;
+        surfaced.status = (error as { status?: number }).status;
+        surfaced.cause = error;
+        throw surfaced;
       }
       const result = count ?? 0;
       log.debug("getCompletedCount", `User ${userId} has ${result} completed tasks in ${phase}`, { userId, phase, count: result });
