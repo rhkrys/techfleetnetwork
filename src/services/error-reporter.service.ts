@@ -227,9 +227,8 @@ function truncate(s: string, max: number): string {
  *   - UUIDs → `:id`
  *   - Numeric ids (>=8 digits) → `:id`
  *   - Hex-ish blobs (>=12 chars) → `:hash`
- *   - Comma-separated lists with > 2 tokens → `:list`
- *   - Long dot-segmented slug runs (> 3 slug tokens after the second dot) →
- *     collapsed to `:list`
+ *   - Comma-separated lists with > 1 token → `:list`
+ *   - Trailing dot-segmented task/id slug runs (> 3 dynamic tokens) → `:list`
  */
 export function normalizeFingerprintKey(input: string): string {
   if (!input) return input;
@@ -240,8 +239,22 @@ export function normalizeFingerprintKey(input: string): string {
   s = s.replace(/\b[0-9a-f]{12,}\b/gi, ":hash");
   // Long numeric ids (timestamps, bigints)
   s = s.replace(/\b\d{8,}\b/g, ":id");
-  // Comma-separated slug lists (>= 3 tokens)
-  s = s.replace(/([a-z0-9_-]+(?:,[a-z0-9_-]+){2,})/gi, ":list");
+  // Comma-separated slug lists (>= 2 tokens)
+  s = s.replace(/([a-z0-9_-]+(?:,[a-z0-9_-]+){1,})/gi, ":list");
+  // Trailing dot-separated task/id lists (e.g. obs-1.obs-2.obs-3.obs-4).
+  // Preserve stable source prefixes and prior normalized identifiers.
+  const parts = s.split(".");
+  for (let i = 2; i <= parts.length - 4; i++) {
+    const tail = parts.slice(i);
+    const isDynamicTail =
+      tail.length > 3 &&
+      tail.every((part) => /^[a-z0-9_-]+$/i.test(part)) &&
+      tail.some((part) => /[-_0-9]/.test(part));
+    if (isDynamicTail) {
+      s = `${parts.slice(0, i).join(".")}.:list`;
+      break;
+    }
+  }
   return s;
 }
 
