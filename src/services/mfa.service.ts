@@ -317,7 +317,7 @@ export const MfaService = {
 
   async markCurrentSessionVerified(): Promise<void> {
     try {
-      const { data } = await supabase.auth.getSession();
+      const { data } = await withAuthLockRetry(() => supabase.auth.getSession());
       const token = data.session?.access_token;
       if (!token) return;
       const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
