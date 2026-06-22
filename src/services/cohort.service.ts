@@ -3,6 +3,7 @@ import { getUserSafe } from "@/lib/auth/session-port";
 import type { CohortFormValues } from "@/lib/validators/cohort";
 import { assertWritten } from "@/lib/db-helpers";
 import { retryTransientWrite } from "@/lib/db/retry";
+import { retryPostgrest } from "@/lib/data/transient-retry";
 
 export type CohortRow = {
   id: string;
