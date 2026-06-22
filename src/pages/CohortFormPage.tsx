@@ -7,7 +7,7 @@ import { Loader2, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RichTextEditor } from "@/components/RichTextEditor";
+import { RichTextSection } from "@/components/forms/RichTextSection";
 import { CohortService } from "@/services/cohort.service";
 import { cohortFormSchema, type CohortFormValues } from "@/lib/validators/cohort";
 import { useQueryClient } from "@/lib/react-query";
