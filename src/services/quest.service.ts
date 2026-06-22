@@ -206,17 +206,19 @@ export const QuestService = {
 
   async getSelfReportProgress(userId: string): Promise<Map<string, boolean>> {
     return log.track("getSelfReportProgress", "Loading self-report progress", { userId }, async () => {
-      const { data, error } = await supabase
-        .from("journey_progress")
-        .select("task_id, completed")
-        .eq("user_id", userId)
-        .like("task_id", "quest-step-%");
+      const { data, error } = await retryPostgrest(() =>
+        supabase
+          .from("journey_progress")
+          .select("task_id, completed")
+          .eq("user_id", userId)
+          .like("task_id", "quest-step-%")
+      );
       if (error) {
-        log.error("getSelfReportProgress", error.message, { userId }, error);
+        log.error("getSelfReportProgress", (error as Error).message ?? String(error), { userId }, error);
         throw new Error("Failed to load self-report progress");
       }
       const map = new Map<string, boolean>();
-      for (const row of data ?? []) {
+      for (const row of (data ?? []) as Array<{ task_id: string; completed: boolean }>) {
         const stepId = row.task_id.replace("quest-step-", "");
         map.set(stepId, row.completed);
       }
