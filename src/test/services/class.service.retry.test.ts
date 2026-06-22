@@ -38,6 +38,9 @@ const validValues = {
   why_take: "",
   audiences: "",
   prerequisites: [],
+  curriculum: "",
+  reading_assignments: "",
+  class_expectations: "",
 };
 
 beforeEach(() => {
