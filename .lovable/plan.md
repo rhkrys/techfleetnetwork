@@ -1,87 +1,145 @@
-## Why everything feels slow
+## Goal
 
-Lovable Cloud reports healthy. The slowdown is **client-side write storms saturating the Postgres connection pool**, so every interactive call (login `/token`, MFA `/factors`, class insert, project update) waits in a PostgREST queue. Top offenders from `pg_stat_statements`:
+Teachers author class-scoped curriculum (sections → modules) with WYSIWYG content + embedded video, drag-drop reordering, and per-learner completion — mirroring the core-course experience on `GenericCoursePage`. Changes propagate to all cohorts of that class automatically (since curriculum lives at the class level).
 
-| # | Query                                                                              | Calls    | Total time | Max latency |
-| - | ---------------------------------------------------------------------------------- | -------- | ---------- | ----------- |
-| 1 | `web_vital_samples` INSERT (every LCP/INP/CLS/FCP/TTFB beacon, **per nav**)        | 43,683   | 33 min     | 7.9 s       |
-| 2 | `ugc_translations` paginated SELECT **with exact COUNT** (`pgrst_source_count`)    | 69,433   | 59 min     | 7.9 s       |
-| 3 | `i18n_translations` lookup by `(locale, namespace, key=ANY)`                       | 19,313   | 11 min     | 6.7 s       |
-| 4 | `cookie_consents` INSERT (firing on every page load, not just on change)           | 9,123    | 5 min      | 5.9 s       |
-| 5 | `journey_progress` upsert (chained to many UI events)                              | 11,400   | 14 min     | 7.9 s       |
-| 6 | `email_send_state` + `pgmq` + `vault.decrypted_secrets` poller (cron, **~13/sec**) | 1.5 M    | 17 min     | 0.8 s       |
-| 7 | `audit_log` exact-count from PostgREST (Activity Log — already fixed last turn)    | 277      | 3 min      | 2.8 s       |
-| 8 | `get_member_continent_distribution()` RPC (no cache)                               | 484      | 3 min      | 7.3 s       |
-| 9 | `lesson_video_events` INSERT (per heartbeat)                                       | 3,890    | 4 min      | 7.0 s       |
+## Architecture (enterprise, no spaghetti)
 
-The 7-8 s max latencies on **simple single-row inserts** confirm pool saturation, not query cost. Auth + 2FA traffic is competing with the same pool. Fix the writers, every screen gets faster.
+Three layers, one engine, server-authoritative.
 
-## Permanent fix — root cause, no band-aids
+### 1. Database (source of truth, RLS-locked)
 
-### 1. Web Vitals beacon (biggest win) — batched edge sink
-- New edge fn `record-web-vitals-batch` accepts up to 50 samples in one POST; writes into `web_vital_samples` in a single multi-row insert.
-- Client `src/lib/web-vitals/beacon.ts` buffers in memory, flushes every 10 s, on `visibilitychange=hidden`, and on `pagehide`, via `navigator.sendBeacon` (non-blocking).
-- Drop direct PostgREST inserts from the client. Sample-rate 25% for non-error vitals.
-- Expected: **~95% drop** in this query's call count.
+New tables — all in `public`, all with GRANTs + RLS + `updated_at` trigger + `class_audit` hooks.
 
-### 2. `ugc_translations` reads — kill the exact COUNT
-- Replace PostgREST `.select(..., { count: 'exact' })` with a thin RPC `get_ugc_translations_page(p_since, p_limit)` returning rows only.
-- Where total is needed, call `audit_log_count_fast`-style estimate via new `ugc_translations_count_fast()`.
-- Audit grep: `rg "from\(\"ugc_translations\"\).*count: ?\"exact\""`.
+- `class_module_sections`
+  - `id`, `class_id` → `classes.id` ON DELETE CASCADE
+  - `title` (≤200), `summary` (≤500 nullable)
+  - `position` int NOT NULL, `status` enum `draft|published|archived` default `draft`
+  - `created_by`, `published_at`, `archived_at`, timestamps
+  - UNIQUE(`class_id`, `position`) DEFERRABLE for atomic reorders
 
-### 3. `i18n_translations` lookup — composite index + LRU cache
-- Add `CREATE INDEX IF NOT EXISTS idx_i18n_translations_locale_ns_key ON public.i18n_translations (locale, namespace, key)` (covering predicate `WHERE locale=$ AND namespace=$ AND key=ANY($)`).
-- Add 5-minute in-memory LRU in `src/lib/i18n/translations-cache.ts` keyed on `locale:namespace:key` so repeated DOM-translator passes don't re-query.
+- `class_module_items` (the "lesson" equivalent)
+  - `id`, `section_id` → sections ON DELETE CASCADE, `class_id` denormalized for RLS speed
+  - `title` (≤200), `position` int
+  - `content_html` text (server-sanitized; ≤200 KB)
+  - `video_url` text nullable, `video_provider` enum `youtube|vimeo|google_meet|loom|other` (derived by trigger from URL)
+  - `video_embed_url` text (computed/normalized by trigger; never trusts client)
+  - `action_type` enum `read|watch|task` default `read`
+  - `duration_minutes` int nullable, `required` bool default true
+  - `status` enum `draft|published|archived` default `draft`
+  - timestamps + `created_by`
 
-### 4. `cookie_consents` — insert only on change
-- `src/lib/consent/recordConsent.ts`: hash `{categories, gpc_signal, policy_version}`; skip the write if the hash matches the value stored in `localStorage('tfn:consent-hash')`.
-- Server-side guard: drop duplicate consecutive rows for the same `(user_id|anon_id, hash)` inside the existing `record-consent` edge fn.
+- `class_module_progress`
+  - `user_id`, `class_id`, `item_id`, `completed` bool, `completed_at`
+  - PK (`user_id`, `item_id`); index (`user_id`,`class_id`)
+  - Replaces any localStorage usage entirely.
 
-### 5. `journey_progress` upsert — debounce + de-dup
-- `src/services/journey.service.ts`: 750 ms trailing debounce per `(user_id, phase, task_id)`; collapse repeated identical upserts; one-flight guard.
+- `class_module_audit` (append-only diff log, like `class_audit`)
 
-### 6. Email NOTIFY cron — slow the loop, memoize the secret
-- Today the cron query runs ~13/sec calling `vault.decrypted_secrets` every tick.
-- Migration: lower the schedule from every 5 s to every 30 s and cache `decrypted_secret` in a `STABLE SECURITY DEFINER` function `_internal_get_email_dispatcher_token()` so PG only fetches it once per backend.
-- Net: ~85% fewer `vault` reads, same dispatch SLO (queue drain in <60 s).
+**SECURITY DEFINER RPCs** (single write path, idempotent, transactional):
+- `upsert_class_section(p_class_id, p_section_id?, p_title, p_summary, p_status)`
+- `upsert_class_module_item(p_section_id, p_item_id?, p_title, p_content_html, p_video_url, p_action_type, p_duration_minutes, p_required, p_status)` — runs server-side sanitization via `sanitize_html_strict()` plpgsql/JS-port whitelist (no `<script>`, no `on*`, no `javascript:` URLs, allow iframes only from allowlist domains)
+- `reorder_class_sections(p_class_id, p_ordered_ids uuid[])`
+- `reorder_class_module_items(p_section_id, p_ordered_ids uuid[])` — both use temp-offset trick (`position = -position - 1` then renumber) for atomic conflict-free swaps
+- `publish_class_curriculum(p_class_id)` — bulk publish drafts
+- `toggle_class_module_completion(p_item_id, p_completed)` — checks enrollment, writes progress
 
-### 7. `get_member_continent_distribution()` — daily snapshot
-- New table `member_continent_distribution_daily (snapshot_date primary key, payload jsonb, refreshed_at)`.
-- Refresh via existing `refresh-network-stats` cron at 02:00 UTC.
-- Public reads hit the snapshot row (single jsonb fetch). RPC kept as fallback behind admin flag.
+All RPCs go through `withIdempotency` for client retries.
 
-### 8. `lesson_video_events` — sampled flush
-- Currently posted every heartbeat. Buffer client-side in 30 s windows; flush as one row per `(user_id, lesson_id, window_start)` with `position_seconds_max`.
+**RLS policies**
+- Sections/items SELECT: class owner OR admin OR enrolled learner (via `cohort_registrations` → `cohorts.class_id`) AND `status='published'` for learners
+- Sections/items INSERT/UPDATE/DELETE: class owner OR admin only — and only via the RPCs (table-level write privilege revoked from `authenticated`; granted to `service_role` + RPC owner)
+- Progress: user reads/writes own only; RPC verifies enrollment
+- Audit: SELECT for owner/admin; INSERT only via trigger
 
-## What does NOT change (no UX regression)
+GRANTs follow the standard 4-step template.
 
-- No login, MFA, sign-up, password reset, or session flow changes.
-- No DOM-translator behavior change (only the cache layer underneath it).
-- No reduction in Web Vitals fidelity for **error/poor-rated** samples (those bypass the 25% sampler).
-- No retention or RLS changes on any table.
+### 2. Edge / API
 
-## Files
+No new edge functions required — RPCs handle writes. Server-side HTML sanitization lives in the RPC (uses a Postgres function backed by a strict tag/attr allowlist; we also keep a defense-in-depth DOMPurify pass on the client render).
 
-- `src/lib/web-vitals/beacon.ts` *(new)* + replace direct inserts in `src/main.tsx` / `src/lib/web-vitals/init.ts`.
-- `supabase/functions/record-web-vitals-batch/index.ts` *(new)* + `config.toml` pin.
-- `src/lib/i18n/translations-cache.ts` *(new)* + wired into `src/services/i18n-runtime.ts`.
-- `src/lib/consent/recordConsent.ts` *(edit)*.
-- `src/services/journey.service.ts` *(edit — debounce wrapper)*.
-- `supabase/migrations/<ts>_perf_storm_fix.sql` — composite indexes, `ugc_translations_count_fast()`, `get_ugc_translations_page()`, `_internal_get_email_dispatcher_token()`, snapshot table + grants + RLS, cron schedule change.
-- `src/services/stats.service.ts` *(edit — read snapshot)*.
-- `src/lib/video/heartbeat-buffer.ts` *(new)*.
-- Tests: `src/test/lib/web-vitals-beacon.test.ts`, `src/test/lib/journey-debounce.test.ts`, `src/test/lib/consent-dedupe.test.ts`, `src/test/services/stats-snapshot.test.ts`.
-- `public.bdd_scenarios` — `PERF-STORM-001..009`.
+### 3. Frontend (one engine, no duplicates)
 
-## Receipts after build
+New folder `src/features/class-curriculum/` (Service → Hooks → UI). No business logic in components.
 
-- `pg_stat_statements` re-snapshot: top-5 totals drop by ≥80% within 1 hour.
-- Login `/token` p95 returns under 800 ms on the published URL.
-- No direct PostgREST inserts into `web_vital_samples` or `cookie_consents` from `src/` (greppable).
-- 9 BDD scenarios + 4 vitest specs green.
+- `services/classCurriculum.service.ts` — single port; wraps RPCs via `useIdempotentMutation`
+- `hooks/useClassCurriculum.ts` — React Query: sections+items in one query keyed by `class_id`
+- `hooks/useClassModuleProgress.ts` — keyed by `(user_id, class_id)`, 750ms debounced writes (matches our journey_progress pattern)
+- `components/`
+  - `CurriculumEditor.tsx` — teacher-only; `@dnd-kit/sortable` for sections + items; autosave on blur, optimistic + rollback
+  - `SectionEditorRow.tsx`, `ItemEditorDialog.tsx` (title, action type, video URL, WYSIWYG, required, status)
+  - `WysiwygEditor.tsx` — reuse the existing TipTap editor used by Announcements; same toolbar; sanitization on submit
+  - `VideoEmbed.tsx` — normalizes YouTube / Vimeo / Loom / Google Meet links; Google Meet shows a styled "Join meeting" card (Meet can't be iframed — we render a CTA, not a broken embed) — eliminates a foot-gun the user didn't anticipate
+  - `LearnerCurriculumView.tsx` — renders the **same** `CourseSection`/`CourseLesson` shape consumed by `GenericCoursePage` so visual parity is structural, not copy-pasted. We extract the existing presentational pieces from `GenericCoursePage` into `src/components/courses/CoursePlayer/` (pure props, no data fetching) and both the core-course page and the class learner view consume them.
 
-## Out of scope
+- `pages/ClassDetailPage.tsx` — add `Curriculum` tab:
+  - Teachers/admins: `<CurriculumEditor classId=…/>`
+  - Enrolled learners: `<LearnerCurriculumView classId=…/>`
+  - Everyone else: locked card
 
-- Connection-pool sizing / compute upgrade — fixing the writers makes that unnecessary; we'll only revisit if the receipts above don't clear the queue.
-- Activity Log count (shipped last turn).
-- Member world map additive source (unrelated).
+Routing already exists (`/classes/:classId`); no new routes needed.
+
+### Reordering UX
+
+dnd-kit `SortableContext` with vertical strategy. On drop:
+1. Optimistic local reorder
+2. Call `reorder_class_*` RPC with ordered ID array
+3. On error: rollback + toast
+
+The RPC swaps positions atomically inside one transaction (deferrable unique). No N writes from the client — one round trip.
+
+### Propagation to cohorts
+
+Curriculum lives at `class_id`, never at `cohort_id`. All `cohorts` of a class share one curriculum row-set. New cohort registrations immediately see published modules — no copy/sync job needed. This is the requested "updated for any class already registered."
+
+## Security (OWASP coverage)
+
+- **A01 Broken Access**: RLS + RPC ownership checks + table-write revocation
+- **A03 Injection**: Server-side HTML sanitizer (strict allowlist), URL allowlist for video providers, parameterized RPCs only
+- **A04 Insecure Design**: Single write port, idempotency keys, audit log
+- **A05 Misconfig**: GRANTs explicit; default-deny RLS
+- **A07 Auth**: RPCs check `auth.uid()` + `has_role`; no anon access
+- **A08 Data Integrity**: deferrable unique on position; trigger-derived `video_provider`/`video_embed_url` so client can't spoof
+- **A09 Logging**: `class_module_audit` append-only hash-chain entries
+- **A10 SSRF**: We never fetch the video URL server-side; provider parsing is regex-only
+
+## Accessibility (WCAG 2/3)
+
+- dnd-kit keyboard sortable strategy (Arrow keys + Space)
+- All interactive items have visible focus + `aria-grabbed`/`aria-describedby` live regions
+- WYSIWYG: TipTap with proper headings (no skipped levels), alt text required for inserted images
+- Video embeds carry `title` attr and a transcript field (optional but linted)
+
+## BDD scenarios (stored in `bdd_scenarios`)
+
+Feature `class-curriculum`:
+- CC-001 Teacher creates section → row in DB, audit entry, appears in editor [UI/DB/Code]
+- CC-002 Teacher adds module with WYSIWYG + YouTube URL → sanitized HTML stored, `video_provider='youtube'`, `video_embed_url` normalized [UI/DB/Code]
+- CC-003 Teacher embeds `<script>` → stripped server-side, audit logs sanitization [UI/DB/Code]
+- CC-004 Teacher drags section to new position → `reorder_class_sections` RPC, positions renumbered atomically [UI/DB/Code]
+- CC-005 Teacher drags item across sections → item.section_id + position updated transactionally [UI/DB/Code]
+- CC-006 Non-owner teacher attempts edit → RLS denies, no audit row [UI/DB/Code]
+- CC-007 Enrolled learner sees only `published` modules [UI/DB/Code]
+- CC-008 Unenrolled member gets locked card, RLS denies direct query [UI/DB/Code]
+- CC-009 Learner toggles completion → `class_module_progress` upserted; progress bar updates [UI/DB/Code]
+- CC-010 Google Meet URL renders CTA card, not iframe [UI/Code]
+- CC-011 Reorder during concurrent edit → deferrable unique resolves; no constraint violation [DB]
+- CC-012 Publish curriculum makes all draft items visible to existing cohort registrants without re-registration [UI/DB]
+- CC-013 Class deleted → curriculum + progress cascade-delete; audit retained [DB]
+- CC-014 Idempotent retry of `upsert_class_module_item` returns same row [Code/DB]
+- CC-015 Keyboard-only user can reorder sections (Arrow+Space) [UI a11y]
+
+## Out of scope (explicit)
+
+- Quizzes / graded assessments (future)
+- File attachments (future; can reuse `class-resources` bucket later)
+- Per-cohort overrides (intentional: curriculum is class-level by your spec)
+- Course-catalog migration of teacher modules into core curriculum
+
+## Shipment order (one PR per phase, each independently revertible)
+
+1. Migration: tables, enums, RPCs, RLS, audit triggers, GRANTs
+2. Extract `CoursePlayer` presentational components from `GenericCoursePage`
+3. `class-curriculum` service + hooks
+4. `CurriculumEditor` + dnd-kit + WYSIWYG + VideoEmbed
+5. `LearnerCurriculumView` + Curriculum tab on `ClassDetailPage`
+6. BDD scenarios inserted; vitest unit tests for sanitizer + reorder math; Playwright happy-path
