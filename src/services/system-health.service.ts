@@ -100,29 +100,29 @@ const sb = supabase as any;
 
 export const SystemHealthService = {
   async getHealth(): Promise<SystemHealthState | null> {
-    const { data, error } = await sb
-      .from("system_health_state")
-      .select("status, reason, pause_non_critical, updated_at")
-      .eq("id", 1)
-      .maybeSingle();
+    const { data, error } = await retryPostgrest(() =>
+      sb
+        .from("system_health_state")
+        .select("status, reason, pause_non_critical, updated_at")
+        .eq("id", 1)
+        .maybeSingle()
+    );
     if (error) throw error;
     return (data as SystemHealthState | null) ?? null;
   },
 
   async getTopErrors(hours = 24, limit = 10): Promise<ErrorFingerprint[]> {
-    const { data, error } = await sb.rpc("get_top_error_fingerprints", {
-      p_hours: hours,
-      p_limit: limit,
-    });
+    const { data, error } = await retryPostgrest(() =>
+      sb.rpc("get_top_error_fingerprints", { p_hours: hours, p_limit: limit })
+    );
     if (error) throw error;
     return (data as ErrorFingerprint[]) ?? [];
   },
 
   async getRemediations(): Promise<RemediationRule[]> {
-    const { data, error } = await sb
-      .from("system_remediations")
-      .select("*")
-      .order("description", { ascending: true });
+    const { data, error } = await retryPostgrest(() =>
+      sb.from("system_remediations").select("*").order("description", { ascending: true })
+    );
     if (error) throw error;
     return (data as RemediationRule[]) ?? [];
   },
@@ -142,16 +142,17 @@ export const SystemHealthService = {
   },
 
   async getEmailPipelineHealth(hours = 24, limit = 50): Promise<EmailPipelineHealth> {
-    const { data, error } = await sb.rpc("get_email_pipeline_health", {
-      p_hours: hours,
-      p_limit: limit,
-    });
+    const { data, error } = await retryPostgrest(() =>
+      sb.rpc("get_email_pipeline_health", { p_hours: hours, p_limit: limit })
+    );
     if (error) throw error;
     return data as EmailPipelineHealth;
   },
 
   async getEmailReconcilerStatus(): Promise<EmailReconcilerStatus> {
-    const { data, error } = await sb.rpc("get_email_reconciler_status");
+    const { data, error } = await retryPostgrest(() =>
+      sb.rpc("get_email_reconciler_status")
+    );
     if (error) throw error;
     return (data as EmailReconcilerStatus) ?? {
       stuck_pending: 0, last_run_at: null, last_run: null, last_severity: null,
@@ -159,7 +160,9 @@ export const SystemHealthService = {
   },
 
   async getRefactorKpis(days = 30): Promise<RefactorKpi[]> {
-    const { data, error } = await sb.rpc("get_refactor_kpis", { p_days: days });
+    const { data, error } = await retryPostgrest(() =>
+      sb.rpc("get_refactor_kpis", { p_days: days })
+    );
     if (error) throw error;
     return (data ?? []).map((row: any): RefactorKpi => ({
       metric_key: row.metric_key,
