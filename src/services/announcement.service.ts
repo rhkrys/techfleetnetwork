@@ -57,11 +57,16 @@ function writeLkgToStorage(limit: number, rows: Announcement[]): void {
 
 export const AnnouncementService = {
   async list(limit = 50): Promise<Announcement[]> {
-    const { data, error } = await supabase
-      .from("announcements")
-      .select("id, title, body_html, video_url, audio_url, created_by, created_at, updated_at")
-      .order("created_at", { ascending: false })
-      .limit(limit);
+    // Wrapped in retryPostgrest so PGRST002 / 5xx schema-cache blips are
+    // absorbed before we degrade to the last-known-good cache.
+    const { retryPostgrest } = await import("@/lib/data/transient-retry");
+    const { data, error } = await retryPostgrest(() =>
+      supabase
+        .from("announcements")
+        .select("id, title, body_html, video_url, audio_url, created_by, created_at, updated_at")
+        .order("created_at", { ascending: false })
+        .limit(limit),
+    );
 
     if (error) {
       // Transient (network/5xx/connection) → degrade silently to last-known-good.
