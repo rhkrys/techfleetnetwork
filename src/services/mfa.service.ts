@@ -1,7 +1,18 @@
 import { supabase } from "@/integrations/supabase/client";
 import { createLogger } from "@/services/logger.service";
 import { isValidTotpCode } from "@/lib/security";
+import { withTransientRetry } from "@/lib/data/transient-retry";
+import { withAuthLockRetry } from "@/lib/auth/auth-lock-retry";
+import {
+  classifyMfaError,
+  MfaInvalidCodeError,
+  MfaSessionEscalationError,
+  MfaTransientError,
+} from "@/services/errors/mfa-errors";
 const log = createLogger("MfaService");
+
+// Re-export for callers (dialogs) so they don't reach into services/errors/.
+export { MfaInvalidCodeError, MfaTransientError, MfaSessionEscalationError };
 
 export interface TotpFactor {
   id: string;
