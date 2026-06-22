@@ -5,6 +5,10 @@ import { isTransientError } from "@/lib/transient-error";
 
 const log = createLogger("JourneyService");
 
+// Per-process dedupe cache: collapses identical task upserts fired within 2s
+// (UI double-clicks, fast re-renders). Keeps the connection pool clear.
+const journeyDedupe = new Map<string, number>();
+
 type JourneyPhase = Database["public"]["Enums"]["journey_phase"];
 
 export interface TaskProgress {
