@@ -169,7 +169,10 @@ export const MfaService = {
 
     let currentAal: string | null = null;
     try {
-      const { data } = await supabase.auth.getSession();
+      // Wrap in auth-lock retry: ProfileService.fetch and this call race
+      // for GoTrue's Web Lock during identity bootstrap and one can throw
+      // `AbortError: Lock broken by another request with the 'steal' option`.
+      const { data } = await withAuthLockRetry(() => supabase.auth.getSession());
       currentAal = decodeAalFromToken(data.session?.access_token);
     } catch {
       currentAal = null;
