@@ -3,6 +3,8 @@ import { createLogger } from "@/services/logger.service";
 import { reportError } from "@/services/error-reporter.service";
 import { emailInputSchema } from "@/lib/validators/auth";
 import { safeLongTextSchema } from "@/lib/validators/shared-input";
+import { retryPostgrest } from "@/lib/data/transient-retry";
+import { retryTransientWrite } from "@/lib/db/retry";
 import { z } from "zod";
 
 const log = createLogger("FeedbackService");
