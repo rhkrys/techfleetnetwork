@@ -144,6 +144,9 @@ export default tseslint.config(
       // does not brick CI; promote to "error" after each surface migrates
       // to `src/features/auth/**`.
       "auth-invariants/no-direct-supabase-auth": "warn",
+      // 2026-06-22 — read-side guard: getSession/getUser must use the port
+      // so Web Locks "AbortError: Lock broken" race is retried in one place.
+      "auth-invariants/no-direct-auth-session-reads": "warn",
       "auth-invariants/no-direct-failure-counters": "warn",
       "auth-invariants/no-auth-storage-literals": "warn",
       "auth-invariants/no-auth-booleans-in-ui": "error",
