@@ -5,7 +5,9 @@ import { isSafeRedirectUrl } from "@/lib/security";
 import { markOAuthUiInitiated } from "@/lib/oauth-ui-guard";
 import { markOAuthCallbackPending } from "@/lib/auth/oauth-callback-pending";
 import { beaconWedge } from "@/lib/auth/session-health";
+import { getCanonicalOAuthOrigin, needsCanonicalRestart } from "@/lib/auth/oauth-origin";
 import { toast } from "sonner";
+
 
 interface GoogleSignInButtonProps {
   label?: string;
@@ -34,6 +36,16 @@ export function GoogleSignInButton({ label = "Sign in with Google", className, o
       if (redirectTo && redirectTo !== "/dashboard" && isSafeRedirectUrl(redirectTo)) {
         storeAuthRedirect(redirectTo);
       }
+      // AUTH-OAUTH-APEX-CANONICAL-001 — the apex `techfleet.network` host is
+      // an unreliable OAuth origin (broker bounces back with
+      // `failed to sign in with vendor`). Transparently restart on the
+      // canonical `www` host before involving the broker at all.
+      if (needsCanonicalRestart()) {
+        try { beaconWedge("oauth_canonical_restart", "google_sign_in_button"); } catch { /* noop */ }
+        const canonical = getCanonicalOAuthOrigin();
+        window.location.replace(`${canonical}/login?from=oauth-canonical`);
+        return;
+      }
       markOAuthUiInitiated("google");
       // Arm the callback-pending guard so when Google bounces us back with
       // `?code=` or `#access_token=…`, ProtectedRoute / AuthRedirectHandler
@@ -41,13 +53,14 @@ export function GoogleSignInButton({ label = "Sign in with Google", className, o
       markOAuthCallbackPending();
       try { beaconWedge("oauth_start", "google_sign_in_button"); } catch { /* noop */ }
       const result = await lovable.auth.signInWithOAuth("google", {
-        redirect_uri: window.location.origin,
+        redirect_uri: getCanonicalOAuthOrigin(),
         extraParams: { prompt: "select_account" },
       });
       if (result.error) {
         console.error("OAuth provider error occurred");
         toast.error("Google sign-in could not start. Please try again.", { duration: 30000, position: "top-center" });
       }
+
     } catch {
       console.error("OAuth sign-in failed");
       toast.error("Google sign-in could not start. Please try again.", { duration: 30000, position: "top-center" });
