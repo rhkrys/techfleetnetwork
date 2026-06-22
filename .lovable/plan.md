@@ -1,88 +1,59 @@
-## Goal
-Add four optional rich-text fields without touching any existing functionality, and unlock cohort editing (which currently has no UI at all). Refactor only where it pays for itself: a shared RichTextSection wrapper, a shared transient-retry helper, and a real edit mode for `CohortFormPage`. No RLS, no status-transition, no slug, no sanitizer-base function changes.
+## You're right — that UX is broken. Here's the permanent fix.
 
-## What's actually broken / missing today (evidence)
+Today, if Cloud Auth has a hiccup mid-`/signup`, the row gets created server-side but the client sees a generic "timed out" and the user retries forever, eventually hitting `user_repeated_signup` with no path forward. That's the bug. Fixing it everywhere it can happen.
 
-- `cohorts` table has no `schedule` column; `classes` has no `curriculum`, `reading_assignments`, `class_expectations`.
-- `App.tsx` only mounts `CohortFormPage` at `/teach/classes/:id/cohorts/new`. There is **no** edit route, and `CohortFormPage` only calls `CohortService.create` — that's why "a user cannot edit the cohort." RLS already permits teachers to edit `draft`/`pending_review` cohorts and admins to edit any, so the gap is purely UI/service.
-- The four new fields are HTML bodies. `classes` already has a `BEFORE INSERT/UPDATE` trigger `sanitize_classes_html` that runs `sanitize_user_html` on the existing HTML columns. `cohorts` has no equivalent trigger.
+## Root cause
 
-## Architecture decisions (enterprise-grade, minimal blast radius)
+`src/features/auth/services/sign-up.service.ts` and `src/features/auth/flows/sign-up.flow.ts` both treat a 504 / network timeout / "Database error finding user" as a flat failure. They never check whether the row was actually created. There is no "your account may already exist — sign in or reset password" branch. There is no detection of GoTrue's modern `email_exists` / `user_already_exists` error codes (only legacy English substrings).
 
-1. **Storage = text NOT NULL DEFAULT ''** for all four new columns. Optional in the UI but never nullable in the DB → eliminates a class of "is it null or empty?" branches in services, the public detail page, and downstream consumers. Existing rows back-fill to `''` automatically, so the requirement *"existing classes/cohorts should not pre-populate but allow going back to update"* is satisfied without any data migration.
-2. **Sanitization at the boundary, not in app code.** Extend the existing `sanitize_classes_html` trigger to cover the three new class columns; add a symmetrical `sanitize_cohorts_html` trigger for `cohorts.schedule`. App code never has to remember to sanitize, and a future direct SQL writer can't bypass it.
-3. **RLS unchanged.** The existing policies already do exactly what we want — teachers edit only their own drafts/pending; admins edit any. We are NOT widening published-cohort edits; that's a status-transition concern (already enforced by `classes_validate_transition`-style logic for classes) and out of scope.
-4. **Validators extend, never replace.** Add three optional `safeHtmlSchema` fields to `classFormSchema`, one to `cohortFormSchema`, each with `.default("")`. Zero impact on existing forms, callers, or types beyond the additive fields.
-5. **One shared write-retry helper.** The transient-retry wrapper now lives privately inside `class.service.ts` (shipped earlier today). Promote it to `src/lib/db/retry.ts` (`retryTransientWrite`) and reuse it in `CohortService.create` + `CohortService.update`. Single behavior, one place to test.
-6. **One shared `<RichTextSection>` presenter.** `ClassFormPage` repeats the same `<div><Label/><RichTextEditor/><error/></div>` block six times today and will hit nine. Extract a tiny presentational component `src/components/forms/RichTextSection.tsx` (label, placeholder, value, onChange, error, required?). Pure refactor; identical DOM; no behavior change. Used by class form (9 sections) and cohort form (1 section).
-7. **CohortFormPage = create + edit, mirroring ClassFormPage's proven pattern.** Add `cohortId` param branch, `useCohortById` hook, `useAutosave` for edit mode gated by status `draft|pending_review`, server draft only in create mode, RichTextSection for `schedule`. Route added at `/teach/classes/:id/cohorts/:cohortId/edit`. Admins reach the same page via the existing admin classes UI.
-8. **Read surfaces.** `ClassDetailPage` and the public class detail render each new section only when non-empty (`v && v.trim()`), each as a semantic `<section aria-labelledby>` with sanitized HTML via the existing `dangerouslySetInnerHTML` pattern already used for `summary`/`description`. No new XSS surface — output was sanitized at write time by the trigger.
-9. **Backward compatibility.** Every existing call site that constructs a `ClassFormValues`/`CohortFormValues` continues to compile because the new fields default to `""`. The new columns are NOT NULL with `DEFAULT ''`, so the existing INSERT payloads omit them harmlessly.
+## Permanent fix (one shipment, no band-aids)
 
-## What I will build (in this order)
+### A. Treat post-timeout signups as indeterminate, not failed
+In `sign-up.service.ts` and `sign-up.flow.ts`:
 
-### A. Migration (single file)
-- `ALTER TABLE public.classes ADD COLUMN curriculum text NOT NULL DEFAULT '', ADD COLUMN reading_assignments text NOT NULL DEFAULT '', ADD COLUMN class_expectations text NOT NULL DEFAULT ''`.
-- `ALTER TABLE public.cohorts ADD COLUMN schedule text NOT NULL DEFAULT ''`.
-- `CREATE OR REPLACE FUNCTION sanitize_classes_html()` — same body, now also sanitizes the three new columns.
-- `CREATE FUNCTION sanitize_cohorts_html() RETURNS trigger ... SECURITY DEFINER` — sanitizes `NEW.schedule`.
-- `CREATE TRIGGER trg_sanitize_cohorts_html BEFORE INSERT OR UPDATE ON public.cohorts FOR EACH ROW EXECUTE FUNCTION sanitize_cohorts_html()`.
-- No GRANTs needed (no new tables). No RLS touched. No data backfill (defaults handle it).
+1. On timeout / 5xx / network abort, do NOT throw `Sign-up request timed out`. Instead enter a **resolve-indeterminate** branch:
+   - Call `supabase.auth.signInWithPassword({ email, password, captchaToken })` once with a fresh Turnstile token.
+   - If it returns `email_not_confirmed` → row exists → route user to "Check your email to verify" screen. Done.
+   - If it returns success → row exists and is confirmed → user is signed in. Done.
+   - If it returns `invalid_credentials` → row was NOT created → show real retry CTA with the original error.
+   - If it returns `email_exists` / `user_already_exists` → route to "This email is already registered — sign in or reset password" with two buttons wired to `/sign-in?email=…` and `/forgot-password?email=…`.
+2. While the resolve step runs, the UI shows: *"Checking whether your account was created…"* — not a misleading "timed out."
 
-### B. Code
-- `src/lib/db/retry.ts` (new) — promote `retryTransient` from `class.service.ts`; re-export from `class.service.ts` for compatibility.
-- `src/lib/validators/class.ts` — add 3 fields.
-- `src/lib/validators/cohort.ts` — add `schedule` field.
-- `src/services/class.service.ts` — extend insert + update payloads with the 3 fields (additive); import retry from new location.
-- `src/services/cohort.service.ts` — extend payloads with `schedule`; wrap `create` + `update` in `retryTransientWrite`; replace `.single()` with `.maybeSingle()` + explicit "not created" error (same pattern as classes).
-- `src/components/forms/RichTextSection.tsx` (new) — extracted presenter.
-- `src/pages/ClassFormPage.tsx` — replace 6 existing repeated blocks with `<RichTextSection>` (pure refactor) and add 3 new sections: Curriculum, Reading Assignments, Class Expectations.
-- `src/pages/CohortFormPage.tsx` — refactor to support edit mode (mirrors `ClassFormPage` create/edit branching); add Schedule section.
-- `src/hooks/use-cohorts.ts` — add `useCohortById(id)`.
-- `src/App.tsx` — register `/teach/classes/:id/cohorts/:cohortId/edit` route under `TeacherRoute` (admins already wrapped via `requireTeacherOrAdmin` inside `TeacherRoute`; if not, add `AdminRoute` parallel — confirmed during implementation).
-- `src/pages/ClassDetailPage.tsx` (+ public detail edge fn consumer if it has a UI mirror) — render new sections conditionally.
-- "Edit cohort" link added to the cohort row on the class detail page (teacher view) so users can find the new edit page.
+### B. Code-first duplicate detection (kill the English-substring matching)
+Extend `services/auth-classifier.ts` to map GoTrue's `email_exists`, `user_already_exists`, `email_address_already_registered`, and HTTP 422-with-`code:email_exists` to a new `AuthErrorCode.account_exists`. Then both the legacy `signUp` service (line 89) and `sign-up.flow.ts` route off the code, not the message. The substring fallback stays as a last resort.
 
-### C. Tests
-- `src/test/validators/class.test.ts` — new fields accept HTML, default to `""`, max-length boundary respected.
-- `src/test/validators/cohort.test.ts` — `schedule` optional, default `""`, max-length boundary.
-- `src/test/services/cohort.service.test.ts` — retry on PGRST002, no retry on 42501, maybeSingle handling.
-- `src/test/lib/db-retry.test.ts` — exercises the shared helper directly.
+### C. Surface the "account exists" path everywhere
+- `RegisterScreen.tsx` / `SignUpForm.tsx`: on `ACCOUNT_EXISTS` / `account_exists`, render the existing "Sign in instead" + "Reset password" affordances inline (right now it only throws a flat error).
+- Same affordance shown from the resolve-indeterminate path in A.
 
-### D. BDD scenarios (DB, tri-layer)
-- `CLASS-EDIT-EXT-001` — New class fields are optional and persist as sanitized HTML.
-- `CLASS-EDIT-EXT-002` — Existing classes show empty new sections and can be edited to add them.
-- `CLASS-EDIT-EXT-003` — Cohort edit route opens, shows existing values, saves with retry resilience.
-- `CLASS-EDIT-EXT-004` — Cohort `schedule` is optional and sanitized by trigger (verified by inserting `<script>` via service-role and reading back without it).
-- `CLASS-EDIT-EXT-005` — Teacher cannot edit a published cohort (RLS unchanged); admin can.
-- `CLASS-EDIT-EXT-006` — Read pages render each new section only when non-empty.
+### D. Observability so we catch the next Cloud Auth blip immediately
+- `signup_indeterminate_timeout` audit event tagged `severity:warn` whenever the resolve-indeterminate path runs.
+- `emitAuthBeacon("auth.signup.indeterminate_resolved", { outcome })` in `auth-telemetry` so the Auth Funnel charts the four resolution outcomes.
+- Triage rule already silences `severity:warn`, so this won't flood the queue — it just shows up if it spikes.
 
-## Out of scope (explicitly)
+### E. Clean up your stranded attempt
+Your `mdenner@techfleet.org` row is already confirmed from 2026-03-17. After ship: **sign in** with that email (or use Forgot Password). No new signup needed for that address. No DB change required.
 
-- No changes to RLS, status transitions, slug generation, sanitizer base function, courses/lessons, cohort registration flow, email templates, admin approval workflow, autosave engine, or draft engine.
-- No widening of who can edit a published cohort.
-- No new tables, no new edge functions, no new buckets, no new auth surfaces.
+## Guard rails so this can't regress
+- New vitest: `sign-up.indeterminate.contract.test.ts` — covers all four resolve-indeterminate outcomes + `email_exists` code.
+- New BDD scenarios `SIGNUP-TIMEOUT-PROBE-001..005` in `bdd_scenarios` (tri-layer Then-clauses).
+- ESLint `auth-invariants/no-signup-string-match` (warn) — bans `.includes("already registered" | "already been registered" | "user already")` inside auth flows once code-first mapping is in place.
 
-## Files touched
+## Out of scope
+- Backend infra (Cloud Auth↔DB connectivity) — not in app code.
+- No change to the 30s client timeout, captcha, lockout, MFA, or RLS.
+- No schema changes.
 
+## Files
 ```text
-supabase/migrations/<new>.sql                       (new   — additive columns + triggers)
-src/lib/db/retry.ts                                 (new   — shared retry helper)
-src/lib/validators/class.ts                         (edit  — +3 optional HTML fields)
-src/lib/validators/cohort.ts                        (edit  — +schedule)
-src/services/class.service.ts                       (edit  — payload extension; import retry)
-src/services/cohort.service.ts                      (edit  — payload + retry + maybeSingle)
-src/hooks/use-cohorts.ts                            (edit  — +useCohortById)
-src/components/forms/RichTextSection.tsx            (new   — extracted presenter)
-src/pages/ClassFormPage.tsx                         (edit  — refactor + 3 new sections)
-src/pages/CohortFormPage.tsx                        (edit  — create+edit, +schedule)
-src/pages/ClassDetailPage.tsx                       (edit  — render new sections)
-src/App.tsx                                         (edit  — add cohort edit route)
-src/test/validators/class.test.ts                   (edit)
-src/test/validators/cohort.test.ts                  (new/edit)
-src/test/services/cohort.service.test.ts            (new)
-src/test/lib/db-retry.test.ts                       (new)
-public.bdd_scenarios                                (data  — CLASS-EDIT-EXT-001..006)
+src/features/auth/services/sign-up.service.ts          (edit — indeterminate-resolve branch, code-first dup detect)
+src/features/auth/flows/sign-up.flow.ts                (edit — same logic on the typed Result path)
+src/features/auth/services/auth-classifier.ts          (edit — map email_exists/user_already_exists → account_exists)
+src/features/auth/domain/auth-codes.ts                 (edit — add account_exists if missing)
+src/features/auth/ui/SignUpForm.tsx                    (edit — inline "Sign in / Reset" affordance on account_exists)
+src/features/auth/ui/RegisterScreen.tsx                (edit — interim "Checking…" copy + route on resolve outcome)
+src/features/auth/services/auth-telemetry.ts           (edit — indeterminate_resolved beacon kind)
+src/test/features/auth/sign-up.indeterminate.contract.test.ts   (new)
+scripts/lint/eslint-plugin-auth-invariants.mjs         (edit — no-signup-string-match rule)
+public.bdd_scenarios                                   (data — SIGNUP-TIMEOUT-PROBE-001..005)
 ```
-
-This is purely additive at the data + RLS layer, and at the UI layer it's an isolated section block per form plus a new edit route. The only refactor is the RichTextSection extraction and promoting the already-tested retry helper to a shared module — both reduce code, not add it.
