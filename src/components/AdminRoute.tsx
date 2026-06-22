@@ -55,7 +55,7 @@ export function AdminRoute({ children }: { children: React.ReactNode }) {
           "admin 2FA grace RPC timed out — failing open",
           "AdminRoute",
           {
-            eventType: "admin_2fa_rpc_timeout",
+            eventType: "infra_transient",
             severity: "warn",
             extraFields: ["fingerprint:admin_2fa_rpc_timeout"],
           },
