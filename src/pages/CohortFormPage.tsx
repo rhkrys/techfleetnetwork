@@ -7,7 +7,7 @@ import { Loader2, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RichTextEditor } from "@/components/RichTextEditor";
+import { RichTextSection } from "@/components/forms/RichTextSection";
 import { CohortService } from "@/services/cohort.service";
 import { cohortFormSchema, type CohortFormValues } from "@/lib/validators/cohort";
 import { useQueryClient } from "@/lib/react-query";
@@ -218,17 +218,15 @@ export default function CohortFormPage() {
           </div>
         </div>
 
-        <div>
-          <Label>Schedule of Classes</Label>
-          <RichTextEditor
-            content={schedule}
-            onChange={(html) => form.setValue("schedule", html, { shouldDirty: true })}
-            placeholder="Session dates and times, meeting cadence, holidays (optional)…"
-          />
-          {form.formState.errors.schedule && (
-            <p className="text-xs text-destructive mt-1">{form.formState.errors.schedule.message}</p>
-          )}
-        </div>
+        <RichTextSection
+          id="rts-schedule"
+          label="Schedule of Classes"
+          placeholder="Session dates and times, meeting cadence, holidays (optional)…"
+          value={schedule}
+          onChange={(html) => form.setValue("schedule", html, { shouldDirty: true })}
+          error={form.formState.errors.schedule?.message}
+        />
+
 
         <div className="flex gap-2 items-center flex-wrap">
           {canAutosave && (
