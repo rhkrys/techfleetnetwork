@@ -1,59 +1,61 @@
-## You're right — that UX is broken. Here's the permanent fix.
+# Edit Project save hangs forever — permanent fix
 
-Today, if Cloud Auth has a hiccup mid-`/signup`, the row gets created server-side but the client sees a generic "timed out" and the user retries forever, eventually hitting `user_repeated_signup` with no path forward. That's the bug. Fixing it everywhere it can happen.
+## Symptom
+On `/admin/clients` → edit a project → **Save**, the request spins indefinitely. No toast. No error. Every edit fails the same way. (Backend logs show intermittent `connection closed before message completed` and `canceling statement due to statement timeout` on adjacent project endpoints, confirming Cloud → PostgREST flapping.)
 
 ## Root cause
+`src/pages/ProjectFormPage.tsx` calls `supabase.from("projects").update(...).eq("id", id)` inside a React Query mutation with **no timeout, no retry, no resolve-indeterminate**. When PostgREST drops the response mid-flight, the promise never settles → button stays in "Saving…" forever and the user has no recourse. Same shape of bug as the sign-up indeterminate-timeout class we just fixed — but for the admin project editor.
 
-`src/features/auth/services/sign-up.service.ts` and `src/features/auth/flows/sign-up.flow.ts` both treat a 504 / network timeout / "Database error finding user" as a flat failure. They never check whether the row was actually created. There is no "your account may already exist — sign in or reset password" branch. There is no detection of GoTrue's modern `email_exists` / `user_already_exists` error codes (only legacy English substrings).
+Two contributing factors found in the DB:
+1. `public.projects` has **two identical triggers** firing the same function (`trg_enqueue_ugc_translations` AND `trg_ugc_translate_projects` → both → `enqueue_ugc_translation_jobs`). Doubles the per-row cost on every UPDATE.
+2. There is no client-visible signal when the trigger work (UGC enqueue, audit write, notify_project_opening) pushes the UPDATE past the statement timeout window.
 
 ## Permanent fix (one shipment, no band-aids)
 
-### A. Treat post-timeout signups as indeterminate, not failed
-In `sign-up.service.ts` and `sign-up.flow.ts`:
+### A. Bounded save + indeterminate-resolve in `ProjectFormPage.tsx`
+- Wrap both `updateMutation.mutationFn` and the `useAutosave` `onSave` in a `withBoundedSave(fn, { timeoutMs: 15_000 })` helper:
+  - If the supabase call resolves first → normal path.
+  - If the timeout wins → run a **resolve probe**: `SELECT id, updated_at, <key fields> FROM projects WHERE id = :id` and compare to the submitted values. 
+    - Match → treat as saved → success toast + invalidate caches + navigate. Beacon `admin.project.save.indeterminate_resolved { outcome: "persisted" }` (severity `info`).
+    - Mismatch → throw a typed `SaveIndeterminateError` → show toast "We couldn't confirm the save. Try again." with a Retry button. Beacon outcome `unresolved` (severity `warn`).
+- Surface a real error toast on every failure path (including the new `SaveIndeterminateError`); never let the button hang.
+- Add an `aria-live="polite"` status under the Save button: "Saving…" → "Checking whether your changes were saved…" → "Saved" / "Couldn't confirm".
 
-1. On timeout / 5xx / network abort, do NOT throw `Sign-up request timed out`. Instead enter a **resolve-indeterminate** branch:
-   - Call `supabase.auth.signInWithPassword({ email, password, captchaToken })` once with a fresh Turnstile token.
-   - If it returns `email_not_confirmed` → row exists → route user to "Check your email to verify" screen. Done.
-   - If it returns success → row exists and is confirmed → user is signed in. Done.
-   - If it returns `invalid_credentials` → row was NOT created → show real retry CTA with the original error.
-   - If it returns `email_exists` / `user_already_exists` → route to "This email is already registered — sign in or reset password" with two buttons wired to `/sign-in?email=…` and `/forgot-password?email=…`.
-2. While the resolve step runs, the UI shows: *"Checking whether your account was created…"* — not a misleading "timed out."
+### B. Drop the duplicate trigger
+Migration: `DROP TRIGGER IF EXISTS trg_ugc_translate_projects ON public.projects;` (keep `trg_enqueue_ugc_translations`). Add a CI guard `scripts/ci/check-no-duplicate-triggers.mjs` that fails if any table has two triggers wired to the same function on the same event.
 
-### B. Code-first duplicate detection (kill the English-substring matching)
-Extend `services/auth-classifier.ts` to map GoTrue's `email_exists`, `user_already_exists`, `email_address_already_registered`, and HTTP 422-with-`code:email_exists` to a new `AuthErrorCode.account_exists`. Then both the legacy `signUp` service (line 89) and `sign-up.flow.ts` route off the code, not the message. The substring fallback stays as a last resort.
+### C. Reuse the helper across other admin editors
+Extract `withBoundedSave` to `src/lib/data/bounded-save.ts` and adopt in the two other admin write paths that have the same shape:
+- `ProjectOpeningDetailPage` opening edits
+- `ClientsPage` client edits
+Documents the pattern in `docs/runbooks/admin-edit-bounded-save.md`.
 
-### C. Surface the "account exists" path everywhere
-- `RegisterScreen.tsx` / `SignUpForm.tsx`: on `ACCOUNT_EXISTS` / `account_exists`, render the existing "Sign in instead" + "Reset password" affordances inline (right now it only throws a flat error).
-- Same affordance shown from the resolve-indeterminate path in A.
+### D. Observability
+- New ops_events kind `admin.project.save.indeterminate` (warn) + `admin.project.save.indeterminate_resolved` (info|warn) via `record_event`.
+- Triage stays gated on severity `error`, so warns don't flood the queue but show on the System Health → Performance tab if they spike.
 
-### D. Observability so we catch the next Cloud Auth blip immediately
-- `signup_indeterminate_timeout` audit event tagged `severity:warn` whenever the resolve-indeterminate path runs.
-- `emitAuthBeacon("auth.signup.indeterminate_resolved", { outcome })` in `auth-telemetry` so the Auth Funnel charts the four resolution outcomes.
-- Triage rule already silences `severity:warn`, so this won't flood the queue — it just shows up if it spikes.
-
-### E. Clean up your stranded attempt
-Your `mdenner@techfleet.org` row is already confirmed from 2026-03-17. After ship: **sign in** with that email (or use Forgot Password). No new signup needed for that address. No DB change required.
-
-## Guard rails so this can't regress
-- New vitest: `sign-up.indeterminate.contract.test.ts` — covers all four resolve-indeterminate outcomes + `email_exists` code.
-- New BDD scenarios `SIGNUP-TIMEOUT-PROBE-001..005` in `bdd_scenarios` (tri-layer Then-clauses).
-- ESLint `auth-invariants/no-signup-string-match` (warn) — bans `.includes("already registered" | "already been registered" | "user already")` inside auth flows once code-first mapping is in place.
+### E. Guard rails
+- New vitest: `src/test/pages/project-form.bounded-save.contract.test.ts` covering: success, hard error, timeout-then-persisted, timeout-then-mismatch.
+- BDD `ADMIN-PROJECT-SAVE-001..005` in `bdd_scenarios` (tri-layer [UI]/[DB]/[Code]).
+- ESLint rule `auth-invariants/no-unbounded-table-mutation` (warn) flagging `supabase.from(<admin table>).update(...)` without `withBoundedSave` in `src/pages/Admin*` and `src/pages/Project*`.
 
 ## Out of scope
-- Backend infra (Cloud Auth↔DB connectivity) — not in app code.
-- No change to the 30s client timeout, captcha, lockout, MFA, or RLS.
-- No schema changes.
+- Backend infra (Cloud↔Postgres flapping) — not in app code.
+- No RLS, schema, or auth changes.
+- The other (non-admin) project-detail timeout in `public-project-detail` is a separate read-path issue and stays out of this shipment.
 
 ## Files
 ```text
-src/features/auth/services/sign-up.service.ts          (edit — indeterminate-resolve branch, code-first dup detect)
-src/features/auth/flows/sign-up.flow.ts                (edit — same logic on the typed Result path)
-src/features/auth/services/auth-classifier.ts          (edit — map email_exists/user_already_exists → account_exists)
-src/features/auth/domain/auth-codes.ts                 (edit — add account_exists if missing)
-src/features/auth/ui/SignUpForm.tsx                    (edit — inline "Sign in / Reset" affordance on account_exists)
-src/features/auth/ui/RegisterScreen.tsx                (edit — interim "Checking…" copy + route on resolve outcome)
-src/features/auth/services/auth-telemetry.ts           (edit — indeterminate_resolved beacon kind)
-src/test/features/auth/sign-up.indeterminate.contract.test.ts   (new)
-scripts/lint/eslint-plugin-auth-invariants.mjs         (edit — no-signup-string-match rule)
-public.bdd_scenarios                                   (data — SIGNUP-TIMEOUT-PROBE-001..005)
+src/pages/ProjectFormPage.tsx                                  (edit — bounded save + resolve-indeterminate, live status)
+src/pages/ProjectOpeningDetailPage.tsx                         (edit — adopt withBoundedSave)
+src/pages/ClientsPage.tsx                                      (edit — adopt withBoundedSave)
+src/lib/data/bounded-save.ts                                   (new — withBoundedSave + SaveIndeterminateError + resolve probe contract)
+src/lib/data/__tests__/bounded-save.test.ts                    (new)
+src/test/pages/project-form.bounded-save.contract.test.ts      (new)
+scripts/ci/check-no-duplicate-triggers.mjs                     (new — CI guard)
+scripts/lint/eslint-plugin-auth-invariants.mjs                 (edit — no-unbounded-table-mutation rule)
+docs/runbooks/admin-edit-bounded-save.md                       (new)
+supabase/migrations/<ts>_drop_duplicate_projects_ugc_trigger.sql (new)
+public.bdd_scenarios                                           (data — ADMIN-PROJECT-SAVE-001..005)
+public.ops_events kinds                                        (data — admin.project.save.indeterminate[_resolved])
 ```
