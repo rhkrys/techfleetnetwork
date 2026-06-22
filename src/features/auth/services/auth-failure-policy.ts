@@ -133,6 +133,10 @@ export function decideFailureActions(code: AuthErrorCode): FailureActions {
     case "service_unavailable":
       return { ...NO_OP_FAILURE_ACTIONS, beaconKind: "auth.signin.service_unavailable", toastKey: "auth.error.service_unavailable" };
 
+    case "account_exists":
+      // Pre-existing account is a navigation hint, not a credential failure.
+      return { ...NO_OP_FAILURE_ACTIONS, beaconKind: "auth.signup.account_exists", toastKey: "auth.error.account_exists" };
+
     case "unexpected":
       return { ...NO_OP_FAILURE_ACTIONS, beaconKind: "auth.signin.unexpected", toastKey: "auth.error.unexpected" };
 
