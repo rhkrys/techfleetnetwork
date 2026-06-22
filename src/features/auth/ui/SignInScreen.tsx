@@ -2,8 +2,8 @@
  * SignInScreen — presentation only. All state lives in `useSignInEngine`.
  * Replaces the 568-line LoginPage. Visual contract preserved 1:1.
  */
-import { Suspense, lazy, useEffect, useRef } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Suspense, lazy, useRef } from "react";
+import { Link } from "react-router-dom";
 
 import { Eye, EyeOff, Mail, Lock, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -22,30 +22,15 @@ const TurnstileCaptchaAdapter = lazy(() =>
   import("@/features/auth/adapters/turnstile-captcha.adapter").then((m) => ({ default: m.TurnstileCaptchaAdapter })),
 );
 
-const CANONICAL_RESTART_KEY = "tfn:oauth-canonical-restart";
-
 export default function SignInScreen() {
   const e = useSignInEngine();
-  const location = useLocation();
   const googleBtnRef = useRef<HTMLDivElement | null>(null);
   const bc = (field: string, value: string) =>
     validationBorderClass(getFieldValidationState(e.errors[field], value, !!e.touched[field]));
 
-  // AUTH-OAUTH-APEX-CANONICAL-001 — Restarted on the canonical host after the
-  // apex was rejected. Auto-click Google sign-in once per tab.
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    if (params.get("from") !== "oauth-canonical") return;
-    try {
-      if (sessionStorage.getItem(CANONICAL_RESTART_KEY)) return;
-      sessionStorage.setItem(CANONICAL_RESTART_KEY, "1");
-    } catch { /* storage disabled */ }
-    const btn = googleBtnRef.current?.querySelector<HTMLButtonElement>("button");
-    if (btn && !btn.disabled) {
-      // Defer to the next paint so engine state settles first.
-      setTimeout(() => btn.click(), 50);
-    }
-  }, [location.search]);
+  // AUTH-OAUTH-NO-RESTART-LOOP-001 — apex→www canonicalization happens at
+  // boot in main.tsx (enforceCanonicalHost). No click-time restart, no
+  // `?from=oauth-canonical` auto-click loop.
 
 
 

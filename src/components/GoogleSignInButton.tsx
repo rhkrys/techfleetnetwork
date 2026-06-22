@@ -5,7 +5,7 @@ import { isSafeRedirectUrl } from "@/lib/security";
 import { markOAuthUiInitiated } from "@/lib/oauth-ui-guard";
 import { markOAuthCallbackPending } from "@/lib/auth/oauth-callback-pending";
 import { beaconWedge } from "@/lib/auth/session-health";
-import { getCanonicalOAuthOrigin, needsCanonicalRestart } from "@/lib/auth/oauth-origin";
+import { getCanonicalOAuthOrigin } from "@/lib/auth/oauth-origin";
 import { toast } from "sonner";
 
 
@@ -36,16 +36,10 @@ export function GoogleSignInButton({ label = "Sign in with Google", className, o
       if (redirectTo && redirectTo !== "/dashboard" && isSafeRedirectUrl(redirectTo)) {
         storeAuthRedirect(redirectTo);
       }
-      // AUTH-OAUTH-APEX-CANONICAL-001 — the apex `techfleet.network` host is
-      // an unreliable OAuth origin (broker bounces back with
-      // `failed to sign in with vendor`). Transparently restart on the
-      // canonical `www` host before involving the broker at all.
-      if (needsCanonicalRestart()) {
-        try { beaconWedge("oauth_canonical_restart", "google_sign_in_button"); } catch { /* noop */ }
-        const canonical = getCanonicalOAuthOrigin();
-        window.location.replace(`${canonical}/login?from=oauth-canonical`);
-        return;
-      }
+      // AUTH-OAUTH-NO-RESTART-LOOP-001 — apex canonicalization runs at boot
+      // via enforceCanonicalHost() in main.tsx; click-time restart removed
+      // so the apex↔www loop can't form. redirect_uri stays pinned to the
+      // canonical origin as defense-in-depth.
       markOAuthUiInitiated("google");
       // Arm the callback-pending guard so when Google bounces us back with
       // `?code=` or `#access_token=…`, ProtectedRoute / AuthRedirectHandler
