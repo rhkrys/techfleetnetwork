@@ -93,9 +93,11 @@ Deno.serve(async (req) => {
 
   const sb = createClient(SUPABASE_URL, SERVICE_KEY);
 
-  // Cost guard: count today's translations
+  // Cost guard: count today's translations via fast RPC (planner estimate when
+  // the table is large enough that an exact COUNT would saturate the pool).
   const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-  const { count: usedToday } = await sb.from("ugc_translations").select("id", { count: "exact", head: true }).gte("created_at", since);
+  const { data: usedTodayData } = await sb.rpc("ugc_translations_count_fast", { p_since: since });
+  const usedToday = typeof usedTodayData === "number" ? usedTodayData : 0;
   if ((usedToday ?? 0) >= DAILY_CAP) {
     return new Response(JSON.stringify({ skipped: "daily_cap", usedToday }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
