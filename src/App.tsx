@@ -1,4 +1,5 @@
-import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from "@/lib/react-query";
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider, PersistQueryClientProvider } from "@/lib/react-query";
+import { getQueryPersister, shouldPersistQuery, PERSISTER_BUSTER } from "@/lib/query/persister";
 import { report } from "@/lib/observability/report";
 import { isTransientError } from "@/lib/transient-error";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
