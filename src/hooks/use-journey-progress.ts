@@ -26,6 +26,8 @@ export function useCompletedCount(
     // Keep the previous count visible during refetch / transient blip so a
     // backend hiccup never flashes "0/N" in the dashboard (TRIAGE-NOISE-015).
     placeholderData: (prev) => prev,
+    // Persist so reload hydrates from last-known progress (DASHBOARD-HYDRATE-001).
+    meta: { persist: true },
     ...CACHE_USER_MUTABLE, // 60s stale — invalidated on task upsert
   });
 }
@@ -36,6 +38,7 @@ export function useJourneyProgress(userId: string | undefined, phase: JourneyPha
     queryFn: () => JourneyService.getProgress(userId!, phase),
     enabled: !!userId,
     placeholderData: (prev) => prev,
+    meta: { persist: true },
     ...CACHE_USER_MUTABLE, // 60s stale — invalidated on task upsert
   });
 }
