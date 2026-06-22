@@ -128,6 +128,9 @@ export default tseslint.config(
       "triage-permanent/no-raw-functions-invoke": "warn",
       "triage-permanent/no-supabase-single": "warn",
       "triage-permanent/no-rpc-then-catch": "error",
+      // Warn-only initially — promote to error after services baseline is at
+      // zero unwrapped reads.
+      "triage-permanent/no-raw-supabase-rpc": "warn",
       // Warn-only during v2 strangler-fig migration; promote to error after
       // bitmask=7 + 72h soak per mem://features/email-subsystem-v2.
       "email-v2/no-legacy-email-send": "warn",
