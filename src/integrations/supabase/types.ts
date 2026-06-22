@@ -8866,6 +8866,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      ugc_translations_count_fast: {
+        Args: { p_since?: string }
+        Returns: number
+      }
       upsert_fix_queue_entry: {
         Args: {
           p_error_message: string
