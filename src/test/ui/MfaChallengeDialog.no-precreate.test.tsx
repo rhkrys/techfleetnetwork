@@ -96,9 +96,10 @@ describe("MfaChallengeDialog — no pre-create + transient input preservation", 
 
     // Wait for factor to populate so the InputOTP renders.
     const otp = await screen.findByTestId("otp");
-    // Disable onComplete auto-fire by setting up to 5 first then 6 in one go
     fireEvent.change(otp, { target: { value: "123456" } });
-    // onComplete fires handleVerify already — wait for that single call.
+    const verifyBtn = await screen.findByRole("button", { name: /verify/i });
+    fireEvent.click(verifyBtn);
+
     await waitFor(() => expect(challengeAndVerifyResilient).toHaveBeenCalledTimes(1));
     expect(challengeAndVerifyResilient).toHaveBeenCalledWith("f1", "123456");
     await waitFor(() => expect(onSuccess).toHaveBeenCalled());
@@ -114,6 +115,8 @@ describe("MfaChallengeDialog — no pre-create + transient input preservation", 
 
     const otp = await screen.findByTestId("otp");
     fireEvent.change(otp, { target: { value: "123456" } });
+    const verifyBtn = await screen.findByRole("button", { name: /verify/i });
+    fireEvent.click(verifyBtn);
 
     await waitFor(() => expect(challengeAndVerifyResilient).toHaveBeenCalled());
     await waitFor(() => {
@@ -130,6 +133,8 @@ describe("MfaChallengeDialog — no pre-create + transient input preservation", 
 
     const otp = await screen.findByTestId("otp");
     fireEvent.change(otp, { target: { value: "000000" } });
+    const verifyBtn = await screen.findByRole("button", { name: /verify/i });
+    fireEvent.click(verifyBtn);
 
     await waitFor(() => expect(challengeAndVerifyResilient).toHaveBeenCalled());
     await waitFor(() => {
