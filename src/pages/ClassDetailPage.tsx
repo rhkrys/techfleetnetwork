@@ -204,32 +204,42 @@ export default function ClassDetailPage() {
                       {format(new Date(c.start_date), "MMM d")} – {format(new Date(c.end_date), "MMM d, yyyy")} · {c.timezone}
                     </div>
                   </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline">{c.status}</Badge>
-                  {c.status === "published" && c.registration_url && (
-                    <Button
-                      asChild
-                      size="sm"
-                      onClick={() => CohortService.recordRegistrationClick(c.id).catch(() => undefined)}
-                    >
-                      <a href={c.registration_url} target="_blank" rel="noopener noreferrer">
-                        Register <ExternalLink className="h-3 w-3 ml-1" aria-hidden="true" />
-                      </a>
-                    </Button>
-                  )}
-                  {canEdit && (isAdmin || c.status === "draft" || c.status === "pending_review") && (
-                    <Button asChild size="sm" variant="outline">
-                      <Link to={`/teach/classes/${cls.id}/cohorts/${c.id}/edit`} aria-label={`Edit cohort ${c.label}`}>
-                        <Pencil className="h-4 w-4 mr-1" aria-hidden="true" />Edit
-                      </Link>
-                    </Button>
-                  )}
-                  {canEdit && c.status === "draft" && (
-                    <Button size="sm" variant="outline" onClick={() => submitCohort(c.id)}>
-                      Submit
-                    </Button>
-                  )}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant="outline">{c.status}</Badge>
+                    {c.status === "published" && c.registration_url && (
+                      <Button
+                        asChild
+                        size="sm"
+                        onClick={() => CohortService.recordRegistrationClick(c.id).catch(() => undefined)}
+                      >
+                        <a href={c.registration_url} target="_blank" rel="noopener noreferrer">
+                          Register <ExternalLink className="h-3 w-3 ml-1" aria-hidden="true" />
+                        </a>
+                      </Button>
+                    )}
+                    {canEdit && (isAdmin || c.status === "draft" || c.status === "pending_review") && (
+                      <Button asChild size="sm" variant="outline">
+                        <Link to={`/teach/classes/${cls.id}/cohorts/${c.id}/edit`} aria-label={`Edit cohort ${c.label}`}>
+                          <Pencil className="h-4 w-4 mr-1" aria-hidden="true" />Edit
+                        </Link>
+                      </Button>
+                    )}
+                    {canEdit && c.status === "draft" && (
+                      <Button size="sm" variant="outline" onClick={() => submitCohort(c.id)}>
+                        Submit
+                      </Button>
+                    )}
+                  </div>
                 </div>
+                {(c as { schedule?: string }).schedule?.trim() && (
+                  <div className="border-t border-border pt-2">
+                    <div className="text-xs font-semibold text-muted-foreground mb-1">Schedule of Classes</div>
+                    <div
+                      className="prose prose-invert max-w-none text-sm text-foreground"
+                      dangerouslySetInnerHTML={{ __html: sanitizeHtml((c as { schedule?: string }).schedule ?? "") }}
+                    />
+                  </div>
+                )}
               </div>
             ))}
           </div>
