@@ -232,17 +232,19 @@ export const QuestService = {
    */
   async getAllJourneyProgress(userId: string): Promise<Map<string, { task_id: string; completed: boolean }[]>> {
     return log.track("getAllJourneyProgress", "Loading all journey progress", { userId }, async () => {
-      const { data, error } = await supabase
-        .from("journey_progress")
-        .select("phase, task_id, completed")
-        .eq("user_id", userId);
+      const { data, error } = await retryPostgrest(() =>
+        supabase
+          .from("journey_progress")
+          .select("phase, task_id, completed")
+          .eq("user_id", userId)
+      );
       if (error) {
-        log.error("getAllJourneyProgress", error.message, { userId }, error);
+        log.error("getAllJourneyProgress", (error as Error).message ?? String(error), { userId }, error);
         throw new Error("Failed to load journey progress");
       }
       const map = new Map<string, { task_id: string; completed: boolean }[]>();
-      for (const row of data ?? []) {
-        const phase = row.phase as string;
+      for (const row of (data ?? []) as Array<{ phase: string; task_id: string; completed: boolean }>) {
+        const phase = row.phase;
         if (!map.has(phase)) map.set(phase, []);
         map.get(phase)!.push({ task_id: row.task_id, completed: row.completed });
       }
