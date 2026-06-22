@@ -36,10 +36,9 @@ export function GoogleSignInButton({ label = "Sign in with Google", className, o
       if (redirectTo && redirectTo !== "/dashboard" && isSafeRedirectUrl(redirectTo)) {
         storeAuthRedirect(redirectTo);
       }
-      // AUTH-OAUTH-NO-RESTART-LOOP-001 — apex canonicalization runs at boot
-      // via enforceCanonicalHost() in main.tsx; click-time restart removed
-      // so the apex↔www loop can't form. redirect_uri stays pinned to the
-      // canonical origin as defense-in-depth.
+      // AUTH-OAUTH-APEX-EDGE-301-001 — apex→www 301/302 lives at the Lovable
+      // hosting edge, so this code only ever runs on www. redirect_uri is
+      // still pinned to the canonical origin as defense-in-depth.
       markOAuthUiInitiated("google");
       // Arm the callback-pending guard so when Google bounces us back with
       // `?code=` or `#access_token=…`, ProtectedRoute / AuthRedirectHandler
