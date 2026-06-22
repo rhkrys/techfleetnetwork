@@ -10,6 +10,8 @@
 import { useQuery } from "@/lib/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { identityKey } from "@/lib/query-config";
+
 
 export interface DashboardGeneralApp {
   id: string;
