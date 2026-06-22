@@ -345,7 +345,7 @@ const App = () => (
         </BrowserRouter>
       </TooltipProvider>
     </ThemeProvider>
-  </QueryClientProvider>
+  </QueryRoot>
 );
 
 export default App;
