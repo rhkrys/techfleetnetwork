@@ -79,6 +79,7 @@ let activeUserId: string | null = readInitialUserIdFromAuthStorage(safeStorage()
 let cachedKey: string | undefined;
 let cachedInner: Persister | undefined;
 let cachedDynamic: Persister | undefined;
+let suppressNextPersistWrites = false;
 
 function getInnerPersister(): Persister | undefined {
   const storage = safeStorage();
@@ -103,11 +104,24 @@ export function getActiveQueryPersisterKey(): string {
   return getPersisterKeyForUser(activeUserId);
 }
 
+export function runWithoutPersistingQueryCache<T>(fn: () => T): T {
+  const previous = suppressNextPersistWrites;
+  suppressNextPersistWrites = true;
+  try {
+    return fn();
+  } finally {
+    suppressNextPersistWrites = previous;
+  }
+}
+
 export function getQueryPersister(): Persister | undefined {
   if (cachedDynamic) return cachedDynamic;
   if (!safeStorage()) return undefined;
   cachedDynamic = {
-    persistClient: (client: PersistedClient) => getInnerPersister()?.persistClient(client),
+    persistClient: (client: PersistedClient) => {
+      if (suppressNextPersistWrites) return;
+      return getInnerPersister()?.persistClient(client);
+    },
     restoreClient: () => getInnerPersister()?.restoreClient(),
     removeClient: () => getInnerPersister()?.removeClient(),
   };
