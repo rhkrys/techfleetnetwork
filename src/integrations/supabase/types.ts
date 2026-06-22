@@ -862,6 +862,217 @@ export type Database = {
           },
         ]
       }
+      class_module_audit: {
+        Row: {
+          action: string
+          actor_user_id: string | null
+          class_id: string
+          created_at: string
+          diff: Json | null
+          entity_id: string | null
+          entity_type: string
+          id: string
+        }
+        Insert: {
+          action: string
+          actor_user_id?: string | null
+          class_id: string
+          created_at?: string
+          diff?: Json | null
+          entity_id?: string | null
+          entity_type: string
+          id?: string
+        }
+        Update: {
+          action?: string
+          actor_user_id?: string | null
+          class_id?: string
+          created_at?: string
+          diff?: Json | null
+          entity_id?: string | null
+          entity_type?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "class_module_audit_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
+            referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      class_module_items: {
+        Row: {
+          action_type: Database["public"]["Enums"]["class_module_action_type"]
+          archived_at: string | null
+          class_id: string
+          content_html: string | null
+          created_at: string
+          created_by: string | null
+          duration_minutes: number | null
+          id: string
+          position: number
+          published_at: string | null
+          required: boolean
+          section_id: string
+          status: Database["public"]["Enums"]["class_module_status"]
+          title: string
+          updated_at: string
+          video_embed_url: string | null
+          video_provider: Database["public"]["Enums"]["class_module_video_provider"]
+          video_url: string | null
+        }
+        Insert: {
+          action_type?: Database["public"]["Enums"]["class_module_action_type"]
+          archived_at?: string | null
+          class_id: string
+          content_html?: string | null
+          created_at?: string
+          created_by?: string | null
+          duration_minutes?: number | null
+          id?: string
+          position: number
+          published_at?: string | null
+          required?: boolean
+          section_id: string
+          status?: Database["public"]["Enums"]["class_module_status"]
+          title: string
+          updated_at?: string
+          video_embed_url?: string | null
+          video_provider?: Database["public"]["Enums"]["class_module_video_provider"]
+          video_url?: string | null
+        }
+        Update: {
+          action_type?: Database["public"]["Enums"]["class_module_action_type"]
+          archived_at?: string | null
+          class_id?: string
+          content_html?: string | null
+          created_at?: string
+          created_by?: string | null
+          duration_minutes?: number | null
+          id?: string
+          position?: number
+          published_at?: string | null
+          required?: boolean
+          section_id?: string
+          status?: Database["public"]["Enums"]["class_module_status"]
+          title?: string
+          updated_at?: string
+          video_embed_url?: string | null
+          video_provider?: Database["public"]["Enums"]["class_module_video_provider"]
+          video_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "class_module_items_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
+            referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "class_module_items_section_id_fkey"
+            columns: ["section_id"]
+            isOneToOne: false
+            referencedRelation: "class_module_sections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      class_module_progress: {
+        Row: {
+          class_id: string
+          completed: boolean
+          completed_at: string | null
+          item_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          class_id: string
+          completed?: boolean
+          completed_at?: string | null
+          item_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          class_id?: string
+          completed?: boolean
+          completed_at?: string | null
+          item_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "class_module_progress_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
+            referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "class_module_progress_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "class_module_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      class_module_sections: {
+        Row: {
+          archived_at: string | null
+          class_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          position: number
+          published_at: string | null
+          status: Database["public"]["Enums"]["class_module_status"]
+          summary: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          archived_at?: string | null
+          class_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          position: number
+          published_at?: string | null
+          status?: Database["public"]["Enums"]["class_module_status"]
+          summary?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          archived_at?: string | null
+          class_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          position?: number
+          published_at?: string | null
+          status?: Database["public"]["Enums"]["class_module_status"]
+          summary?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "class_module_sections_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
+            referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       classes: {
         Row: {
           archive_reason: string | null
@@ -7550,6 +7761,7 @@ export type Database = {
       }
     }
     Functions: {
+      _assert_class_editor: { Args: { _class_id: string }; Returns: undefined }
       _consume_device_nonce: {
         Args: { _nonce: string; _purpose: string; _user_id: string }
         Returns: boolean
@@ -7732,9 +7944,21 @@ export type Database = {
       count_classes_pending_review: { Args: never; Returns: number }
       country_to_continent: { Args: { p_country: string }; Returns: string }
       decrypt_pii: { Args: { cipher: string }; Returns: string }
+      delete_class_module_item: {
+        Args: { p_item_id: string }
+        Returns: undefined
+      }
+      delete_class_section: {
+        Args: { p_section_id: string }
+        Returns: undefined
+      }
       delete_email: {
         Args: { message_id: number; queue_name: string }
         Returns: boolean
+      }
+      derive_class_module_video: {
+        Args: { _url: string }
+        Returns: Record<string, unknown>
       }
       digest:
         | { Args: { data: string; type: string }; Returns: string }
@@ -8442,7 +8666,15 @@ export type Database = {
         Args: { p_changed_fields?: string[]; p_event_type: string }
         Returns: boolean
       }
+      is_class_owner: {
+        Args: { _class_id: string; _user_id: string }
+        Returns: boolean
+      }
       is_elevated: { Args: { _user_id: string }; Returns: boolean }
+      is_enrolled_in_class: {
+        Args: { _class_id: string; _user_id: string }
+        Returns: boolean
+      }
       is_remediation_allowed: { Args: { p_fn: string }; Returns: boolean }
       is_session_revoked: {
         Args: { _issued_at: string; _user_id: string }
@@ -8595,6 +8827,10 @@ export type Database = {
       prune_expired_form_drafts: { Args: never; Returns: number }
       prune_login_attempts: { Args: never; Returns: number }
       prune_stale_rate_limits: { Args: never; Returns: number }
+      publish_class_curriculum: {
+        Args: { p_class_id: string }
+        Returns: number
+      }
       publish_policy_version: {
         Args: {
           p_body_html: string
@@ -8721,6 +8957,14 @@ export type Database = {
         Args: { p_cohort_id: string; p_referrer?: string }
         Returns: string
       }
+      reorder_class_module_items: {
+        Args: { p_ordered_ids: string[]; p_section_id: string }
+        Returns: undefined
+      }
+      reorder_class_sections: {
+        Args: { p_class_id: string; p_ordered_ids: string[] }
+        Returns: undefined
+      }
       replay_email_outbox_row: { Args: { p_id: string }; Returns: Json }
       replay_frequency_capped: {
         Args: { p_since?: string; p_template_name: string }
@@ -8760,6 +9004,7 @@ export type Database = {
         }
         Returns: string
       }
+      sanitize_class_module_html: { Args: { _html: string }; Returns: string }
       sanitize_user_html: { Args: { input: string }; Returns: string }
       search_framework: {
         Args: { p_limit?: number; p_query: string }
@@ -8855,6 +9100,23 @@ export type Database = {
         }[]
       }
       support_prune_webhook_events: { Args: never; Returns: number }
+      toggle_class_module_completion: {
+        Args: { p_completed: boolean; p_item_id: string }
+        Returns: {
+          class_id: string
+          completed: boolean
+          completed_at: string | null
+          item_id: string
+          updated_at: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "class_module_progress"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       try_write_audit_log: {
         Args: {
           p_changed_fields?: string[]
@@ -8869,6 +9131,73 @@ export type Database = {
       ugc_translations_count_fast: {
         Args: { p_since?: string }
         Returns: number
+      }
+      upsert_class_module_item: {
+        Args: {
+          p_action_type: Database["public"]["Enums"]["class_module_action_type"]
+          p_content_html: string
+          p_duration_minutes: number
+          p_item_id: string
+          p_required: boolean
+          p_section_id: string
+          p_status: Database["public"]["Enums"]["class_module_status"]
+          p_title: string
+          p_video_url: string
+        }
+        Returns: {
+          action_type: Database["public"]["Enums"]["class_module_action_type"]
+          archived_at: string | null
+          class_id: string
+          content_html: string | null
+          created_at: string
+          created_by: string | null
+          duration_minutes: number | null
+          id: string
+          position: number
+          published_at: string | null
+          required: boolean
+          section_id: string
+          status: Database["public"]["Enums"]["class_module_status"]
+          title: string
+          updated_at: string
+          video_embed_url: string | null
+          video_provider: Database["public"]["Enums"]["class_module_video_provider"]
+          video_url: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "class_module_items"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      upsert_class_section: {
+        Args: {
+          p_class_id: string
+          p_section_id: string
+          p_status: Database["public"]["Enums"]["class_module_status"]
+          p_summary: string
+          p_title: string
+        }
+        Returns: {
+          archived_at: string | null
+          class_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          position: number
+          published_at: string | null
+          status: Database["public"]["Enums"]["class_module_status"]
+          summary: string | null
+          title: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "class_module_sections"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       upsert_fix_queue_entry: {
         Args: {
@@ -8980,6 +9309,15 @@ export type Database = {
       banner_status: "draft" | "published" | "archived"
       bdd_status: "implemented" | "partial" | "not_built"
       bdd_test_type: "unit" | "e2e" | "both" | "none" | "manual"
+      class_module_action_type: "read" | "watch" | "task"
+      class_module_status: "draft" | "published" | "archived"
+      class_module_video_provider:
+        | "youtube"
+        | "vimeo"
+        | "loom"
+        | "google_meet"
+        | "other"
+        | "none"
       class_status: "draft" | "pending_review" | "published" | "archived"
       class_track: "basic_training" | "advanced_training"
       client_kind: "external" | "internal"
@@ -9220,6 +9558,16 @@ export const Constants = {
       banner_status: ["draft", "published", "archived"],
       bdd_status: ["implemented", "partial", "not_built"],
       bdd_test_type: ["unit", "e2e", "both", "none", "manual"],
+      class_module_action_type: ["read", "watch", "task"],
+      class_module_status: ["draft", "published", "archived"],
+      class_module_video_provider: [
+        "youtube",
+        "vimeo",
+        "loom",
+        "google_meet",
+        "other",
+        "none",
+      ],
       class_status: ["draft", "pending_review", "published", "archived"],
       class_track: ["basic_training", "advanced_training"],
       client_kind: ["external", "internal"],
