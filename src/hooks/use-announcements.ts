@@ -44,6 +44,7 @@ export function useLatestAnnouncements(limit = 5) {
     refetchOnWindowFocus: false,
     staleTime: 45_000,
     placeholderData: (prev) => prev,
+    meta: { persist: true },
     retry: transientRetry,
     retryDelay: transientRetryDelay,
   });
