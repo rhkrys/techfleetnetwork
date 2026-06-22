@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { MfaService, type TotpFactor } from "@/services/mfa.service";
+import { MfaService, MfaInvalidCodeError, type TotpFactor } from "@/services/mfa.service";
 
 interface Props {
   open: boolean;
@@ -18,16 +18,12 @@ interface Props {
 }
 
 /**
- * Step-up TOTP dialog for re-verifying a logged-in admin who needs a fresh
- * 2FA proof (within 10 minutes) before invoking a privileged edge function.
- *
- * Unlike MfaChallengeDialog (which is used during login and signs the user out
- * on cancel), this dialog just closes — the user stays signed in, only the
- * privileged action is aborted.
+ * Step-up TOTP dialog for re-verifying a logged-in admin. See
+ * `MfaChallengeDialog` for the resilience rationale — same single-round-trip
+ * pattern (no pre-created challenge) applies here.
  */
 export function StepUpMfaDialog({ open, actionLabel, onSuccess, onCancel }: Props) {
   const [factor, setFactor] = useState<TotpFactor | null>(null);
-  const [challengeId, setChallengeId] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [verifying, setVerifying] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -35,20 +31,11 @@ export function StepUpMfaDialog({ open, actionLabel, onSuccess, onCancel }: Prop
   useEffect(() => {
     if (!open) return;
     setCode("");
-    setChallengeId(null);
     setLoading(true);
     void MfaService.listFactors()
-      .then(async (list) => {
+      .then((list) => {
         const verified = list.find((f) => f.factor_type === "totp" && f.status === "verified");
         setFactor(verified ?? null);
-        if (verified) {
-          try {
-            const id = await MfaService.createChallenge(verified.id);
-            setChallengeId(id);
-          } catch {
-            // fall back to challengeAndVerify on verify click
-          }
-        }
       })
       .catch(() => setFactor(null))
       .finally(() => setLoading(false));
@@ -58,22 +45,13 @@ export function StepUpMfaDialog({ open, actionLabel, onSuccess, onCancel }: Prop
     if (!factor || code.length !== 6) return;
     setVerifying(true);
     try {
-      if (challengeId) {
-        await MfaService.verifyChallenge(factor.id, challengeId, code);
-      } else {
-        await MfaService.challengeAndVerify(factor.id, code);
-      }
+      await MfaService.challengeAndVerifyResilient(factor.id, code);
       toast.success("Verified — continuing your action.", { position: "top-center" });
       onSuccess();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Verification failed", { position: "top-center" });
-      setCode("");
-      try {
-        const id = await MfaService.createChallenge(factor.id);
-        setChallengeId(id);
-      } catch {
-        setChallengeId(null);
-      }
+      const message = e instanceof Error ? e.message : "Verification failed";
+      toast.error(message, { position: "top-center" });
+      if (e instanceof MfaInvalidCodeError) setCode("");
     } finally {
       setVerifying(false);
     }

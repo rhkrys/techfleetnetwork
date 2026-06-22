@@ -57,30 +57,36 @@ function writeLkgToStorage(limit: number, rows: Announcement[]): void {
 
 export const AnnouncementService = {
   async list(limit = 50): Promise<Announcement[]> {
-    const { data, error } = await supabase
-      .from("announcements")
-      .select("id, title, body_html, video_url, audio_url, created_by, created_at, updated_at")
-      .order("created_at", { ascending: false })
-      .limit(limit);
+    // Wrapped in retryPostgrest so PGRST002 / 5xx schema-cache blips are
+    // absorbed before we degrade to the last-known-good cache.
+    const { retryPostgrest } = await import("@/lib/data/transient-retry");
+    const { data, error } = await retryPostgrest(() =>
+      supabase
+        .from("announcements")
+        .select("id, title, body_html, video_url, audio_url, created_by, created_at, updated_at")
+        .order("created_at", { ascending: false })
+        .limit(limit),
+    );
 
     if (error) {
+      const err = error as { message?: string };
       // Transient (network/5xx/connection) → degrade silently to last-known-good.
       // Reporter has its own escalate-after-N rule for query.announcements.* so
       // sustained outages still reach the triage queue.
       if (isTransientError(error)) {
-        handleServiceError(error, {
+        handleServiceError(error as Parameters<typeof handleServiceError>[0], {
           logger: log,
           action: "list.transient",
-          message: `Transient announcement fetch failure (degraded): ${error.message}`,
+          message: `Transient announcement fetch failure (degraded): ${err.message ?? "unknown"}`,
           level: "warn",
         });
         return lastKnownGood.get(limit) ?? readLkgFromStorage(limit) ?? [];
       }
       // Structural (RLS / schema / auth) → throw so it surfaces in triage.
-      handleServiceError(error, {
+      handleServiceError(error as Parameters<typeof handleServiceError>[0], {
         logger: log,
         action: "list",
-        message: `Failed to fetch announcements: ${error.message}`,
+        message: `Failed to fetch announcements: ${err.message ?? "unknown"}`,
         throwMessage: "Failed to load announcements.",
       });
     }

@@ -57,13 +57,31 @@ let flushScheduled = false;
 function flush(): void {
   if (buffer.length === 0) return;
   const payload = JSON.stringify({ samples: buffer.splice(0, buffer.length) });
+  let beaconSent = false;
   try {
     if (typeof navigator.sendBeacon === "function") {
       const blob = new Blob([payload], { type: "text/plain;charset=UTF-8" });
-      navigator.sendBeacon(ENDPOINT, blob);
+      beaconSent = navigator.sendBeacon(ENDPOINT, blob);
     }
   } catch {
-    /* swallow — RUM must never surface */
+    /* fall through to fetch fallback */
+  }
+  // If the ad-blocker (uBlock, Brave Shields, etc.) rejected the beacon —
+  // sendBeacon returns false OR throws — try a `keepalive: true` no-cors
+  // fetch so the request still leaves the tab quietly. RUM must never
+  // surface, so we swallow every failure mode.
+  if (!beaconSent) {
+    try {
+      void fetch(ENDPOINT, {
+        method: "POST",
+        body: payload,
+        keepalive: true,
+        mode: "no-cors",
+        credentials: "omit",
+      }).catch(() => undefined);
+    } catch {
+      /* swallow — RUM must never surface */
+    }
   }
 }
 

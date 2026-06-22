@@ -33,9 +33,30 @@ export async function auditedInvoke<T = unknown>(
     ...(options.headers ?? {}),
     "x-trace-id": traceId,
   };
+  // Lazy import keeps this module's surface tiny and avoids a hard dep
+  // on the retry helper from the auto-generated integrations layer.
+  const { withTransientRetry } = await import("@/lib/data/transient-retry");
   return await withTrace(async (): Promise<FunctionsResponse<T>> => {
     try {
-      const result = await supabase.functions.invoke<T>(fn, { ...options, headers });
+      // Transparent retry on transient infra failures (502/503/504, network
+      // drop, PGRST002). 4xx (auth, validation) bypasses retry and surfaces
+      // immediately so callers can map to actionable copy.
+      const result = await withTransientRetry(
+        async () => {
+          const out = await supabase.functions.invoke<T>(fn, { ...options, headers });
+          if (out.error) {
+            const ctx = (out.error as { context?: Response }).context;
+            const status = ctx && typeof ctx.status === "number" ? ctx.status : undefined;
+            // Only re-throw for retry on transient statuses; let other 4xx
+            // fall through to the existing reporting path.
+            if (status === 502 || status === 503 || status === 504 || status === undefined) {
+              throw Object.assign(new Error(out.error.message ?? "invoke failed"), { status });
+            }
+          }
+          return out;
+        },
+        { retries: 2, baseDelayMs: 200, maxDelayMs: 1200 },
+      );
       if (result.error) {
         const ctx = (result.error as { context?: Response }).context;
         const status = ctx && typeof ctx.status === "number" ? ctx.status : undefined;

@@ -2,6 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { createLogger } from "@/services/logger.service";
 import { isTransientError } from "@/lib/transient-error";
+import { retryPostgrest } from "@/lib/data/transient-retry";
 
 const log = createLogger("JourneyService");
 
@@ -62,11 +63,16 @@ export const JourneyService = {
     }
 
     return log.track("getProgress", `Loading ${phase} progress for user ${userId}`, { userId, phase }, async () => {
-      const { data, error } = await supabase
-        .from("journey_progress")
-        .select("task_id, completed")
-        .eq("user_id", userId)
-        .eq("phase", phase);
+      // Wrapped in retryPostgrest: PGRST002 schema-cache reloads and 5xx
+      // blips during HEAD/GET are transparently retried before the caller
+      // sees a failure. Structural errors (RLS, schema) still surface.
+      const { data, error } = await retryPostgrest(() =>
+        supabase
+          .from("journey_progress")
+          .select("task_id, completed")
+          .eq("user_id", userId)
+          .eq("phase", phase),
+      );
       if (error) {
         log.error("getProgress", `Database query failed for ${phase} progress: ${error.message}`, {
           userId,
@@ -95,18 +101,23 @@ export const JourneyService = {
 
     return log.track("getCompletedCount", `Counting completed ${phase} tasks for user ${userId}`, { userId, phase }, async () => {
       // Use DB-side count (head: true) to avoid transferring row data — critical at 10k+ users
-      let query = supabase
-        .from("journey_progress")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", userId)
-        .eq("phase", phase)
-        .eq("completed", true);
+      // Wrapped in retryPostgrest so PGRST002 / 5xx blips don't degrade the
+      // count to 0 on a single transient hiccup.
+      const { count, error } = await retryPostgrest(() => {
+        let query = supabase
+          .from("journey_progress")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", userId)
+          .eq("phase", phase)
+          .eq("completed", true);
+        if (validTaskIds && validTaskIds.length > 0) {
+          query = query.in("task_id", [...validTaskIds]);
+        }
+        // Cast required: PostgrestBuilder's count is on the same shape but
+        // not part of `{ data, error }` — we read it off the resolved tuple.
+        return query as unknown as PromiseLike<{ data: unknown; error: unknown; count?: number | null }>;
+      }) as unknown as { count: number | null; error: { message?: string; code?: string; status?: number } | null };
 
-      if (validTaskIds && validTaskIds.length > 0) {
-        query = query.in("task_id", [...validTaskIds]);
-      }
-
-      const { count, error } = await query;
       if (error) {
         // Transient PostgREST/network/5xx blip — graceful-degrade to 0
         // rather than throwing. The user sees a momentarily-stale progress

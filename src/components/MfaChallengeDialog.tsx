@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { MfaService, type TotpFactor } from "@/services/mfa.service";
+import { MfaService, MfaInvalidCodeError, type TotpFactor } from "@/services/mfa.service";
 
 interface Props {
   open: boolean;
@@ -18,33 +18,33 @@ interface Props {
 /**
  * Industry-standard MFA challenge dialog shown after password login when
  * the user has an enrolled TOTP factor. Session remains at AAL1 until verified.
+ *
+ * RESILIENCE NOTES (root-cause fix for "Invalid TOTP" on correct codes):
+ *  - We DO NOT pre-create a challenge on dialog open. GoTrue's `/challenge`
+ *    endpoint occasionally returns 504 after 11s, and even on success the
+ *    challenge has a short TTL — by the time the user finishes typing 6
+ *    digits, the challenge can already be invalid, producing 422 "Invalid
+ *    TOTP code" for codes the user typed correctly.
+ *  - Verify ALWAYS routes through `challengeAndVerifyResilient`, which is a
+ *    single GoTrue round-trip (challenge created microseconds before verify)
+ *    with transparent retry on 504/network only — never on 422.
+ *  - On transient errors we KEEP the typed digits so the user can just tap
+ *    Verify again without retyping.
  */
 export function MfaChallengeDialog({ open, onSuccess, onCancel }: Props) {
   const [factor, setFactor] = useState<TotpFactor | null>(null);
-  const [challengeId, setChallengeId] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [verifying, setVerifying] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Load factor + pre-create challenge in parallel when the dialog opens.
-  // Pre-creating means the user's verify click is a single round-trip instead of two.
   useEffect(() => {
     if (!open) return;
     setCode("");
-    setChallengeId(null);
     setLoading(true);
     void MfaService.listFactors()
-      .then(async (list) => {
+      .then((list) => {
         const verified = list.find((f) => f.factor_type === "totp" && f.status === "verified");
         setFactor(verified ?? null);
-        if (verified) {
-          try {
-            const id = await MfaService.createChallenge(verified.id);
-            setChallengeId(id);
-          } catch {
-            // Verify will fall back to challengeAndVerify if no pre-created challenge exists
-          }
-        }
       })
       .catch(() => setFactor(null))
       .finally(() => setLoading(false));
@@ -54,23 +54,15 @@ export function MfaChallengeDialog({ open, onSuccess, onCancel }: Props) {
     if (!factor || code.length !== 6) return;
     setVerifying(true);
     try {
-      if (challengeId) {
-        await MfaService.verifyChallenge(factor.id, challengeId, code);
-      } else {
-        await MfaService.challengeAndVerify(factor.id, code);
-      }
+      await MfaService.challengeAndVerifyResilient(factor.id, code);
       toast.success("Verified — welcome back!", { position: "top-center" });
       onSuccess();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Verification failed", { position: "top-center" });
-      setCode("");
-      // Stale challenge after a failed attempt — create a fresh one for the retry
-      try {
-        const id = await MfaService.createChallenge(factor.id);
-        setChallengeId(id);
-      } catch {
-        setChallengeId(null);
-      }
+      const message = e instanceof Error ? e.message : "Verification failed";
+      toast.error(message, { position: "top-center" });
+      // Only clear the input on a real wrong-code error. Transient infra
+      // failures (504, network) leave the user's still-valid digits in place.
+      if (e instanceof MfaInvalidCodeError) setCode("");
     } finally {
       setVerifying(false);
     }
