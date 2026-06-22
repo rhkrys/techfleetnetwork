@@ -867,7 +867,9 @@ export type Database = {
           archive_reason: string | null
           archived_at: string | null
           audiences: string
+          class_expectations: string
           created_at: string
+          curriculum: string
           description: string | null
           hero_image_url: string | null
           id: string
@@ -875,6 +877,7 @@ export type Database = {
           owner_user_id: string
           prerequisites: string[]
           published_at: string | null
+          reading_assignments: string
           skills: string[]
           slug: string
           status: Database["public"]["Enums"]["class_status"]
@@ -889,7 +892,9 @@ export type Database = {
           archive_reason?: string | null
           archived_at?: string | null
           audiences?: string
+          class_expectations?: string
           created_at?: string
+          curriculum?: string
           description?: string | null
           hero_image_url?: string | null
           id?: string
@@ -897,6 +902,7 @@ export type Database = {
           owner_user_id: string
           prerequisites?: string[]
           published_at?: string | null
+          reading_assignments?: string
           skills?: string[]
           slug: string
           status?: Database["public"]["Enums"]["class_status"]
@@ -911,7 +917,9 @@ export type Database = {
           archive_reason?: string | null
           archived_at?: string | null
           audiences?: string
+          class_expectations?: string
           created_at?: string
+          curriculum?: string
           description?: string | null
           hero_image_url?: string | null
           id?: string
@@ -919,6 +927,7 @@ export type Database = {
           owner_user_id?: string
           prerequisites?: string[]
           published_at?: string | null
+          reading_assignments?: string
           skills?: string[]
           slug?: string
           status?: Database["public"]["Enums"]["class_status"]
@@ -1021,6 +1030,7 @@ export type Database = {
           meeting_url: string | null
           published_at: string | null
           registration_url: string
+          schedule: string
           start_date: string
           status: Database["public"]["Enums"]["cohort_status"]
           submitted_at: string | null
@@ -1039,6 +1049,7 @@ export type Database = {
           meeting_url?: string | null
           published_at?: string | null
           registration_url: string
+          schedule?: string
           start_date: string
           status?: Database["public"]["Enums"]["cohort_status"]
           submitted_at?: string | null
@@ -1057,6 +1068,7 @@ export type Database = {
           meeting_url?: string | null
           published_at?: string | null
           registration_url?: string
+          schedule?: string
           start_date?: string
           status?: Database["public"]["Enums"]["cohort_status"]
           submitted_at?: string | null
