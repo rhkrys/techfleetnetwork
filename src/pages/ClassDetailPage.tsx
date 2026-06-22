@@ -15,6 +15,9 @@ import { ApprovalActions } from "@/components/classes/ApprovalActions";
 import { ClassAuditHistory } from "@/components/classes/ClassAuditHistory";
 import { ClassService } from "@/services/class.service";
 import { sanitizeHtml } from "@/lib/security";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CurriculumEditor, LearnerCurriculumView } from "@/features/class-curriculum";
+import { supabase } from "@/integrations/supabase/client";
 
 const STATUS_CLASS: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
