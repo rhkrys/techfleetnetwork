@@ -1,59 +1,87 @@
-## Why it timed out
+## Why everything feels slow
 
-`/admin/activity-log` runs a **full exact COUNT** against `audit_log` before fetching the first page:
+Lovable Cloud reports healthy. The slowdown is **client-side write storms saturating the Postgres connection pool**, so every interactive call (login `/token`, MFA `/factors`, class insert, project update) waits in a PostgREST queue. Top offenders from `pg_stat_statements`:
 
-```ts
-supabase.from("audit_log").select("id", { count: "exact", head: true })
-```
+| # | Query                                                                              | Calls    | Total time | Max latency |
+| - | ---------------------------------------------------------------------------------- | -------- | ---------- | ----------- |
+| 1 | `web_vital_samples` INSERT (every LCP/INP/CLS/FCP/TTFB beacon, **per nav**)        | 43,683   | 33 min     | 7.9 s       |
+| 2 | `ugc_translations` paginated SELECT **with exact COUNT** (`pgrst_source_count`)    | 69,433   | 59 min     | 7.9 s       |
+| 3 | `i18n_translations` lookup by `(locale, namespace, key=ANY)`                       | 19,313   | 11 min     | 6.7 s       |
+| 4 | `cookie_consents` INSERT (firing on every page load, not just on change)           | 9,123    | 5 min      | 5.9 s       |
+| 5 | `journey_progress` upsert (chained to many UI events)                              | 11,400   | 14 min     | 7.9 s       |
+| 6 | `email_send_state` + `pgmq` + `vault.decrypted_secrets` poller (cron, **~13/sec**) | 1.5 M    | 17 min     | 0.8 s       |
+| 7 | `audit_log` exact-count from PostgREST (Activity Log — already fixed last turn)    | 277      | 3 min      | 2.8 s       |
+| 8 | `get_member_continent_distribution()` RPC (no cache)                               | 484      | 3 min      | 7.3 s       |
+| 9 | `lesson_video_events` INSERT (per heartbeat)                                       | 3,890    | 4 min      | 7.0 s       |
 
-`audit_log` is the largest, hottest write-only table in the system (every auth event, every error, every triage row). A `COUNT(*)` over the whole table — with no narrow filter — does a sequential scan that routinely exceeds the **10s client timeout** at line 44. When the count promise loses the race, the page short-circuits to the error banner *even though the page rows would have loaded fine*.
+The 7-8 s max latencies on **simple single-row inserts** confirm pool saturation, not query cost. Auth + 2FA traffic is competing with the same pool. Fix the writers, every screen gets faster.
 
-So the message is literally true: the **count** timed out, not the data.
+## Permanent fix — root cause, no band-aids
 
-## Fix — three layers, no UX regression
+### 1. Web Vitals beacon (biggest win) — batched edge sink
+- New edge fn `record-web-vitals-batch` accepts up to 50 samples in one POST; writes into `web_vital_samples` in a single multi-row insert.
+- Client `src/lib/web-vitals/beacon.ts` buffers in memory, flushes every 10 s, on `visibilitychange=hidden`, and on `pagehide`, via `navigator.sendBeacon` (non-blocking).
+- Drop direct PostgREST inserts from the client. Sample-rate 25% for non-error vitals.
+- Expected: **~95% drop** in this query's call count.
 
-### 1. Replace exact-count with a tiered strategy (SQL + client)
+### 2. `ugc_translations` reads — kill the exact COUNT
+- Replace PostgREST `.select(..., { count: 'exact' })` with a thin RPC `get_ugc_translations_page(p_since, p_limit)` returning rows only.
+- Where total is needed, call `audit_log_count_fast`-style estimate via new `ugc_translations_count_fast()`.
+- Audit grep: `rg "from\(\"ugc_translations\"\).*count: ?\"exact\""`.
 
-Add `public.audit_log_count_fast(p_event_type text, p_from timestamptz, p_to timestamptz) returns bigint` (SECURITY DEFINER, admin-only via `has_role`).
+### 3. `i18n_translations` lookup — composite index + LRU cache
+- Add `CREATE INDEX IF NOT EXISTS idx_i18n_translations_locale_ns_key ON public.i18n_translations (locale, namespace, key)` (covering predicate `WHERE locale=$ AND namespace=$ AND key=ANY($)`).
+- Add 5-minute in-memory LRU in `src/lib/i18n/translations-cache.ts` keyed on `locale:namespace:key` so repeated DOM-translator passes don't re-query.
 
-Logic:
-- If **no filters** → return `pg_class.reltuples::bigint` for `audit_log` (planner estimate, O(1)).
-- If filters present AND estimated rows ≤ 50k → run exact `COUNT(*)` with the same WHERE clause.
-- Else → return estimate from `EXPLAIN (FORMAT JSON)` of the filtered query (still O(1)).
+### 4. `cookie_consents` — insert only on change
+- `src/lib/consent/recordConsent.ts`: hash `{categories, gpc_signal, policy_version}`; skip the write if the hash matches the value stored in `localStorage('tfn:consent-hash')`.
+- Server-side guard: drop duplicate consecutive rows for the same `(user_id|anon_id, hash)` inside the existing `record-consent` edge fn.
 
-Returns a single number in <50ms regardless of table size.
+### 5. `journey_progress` upsert — debounce + de-dup
+- `src/services/journey.service.ts`: 750 ms trailing debounce per `(user_id, phase, task_id)`; collapse repeated identical upserts; one-flight guard.
 
-### 2. Decouple count from rows in `ActivityLogPage.tsx`
+### 6. Email NOTIFY cron — slow the loop, memoize the secret
+- Today the cron query runs ~13/sec calling `vault.decrypted_secrets` every tick.
+- Migration: lower the schedule from every 5 s to every 30 s and cache `decrypted_secret` in a `STABLE SECURITY DEFINER` function `_internal_get_email_dispatcher_token()` so PG only fetches it once per backend.
+- Net: ~85% fewer `vault` reads, same dispatch SLO (queue drain in <60 s).
 
-- Fetch **rows first** (`Promise.allSettled([rowsPromise, countPromise])` semantically).
-- If count fails or times out → render rows, show `"~N events"` with a tooltip ("Estimated. Refresh to recount.") instead of the full-page error. Pagination uses `hasMore = rows.length === PAGE_SIZE`.
-- Only fail the whole page if **rows** fail.
-- Bump per-query timeout to 15s and wire an `AbortController` to actually cancel the underlying fetch (current `Promise.race` leaks the request).
+### 7. `get_member_continent_distribution()` — daily snapshot
+- New table `member_continent_distribution_daily (snapshot_date primary key, payload jsonb, refreshed_at)`.
+- Refresh via existing `refresh-network-stats` cron at 02:00 UTC.
+- Public reads hit the snapshot row (single jsonb fetch). RPC kept as fallback behind admin flag.
 
-### 3. Make `audit_log` count-friendly
+### 8. `lesson_video_events` — sampled flush
+- Currently posted every heartbeat. Buffer client-side in 30 s windows; flush as one row per `(user_id, lesson_id, window_start)` with `position_seconds_max`.
 
-- Add partial index `audit_log (event_type, created_at DESC)` to back filter+range counts.
-- Confirm existing `audit_log (created_at DESC)` index — add if missing.
-- `ANALYZE public.audit_log` in the migration so `reltuples` is fresh.
+## What does NOT change (no UX regression)
+
+- No login, MFA, sign-up, password reset, or session flow changes.
+- No DOM-translator behavior change (only the cache layer underneath it).
+- No reduction in Web Vitals fidelity for **error/poor-rated** samples (those bypass the 25% sampler).
+- No retention or RLS changes on any table.
 
 ## Files
 
-- `src/pages/ActivityLogPage.tsx` — call new RPC, allSettled split, AbortController, tooltip on estimated count, 15s timeout.
-- `src/lib/data/with-timeout.ts` *(new, extracted from inline helper)* — reusable `withAbortableTimeout` wrapper.
-- `supabase/migrations/<ts>_audit_log_count_fast.sql` — RPC + GRANT EXECUTE TO authenticated + indexes + ANALYZE.
-- `src/test/pages/activity-log-count-degradation.test.tsx` *(new)* — asserts rows render when count rejects.
-- `src/test/lib/with-timeout.test.ts` *(new)*.
-- `public.bdd_scenarios` — `ACTIVITY-LOG-COUNT-001..004` (no filter → estimate; filter → exact; count failure → rows still render with `~N`; timeout aborts underlying request).
-
-## Out of scope
-
-- No change to `audit_log` retention, RLS, or write path.
-- No change to Triage / System Health tabs that also read `audit_log` (separate ticket if they exhibit the same pattern).
-- No change to the existing tab-switch / sessionStorage state preservation (already covered by NO-RELOAD-TAB-001).
+- `src/lib/web-vitals/beacon.ts` *(new)* + replace direct inserts in `src/main.tsx` / `src/lib/web-vitals/init.ts`.
+- `supabase/functions/record-web-vitals-batch/index.ts` *(new)* + `config.toml` pin.
+- `src/lib/i18n/translations-cache.ts` *(new)* + wired into `src/services/i18n-runtime.ts`.
+- `src/lib/consent/recordConsent.ts` *(edit)*.
+- `src/services/journey.service.ts` *(edit — debounce wrapper)*.
+- `supabase/migrations/<ts>_perf_storm_fix.sql` — composite indexes, `ugc_translations_count_fast()`, `get_ugc_translations_page()`, `_internal_get_email_dispatcher_token()`, snapshot table + grants + RLS, cron schedule change.
+- `src/services/stats.service.ts` *(edit — read snapshot)*.
+- `src/lib/video/heartbeat-buffer.ts` *(new)*.
+- Tests: `src/test/lib/web-vitals-beacon.test.ts`, `src/test/lib/journey-debounce.test.ts`, `src/test/lib/consent-dedupe.test.ts`, `src/test/services/stats-snapshot.test.ts`.
+- `public.bdd_scenarios` — `PERF-STORM-001..009`.
 
 ## Receipts after build
 
-- Migration applied; `audit_log_count_fast(null,null,null)` returns in <100ms.
-- Activity Log loads with rows visible even if count RPC is killed mid-flight (forced in test).
-- Old `select("id", { count: "exact", head: true })` on `audit_log` removed from the page (greppable proof).
-- 4 BDD scenarios inserted; 2 vitest specs green.
+- `pg_stat_statements` re-snapshot: top-5 totals drop by ≥80% within 1 hour.
+- Login `/token` p95 returns under 800 ms on the published URL.
+- No direct PostgREST inserts into `web_vital_samples` or `cookie_consents` from `src/` (greppable).
+- 9 BDD scenarios + 4 vitest specs green.
+
+## Out of scope
+
+- Connection-pool sizing / compute upgrade — fixing the writers makes that unnecessary; we'll only revisit if the receipts above don't clear the queue.
+- Activity Log count (shipped last turn).
+- Member world map additive source (unrelated).
