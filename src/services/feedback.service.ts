@@ -114,10 +114,12 @@ export const FeedbackService = {
   },
 
   async listAll(): Promise<Feedback[]> {
-    const { data, error } = await supabase
-      .from("feedback")
-      .select("id, user_id, user_email, system_area, message, created_at")
-      .order("created_at", { ascending: false });
+    const { data, error } = await retryPostgrest(() =>
+      supabase
+        .from("feedback")
+        .select("id, user_id, user_email, system_area, message, created_at")
+        .order("created_at", { ascending: false })
+    );
 
     if (error) {
       log.error("listAll", `Failed to list feedback: ${error.message}`, {}, error);
