@@ -32,6 +32,7 @@ export const AUTH_ERROR_CODES = [
   "mfa_invalid_code",
   "network_error",
   "service_unavailable",
+  "account_exists",
   "unexpected",
 ] as const;
 
