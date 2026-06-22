@@ -193,6 +193,7 @@ export default function DashboardPage() {
     staleTime: 60 * 1000,
     refetchInterval: 60 * 1000,
     refetchOnWindowFocus: false,
+    meta: { persist: true },
   });
 
   // General application status — sourced from overview RPC
