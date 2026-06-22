@@ -28,9 +28,10 @@ export default function SignInScreen() {
   const bc = (field: string, value: string) =>
     validationBorderClass(getFieldValidationState(e.errors[field], value, !!e.touched[field]));
 
-  // AUTH-OAUTH-NO-RESTART-LOOP-001 — apex→www canonicalization happens at
-  // boot in main.tsx (enforceCanonicalHost). No click-time restart, no
-  // `?from=oauth-canonical` auto-click loop.
+  // AUTH-OAUTH-APEX-EDGE-301-001 — apex→www handled by Lovable hosting
+  // edge (302). No client-side restart, no `?from=oauth-canonical` loop.
+
+
 
 
 

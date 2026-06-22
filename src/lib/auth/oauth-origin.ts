@@ -1,15 +1,16 @@
 /**
- * OAuth origin canonicalization.
+ * OAuth origin pinning (defense-in-depth).
  *
- * The Lovable OAuth broker + the upstream Google client treat the apex
- * `techfleet.network` as an unreliable origin — broker bounces it back with
- * `#error=server_error&error_description=failed+to+sign+in+with+vendor`.
- * The `www` host and the `lovable.app` subdomain work fine.
+ * The apex→www 301/302 lives at the Lovable hosting edge
+ * (AUTH-OAUTH-APEX-EDGE-301-001), so the SPA only ever boots on
+ * `www.techfleet.network` in production. `getCanonicalOAuthOrigin()` is
+ * kept as a belt-and-braces pin on the OAuth `redirect_uri` in case some
+ * future host config regresses; it is otherwise a pass-through.
  *
- * Use `getCanonicalOAuthOrigin()` everywhere OAuth is initiated so the
- * apex never reaches the broker.
+ * `needsCanonicalRestart()` (client-side restart helper) was removed when
+ * the edge redirect landed — see git history.
  *
- * BDD: AUTH-OAUTH-APEX-CANONICAL-001..002
+ * BDD: AUTH-OAUTH-APEX-EDGE-301-001
  */
 
 const APEX_HOST = "techfleet.network";
@@ -22,9 +23,4 @@ export function isApexHost(host: string | null | undefined): boolean {
 export function getCanonicalOAuthOrigin(loc: { host: string; origin: string } | null = typeof window === "undefined" ? null : window.location): string {
   if (!loc) return CANONICAL_ORIGIN;
   return isApexHost(loc.host) ? CANONICAL_ORIGIN : loc.origin;
-}
-
-export function needsCanonicalRestart(loc: { host: string; origin: string } | null = typeof window === "undefined" ? null : window.location): boolean {
-  if (!loc) return false;
-  return getCanonicalOAuthOrigin(loc) !== loc.origin;
 }
