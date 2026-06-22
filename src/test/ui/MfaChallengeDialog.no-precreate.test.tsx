@@ -12,6 +12,14 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+
+// jsdom doesn't implement elementFromPoint (used by input-otp's PWM badge
+// timer). Stub it so the real OTPInput renders without throwing.
+if (typeof document !== "undefined" && typeof document.elementFromPoint !== "function") {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (document as any).elementFromPoint = () => null;
+}
+
 import { MfaChallengeDialog } from "@/components/MfaChallengeDialog";
 import { MfaInvalidCodeError, MfaTransientError } from "@/services/mfa.service";
 
