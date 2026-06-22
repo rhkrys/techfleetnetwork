@@ -69,23 +69,24 @@ export const AnnouncementService = {
     );
 
     if (error) {
+      const err = error as { message?: string };
       // Transient (network/5xx/connection) → degrade silently to last-known-good.
       // Reporter has its own escalate-after-N rule for query.announcements.* so
       // sustained outages still reach the triage queue.
       if (isTransientError(error)) {
-        handleServiceError(error, {
+        handleServiceError(error as Parameters<typeof handleServiceError>[0], {
           logger: log,
           action: "list.transient",
-          message: `Transient announcement fetch failure (degraded): ${error.message}`,
+          message: `Transient announcement fetch failure (degraded): ${err.message ?? "unknown"}`,
           level: "warn",
         });
         return lastKnownGood.get(limit) ?? readLkgFromStorage(limit) ?? [];
       }
       // Structural (RLS / schema / auth) → throw so it surfaces in triage.
-      handleServiceError(error, {
+      handleServiceError(error as Parameters<typeof handleServiceError>[0], {
         logger: log,
         action: "list",
-        message: `Failed to fetch announcements: ${error.message}`,
+        message: `Failed to fetch announcements: ${err.message ?? "unknown"}`,
         throwMessage: "Failed to load announcements.",
       });
     }
