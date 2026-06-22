@@ -177,6 +177,7 @@ export default function ActivityLogPage() {
   const setPage = (next: number | ((prev: number) => number)) =>
     setTableState((prev) => ({ page: typeof next === "function" ? (next as (p: number) => number)(prev.page as number) : next }));
   const [totalCount, setTotalCount] = useState(0);
+  const [countEstimated, setCountEstimated] = useState(false);
 
   // Restore scroll position once entries land (so the rendered grid has height).
   useSyncedScrollPosition("activity-log", entries.length > 0);
