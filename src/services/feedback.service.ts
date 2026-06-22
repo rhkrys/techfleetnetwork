@@ -65,14 +65,17 @@ export const FeedbackService = {
         });
         return false;
       }
-      const { error } = await supabase
-        .from("feedback")
-        .insert({
-          user_id: userId,
-          user_email: parsed.data.email,
-          system_area: parsed.data.systemArea,
-          message: parsed.data.message,
-        });
+      const { error } = await retryTransientWrite(async () => {
+        const res = await supabase
+          .from("feedback")
+          .insert({
+            user_id: userId,
+            user_email: parsed.data.email,
+            system_area: parsed.data.systemArea,
+            message: parsed.data.message,
+          });
+        return res;
+      });
 
       if (error) {
         log.error(
