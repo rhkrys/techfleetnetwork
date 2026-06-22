@@ -111,7 +111,17 @@ function rawMessageFrom(err: unknown): string | undefined {
 function rawCodeFrom(err: unknown): string | undefined {
   if (err == null || typeof err !== "object") return undefined;
   const e = err as PossibleErrorShape;
-  return asStr(e.code) ?? asStr(e.status);
+  const direct = asStr(e.code) ?? asStr(e.status);
+  if (direct) return direct;
+  if (e.error && typeof e.error === "object") {
+    const nested = rawCodeFrom(e.error);
+    if (nested) return nested;
+  }
+  if (e.cause) {
+    const nested = rawCodeFrom(e.cause);
+    if (nested) return nested;
+  }
+  return undefined;
 }
 
 export function classifyError(err: unknown): ErrorKind {
