@@ -21,6 +21,7 @@ import noLegacyEmailSend from "./scripts/lint/eslint-plugin-no-legacy-email-send
 import noFocusListener from "./scripts/lint/eslint-plugin-no-focus-listener.mjs";
 import authBootstrapNoRefresh from "./scripts/lint/eslint-plugin-auth-bootstrap-no-refresh.mjs";
 import oauthCanonicalOrigin from "./scripts/lint/eslint-plugin-oauth-canonical-origin.mjs";
+import noRawSupabaseRpc from "./scripts/lint/eslint-plugin-no-raw-supabase-rpc.mjs";
 
 export default tseslint.config(
   { ignores: ["dist"] },
