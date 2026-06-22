@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { RichTextEditor } from "@/components/RichTextEditor";
+import { RichTextSection } from "@/components/forms/RichTextSection";
 import { ClassImageUpload } from "@/components/ClassImageUpload";
 import { useAuth } from "@/contexts/AuthContext";
 import { useClassById } from "@/hooks/use-classes";
