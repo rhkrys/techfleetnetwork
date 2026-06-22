@@ -201,48 +201,118 @@ export const MfaService = {
   },
 
 
-  /** Pre-create a challenge so the user's verify is a single round-trip. */
+  /**
+   * Pre-create a challenge. DEPRECATED for the login/step-up flow — dialogs
+   * should call `challengeAndVerifyResilient` so the challenge is created
+   * microseconds before verify and cannot expire while the user types. Kept
+   * for `verifyEnrollment` and tests.
+   */
   async createChallenge(factorId: string): Promise<string> {
-    const { data, error } = await supabase.auth.mfa.challenge({ factorId });
+    const { data, error } = await withTransientRetry(
+      async () => {
+        const out = await supabase.auth.mfa.challenge({ factorId });
+        if (out.error) throw out.error;
+        return out;
+      },
+      { retries: 2, baseDelayMs: 400, maxDelayMs: 1500 },
+    );
     if (error || !data) throw new Error("Failed to create MFA challenge");
     return data.id;
   },
 
-  /** Verify a previously created challenge with the user's 6-digit code. */
+  /**
+   * DEPRECATED — use `challengeAndVerifyResilient`. Kept only so an existing
+   * pre-created challenge can still be verified directly (test paths). New
+   * UI code MUST NOT pre-create challenges: a stale challenge is the root
+   * cause of "Invalid TOTP code" 422s for codes the user typed correctly.
+   */
   async verifyChallenge(factorId: string, challengeId: string, code: string): Promise<void> {
     const normalizedCode = code.replace(/\s/g, "");
-    if (!isValidTotpCode(normalizedCode)) throw new Error("Enter the 6-digit code from your authenticator app.");
+    if (!isValidTotpCode(normalizedCode)) throw new MfaInvalidCodeError("Enter the 6-digit code from your authenticator app.");
     const { data, error } = await supabase.auth.mfa.verify({
       factorId,
       challengeId,
       code: normalizedCode,
     });
     if (error) {
-      log.warn("verifyChallenge", `Invalid code: ${error.message}`);
-      throw new Error("Invalid verification code. Please try again.");
+      log.warn("verifyChallenge", `verify failed: ${error.message}`);
+      throw classifyMfaError(error);
     }
-    log.info("verifyChallenge", "2FA challenge passed — session elevated to AAL2");
-    const aalFromVerify = decodeAalFromToken(data?.access_token);
-    if (data?.access_token && data?.refresh_token && aalFromVerify === "aal2") {
-      const { error: setSessionError } = await supabase.auth.setSession({
-        access_token: data.access_token,
-        refresh_token: data.refresh_token,
-      });
-      if (setSessionError) {
-        log.error("verifyChallenge", `Failed to persist AAL2 session: ${setSessionError.message}`, undefined, setSessionError);
-        throw new Error("We verified your code, but could not finish sign-in. Please try again.");
-      }
-    } else {
-      log.error("verifyChallenge", "2FA verification did not return an AAL2 session");
-      throw new Error("We verified your code, but could not finish sign-in. Please try again.");
-    }
-    await this.markCurrentSessionVerified();
+    await this.persistAal2Session(data);
   },
 
-  /** Submit a 6-digit code during login to elevate the session to AAL2. */
+  /**
+   * Resilient login/step-up MFA. Single round-trip via GoTrue's
+   * `challengeAndVerify` (challenge is created microseconds before verify,
+   * cannot expire). Wrapped in transient retry that retries ONLY on
+   * 504/timeout/network/AbortError — NEVER on 422 (a real "invalid code"
+   * must not be silently retried, would burn TOTP attempts and rate-limit).
+   *
+   * Throws one of: MfaInvalidCodeError | MfaTransientError |
+   * MfaSessionEscalationError. UI dialogs map these to friendly toasts.
+   */
+  async challengeAndVerifyResilient(factorId: string, code: string): Promise<void> {
+    const normalizedCode = code.replace(/\s/g, "");
+    if (!isValidTotpCode(normalizedCode)) {
+      throw new MfaInvalidCodeError("Enter the 6-digit code from your authenticator app.");
+    }
+
+    let lastClassified: unknown = null;
+    const result = await withTransientRetry(
+      async () => {
+        const out = await supabase.auth.mfa.challengeAndVerify({ factorId, code: normalizedCode });
+        if (out.error) throw out.error;
+        return out;
+      },
+      {
+        retries: 2,
+        baseDelayMs: 400,
+        maxDelayMs: 1500,
+        // Critical: NEVER retry MfaInvalidCodeError — would burn the user's
+        // TOTP attempts on a real wrong code. Only retry transient blips.
+        shouldRetry: (err) => {
+          const classified = classifyMfaError(err);
+          lastClassified = classified;
+          return classified instanceof MfaTransientError;
+        },
+        onRetry: (err) => {
+          log.warn(
+            "challengeAndVerifyResilient",
+            `Transient MFA failure, retrying: ${(err as Error)?.message ?? String(err)}`,
+          );
+        },
+      },
+    ).catch((err) => {
+      // Re-throw as typed error. `lastClassified` captures the final
+      // classification so callers always get the right MfaError subclass.
+      throw lastClassified ?? classifyMfaError(err);
+    });
+
+    await this.persistAal2Session(result.data);
+  },
+
+  /** Back-compat alias. Routes through the resilient implementation. */
   async challengeAndVerify(factorId: string, code: string): Promise<void> {
-    const challengeId = await this.createChallenge(factorId);
-    await this.verifyChallenge(factorId, challengeId, code);
+    return this.challengeAndVerifyResilient(factorId, code);
+  },
+
+  /** Persist the AAL2 tokens returned by mfa.verify into the local session. */
+  async persistAal2Session(data: { access_token?: string; refresh_token?: string } | null | undefined): Promise<void> {
+    const aalFromVerify = decodeAalFromToken(data?.access_token);
+    if (!data?.access_token || !data?.refresh_token || aalFromVerify !== "aal2") {
+      log.error("persistAal2Session", "verify did not return AAL2 session");
+      throw new MfaSessionEscalationError();
+    }
+    const { error: setSessionError } = await supabase.auth.setSession({
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+    });
+    if (setSessionError) {
+      log.error("persistAal2Session", `Failed to persist AAL2 session: ${setSessionError.message}`, undefined, setSessionError);
+      throw new MfaSessionEscalationError();
+    }
+    log.info("persistAal2Session", "Session elevated to AAL2");
+    await this.markCurrentSessionVerified();
   },
 
   async markCurrentSessionVerified(): Promise<void> {
