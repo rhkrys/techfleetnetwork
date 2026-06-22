@@ -8,6 +8,13 @@ import "@fontsource/poppins/600.css";
 import "@fontsource/jost/600.css";
 import "@fontsource/jost/700.css";
 import "./index.css";
+import { enforceCanonicalHost } from "@/lib/host-canonical";
+// AUTH-OAUTH-APEX-CANONICAL-003 — must run BEFORE any other module reads
+// window.location, installs fetch guards, or boots React. Redirects apex
+// (techfleet.network) → www.techfleet.network preserving path/query/hash
+// and throws to halt boot so React never mounts on the apex host.
+enforceCanonicalHost();
+
 import { installGlobalErrorReporter } from "@/services/error-reporter.service";
 import { startDeployWatcher } from "@/lib/deploy-watcher";
 import { installClientRequestThrottle } from "@/lib/client-request-throttle";
