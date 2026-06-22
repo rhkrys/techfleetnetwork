@@ -108,6 +108,21 @@ if (typeof window !== "undefined") {
   window.addEventListener("pagehide", flush);
 }
 
+/**
+ * Test-only escape hatch — lets `src/test/lib/web-vitals-blocked.test.ts`
+ * seed the internal buffer and trigger `flush()` without spinning up the
+ * `web-vitals` library. NOT for production use.
+ */
+export const __test = {
+  seed(sample: Record<string, unknown>): void {
+    buffer.push(sample);
+  },
+  flush,
+  size(): number {
+    return buffer.length;
+  },
+};
+
 let installed = false;
 
 /**
