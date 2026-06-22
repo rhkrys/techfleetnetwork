@@ -260,9 +260,24 @@ export const MfaService = {
     let lastClassified: unknown = null;
     const result = await withTransientRetry(
       async () => {
-        const out = await supabase.auth.mfa.challengeAndVerify({ factorId, code: normalizedCode });
-        if (out.error) throw out.error;
-        return out;
+        // Hard client-side ceiling — GoTrue self-times-out at 11s, so 20s
+        // gives us 9s of network/edge headroom and prevents a hung socket
+        // from blocking the dialog indefinitely if the server never replies.
+        const ac = new AbortController();
+        const timer = setTimeout(() => ac.abort(new DOMException("MFA verify timed out", "AbortError")), 20_000);
+        try {
+          const callPromise = supabase.auth.mfa.challengeAndVerify({ factorId, code: normalizedCode });
+          const out = await Promise.race([
+            callPromise,
+            new Promise<never>((_, reject) => {
+              ac.signal.addEventListener("abort", () => reject(ac.signal.reason ?? new Error("aborted")), { once: true });
+            }),
+          ]);
+          if (out.error) throw out.error;
+          return out;
+        } finally {
+          clearTimeout(timer);
+        }
       },
       {
         retries: 2,
@@ -290,6 +305,7 @@ export const MfaService = {
 
     await this.persistAal2Session(result.data);
   },
+
 
   /** Back-compat alias. Routes through the resilient implementation. */
   async challengeAndVerify(factorId: string, code: string): Promise<void> {
