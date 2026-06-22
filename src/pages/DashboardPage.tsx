@@ -216,6 +216,7 @@ export default function DashboardPage() {
     },
     enabled: projectApps.length > 0,
     staleTime: 5 * 60 * 1000,
+    meta: { persist: true },
   });
 
   // Adaptive poll for application status changes (60s base, 240s when tab hidden)
