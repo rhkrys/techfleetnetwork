@@ -1,7 +1,5 @@
-import { MutationCache, QueryCache, QueryClient, QueryClientProvider, PersistQueryClientProvider } from "@/lib/react-query";
+import { appQueryClient, QueryClientProvider, PersistQueryClientProvider } from "@/lib/react-query";
 import { getQueryPersister, shouldPersistQuery, PERSISTER_BUSTER } from "@/lib/query/persister";
-import { report } from "@/lib/observability/report";
-import { isTransientError } from "@/lib/transient-error";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
@@ -143,75 +141,17 @@ function RouteFallback() {
   );
 }
 
-const queryClient = new QueryClient({
-  // Global cache hooks audit silent React Query failures so they appear
-  // in /admin/activity-log instead of getting swallowed by component-level
-  // toasts. Mutations and queries both fan in here.
-  queryCache: new QueryCache({
-    onError: (error, query) => {
-      // Transient network/PostgREST blips are not actionable bugs — skip
-      // reportError so they don't fill the Triage queue or the Activity Log.
-      // Component-level UI continues to show normal error states from useQuery.
-      if (isTransientError(error)) return;
-      const key = Array.isArray(query.queryKey) ? query.queryKey.map(String).join(".") : "query";
-      report(error, { source: `query.${key}`, severity: "error" });
-    },
-  }),
-  mutationCache: new MutationCache({
-    onError: (error, _vars, _ctx, mutation) => {
-      if (isTransientError(error)) return;
-      const key = mutation.options.mutationKey?.map(String).join(".") ?? "anonymous";
-      report(error, { source: `mutation.${key}`, severity: "error" });
-    },
-  }),
-  defaultOptions: {
-    queries: {
-      staleTime: 5 * 60 * 1000,       // 5 min — avoid refetching on every mount
-      gcTime: 10 * 60 * 1000,         // 10 min — keep cache warm
-      retry: (failureCount, error) => {
-        // Don't retry on auth/permission/validation errors. A single permission
-        // misconfig must NEVER turn into a refetch storm — that's exactly what
-        // produced the "loop and glitch when saving as a draft" report:
-        // get_email_pipeline_health was throwing permission_denied (42501) and
-        // every cache invalidation re-flooded the backend with retries.
-        if (error instanceof Error) {
-          const msg = error.message.toLowerCase();
-          if (
-            msg.includes("unauthorized") ||
-            msg.includes("forbidden") ||
-            msg.includes("not authenticated") ||
-            msg.includes("permission denied") ||
-            msg.includes("admin access required") ||
-            msg.includes("row-level security") ||
-            msg.includes("violates row-level") ||
-            msg.includes("42501")
-          ) {
-            return false;
-          }
-        }
-        return failureCount < 2;        // Up to 2 retries for transient failures
-      },
-      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 15_000), // Exponential backoff, max 15s
-      refetchOnWindowFocus: false,     // Prevent refetch storms on tab switch
-      structuralSharing: true,         // Prevent unnecessary re-renders at scale
-    },
-    mutations: {
-      retry: false,                    // Never auto-retry mutations
-    },
-  },
-});
-
-if (consumeQueryCacheResetPending()) queryClient.clear();
+if (consumeQueryCacheResetPending()) appQueryClient.clear();
 
 const queryPersister = getQueryPersister();
 
 function QueryRoot({ children }: { children: React.ReactNode }) {
   if (!queryPersister) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+    return <QueryClientProvider client={appQueryClient}>{children}</QueryClientProvider>;
   }
   return (
     <PersistQueryClientProvider
-      client={queryClient}
+      client={appQueryClient}
       persistOptions={{
         persister: queryPersister,
         maxAge: 24 * 60 * 60 * 1000, // 24h on-disk retention
