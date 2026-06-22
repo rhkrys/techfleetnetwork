@@ -29,6 +29,7 @@ import { useAutosave } from "@/hooks/use-autosave";
 import { AutosaveStatus } from "@/components/ui/AutosaveStatus";
 import { useServerDraft } from "@/hooks/use-server-draft";
 import { DraftRestoredBanner } from "@/components/forms/DraftRestoredBanner";
+import { extractErrorMessage } from "@/lib/errors/extract";
 
 
 function csvToList(s: string): string[] {
@@ -150,8 +151,8 @@ export default function ClassFormPage() {
       await queryClient.invalidateQueries({ queryKey: ["classes"] });
       navigate(`/teach/classes/${id}`);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to save class";
-      toast.error(msg);
+      const { message, description } = extractErrorMessage(err, "We couldn't save your class.");
+      toast.error(message, description ? { description } : undefined);
     } finally {
       setSubmitting(false);
     }

@@ -1,7 +1,33 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { ClassFormValues } from "@/lib/validators/class";
 import { assertWritten } from "@/lib/db-helpers";
+import { isTransientError } from "@/lib/errors/extract";
 import { sendClassStatusEmails } from "./class-emails";
+
+/**
+ * Retry a Supabase mutation on transient upstream failures only.
+ * Never retries RLS denials, validation errors, or unknown errors.
+ * Exponential backoff with jitter: 250ms, 500ms, 1000ms.
+ */
+async function retryTransient<T>(
+  fn: () => Promise<T>,
+  opts: { attempts?: number; baseMs?: number } = {}
+): Promise<T> {
+  const attempts = opts.attempts ?? 3;
+  const baseMs = opts.baseMs ?? 250;
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (!isTransientError(err) || i === attempts - 1) throw err;
+      const delay = baseMs * Math.pow(2, i) + Math.floor(Math.random() * baseMs);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+  throw lastErr;
+}
 
 export type ClassRow = {
   id: string;
@@ -70,35 +96,43 @@ export const ClassService = {
   },
 
   async create(ownerId: string, values: ClassFormValues): Promise<string> {
-    const { data, error } = await supabase
-      .from("classes")
-      .insert({
-        owner_user_id: ownerId,
-        title: values.title,
-        summary: values.summary,
-        description: values.description ?? null,
-        track: values.track,
-        hero_image_url: values.hero_image_url || null,
-        skills: values.skills,
-        outcomes: values.outcomes,
-        why_take: values.why_take,
-        audiences: values.audiences,
-        prerequisites: values.prerequisites,
-        slug: "", // server trigger will populate
-      } as never)
-      .select("id")
-      // single-required: insert returns exactly one row
-      .single();
-    if (error) throw error;
-    return (data as { id: string }).id;
+    return retryTransient(async () => {
+      const { data, error } = await supabase
+        .from("classes")
+        .insert({
+          owner_user_id: ownerId,
+          title: values.title,
+          summary: values.summary,
+          description: values.description ?? null,
+          track: values.track,
+          hero_image_url: values.hero_image_url || null,
+          skills: values.skills,
+          outcomes: values.outcomes,
+          why_take: values.why_take,
+          audiences: values.audiences,
+          prerequisites: values.prerequisites,
+          slug: "", // server trigger will populate
+        } as never)
+        .select("id")
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) {
+        throw new Error(
+          "Class was not created. This usually means your role can't insert this row — refresh and try again or contact an admin."
+        );
+      }
+      return (data as { id: string }).id;
+    });
   },
 
   async update(id: string, values: Partial<ClassFormValues>): Promise<void> {
     const payload: Record<string, unknown> = { ...values };
     if (values.hero_image_url === "") payload.hero_image_url = null;
-    const result = await supabase.from("classes").update(payload).eq("id", id).select("id");
-    if (result.error) throw result.error;
-    assertWritten(result, "class.update", { id });
+    await retryTransient(async () => {
+      const result = await supabase.from("classes").update(payload).eq("id", id).select("id");
+      if (result.error) throw result.error;
+      assertWritten(result, "class.update", { id });
+    });
   },
 
   async submitForReview(id: string, cohortIds: string[] = []): Promise<void> {
