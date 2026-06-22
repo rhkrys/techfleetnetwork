@@ -2,6 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getUserSafe } from "@/lib/auth/session-port";
 import type { CohortFormValues } from "@/lib/validators/cohort";
 import { assertWritten } from "@/lib/db-helpers";
+import { retryTransientWrite } from "@/lib/db/retry";
 
 export type CohortRow = {
   id: string;
@@ -14,6 +15,7 @@ export type CohortRow = {
   meeting_url: string | null;
   capacity: number | null;
   status: "draft" | "pending_review" | "published" | "archived" | "cancelled";
+  schedule: string;
   submitted_at: string | null;
   published_at: string | null;
   archived_at: string | null;
@@ -44,32 +46,51 @@ export const CohortService = {
     return (data ?? []) as CohortRow[];
   },
 
-  async create(classId: string, values: CohortFormValues): Promise<string> {
+  async getById(id: string): Promise<CohortRow | null> {
     const { data, error } = await supabase
       .from("cohorts")
-      .insert({
-        class_id: classId,
-        label: values.label,
-        start_date: values.start_date,
-        end_date: values.end_date,
-        registration_url: values.registration_url,
-        meeting_url: values.meeting_url || null,
-        timezone: values.timezone || "America/New_York",
-        capacity: values.capacity ?? null,
-      } as never)
-      .select("id")
-      // single-required: insert returns exactly one row
-      .single();
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
     if (error) throw error;
-    return (data as { id: string }).id;
+    return (data ?? null) as CohortRow | null;
+  },
+
+  async create(classId: string, values: CohortFormValues): Promise<string> {
+    return retryTransientWrite(async () => {
+      const { data, error } = await supabase
+        .from("cohorts")
+        .insert({
+          class_id: classId,
+          label: values.label,
+          start_date: values.start_date,
+          end_date: values.end_date,
+          registration_url: values.registration_url,
+          meeting_url: values.meeting_url || null,
+          timezone: values.timezone || "America/New_York",
+          capacity: values.capacity ?? null,
+          schedule: values.schedule ?? "",
+        } as never)
+        .select("id")
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) {
+        throw new Error(
+          "Cohort was not created. This usually means your role can't insert this row — refresh and try again or contact an admin."
+        );
+      }
+      return (data as { id: string }).id;
+    });
   },
 
   async update(id: string, values: Partial<CohortFormValues>): Promise<void> {
     const payload: Record<string, unknown> = { ...values };
     if (values.meeting_url === "") payload.meeting_url = null;
-    const result = await supabase.from("cohorts").update(payload).eq("id", id).select("id");
-    if (result.error) throw result.error;
-    assertWritten(result, "cohort.update", { id });
+    await retryTransientWrite(async () => {
+      const result = await supabase.from("cohorts").update(payload).eq("id", id).select("id");
+      if (result.error) throw result.error;
+      assertWritten(result, "cohort.update", { id });
+    });
   },
 
   async submitForReview(classId: string, cohortIds: string[] = []): Promise<void> {

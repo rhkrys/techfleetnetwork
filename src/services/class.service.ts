@@ -89,6 +89,9 @@ export const ClassService = {
           why_take: values.why_take,
           audiences: values.audiences,
           prerequisites: values.prerequisites,
+          curriculum: values.curriculum ?? "",
+          reading_assignments: values.reading_assignments ?? "",
+          class_expectations: values.class_expectations ?? "",
           slug: "", // server trigger will populate
         } as never)
         .select("id")

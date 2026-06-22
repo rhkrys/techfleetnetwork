@@ -57,6 +57,9 @@ export default function ClassFormPage() {
       why_take: "",
       audiences: "",
       prerequisites: [],
+      curriculum: "",
+      reading_assignments: "",
+      class_expectations: "",
     }),
     []
   );
@@ -124,6 +127,9 @@ export default function ClassFormPage() {
         why_take: existing.why_take ?? "",
         audiences: existing.audiences ?? "",
         prerequisites: existing.prerequisites ?? [],
+        curriculum: (existing as { curriculum?: string }).curriculum ?? "",
+        reading_assignments: (existing as { reading_assignments?: string }).reading_assignments ?? "",
+        class_expectations: (existing as { class_expectations?: string }).class_expectations ?? "",
       });
       setPrereqText((existing.prerequisites ?? []).join("\n"));
     }

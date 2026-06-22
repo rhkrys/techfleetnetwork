@@ -309,6 +309,7 @@ const App = () => (
                     <Route path="/teach/classes/:id" element={<TeacherRoute><ClassDetailPage /></TeacherRoute>} />
                     <Route path="/teach/classes/:id/edit" element={<TeacherRoute><ClassFormPage /></TeacherRoute>} />
                     <Route path="/teach/classes/:id/cohorts/new" element={<TeacherRoute><CohortFormPage /></TeacherRoute>} />
+                    <Route path="/teach/classes/:id/cohorts/:cohortId/edit" element={<TeacherRoute><CohortFormPage /></TeacherRoute>} />
                     <Route path="/admin/classes" element={<AdminRoute><AdminClassesPage /></AdminRoute>} />
                     <Route path="/profile/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
                     <Route path="/unsubscribe" element={<UnsubscribePage />} />
