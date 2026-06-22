@@ -150,8 +150,8 @@ export default function ClassFormPage() {
       await queryClient.invalidateQueries({ queryKey: ["classes"] });
       navigate(`/teach/classes/${id}`);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to save class";
-      toast.error(msg);
+      const { message, description } = extractErrorMessage(err, "We couldn't save your class.");
+      toast.error(message, description ? { description } : undefined);
     } finally {
       setSubmitting(false);
     }
