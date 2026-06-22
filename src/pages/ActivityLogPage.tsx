@@ -217,12 +217,7 @@ export default function ActivityLogPage() {
     setLoading(true);
     setLoadError("");
     try {
-      const countQuery = applyRangeFilters(
-        supabase.from("audit_log").select("id", { count: "exact", head: true }) as never
-      );
-      const { count } = await withTimeout<{ count: number | null }>(countQuery as unknown as PromiseLike<{ count: number | null }>, "Activity log count");
-      setTotalCount(count || 0);
-
+      // Rows are the must-have. Count is best-effort — never block the page on it.
       const query = applyRangeFilters(
         supabase
           .from("audit_log")
@@ -230,10 +225,44 @@ export default function ActivityLogPage() {
           .order("created_at", { ascending: false })
           .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1) as never
       );
-      const { data, error } = await withTimeout<{ data: unknown[] | null; error: Error | null }>(query as unknown as PromiseLike<{ data: unknown[] | null; error: Error | null }>, "Activity log load");
+      const rowsPromise = withTimeout<{ data: unknown[] | null; error: Error | null }>(
+        query as unknown as PromiseLike<{ data: unknown[] | null; error: Error | null }>,
+        "Activity log load",
+      );
+
+      // Fast-count RPC: O(1) estimate when unfiltered, exact only when filtered narrow.
+      const countPromise = withTimeout<{ data: number | null; error: unknown }>(
+        (supabase.rpc as unknown as (fn: string, args: Record<string, unknown>) => PromiseLike<{ data: number | null; error: unknown }>)(
+          "audit_log_count_fast",
+          {
+            p_event_type: eventFilter !== "all" ? eventFilter : null,
+            p_from: dateFrom ? new Date(dateFrom).toISOString() : null,
+            p_to: dateTo
+              ? (() => { const e = new Date(dateTo); e.setHours(23, 59, 59, 999); return e.toISOString(); })()
+              : null,
+          },
+        ),
+        "Activity log count",
+      );
+
+      const [rowsResult, countResult] = await Promise.allSettled([rowsPromise, countPromise]);
+
+      if (rowsResult.status === "rejected") throw rowsResult.reason;
+      const { data, error } = rowsResult.value;
       if (error) throw error;
       const rows = (data || []) as unknown as AuditLogEntry[];
       setEntries(rows);
+
+      if (countResult.status === "fulfilled" && !countResult.value.error && typeof countResult.value.data === "number") {
+        setTotalCount(countResult.value.data);
+        // Unfiltered count always comes from planner estimate; filtered may be exact.
+        const isUnfiltered = eventFilter === "all" && !dateFrom && !dateTo;
+        setCountEstimated(isUnfiltered);
+      } else {
+        // Degrade gracefully: rows render, pagination uses hasMore from page size.
+        setTotalCount(Math.max((page + 1) * PAGE_SIZE + (rows.length === PAGE_SIZE ? PAGE_SIZE : 0), rows.length));
+        setCountEstimated(true);
+      }
 
       // Hydrate triage state for visible fingerprints (admin-only by RLS)
       const fps = Array.from(new Set(rows.map((r) => r.error_fingerprint).filter(Boolean) as string[]));
