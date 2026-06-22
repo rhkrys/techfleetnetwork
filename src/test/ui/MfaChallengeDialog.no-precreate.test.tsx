@@ -46,30 +46,28 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 // Replace input-otp with a single plain <input data-testid="otp"> that fires
 // the dialog's onChange in jsdom-friendly fashion.
-vi.mock("@/components/ui/input-otp", () => {
-  return {
-    InputOTP: ({ value, onChange, onComplete, maxLength, id }: {
-      value: string;
-      onChange: (v: string) => void;
-      onComplete?: (v: string) => void;
-      maxLength: number;
-      id?: string;
-    }) => (
+vi.mock("@/components/ui/input-otp", () => ({
+  InputOTP: (props: Record<string, unknown>) => {
+    const value = (props.value as string) ?? "";
+    const onChange = props.onChange as ((v: string) => void) | undefined;
+    const onComplete = props.onComplete as ((v: string) => void) | undefined;
+    const maxLength = (props.maxLength as number) ?? 6;
+    return (
       <input
         data-testid="otp"
-        id={id}
+        id={props.id as string | undefined}
         value={value}
         maxLength={maxLength}
         onChange={(e) => {
-          onChange(e.target.value);
+          onChange?.(e.target.value);
           if (e.target.value.length === maxLength) onComplete?.(e.target.value);
         }}
       />
-    ),
-    InputOTPGroup: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-    InputOTPSlot: () => null,
-  };
-});
+    );
+  },
+  InputOTPGroup: (props: { children?: unknown }) => <>{props.children as React.ReactNode}</>,
+  InputOTPSlot: () => null,
+}));
 
 function setup() {
   const onSuccess = vi.fn();
