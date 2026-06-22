@@ -8,3 +8,5 @@ export {
   useQueryClient,
   type QueryClientConfig,
 } from "@tanstack/react-query";
+
+export { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";

@@ -172,9 +172,27 @@ export default function DashboardPage() {
   const { data: overview } = useDashboardOverview();
   const phaseCounts = overview?.phase_counts ?? {};
 
-  // Task-id-filtered counts (RPC returns total per phase, can't filter by task subset)
-  const { data: connectDiscordCompleted = 0 } = useCompletedCount(userId, "first_steps", CONNECT_DISCORD_TASK_IDS);
-  const { data: firstStepsCompleted = 0 } = useCompletedCount(userId, "first_steps", FIRST_STEPS_TASK_IDS);
+  // Task-id-filtered counts (RPC returns total per phase, can't filter by task subset).
+  // We track raw (possibly undefined) values so we can distinguish "unknown, still
+  // loading" from "confirmed zero progress" and avoid flashing the empty checklist
+  // to returning users (DASHBOARD-HYDRATE-001..003).
+  const connectDiscordQuery = useCompletedCount(userId, "first_steps", CONNECT_DISCORD_TASK_IDS);
+  const firstStepsQuery = useCompletedCount(userId, "first_steps", FIRST_STEPS_TASK_IDS);
+  const observerQuery = useCompletedCount(userId, "observer", ALL_OBSERVER_LESSON_IDS);
+
+  const connectDiscordCompleted = connectDiscordQuery.data ?? 0;
+  const firstStepsCompleted = firstStepsQuery.data ?? 0;
+  const observerCompleted = observerQuery.data ?? 0;
+
+  // overviewReady = every progress source has at least one successful resolution.
+  // With the persister, returning users hit `true` on first paint (snapshot
+  // restored from localStorage). New users hit `false` until the RPC lands,
+  // and we render the skeleton instead of "0 of 5 complete".
+  const overviewReady = !!userId
+    && overview !== undefined
+    && connectDiscordQuery.data !== undefined
+    && firstStepsQuery.data !== undefined
+    && observerQuery.data !== undefined;
 
   // Phase-total counts (sourced from overview RPC)
   const secondStepsCompleted = phaseCounts.second_steps ?? 0;
@@ -182,7 +200,6 @@ export default function DashboardPage() {
   const teamworkCompleted = phaseCounts.third_steps ?? 0;
   const projectTrainingCompleted = phaseCounts.project_training ?? 0;
   const volunteerCompleted = phaseCounts.volunteer ?? 0;
-  const { data: observerCompleted = 0 } = useCompletedCount(userId, "observer", ALL_OBSERVER_LESSON_IDS);
 
   const { data: latestAnnouncements = [] } = useLatestAnnouncements(5);
 
@@ -193,6 +210,7 @@ export default function DashboardPage() {
     staleTime: 60 * 1000,
     refetchInterval: 60 * 1000,
     refetchOnWindowFocus: false,
+    meta: { persist: true },
   });
 
   // General application status — sourced from overview RPC
@@ -215,6 +233,7 @@ export default function DashboardPage() {
     },
     enabled: projectApps.length > 0,
     staleTime: 5 * 60 * 1000,
+    meta: { persist: true },
   });
 
   // Adaptive poll for application status changes (60s base, 240s when tab hidden)
@@ -373,8 +392,22 @@ export default function DashboardPage() {
 
           case "core_courses":
             return isVisible("core_courses") ? (
-              <section key="core_courses" className="py-8">
-                {allOnboardingDone ? (
+              <section key="core_courses" className="py-8" aria-busy={!overviewReady}>
+                {!overviewReady ? (
+                  // Skeleton instead of "0 of 5 complete" — never flash the brand-new-user
+                  // empty state to a returning user (DASHBOARD-HYDRATE-002).
+                  <div className="card-elevated overflow-hidden" aria-label="Loading your progress">
+                    <div className="px-4 sm:px-5 py-3 border-b">
+                      <Skeleton className="h-5 w-40 mb-2" />
+                      <Skeleton className="h-3 w-24" />
+                    </div>
+                    <div className="p-3 sm:p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                      {Array.from({ length: 4 }).map((_, i) => (
+                        <Skeleton key={i} className="h-40 rounded-lg" />
+                      ))}
+                    </div>
+                  </div>
+                ) : allOnboardingDone ? (
                   (() => {
                     const observerHeading = observerNotStarted
                       ? "You're ready to observe a Tech Fleet project"

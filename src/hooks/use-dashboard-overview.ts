@@ -47,6 +47,10 @@ export function useDashboardOverview() {
     staleTime: 5 * 60 * 1000,
     refetchInterval: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
+    // Persist last-known snapshot to localStorage so the dashboard hydrates
+    // instantly on reload instead of flashing the brand-new-user UI while the
+    // RPC is in flight (DASHBOARD-HYDRATE-001).
+    meta: { persist: true },
     queryFn: async (): Promise<DashboardOverview> => {
       // Identity comes from auth.uid() inside the RPC — single source of truth.
       // No client-supplied p_user_id, so the JWT and the DB cannot disagree

@@ -174,6 +174,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async (_event, session) => {
         if (_event === "SIGNED_OUT") {
           sessionPort.clearLocalAuthState();
+          // Wipe persisted React Query snapshot so the next user on this device
+          // never sees a previous user's dashboard data (DASHBOARD-HYDRATE-003).
+          void import("@/lib/query/persister").then((m) => m.purgePersistedCache());
         }
 
         // Note: We previously force-signed-out users on SIGNED_IN at the root
