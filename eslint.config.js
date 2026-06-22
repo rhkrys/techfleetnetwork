@@ -142,6 +142,10 @@ export default tseslint.config(
       // Hard error: this is the rule that prevents the "side door bounces
       // logged-in member to /login on backend hiccup" class.
       "auth-invariants/no-direct-auth-mutations": "error",
+      // SIGNUP-TIMEOUT-PROBE-005 — detect duplicate accounts via server codes,
+      // not English message-string matches in auth flow files.
+      "auth-invariants/no-signup-string-match": "warn",
+
       // Part 1 §1.5 — bare React.lazy white-screens on stale chunks after a
       // deploy; the wrapper retries 3× then surfaces <UpdateAvailableBanner/>.
       "lazy/requires-retry": "warn",
