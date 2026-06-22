@@ -74,18 +74,18 @@ export async function withTransientRetry<T>(
  * transient `error`, then returns the final tuple to the caller so existing
  * error-handling code paths are unchanged.
  */
-export async function retryPostgrest<T>(
-  fn: () => Promise<{ data: T; error: unknown }>,
+export async function retryPostgrest<T, E = unknown>(
+  fn: () => PromiseLike<{ data: T; error: E | null }>,
   opts: TransientRetryOptions = {},
-): Promise<{ data: T; error: unknown }> {
+): Promise<{ data: T; error: E | null }> {
   try {
     return await withTransientRetry(async () => {
-      const out = await fn();
+      const out = await Promise.resolve(fn());
       if (out.error && isTransientError(out.error)) throw out.error;
       return out;
     }, opts);
   } catch (err) {
-    return { data: null as unknown as T, error: err };
+    return { data: null as unknown as T, error: err as E };
   }
 }
 
