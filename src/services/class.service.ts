@@ -33,43 +33,50 @@ export type ClassRow = {
 
 export const ClassService = {
   async listPublishedByTrack(track: ClassRow["track"]): Promise<ClassRow[]> {
-    const { data, error } = await supabase
-      .from("classes")
-      .select("*")
-      .eq("status", "published")
-      .eq("track", track)
-      .order("published_at", { ascending: false });
+    const { data, error } = await retryPostgrest(() =>
+      supabase
+        .from("classes")
+        .select("*")
+        .eq("status", "published")
+        .eq("track", track)
+        .order("published_at", { ascending: false })
+    );
     if (error) throw error;
     return (data ?? []) as ClassRow[];
   },
 
   async listMine(ownerId: string): Promise<ClassRow[]> {
-    const { data, error } = await supabase
-      .from("classes")
-      .select("*")
-      .eq("owner_user_id", ownerId)
-      .order("updated_at", { ascending: false });
+    const { data, error } = await retryPostgrest(() =>
+      supabase
+        .from("classes")
+        .select("*")
+        .eq("owner_user_id", ownerId)
+        .order("updated_at", { ascending: false })
+    );
     if (error) throw error;
     return (data ?? []) as ClassRow[];
   },
 
   async listAll(): Promise<ClassRow[]> {
-    const { data, error } = await supabase
-      .from("classes")
-      .select("*")
-      .order("updated_at", { ascending: false });
+    const { data, error } = await retryPostgrest(() =>
+      supabase.from("classes").select("*").order("updated_at", { ascending: false })
+    );
     if (error) throw error;
     return (data ?? []) as ClassRow[];
   },
 
   async getById(id: string): Promise<ClassRow | null> {
-    const { data, error } = await supabase.from("classes").select("*").eq("id", id).maybeSingle();
+    const { data, error } = await retryPostgrest(() =>
+      supabase.from("classes").select("*").eq("id", id).maybeSingle()
+    );
     if (error) throw error;
     return (data ?? null) as ClassRow | null;
   },
 
   async getBySlug(slug: string): Promise<ClassRow | null> {
-    const { data, error } = await supabase.from("classes").select("*").eq("slug", slug).maybeSingle();
+    const { data, error } = await retryPostgrest(() =>
+      supabase.from("classes").select("*").eq("slug", slug).maybeSingle()
+    );
     if (error) throw error;
     return (data ?? null) as ClassRow | null;
   },
