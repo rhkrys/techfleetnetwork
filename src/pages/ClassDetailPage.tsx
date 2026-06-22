@@ -150,6 +150,27 @@ export default function ClassDetailPage() {
         </section>
       )}
 
+      {(cls as { curriculum?: string }).curriculum?.trim() && (
+        <section aria-labelledby="class-curriculum-heading">
+          <h2 id="class-curriculum-heading" className="font-semibold text-base mb-2">Curriculum</h2>
+          <div className="prose prose-invert max-w-none text-sm text-foreground" dangerouslySetInnerHTML={{ __html: sanitizeHtml((cls as { curriculum?: string }).curriculum ?? "") }} />
+        </section>
+      )}
+
+      {(cls as { reading_assignments?: string }).reading_assignments?.trim() && (
+        <section aria-labelledby="class-reading-heading">
+          <h2 id="class-reading-heading" className="font-semibold text-base mb-2">Reading Assignments</h2>
+          <div className="prose prose-invert max-w-none text-sm text-foreground" dangerouslySetInnerHTML={{ __html: sanitizeHtml((cls as { reading_assignments?: string }).reading_assignments ?? "") }} />
+        </section>
+      )}
+
+      {(cls as { class_expectations?: string }).class_expectations?.trim() && (
+        <section aria-labelledby="class-expectations-heading">
+          <h2 id="class-expectations-heading" className="font-semibold text-base mb-2">Class Expectations</h2>
+          <div className="prose prose-invert max-w-none text-sm text-foreground" dangerouslySetInnerHTML={{ __html: sanitizeHtml((cls as { class_expectations?: string }).class_expectations ?? "") }} />
+        </section>
+      )}
+
       {cls.skills.length > 0 && (
         <div>
           <h3 className="font-semibold text-sm mb-2">Skills</h3>
