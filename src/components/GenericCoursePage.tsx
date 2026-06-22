@@ -513,38 +513,49 @@ export default function GenericCoursePage({
 
       {/* Course completion popup */}
       <Dialog open={showCompletionDialog} onOpenChange={setShowCompletionDialog}>
-        <DialogContent className="sm:max-w-md text-center">
+        <DialogContent className="sm:max-w-md text-center overflow-hidden">
           <DialogHeader className="items-center">
             <div className="text-5xl mb-2">🎉</div>
-            <DialogTitle className="text-xl">
+            <DialogTitle className="text-xl break-words">
               {title} Complete!
             </DialogTitle>
-            <DialogDescription className="text-muted-foreground pt-2">
+            <DialogDescription className="text-muted-foreground pt-2 break-words">
               You've completed all lessons in this course. Well done!
               {nextCourse
                 ? " You're ready for the next course."
                 : " " + completionSubtext}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col gap-2 pt-2">
+          <div className="flex flex-col gap-2 pt-2 min-w-0">
             {nextCourse ? (
               <>
-                <Button onClick={() => { setShowCompletionDialog(false); navigate(nextCourse.href); }}>
-                  Continue to {nextCourse.title}
-                  <ChevronRight className="h-4 w-4 ml-1" />
+                <Button
+                  onClick={() => { setShowCompletionDialog(false); navigate(nextCourse.href); }}
+                  className="w-full h-auto whitespace-normal break-words py-2.5 leading-snug"
+                >
+                  <span className="min-w-0 flex-1 text-center">Continue to {nextCourse.title}</span>
+                  <ChevronRight className="h-4 w-4 ml-1 flex-shrink-0" />
                 </Button>
-                <Button variant="outline" onClick={() => setShowCompletionDialog(false)}>
-                  Stay on This Course
+                <Button
+                  variant="outline"
+                  onClick={() => setShowCompletionDialog(false)}
+                  className="w-full h-auto whitespace-normal break-words py-2.5 leading-snug"
+                >
+                  Stay on this course
                 </Button>
               </>
             ) : (
-              <Button onClick={() => setShowCompletionDialog(false)}>
+              <Button
+                onClick={() => setShowCompletionDialog(false)}
+                className="w-full h-auto whitespace-normal break-words py-2.5 leading-snug"
+              >
                 Close
               </Button>
             )}
           </div>
         </DialogContent>
       </Dialog>
+
 
       {/* Lesson detail — full-screen on mobile, centered modal on desktop */}
       <Dialog
