@@ -49,11 +49,20 @@ function readName(value: unknown): string | undefined {
   return undefined;
 }
 
+/** Server codes (GoTrue / broker) aliased to canonical AuthErrorCode. */
+const SERVER_CODE_ALIASES: Record<string, AuthErrorCode> = {
+  email_exists: "account_exists",
+  user_already_exists: "account_exists",
+  email_address_already_registered: "account_exists",
+  user_already_registered: "account_exists",
+};
+
 export function classifyAuthErrorCode(input: unknown): AuthErrorCode {
   // 1. Code-first: typed server response.
   const code = readCode(input);
-  if (code && isAuthErrorCode(code)) {
-    return code;
+  if (code) {
+    if (isAuthErrorCode(code)) return code;
+    if (SERVER_CODE_ALIASES[code]) return SERVER_CODE_ALIASES[code];
   }
 
   // 2. Client-side session write errors → ALWAYS non-punitive.
