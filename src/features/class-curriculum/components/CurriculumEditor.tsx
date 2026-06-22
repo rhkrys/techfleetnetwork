@@ -21,7 +21,7 @@ import { GripVertical, Pencil, Plus, Trash2, Loader2, Send, Video, Clock } from 
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ClassCurriculumService } from "../services/classCurriculum.service";
 import { useClassCurriculum, useInvalidateClassCurriculum } from "../hooks/useClassCurriculum";
 import { SectionEditorDialog } from "./SectionEditorDialog";
@@ -290,7 +290,7 @@ export function CurriculumEditor({ classId }: Props) {
         open={!!confirmSection}
         onOpenChange={(open) => !open && setConfirmSection(null)}
         title="Delete section"
-        description={confirmSection ? `Delete "${confirmSection.title}" and all of its modules? This cannot be undone.` : ""}
+        consequence={confirmSection ? `Delete "${confirmSection.title}" and all of its modules? This cannot be undone.` : ""}
         actionLabel="Delete section"
         destructive
         onConfirm={async () => {
@@ -311,7 +311,7 @@ export function CurriculumEditor({ classId }: Props) {
         open={!!confirmItem}
         onOpenChange={(open) => !open && setConfirmItem(null)}
         title="Delete module"
-        description={confirmItem ? `Delete "${confirmItem.title}"? This cannot be undone.` : ""}
+        consequence={confirmItem ? `Delete "${confirmItem.title}"? This cannot be undone.` : ""}
         actionLabel="Delete module"
         destructive
         onConfirm={async () => {
