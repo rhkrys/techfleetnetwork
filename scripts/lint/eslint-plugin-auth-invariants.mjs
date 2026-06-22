@@ -243,6 +243,46 @@ const noDirectAuthMutations = {
   },
 };
 
+// no-signup-string-match — once GoTrue's `email_exists` / `user_already_exists`
+// codes are mapped in auth-classifier, English substring matching for duplicate
+// accounts in auth flow files is a regression risk (localization, copy drift).
+// Warn-only so the classifier's last-resort fallback can keep its substring
+// guard, but new uses are discouraged.
+const FORBIDDEN_DUP_SUBSTRINGS = [
+  "already registered",
+  "already been registered",
+  "user already",
+];
+const noSignupStringMatch = {
+  meta: {
+    type: "suggestion",
+    docs: { description: "Auth flows must detect duplicate accounts via server codes, not English substrings." },
+    schema: [],
+    messages: {
+      forbidden: "Detect duplicate accounts via `classifyAuthErrorCode` (server `email_exists` / `user_already_exists` → `account_exists`), not message-string matching on \"{{needle}}\".",
+    },
+  },
+  create(context) {
+    const file = normalisedFilename(context);
+    if (!file.includes("src/features/auth/flows/") && !file.includes("src/features/auth/services/")) return {};
+    // Allow the classifier itself + the legacy sign-up.service fallback to keep
+    // their bounded substring guard (already wrapped by code-first detection).
+    if (file.endsWith("/auth-classifier.ts")) return {};
+    return {
+      Literal(node) {
+        if (typeof node.value !== "string") return;
+        const v = node.value.toLowerCase();
+        for (const needle of FORBIDDEN_DUP_SUBSTRINGS) {
+          if (v.includes(needle)) {
+            context.report({ node, messageId: "forbidden", data: { needle } });
+            return;
+          }
+        }
+      },
+    };
+  },
+};
+
 export default {
   rules: {
     "no-bare-password-set-input": noBarePasswordSetInput,
@@ -252,6 +292,8 @@ export default {
     "no-auth-storage-literals": noAuthStorageLiterals,
     "no-auth-booleans-in-ui": noAuthBooleansInUi,
     "no-direct-auth-mutations": noDirectAuthMutations,
+    "no-signup-string-match": noSignupStringMatch,
   },
 };
+
 
