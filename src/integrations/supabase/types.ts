@@ -7613,6 +7613,10 @@ export type Database = {
       }
       archive_old_fix_queue: { Args: never; Returns: number }
       audit_i18n_coverage: { Args: never; Returns: Json }
+      audit_log_count_fast: {
+        Args: { p_event_type?: string; p_from?: string; p_to?: string }
+        Returns: number
+      }
       auto_resolve_stale_fix_queue: {
         Args: never
         Returns: {
