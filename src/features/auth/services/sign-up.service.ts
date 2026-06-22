@@ -53,26 +53,84 @@ export async function signUp(
         },
       });
 
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("Sign-up request timed out. Please try again.")), 30_000),
+    const TIMEOUT_SENTINEL = Symbol("signup_timeout");
+    const timeoutPromise = new Promise<typeof TIMEOUT_SENTINEL>((resolve) =>
+      setTimeout(() => resolve(TIMEOUT_SENTINEL), 30_000),
     );
 
     let lastErr: { message: string; status?: number; code?: string } | null = null;
+    let indeterminate = false;
     let data: any = null;
     for (let i = 0; i < 2; i++) {
       try {
         const res = await Promise.race([attempt(), timeoutPromise]);
+        if (res === TIMEOUT_SENTINEL) {
+          indeterminate = true;
+          lastErr = { message: "Sign-up request timed out.", status: 0, code: "timeout" };
+          break;
+        }
         if (!res.error) { data = res.data; lastErr = null; break; }
         if (res.error.status === 429 || res.error.message.toLowerCase().includes("too many rapid auth attempts")) throw createAuthThrottleCaptchaError();
         lastErr = { message: res.error.message, status: res.error.status, code: (res.error as any).code };
         const transient = !res.error.status || res.error.status >= 500 || res.error.status === 0;
         if (!transient) break;
+        if (i === 1) { indeterminate = true; break; }
         await new Promise(r => setTimeout(r, 600 * (i + 1)));
       } catch (networkErr: any) {
         if (isAuthThrottleCaptchaError(networkErr)) throw networkErr;
         lastErr = { message: networkErr?.message ?? "Network error", status: 0 };
         void logAccountActivity("signup_network_error", { email: safeEmail, errorMessage: lastErr.message });
+        indeterminate = true;
         break;
+      }
+    }
+
+    // INDETERMINATE-RESOLVE: GoTrue may have created the auth row BEFORE the
+    // 504 / timeout / network abort fired. Don't lie to the user — probe with
+    // signInWithPassword to discover the true state and route accordingly.
+    if (indeterminate) {
+      void logAccountActivity("signup_indeterminate_timeout", {
+        email: safeEmail,
+        errorMessage: lastErr?.message ?? "timeout",
+        errorCode: lastErr?.status ?? lastErr?.code ?? "unknown",
+      });
+      try {
+        const probe = await supabase.auth.signInWithPassword({ email: safeEmail, password });
+        if (!probe.error && probe.data?.session) {
+          // Row exists AND confirmed → user is now signed in. Surface that
+          // outcome to the engine via a dedicated coded error so the UI can
+          // redirect to /dashboard instead of showing "Check your email".
+          log.info("signUp", `Indeterminate signup resolved as signed-in for ${safeEmail}`, { email: safeEmail });
+          void logAccountActivity("signup_indeterminate_resolved_signed_in", { email: safeEmail });
+          const e: any = new Error("ACCOUNT_RECOVERED_SIGNED_IN");
+          e.code = "ACCOUNT_RECOVERED_SIGNED_IN";
+          throw e;
+        }
+        const probeCode = (probe.error as any)?.code ?? "";
+        const probeMsg = (probe.error?.message ?? "").toLowerCase();
+        if (probeCode === "email_not_confirmed" || probeMsg.includes("email not confirmed") || probeMsg.includes("not confirmed")) {
+          // Row exists, awaiting verification → success path (Check your email).
+          log.info("signUp", `Indeterminate signup resolved as email-not-confirmed for ${safeEmail}`, { email: safeEmail });
+          void logAccountActivity("signup_indeterminate_resolved_unconfirmed", { email: safeEmail });
+          const e: any = new Error("EMAIL_UNCONFIRMED");
+          e.code = "EMAIL_UNCONFIRMED";
+          throw e;
+        }
+        if (probeCode === "invalid_credentials" || probe.error?.status === 400) {
+          // Row was NOT created — fall through to the normal error branch.
+          log.info("signUp", `Indeterminate signup resolved as not-created for ${safeEmail}`, { email: safeEmail });
+          void logAccountActivity("signup_indeterminate_resolved_not_created", { email: safeEmail });
+        } else {
+          // Probe itself failed (rate-limited, captcha required, etc.) — we
+          // can't disambiguate. Tell the user the safe, accurate truth.
+          log.warn("signUp", `Indeterminate signup probe inconclusive for ${safeEmail}: ${probe.error?.message ?? "unknown"}`, { email: safeEmail });
+          void logAccountActivity("signup_indeterminate_probe_inconclusive", { email: safeEmail, errorMessage: probe.error?.message ?? "unknown" });
+          throw new Error("Your sign-up may have been created but we couldn't confirm. Try signing in with your email and password, or use Forgot password.");
+        }
+      } catch (probeErr: any) {
+        if (probeErr?.code === "ACCOUNT_RECOVERED_SIGNED_IN" || probeErr?.code === "EMAIL_UNCONFIRMED") throw probeErr;
+        // signInWithPassword itself threw (network) — fall through to normal error path.
+        log.warn("signUp", `Indeterminate signup probe threw for ${safeEmail}: ${probeErr?.message ?? "unknown"}`, { email: safeEmail });
       }
     }
 
@@ -85,8 +143,17 @@ export async function signUp(
         errorCode: lastErr.status ?? lastErr.code ?? "unknown",
       });
 
+      // Code-first duplicate detection (GoTrue email_exists / user_already_exists / 422).
+      const serverCode = (lastErr.code ?? "").toLowerCase();
       const m = (lastErr.message || "").toLowerCase();
-      if (m.includes("already registered") || m.includes("already been registered") || m.includes("user already")) {
+      const isDuplicate =
+        serverCode === "email_exists" ||
+        serverCode === "user_already_exists" ||
+        serverCode === "email_address_already_registered" ||
+        serverCode === "user_already_registered" ||
+        (lastErr.status === 422 && (m.includes("already") || m.includes("exists"))) ||
+        m.includes("already registered") || m.includes("already been registered") || m.includes("user already");
+      if (isDuplicate) {
         const e: any = new Error("ACCOUNT_EXISTS");
         e.code = "ACCOUNT_EXISTS";
         throw e;
@@ -106,8 +173,8 @@ export async function signUp(
       if (m.includes("signup") && m.includes("disabled")) {
         throw new Error("Account creation is temporarily unavailable. Please contact support.");
       }
-      if (lastErr.status && lastErr.status >= 500) {
-        throw new Error("The signup service is temporarily unavailable. Please try again in a minute.");
+      if (indeterminate || lastErr.status === 0 || (lastErr.status && lastErr.status >= 500)) {
+        throw new Error("Our sign-up service had a brief hiccup. Your account may already have been created — try signing in, or use Forgot password.");
       }
       throw new Error(lastErr.message || "Unable to create account. Please try again or use a different email.");
     }
