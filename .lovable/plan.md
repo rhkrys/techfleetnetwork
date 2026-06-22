@@ -1,145 +1,74 @@
-## Goal
+## Root cause
 
-Teachers author class-scoped curriculum (sections → modules) with WYSIWYG content + embedded video, drag-drop reordering, and per-learner completion — mirroring the core-course experience on `GenericCoursePage`. Changes propagate to all cohorts of that class automatically (since curriculum lives at the class level).
+The DevTools snapshot shows three RPCs stuck in `(pending)` forever:
 
-## Architecture (enterprise, no spaghetti)
+- `list_pending_role_grants_for_user` (called from `useDiscordRoleRetry`)
+- `admin_2fa_grace_active`
+- `admin_2fa_grace_deadline` (both called from `AdminRoute` and `AdminTwoFactorGraceDialog`)
 
-Three layers, one engine, server-authoritative.
+Database side is healthy (`pg_stat_activity` shows no long queries; only an idle realtime replication wait). The hang is on the PostgREST/edge transport — a transient hiccup that the supabase-js client never times out from.
 
-### 1. Database (source of truth, RLS-locked)
+Two real UX bugs surface this:
 
-New tables — all in `public`, all with GRANTs + RLS + `updated_at` trigger + `class_audit` hooks.
+1. **`src/components/AdminRoute.tsx` line 57** blocks the entire admin page render with a spinner whenever `mfaState === null`. If either grace RPC never resolves, every `/admin/*` route is permanently stuck on the spinner the screenshot shows.
+2. **`src/components/AdminTwoFactorGraceDialog.tsx`** re-fires the same two RPCs every 10s on a `setInterval`, with no abort and no per-attempt timeout. Pending requests pile up behind the wedged one and the supabase-js HTTP/2 stream stays congested.
 
-- `class_module_sections`
-  - `id`, `class_id` → `classes.id` ON DELETE CASCADE
-  - `title` (≤200), `summary` (≤500 nullable)
-  - `position` int NOT NULL, `status` enum `draft|published|archived` default `draft`
-  - `created_by`, `published_at`, `archived_at`, timestamps
-  - UNIQUE(`class_id`, `position`) DEFERRABLE for atomic reorders
+`useDiscordRoleRetry` fires its RPC once per session, so it doesn't pile up, but it also has no timeout and silently hangs.
 
-- `class_module_items` (the "lesson" equivalent)
-  - `id`, `section_id` → sections ON DELETE CASCADE, `class_id` denormalized for RLS speed
-  - `title` (≤200), `position` int
-  - `content_html` text (server-sanitized; ≤200 KB)
-  - `video_url` text nullable, `video_provider` enum `youtube|vimeo|google_meet|loom|other` (derived by trigger from URL)
-  - `video_embed_url` text (computed/normalized by trigger; never trusts client)
-  - `action_type` enum `read|watch|task` default `read`
-  - `duration_minutes` int nullable, `required` bool default true
-  - `status` enum `draft|published|archived` default `draft`
-  - timestamps + `created_by`
+The screenshot's `/` route spinner is the same pattern in a different gate (`<Index>` and `AppLayout` waiting on auth-derived state that depends on the same client). Once these guards stop blocking on hanging RPCs, the visible spinner clears.
 
-- `class_module_progress`
-  - `user_id`, `class_id`, `item_id`, `completed` bool, `completed_at`
-  - PK (`user_id`, `item_id`); index (`user_id`,`class_id`)
-  - Replaces any localStorage usage entirely.
+## Fix (frontend only — no DB / auth flow / policy changes)
 
-- `class_module_audit` (append-only diff log, like `class_audit`)
+### 1. New helper: `src/lib/db/rpc-with-timeout.ts`
 
-**SECURITY DEFINER RPCs** (single write path, idempotent, transactional):
-- `upsert_class_section(p_class_id, p_section_id?, p_title, p_summary, p_status)`
-- `upsert_class_module_item(p_section_id, p_item_id?, p_title, p_content_html, p_video_url, p_action_type, p_duration_minutes, p_required, p_status)` — runs server-side sanitization via `sanitize_html_strict()` plpgsql/JS-port whitelist (no `<script>`, no `on*`, no `javascript:` URLs, allow iframes only from allowlist domains)
-- `reorder_class_sections(p_class_id, p_ordered_ids uuid[])`
-- `reorder_class_module_items(p_section_id, p_ordered_ids uuid[])` — both use temp-offset trick (`position = -position - 1` then renumber) for atomic conflict-free swaps
-- `publish_class_curriculum(p_class_id)` — bulk publish drafts
-- `toggle_class_module_completion(p_item_id, p_completed)` — checks enrollment, writes progress
+Wrap a Supabase RPC promise with `AbortController` + `Promise.race` against a configurable timeout (default 8000 ms, 1 retry on transient timeout). Returns the standard `{ data, error }` shape so callers don't change. Unit-tested under `src/test/lib/`.
 
-All RPCs go through `withIdempotency` for client retries.
+### 2. `AdminRoute.tsx` — fail open, never block forever
 
-**RLS policies**
-- Sections/items SELECT: class owner OR admin OR enrolled learner (via `cohort_registrations` → `cohorts.class_id`) AND `status='published'` for learners
-- Sections/items INSERT/UPDATE/DELETE: class owner OR admin only — and only via the RPCs (table-level write privilege revoked from `authenticated`; granted to `service_role` + RPC owner)
-- Progress: user reads/writes own only; RPC verifies enrollment
-- Audit: SELECT for owner/admin; INSERT only via trigger
+- Replace direct `(supabase as any).rpc(...)` with the timeout helper (8s).
+- Change the render gate from `(isAdmin && mfaState === null)` to a finite "checking 2FA…" state with a hard ceiling: after 8s, set `mfaState` to a permissive default (`hasTotp: true, graceActive: null`) so admin children render. The dialog/banner will reconcile on the next successful poll.
+- Beacon a `severity:warn` audit event (`reportError`) tagged `fingerprint:admin_2fa_rpc_timeout` so Triage sees the hiccup without paging.
 
-GRANTs follow the standard 4-step template.
+### 3. `AdminTwoFactorGraceDialog.tsx` — no pile-ups
 
-### 2. Edge / API
+- Use the same helper with an 8s timeout.
+- Guard the `setInterval` so a poll cannot start while the previous one is in-flight (in-flight ref).
+- On timeout, keep last-known state instead of resetting to `null` (so a transient hiccup never re-shows or hides the modal incorrectly).
 
-No new edge functions required — RPCs handle writes. Server-side HTML sanitization lives in the RPC (uses a Postgres function backed by a strict tag/attr allowlist; we also keep a defense-in-depth DOMPurify pass on the client render).
+### 4. `useDiscordRoleRetry.ts` — bounded and non-blocking
 
-### 3. Frontend (one engine, no duplicates)
+- Apply the same 8s timeout to the `list_pending_role_grants_for_user` RPC and to `mark_discord_role_grant_result`.
+- Already runs after a 1.5s delay; keep that. Already `triedRef`-guarded; keep that.
 
-New folder `src/features/class-curriculum/` (Service → Hooks → UI). No business logic in components.
+### 5. BDD scenarios (DB-first per workspace rules)
 
-- `services/classCurriculum.service.ts` — single port; wraps RPCs via `useIdempotentMutation`
-- `hooks/useClassCurriculum.ts` — React Query: sections+items in one query keyed by `class_id`
-- `hooks/useClassModuleProgress.ts` — keyed by `(user_id, class_id)`, 750ms debounced writes (matches our journey_progress pattern)
-- `components/`
-  - `CurriculumEditor.tsx` — teacher-only; `@dnd-kit/sortable` for sections + items; autosave on blur, optimistic + rollback
-  - `SectionEditorRow.tsx`, `ItemEditorDialog.tsx` (title, action type, video URL, WYSIWYG, required, status)
-  - `WysiwygEditor.tsx` — reuse the existing TipTap editor used by Announcements; same toolbar; sanitization on submit
-  - `VideoEmbed.tsx` — normalizes YouTube / Vimeo / Loom / Google Meet links; Google Meet shows a styled "Join meeting" card (Meet can't be iframed — we render a CTA, not a broken embed) — eliminates a foot-gun the user didn't anticipate
-  - `LearnerCurriculumView.tsx` — renders the **same** `CourseSection`/`CourseLesson` shape consumed by `GenericCoursePage` so visual parity is structural, not copy-pasted. We extract the existing presentational pieces from `GenericCoursePage` into `src/components/courses/CoursePlayer/` (pure props, no data fetching) and both the core-course page and the class learner view consume them.
+Insert into `bdd_scenarios` with tri-layer Then-clauses tagged `[UI]/[DB]/[Code]`:
 
-- `pages/ClassDetailPage.tsx` — add `Curriculum` tab:
-  - Teachers/admins: `<CurriculumEditor classId=…/>`
-  - Enrolled learners: `<LearnerCurriculumView classId=…/>`
-  - Everyone else: locked card
+- `ADMIN-2FA-TIMEOUT-001` Admin opens `/admin/*` while grace RPC hangs → page renders within 8s with permissive default; warn-severity audit row written; no `agent_fix_queue` row.
+- `ADMIN-2FA-TIMEOUT-002` Grace dialog poll times out → dialog state unchanged; no duplicate in-flight requests.
+- `DISCORD-RETRY-TIMEOUT-001` Pending role grants RPC times out → queue remains; no UI block.
 
-Routing already exists (`/classes/:classId`); no new routes needed.
+### 6. Tests
 
-### Reordering UX
+- Vitest unit tests for `rpc-with-timeout` (resolves, rejects on timeout, retries once, AbortController fires).
+- Vitest UI test for `AdminRoute` rendering children after timeout when `mfaState` never resolves.
 
-dnd-kit `SortableContext` with vertical strategy. On drop:
-1. Optimistic local reorder
-2. Call `reorder_class_*` RPC with ordered ID array
-3. On error: rollback + toast
+## Out of scope
 
-The RPC swaps positions atomically inside one transaction (deferrable unique). No N writes from the client — one round trip.
+- No changes to `auth.users`, profiles, roles, MFA, RLS, or any auth/session machinery.
+- No changes to the 3 RPC definitions themselves.
+- No new auth entrypoints or providers.
 
-### Propagation to cohorts
+## Files touched
 
-Curriculum lives at `class_id`, never at `cohort_id`. All `cohorts` of a class share one curriculum row-set. New cohort registrations immediately see published modules — no copy/sync job needed. This is the requested "updated for any class already registered."
+```text
+src/lib/db/rpc-with-timeout.ts                 NEW
+src/components/AdminRoute.tsx                  EDIT (timeout + fail-open)
+src/components/AdminTwoFactorGraceDialog.tsx   EDIT (timeout + in-flight guard)
+src/hooks/use-discord-role-retry.ts            EDIT (timeout)
+src/test/lib/rpc-with-timeout.test.ts          NEW
+src/test/ui/admin-route-fail-open.test.tsx     NEW
+supabase/migrations/<new>.sql                  NEW (BDD scenarios only)
+```
 
-## Security (OWASP coverage)
-
-- **A01 Broken Access**: RLS + RPC ownership checks + table-write revocation
-- **A03 Injection**: Server-side HTML sanitizer (strict allowlist), URL allowlist for video providers, parameterized RPCs only
-- **A04 Insecure Design**: Single write port, idempotency keys, audit log
-- **A05 Misconfig**: GRANTs explicit; default-deny RLS
-- **A07 Auth**: RPCs check `auth.uid()` + `has_role`; no anon access
-- **A08 Data Integrity**: deferrable unique on position; trigger-derived `video_provider`/`video_embed_url` so client can't spoof
-- **A09 Logging**: `class_module_audit` append-only hash-chain entries
-- **A10 SSRF**: We never fetch the video URL server-side; provider parsing is regex-only
-
-## Accessibility (WCAG 2/3)
-
-- dnd-kit keyboard sortable strategy (Arrow keys + Space)
-- All interactive items have visible focus + `aria-grabbed`/`aria-describedby` live regions
-- WYSIWYG: TipTap with proper headings (no skipped levels), alt text required for inserted images
-- Video embeds carry `title` attr and a transcript field (optional but linted)
-
-## BDD scenarios (stored in `bdd_scenarios`)
-
-Feature `class-curriculum`:
-- CC-001 Teacher creates section → row in DB, audit entry, appears in editor [UI/DB/Code]
-- CC-002 Teacher adds module with WYSIWYG + YouTube URL → sanitized HTML stored, `video_provider='youtube'`, `video_embed_url` normalized [UI/DB/Code]
-- CC-003 Teacher embeds `<script>` → stripped server-side, audit logs sanitization [UI/DB/Code]
-- CC-004 Teacher drags section to new position → `reorder_class_sections` RPC, positions renumbered atomically [UI/DB/Code]
-- CC-005 Teacher drags item across sections → item.section_id + position updated transactionally [UI/DB/Code]
-- CC-006 Non-owner teacher attempts edit → RLS denies, no audit row [UI/DB/Code]
-- CC-007 Enrolled learner sees only `published` modules [UI/DB/Code]
-- CC-008 Unenrolled member gets locked card, RLS denies direct query [UI/DB/Code]
-- CC-009 Learner toggles completion → `class_module_progress` upserted; progress bar updates [UI/DB/Code]
-- CC-010 Google Meet URL renders CTA card, not iframe [UI/Code]
-- CC-011 Reorder during concurrent edit → deferrable unique resolves; no constraint violation [DB]
-- CC-012 Publish curriculum makes all draft items visible to existing cohort registrants without re-registration [UI/DB]
-- CC-013 Class deleted → curriculum + progress cascade-delete; audit retained [DB]
-- CC-014 Idempotent retry of `upsert_class_module_item` returns same row [Code/DB]
-- CC-015 Keyboard-only user can reorder sections (Arrow+Space) [UI a11y]
-
-## Out of scope (explicit)
-
-- Quizzes / graded assessments (future)
-- File attachments (future; can reuse `class-resources` bucket later)
-- Per-cohort overrides (intentional: curriculum is class-level by your spec)
-- Course-catalog migration of teacher modules into core curriculum
-
-## Shipment order (one PR per phase, each independently revertible)
-
-1. Migration: tables, enums, RPCs, RLS, audit triggers, GRANTs
-2. Extract `CoursePlayer` presentational components from `GenericCoursePage`
-3. `class-curriculum` service + hooks
-4. `CurriculumEditor` + dnd-kit + WYSIWYG + VideoEmbed
-5. `LearnerCurriculumView` + Curriculum tab on `ClassDetailPage`
-6. BDD scenarios inserted; vitest unit tests for sanitizer + reorder math; Playwright happy-path
+Each step is independently revertible.

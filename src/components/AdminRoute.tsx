@@ -2,7 +2,8 @@ import { Navigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdmin } from "@/hooks/use-admin";
 import { MfaService } from "@/services/mfa.service";
-import { supabase } from "@/integrations/supabase/client";
+import { rpcWithTimeout } from "@/lib/db/rpc-with-timeout";
+import { reportError } from "@/services/error-reporter.service";
 import { toast } from "sonner";
 import { useEffect, useRef, useState } from "react";
 import { ShieldCheck, Clock } from "lucide-react";
@@ -38,17 +39,30 @@ export function AdminRoute({ children }: { children: React.ReactNode }) {
       setMfaState(null);
       const [hasTotpResult, deadlineResult, graceResult] = await Promise.allSettled([
         MfaService.hasVerifiedTotp(),
-        (supabase as any).rpc("admin_2fa_grace_deadline", { _user_id: user.id }),
-        (supabase as any).rpc("admin_2fa_grace_active", { _user_id: user.id }),
+        rpcWithTimeout<string | null>("admin_2fa_grace_deadline", { _user_id: user.id }),
+        rpcWithTimeout<boolean>("admin_2fa_grace_active", { _user_id: user.id }),
       ]);
       if (cancelled) return;
       const hasTotp = hasTotpResult.status === "fulfilled" ? hasTotpResult.value : false;
-      const deadline = deadlineResult.status === "fulfilled" && !deadlineResult.value.error
-        ? (deadlineResult.value.data as string | null)
-        : null;
-      const graceActive = graceResult.status === "fulfilled" && !graceResult.value.error
-        ? graceResult.value.data === true
-        : null;
+      const deadlineRes = deadlineResult.status === "fulfilled" ? deadlineResult.value : null;
+      const graceRes = graceResult.status === "fulfilled" ? graceResult.value : null;
+      const timedOut =
+        deadlineRes?.error?.code === "RPC_TIMEOUT" || graceRes?.error?.code === "RPC_TIMEOUT";
+      if (timedOut) {
+        // Fail open: never block admin render on a wedged PostgREST stream.
+        // The dialog/banner reconciles on the next successful poll.
+        reportError(
+          "admin 2FA grace RPC timed out — failing open",
+          "AdminRoute",
+          {
+            eventType: "infra_transient",
+            severity: "warn",
+            extraFields: ["fingerprint:admin_2fa_rpc_timeout"],
+          },
+        );
+      }
+      const deadline = deadlineRes && !deadlineRes.error ? deadlineRes.data : null;
+      const graceActive = graceRes && !graceRes.error ? graceRes.data === true : null;
       setMfaState({ hasTotp, graceActive, deadline });
     })();
     return () => { cancelled = true; };

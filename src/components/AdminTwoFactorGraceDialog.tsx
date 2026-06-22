@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,7 @@ import { ShieldCheck, ArrowRight, LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdmin } from "@/hooks/use-admin";
 import { MfaService } from "@/services/mfa.service";
-import { supabase } from "@/integrations/supabase/client";
+import { rpcWithTimeout } from "@/lib/db/rpc-with-timeout";
 import { signOutSafe } from "@/lib/auth/session-port";
 
 /**
@@ -43,6 +43,7 @@ export function AdminTwoFactorGraceDialog() {
     location.pathname.startsWith("/confirm-teacher") ||
     location.pathname.startsWith("/unsubscribe");
 
+  const inFlightRef = useRef(false);
   useEffect(() => {
     let cancelled = false;
     if (authLoading || adminLoading || !profileLoaded || !user || !isAdmin) {
@@ -53,26 +54,32 @@ export function AdminTwoFactorGraceDialog() {
     }
 
     const refresh = async () => {
+      // Prevent pile-ups when an earlier poll is still wedged on a stuck stream.
+      if (inFlightRef.current) return;
+      inFlightRef.current = true;
       try {
         const [hasTotpResult, graceResult, deadlineResult] = await Promise.allSettled([
           MfaService.hasVerifiedTotp(),
-          (supabase as any).rpc("admin_2fa_grace_active", { _user_id: user.id }),
-          (supabase as any).rpc("admin_2fa_grace_deadline", { _user_id: user.id }),
+          rpcWithTimeout<boolean>("admin_2fa_grace_active", { _user_id: user.id }),
+          rpcWithTimeout<string | null>("admin_2fa_grace_deadline", { _user_id: user.id }),
         ]);
         if (cancelled) return;
-        setHasTotp(hasTotpResult.status === "fulfilled" ? hasTotpResult.value : null);
-        setGraceActive(
-          graceResult.status === "fulfilled" && !graceResult.value.error
-            ? graceResult.value.data === true
-            : null,
-        );
-        setDeadline(
-          deadlineResult.status === "fulfilled" && !deadlineResult.value.error
-            ? (deadlineResult.value.data as string | null)
-            : null,
-        );
+        // On timeout, keep last-known state so a transient hiccup never flips the modal.
+        if (hasTotpResult.status === "fulfilled") {
+          setHasTotp(hasTotpResult.value);
+        }
+        const graceRes = graceResult.status === "fulfilled" ? graceResult.value : null;
+        if (graceRes && graceRes.error?.code !== "RPC_TIMEOUT") {
+          setGraceActive(!graceRes.error ? graceRes.data === true : null);
+        }
+        const deadlineRes = deadlineResult.status === "fulfilled" ? deadlineResult.value : null;
+        if (deadlineRes && deadlineRes.error?.code !== "RPC_TIMEOUT") {
+          setDeadline(!deadlineRes.error ? (deadlineRes.data as string | null) : null);
+        }
       } catch {
         // Fail closed (don't render) rather than nag with a broken state.
+      } finally {
+        inFlightRef.current = false;
       }
     };
 
