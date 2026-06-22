@@ -22,6 +22,7 @@ export type AuthEngineKind =
   | "auth_engine.sign_up_started"
   | "auth_engine.sign_up_succeeded"
   | "auth_engine.sign_up_failed"
+  | "auth_engine.sign_up_indeterminate_resolved"
   | "auth_engine.forgot_started"
   | "auth_engine.forgot_succeeded"
   | "auth_engine.forgot_failed"
