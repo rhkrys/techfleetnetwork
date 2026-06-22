@@ -279,6 +279,24 @@ export function useRegisterEngine(): RegisterEngine {
         setLoading(false);
         return;
       }
+      if (e?.code === "EMAIL_UNCONFIRMED") {
+        // Indeterminate-resolve probe found the row exists but is awaiting
+        // verification — same "Check your email" success surface as a normal
+        // signup. Don't punish the user for a server hiccup.
+        clearAuthLockout();
+        telemetryPort.record("auth_engine.sign_up_indeterminate_resolved", { email: result.data.email, outcome: "email_unconfirmed" });
+        setSubmitted(true);
+        setLoading(false);
+        return;
+      }
+      if (e?.code === "ACCOUNT_RECOVERED_SIGNED_IN") {
+        // Probe signed the user in — the AuthContext listener will pick the
+        // session up. Redirect to their intended destination immediately.
+        clearAuthLockout();
+        telemetryPort.record("auth_engine.sign_up_indeterminate_resolved", { email: result.data.email, outcome: "signed_in" });
+        window.location.assign(redirectParam || "/dashboard");
+        return;
+      }
       applyServerRateLimitFailure(result.data.email, "signup_attempt");
       setAuthError(e.message ?? "We couldn't create your account. Try again in a moment.");
       const nextLockout = applyInvalidAttempt();
