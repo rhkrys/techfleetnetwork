@@ -1,33 +1,11 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { ClassFormValues } from "@/lib/validators/class";
 import { assertWritten } from "@/lib/db-helpers";
-import { isTransientError } from "@/lib/errors/extract";
+import { retryTransientWrite } from "@/lib/db/retry";
 import { sendClassStatusEmails } from "./class-emails";
 
-/**
- * Retry a Supabase mutation on transient upstream failures only.
- * Never retries RLS denials, validation errors, or unknown errors.
- * Exponential backoff with jitter: 250ms, 500ms, 1000ms.
- */
-async function retryTransient<T>(
-  fn: () => Promise<T>,
-  opts: { attempts?: number; baseMs?: number } = {}
-): Promise<T> {
-  const attempts = opts.attempts ?? 3;
-  const baseMs = opts.baseMs ?? 250;
-  let lastErr: unknown;
-  for (let i = 0; i < attempts; i++) {
-    try {
-      return await fn();
-    } catch (err) {
-      lastErr = err;
-      if (!isTransientError(err) || i === attempts - 1) throw err;
-      const delay = baseMs * Math.pow(2, i) + Math.floor(Math.random() * baseMs);
-      await new Promise((r) => setTimeout(r, delay));
-    }
-  }
-  throw lastErr;
-}
+// Back-compat local alias — prior callers in this file referenced `retryTransient`.
+const retryTransient = retryTransientWrite;
 
 export type ClassRow = {
   id: string;
@@ -111,6 +89,9 @@ export const ClassService = {
           why_take: values.why_take,
           audiences: values.audiences,
           prerequisites: values.prerequisites,
+          curriculum: values.curriculum ?? "",
+          reading_assignments: values.reading_assignments ?? "",
+          class_expectations: values.class_expectations ?? "",
           slug: "", // server trigger will populate
         } as never)
         .select("id")

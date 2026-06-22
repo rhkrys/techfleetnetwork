@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { safeRequiredTextSchema, safeShortTextSchema, safeUrlSchema } from "@/lib/validators/shared-input";
+import {
+  safeHtmlSchema,
+  safeRequiredTextSchema,
+  safeShortTextSchema,
+  safeUrlSchema,
+} from "@/lib/validators/shared-input";
 
 export const COHORT_STATUSES = ["draft", "pending_review", "published", "archived", "cancelled"] as const;
 export type CohortStatus = (typeof COHORT_STATUSES)[number];
@@ -26,6 +31,9 @@ export const cohortFormSchema = z
       .union([z.coerce.number().int().min(1).max(10_000), z.literal("").transform(() => null), z.null()])
       .optional()
       .nullable(),
+    // New optional rich-text section (CLASS-EDIT-EXT-004).
+    // Sanitized again at the DB layer by sanitize_cohorts_html trigger.
+    schedule: safeHtmlSchema("Schedule of Classes", 50_000).default(""),
   })
   .refine((d) => Date.parse(d.end_date) >= Date.parse(d.start_date), {
     message: "End date must be on or after start date",

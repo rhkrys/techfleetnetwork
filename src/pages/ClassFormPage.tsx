@@ -57,6 +57,9 @@ export default function ClassFormPage() {
       why_take: "",
       audiences: "",
       prerequisites: [],
+      curriculum: "",
+      reading_assignments: "",
+      class_expectations: "",
     }),
     []
   );
@@ -124,6 +127,9 @@ export default function ClassFormPage() {
         why_take: existing.why_take ?? "",
         audiences: existing.audiences ?? "",
         prerequisites: existing.prerequisites ?? [],
+        curriculum: (existing as { curriculum?: string }).curriculum ?? "",
+        reading_assignments: (existing as { reading_assignments?: string }).reading_assignments ?? "",
+        class_expectations: (existing as { class_expectations?: string }).class_expectations ?? "",
       });
       setPrereqText((existing.prerequisites ?? []).join("\n"));
     }
@@ -168,10 +174,13 @@ export default function ClassFormPage() {
 
   const skills = form.watch("skills");
   const summary = form.watch("summary");
-  
+
   const outcomes = form.watch("outcomes");
   const whyTake = form.watch("why_take");
   const audiences = form.watch("audiences");
+  const curriculum = form.watch("curriculum");
+  const readingAssignments = form.watch("reading_assignments");
+  const classExpectations = form.watch("class_expectations");
   const heroUrl = form.watch("hero_image_url");
 
   return (
@@ -270,6 +279,42 @@ export default function ClassFormPage() {
             onChange={(html) => form.setValue("audiences", html, { shouldDirty: true })}
             placeholder="Who this class is for…"
           />
+        </div>
+
+        <div>
+          <Label>Curriculum</Label>
+          <RichTextEditor
+            content={curriculum}
+            onChange={(html) => form.setValue("curriculum", html, { shouldDirty: true })}
+            placeholder="Outline the modules, topics, and flow of the class (optional)…"
+          />
+          {form.formState.errors.curriculum && (
+            <p className="text-xs text-destructive mt-1">{form.formState.errors.curriculum.message}</p>
+          )}
+        </div>
+
+        <div>
+          <Label>Reading Assignments</Label>
+          <RichTextEditor
+            content={readingAssignments}
+            onChange={(html) => form.setValue("reading_assignments", html, { shouldDirty: true })}
+            placeholder="Books, articles, or links learners should read (optional)…"
+          />
+          {form.formState.errors.reading_assignments && (
+            <p className="text-xs text-destructive mt-1">{form.formState.errors.reading_assignments.message}</p>
+          )}
+        </div>
+
+        <div>
+          <Label>Class Expectations</Label>
+          <RichTextEditor
+            content={classExpectations}
+            onChange={(html) => form.setValue("class_expectations", html, { shouldDirty: true })}
+            placeholder="Attendance, participation, time commitment, code of conduct (optional)…"
+          />
+          {form.formState.errors.class_expectations && (
+            <p className="text-xs text-destructive mt-1">{form.formState.errors.class_expectations.message}</p>
+          )}
         </div>
 
         <div>

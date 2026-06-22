@@ -15,3 +15,12 @@ export function useCohortsByClass(classId: string | undefined, opts: { published
     ...CACHE_USER_MUTABLE,
   });
 }
+
+export function useCohortById(cohortId: string | undefined) {
+  return useQuery({
+    queryKey: ["cohorts", "byId", cohortId ?? "none"] as const,
+    queryFn: () => (cohortId ? CohortService.getById(cohortId) : Promise.resolve(null)),
+    enabled: !!cohortId,
+    ...CACHE_USER_MUTABLE,
+  });
+}

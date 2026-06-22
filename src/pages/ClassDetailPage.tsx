@@ -150,6 +150,27 @@ export default function ClassDetailPage() {
         </section>
       )}
 
+      {(cls as { curriculum?: string }).curriculum?.trim() && (
+        <section aria-labelledby="class-curriculum-heading">
+          <h2 id="class-curriculum-heading" className="font-semibold text-base mb-2">Curriculum</h2>
+          <div className="prose prose-invert max-w-none text-sm text-foreground" dangerouslySetInnerHTML={{ __html: sanitizeHtml((cls as { curriculum?: string }).curriculum ?? "") }} />
+        </section>
+      )}
+
+      {(cls as { reading_assignments?: string }).reading_assignments?.trim() && (
+        <section aria-labelledby="class-reading-heading">
+          <h2 id="class-reading-heading" className="font-semibold text-base mb-2">Reading Assignments</h2>
+          <div className="prose prose-invert max-w-none text-sm text-foreground" dangerouslySetInnerHTML={{ __html: sanitizeHtml((cls as { reading_assignments?: string }).reading_assignments ?? "") }} />
+        </section>
+      )}
+
+      {(cls as { class_expectations?: string }).class_expectations?.trim() && (
+        <section aria-labelledby="class-expectations-heading">
+          <h2 id="class-expectations-heading" className="font-semibold text-base mb-2">Class Expectations</h2>
+          <div className="prose prose-invert max-w-none text-sm text-foreground" dangerouslySetInnerHTML={{ __html: sanitizeHtml((cls as { class_expectations?: string }).class_expectations ?? "") }} />
+        </section>
+      )}
+
       {cls.skills.length > 0 && (
         <div>
           <h3 className="font-semibold text-sm mb-2">Skills</h3>
@@ -175,32 +196,50 @@ export default function ClassDetailPage() {
         ) : (
           <div className="space-y-2">
             {cohorts.map((c) => (
-              <div key={c.id} className="card-elevated p-4 flex items-center justify-between gap-3">
-                <div>
-                  <div className="font-medium text-foreground">{c.label}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {format(new Date(c.start_date), "MMM d")} – {format(new Date(c.end_date), "MMM d, yyyy")} · {c.timezone}
+              <div key={c.id} className="card-elevated p-4 flex flex-col gap-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-medium text-foreground">{c.label}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {format(new Date(c.start_date), "MMM d")} – {format(new Date(c.end_date), "MMM d, yyyy")} · {c.timezone}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant="outline">{c.status}</Badge>
+                    {c.status === "published" && c.registration_url && (
+                      <Button
+                        asChild
+                        size="sm"
+                        onClick={() => CohortService.recordRegistrationClick(c.id).catch(() => undefined)}
+                      >
+                        <a href={c.registration_url} target="_blank" rel="noopener noreferrer">
+                          Register <ExternalLink className="h-3 w-3 ml-1" aria-hidden="true" />
+                        </a>
+                      </Button>
+                    )}
+                    {canEdit && (isAdmin || c.status === "draft" || c.status === "pending_review") && (
+                      <Button asChild size="sm" variant="outline">
+                        <Link to={`/teach/classes/${cls.id}/cohorts/${c.id}/edit`} aria-label={`Edit cohort ${c.label}`}>
+                          <Pencil className="h-4 w-4 mr-1" aria-hidden="true" />Edit
+                        </Link>
+                      </Button>
+                    )}
+                    {canEdit && c.status === "draft" && (
+                      <Button size="sm" variant="outline" onClick={() => submitCohort(c.id)}>
+                        Submit
+                      </Button>
+                    )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline">{c.status}</Badge>
-                  {c.status === "published" && c.registration_url && (
-                    <Button
-                      asChild
-                      size="sm"
-                      onClick={() => CohortService.recordRegistrationClick(c.id).catch(() => undefined)}
-                    >
-                      <a href={c.registration_url} target="_blank" rel="noopener noreferrer">
-                        Register <ExternalLink className="h-3 w-3 ml-1" aria-hidden="true" />
-                      </a>
-                    </Button>
-                  )}
-                  {canEdit && c.status === "draft" && (
-                    <Button size="sm" variant="outline" onClick={() => submitCohort(c.id)}>
-                      Submit
-                    </Button>
-                  )}
-                </div>
+                {(c as { schedule?: string }).schedule?.trim() && (
+                  <div className="border-t border-border pt-2">
+                    <div className="text-xs font-semibold text-muted-foreground mb-1">Schedule of Classes</div>
+                    <div
+                      className="prose prose-invert max-w-none text-sm text-foreground"
+                      dangerouslySetInnerHTML={{ __html: sanitizeHtml((c as { schedule?: string }).schedule ?? "") }}
+                    />
+                  </div>
+                )}
               </div>
             ))}
           </div>

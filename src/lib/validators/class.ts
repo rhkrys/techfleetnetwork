@@ -2,7 +2,6 @@ import { z } from "zod";
 import {
   safeHtmlSchema,
   safeRequiredTextSchema,
-  safeShortTextSchema,
   safeStringArraySchema,
   safeUrlSchema,
 } from "@/lib/validators/shared-input";
@@ -26,6 +25,11 @@ export const classFormSchema = z.object({
   why_take: safeHtmlSchema("Why take this course?", 20_000).default(""),
   audiences: safeHtmlSchema("Audiences", 20_000).default(""),
   prerequisites: safeStringArraySchema("Prerequisites", 30, 200).default([]),
+  // New optional rich-text sections (CLASS-EDIT-EXT-001).
+  // Sanitized again at the DB layer by sanitize_classes_html trigger.
+  curriculum: safeHtmlSchema("Curriculum", 50_000).default(""),
+  reading_assignments: safeHtmlSchema("Reading Assignments", 20_000).default(""),
+  class_expectations: safeHtmlSchema("Class Expectations", 20_000).default(""),
 });
 
 export type ClassFormValues = z.infer<typeof classFormSchema>;
