@@ -36,8 +36,11 @@ export function useAnnouncements(limit = 50) {
 export function useLatestAnnouncements(limit = 5) {
   // 60s poll — the bell also revalidates on focus; 30s polling was overkill
   // and doubled the rate of transient failures hitting the triage queue.
+  // Identity-scoped so a new sign-in does not inherit the previous user's
+  // unread/read overlay state in cache.
+  const { user } = useAuth();
   return useQuery({
-    queryKey: queryKeys.announcementsLatest(limit),
+    queryKey: ["identity", user?.id ?? "anon", ...queryKeys.announcementsLatest(limit)] as const,
     queryFn: () => AnnouncementService.latest(limit),
     refetchInterval: 60_000,
     refetchIntervalInBackground: false,
@@ -48,6 +51,7 @@ export function useLatestAnnouncements(limit = 5) {
     retry: transientRetry,
     retryDelay: transientRetryDelay,
   });
+
 }
 
 export function useAnnouncementReadIds() {
