@@ -53,6 +53,10 @@ export default tseslint.config(
           // throws "catch is not a function" at runtime (root cause of 18
           // `email_failed` audit rows on 2026-06-05).
           "no-rpc-then-catch": noRpcThenCatch,
+          // 2026-06-22 — kills the PGRST002/503 schema-cache class of incidents
+          // by forcing every service-layer supabase.rpc/from through a
+          // transient-retry wrapper. See mem://tech/observability/transient-retry.
+          "no-raw-supabase-rpc": noRawSupabaseRpc,
         },
       },
       // Email subsystem v2 Phase 6 — bans direct invokes of legacy
