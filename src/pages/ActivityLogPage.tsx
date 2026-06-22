@@ -581,8 +581,12 @@ export default function ActivityLogPage() {
             </Button>
           )}
         </div>
-        <Badge variant="secondary" className="text-xs whitespace-nowrap">
-          {totalCount} events
+        <Badge
+          variant="secondary"
+          className="text-xs whitespace-nowrap"
+          title={countEstimated ? "Estimated total. Filter or refresh for an exact count." : undefined}
+        >
+          {countEstimated ? "~" : ""}{totalCount.toLocaleString()} events
         </Badge>
         <Button
           variant="outline"
