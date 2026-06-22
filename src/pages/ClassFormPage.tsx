@@ -242,80 +242,68 @@ export default function ClassFormPage() {
           )}
         </div>
 
-        <div>
-          <Label>Summary</Label>
-          <RichTextEditor
-            content={summary}
-            onChange={(html) => form.setValue("summary", html, { shouldValidate: true, shouldDirty: true })}
-            placeholder="A short overview of the class…"
-          />
-          {form.formState.errors.summary && (
-            <p className="text-xs text-destructive mt-1">{form.formState.errors.summary.message}</p>
-          )}
-        </div>
+        <RichTextSection
+          id="rts-summary"
+          label="Summary"
+          placeholder="A short overview of the class…"
+          value={summary}
+          onChange={(html) => form.setValue("summary", html, { shouldValidate: true, shouldDirty: true })}
+          error={form.formState.errors.summary?.message}
+        />
 
-        <div>
-          <Label>Why take this course?</Label>
-          <RichTextEditor
-            content={whyTake}
-            onChange={(html) => form.setValue("why_take", html, { shouldDirty: true })}
-            placeholder="What learners gain, the value of taking this course…"
-          />
-        </div>
+        <RichTextSection
+          id="rts-why-take"
+          label="Why take this course?"
+          placeholder="What learners gain, the value of taking this course…"
+          value={whyTake}
+          onChange={(html) => form.setValue("why_take", html, { shouldDirty: true })}
+          error={form.formState.errors.why_take?.message}
+        />
 
-        <div>
-          <Label>Outcomes</Label>
-          <RichTextEditor
-            content={outcomes}
-            onChange={(html) => form.setValue("outcomes", html, { shouldDirty: true })}
-            placeholder="What learners will be able to do after completing this class…"
-          />
-        </div>
+        <RichTextSection
+          id="rts-outcomes"
+          label="Outcomes"
+          placeholder="What learners will be able to do after completing this class…"
+          value={outcomes}
+          onChange={(html) => form.setValue("outcomes", html, { shouldDirty: true })}
+          error={form.formState.errors.outcomes?.message}
+        />
 
-        <div>
-          <Label>Audiences</Label>
-          <RichTextEditor
-            content={audiences}
-            onChange={(html) => form.setValue("audiences", html, { shouldDirty: true })}
-            placeholder="Who this class is for…"
-          />
-        </div>
+        <RichTextSection
+          id="rts-audiences"
+          label="Audiences"
+          placeholder="Who this class is for…"
+          value={audiences}
+          onChange={(html) => form.setValue("audiences", html, { shouldDirty: true })}
+          error={form.formState.errors.audiences?.message}
+        />
 
-        <div>
-          <Label>Curriculum</Label>
-          <RichTextEditor
-            content={curriculum}
-            onChange={(html) => form.setValue("curriculum", html, { shouldDirty: true })}
-            placeholder="Outline the modules, topics, and flow of the class (optional)…"
-          />
-          {form.formState.errors.curriculum && (
-            <p className="text-xs text-destructive mt-1">{form.formState.errors.curriculum.message}</p>
-          )}
-        </div>
+        <RichTextSection
+          id="rts-curriculum"
+          label="Curriculum"
+          placeholder="Outline the modules, topics, and flow of the class (optional)…"
+          value={curriculum}
+          onChange={(html) => form.setValue("curriculum", html, { shouldDirty: true })}
+          error={form.formState.errors.curriculum?.message}
+        />
 
-        <div>
-          <Label>Reading Assignments</Label>
-          <RichTextEditor
-            content={readingAssignments}
-            onChange={(html) => form.setValue("reading_assignments", html, { shouldDirty: true })}
-            placeholder="Books, articles, or links learners should read (optional)…"
-          />
-          {form.formState.errors.reading_assignments && (
-            <p className="text-xs text-destructive mt-1">{form.formState.errors.reading_assignments.message}</p>
-          )}
-        </div>
+        <RichTextSection
+          id="rts-reading-assignments"
+          label="Reading Assignments"
+          placeholder="Books, articles, or links learners should read (optional)…"
+          value={readingAssignments}
+          onChange={(html) => form.setValue("reading_assignments", html, { shouldDirty: true })}
+          error={form.formState.errors.reading_assignments?.message}
+        />
 
-        <div>
-          <Label>Class Expectations</Label>
-          <RichTextEditor
-            content={classExpectations}
-            onChange={(html) => form.setValue("class_expectations", html, { shouldDirty: true })}
-            placeholder="Attendance, participation, time commitment, code of conduct (optional)…"
-          />
-          {form.formState.errors.class_expectations && (
-            <p className="text-xs text-destructive mt-1">{form.formState.errors.class_expectations.message}</p>
-          )}
-        </div>
+        <RichTextSection
+          id="rts-class-expectations"
+          label="Class Expectations"
+          placeholder="Attendance, participation, time commitment, code of conduct (optional)…"
+          value={classExpectations}
+          onChange={(html) => form.setValue("class_expectations", html, { shouldDirty: true })}
+          error={form.formState.errors.class_expectations?.message}
+        />
 
         <div>
           <Label htmlFor="skills">Skills</Label>
