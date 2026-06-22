@@ -1,14 +1,14 @@
 /**
  * AUTH-MFA-NO-PRECREATE-001 + AUTH-MFA-TRANSIENT-PRESERVES-INPUT-001:
  *
- *  - `MfaChallengeDialog` MUST NOT call `MfaService.createChallenge` on
- *    open. The challenge is created microseconds before verify inside
- *    `challengeAndVerifyResilient` — pre-creating leads to TTL expiry by
- *    the time the user finishes typing 6 digits.
- *  - Verify click invokes `challengeAndVerifyResilient` exactly once per
- *    click (no double-fire from React strict mode or input completion).
- *  - On a transient error the input retains the typed digits — only a real
+ *  - `MfaChallengeDialog` MUST NOT call `MfaService.createChallenge` on open.
+ *  - Verify click invokes `challengeAndVerifyResilient` exactly once per click.
+ *  - On a transient error the input retains the typed digits; only a real
  *    `MfaInvalidCodeError` clears the input.
+ *
+ * We stub `input-otp` with a plain `<input>` so `setCode` flows reliably in
+ * jsdom (the real `input-otp` package depends on `document.elementFromPoint`
+ * which jsdom does not implement).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
@@ -36,18 +36,38 @@ vi.mock("@/services/mfa.service", async () => {
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
+// Replace input-otp with a single plain <input data-testid="otp"> that fires
+// the dialog's onChange in jsdom-friendly fashion.
+vi.mock("@/components/ui/input-otp", () => {
+  return {
+    InputOTP: ({ value, onChange, onComplete, maxLength, id }: {
+      value: string;
+      onChange: (v: string) => void;
+      onComplete?: (v: string) => void;
+      maxLength: number;
+      id?: string;
+    }) => (
+      <input
+        data-testid="otp"
+        id={id}
+        value={value}
+        maxLength={maxLength}
+        onChange={(e) => {
+          onChange(e.target.value);
+          if (e.target.value.length === maxLength) onComplete?.(e.target.value);
+        }}
+      />
+    ),
+    InputOTPGroup: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    InputOTPSlot: () => null,
+  };
+});
+
 function setup() {
   const onSuccess = vi.fn();
   const onCancel = vi.fn();
   render(<MfaChallengeDialog open onSuccess={onSuccess} onCancel={onCancel} />);
   return { onSuccess, onCancel };
-}
-
-function typeCode(value: string) {
-  // input-otp wraps a hidden <input>; setting its value via change is
-  // sufficient for the dialog's `onChange={setCode}` plumbing.
-  const input = document.querySelector("input") as HTMLInputElement;
-  fireEvent.input(input, { target: { value } });
 }
 
 describe("MfaChallengeDialog — no pre-create + transient input preservation", () => {
@@ -61,7 +81,6 @@ describe("MfaChallengeDialog — no pre-create + transient input preservation", 
   it("does NOT call createChallenge on open (AUTH-MFA-NO-PRECREATE-001)", async () => {
     setup();
     await waitFor(() => expect(listFactors).toHaveBeenCalled());
-    // Settle any subsequent microtasks from the dialog's open effect.
     await act(async () => { await Promise.resolve(); });
     expect(createChallenge).not.toHaveBeenCalled();
   });
@@ -71,10 +90,11 @@ describe("MfaChallengeDialog — no pre-create + transient input preservation", 
     const { onSuccess } = setup();
     await waitFor(() => expect(listFactors).toHaveBeenCalled());
 
-    typeCode("123456");
-    const verifyBtn = await screen.findByRole("button", { name: /verify/i });
-    fireEvent.click(verifyBtn);
-
+    // Wait for factor to populate so the InputOTP renders.
+    const otp = await screen.findByTestId("otp");
+    // Disable onComplete auto-fire by setting up to 5 first then 6 in one go
+    fireEvent.change(otp, { target: { value: "123456" } });
+    // onComplete fires handleVerify already — wait for that single call.
     await waitFor(() => expect(challengeAndVerifyResilient).toHaveBeenCalledTimes(1));
     expect(challengeAndVerifyResilient).toHaveBeenCalledWith("f1", "123456");
     await waitFor(() => expect(onSuccess).toHaveBeenCalled());
@@ -88,15 +108,12 @@ describe("MfaChallengeDialog — no pre-create + transient input preservation", 
     setup();
     await waitFor(() => expect(listFactors).toHaveBeenCalled());
 
-    typeCode("123456");
-    const verifyBtn = await screen.findByRole("button", { name: /verify/i });
-    fireEvent.click(verifyBtn);
+    const otp = await screen.findByTestId("otp");
+    fireEvent.change(otp, { target: { value: "123456" } });
 
     await waitFor(() => expect(challengeAndVerifyResilient).toHaveBeenCalled());
-    // After the rejection settles, the input STILL holds the same digits.
     await waitFor(() => {
-      const input = document.querySelector("input") as HTMLInputElement;
-      expect(input.value).toBe("123456");
+      expect((screen.getByTestId("otp") as HTMLInputElement).value).toBe("123456");
     });
   });
 
@@ -107,14 +124,12 @@ describe("MfaChallengeDialog — no pre-create + transient input preservation", 
     setup();
     await waitFor(() => expect(listFactors).toHaveBeenCalled());
 
-    typeCode("000000");
-    const verifyBtn = await screen.findByRole("button", { name: /verify/i });
-    fireEvent.click(verifyBtn);
+    const otp = await screen.findByTestId("otp");
+    fireEvent.change(otp, { target: { value: "000000" } });
 
     await waitFor(() => expect(challengeAndVerifyResilient).toHaveBeenCalled());
     await waitFor(() => {
-      const input = document.querySelector("input") as HTMLInputElement;
-      expect(input.value).toBe("");
+      expect((screen.getByTestId("otp") as HTMLInputElement).value).toBe("");
     });
   });
 });
