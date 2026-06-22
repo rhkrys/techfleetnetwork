@@ -91,6 +91,11 @@ const COPY: Record<AuthErrorCode, Copy> = {
     title: "Sign-in is temporarily unavailable",
     body: "We're having trouble right now. Please try again in a moment.",
   },
+  account_exists: {
+    title: "This email is already registered",
+    body: "An account with this email already exists. Sign in to continue, or reset your password if you've forgotten it.",
+    action: "Use Sign in or Reset your password from the registration screen.",
+  },
   unexpected: {
     title: "Something went wrong",
     body: "An unexpected issue interrupted sign-in. Please try again.",
