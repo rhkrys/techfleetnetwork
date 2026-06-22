@@ -392,8 +392,22 @@ export default function DashboardPage() {
 
           case "core_courses":
             return isVisible("core_courses") ? (
-              <section key="core_courses" className="py-8">
-                {allOnboardingDone ? (
+              <section key="core_courses" className="py-8" aria-busy={!overviewReady}>
+                {!overviewReady ? (
+                  // Skeleton instead of "0 of 5 complete" — never flash the brand-new-user
+                  // empty state to a returning user (DASHBOARD-HYDRATE-002).
+                  <div className="card-elevated overflow-hidden" aria-label="Loading your progress">
+                    <div className="px-4 sm:px-5 py-3 border-b">
+                      <Skeleton className="h-5 w-40 mb-2" />
+                      <Skeleton className="h-3 w-24" />
+                    </div>
+                    <div className="p-3 sm:p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                      {Array.from({ length: 4 }).map((_, i) => (
+                        <Skeleton key={i} className="h-40 rounded-lg" />
+                      ))}
+                    </div>
+                  </div>
+                ) : allOnboardingDone ? (
                   (() => {
                     const observerHeading = observerNotStarted
                       ? "You're ready to observe a Tech Fleet project"
