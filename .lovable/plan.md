@@ -1,47 +1,58 @@
-## Diagnosis
+## Root cause
 
-Login is failing because the OAuth callback is not owned by one reliable consumer:
+The failing URL `https://techfleet.network/#error=server_error&error_description=failed+to+sign+in+with+vendor&state=…` is the Lovable/Supabase OAuth broker returning a top-level redirect with an error fragment to the **apex** host `techfleet.network`.
 
-- The installed Lovable auth helper intentionally opens/redirects through `~oauth/initiate`; on published pages it can be a full-page redirect, in preview it should use a popup/web-message path.
-- The app disables automatic URL session detection, but `AuthContext` only consumes hash-token callbacks, not `?code=` callbacks.
-- A leftover guard in `session.service.ts` still treats a root `?code=` callback without a fresh local marker as invalid, strips the URL, clears auth state, and returns the member to the logged-out home page.
-- Auth logs also show `/token` timeouts during the failing attempts; hosted backend is healthy now, but the client must not purge local auth state on one transient token-exchange failure.
+Auth logs confirm Google sign-in **succeeds** when initiated from `techfleetnetwork.lovable.app` (one clean `id_token` grant, 200 OK). It only fails when initiated from the apex custom domain. The broker bounces back with `failed to sign in with vendor` and the app silently lands on the logged-out home because nothing in the app reads `window.location.hash` for an OAuth error fragment — it only handles `#access_token=` and `?code=`.
+
+Two compounding problems:
+
+1. **Apex host is not a reliable OAuth origin.** The Lovable OAuth proxy worker requires the exact custom-domain origin to be active. The apex `techfleet.network` is reaching the broker but the vendor exchange fails (origin/redirect mismatch upstream). The `www` host and the `lovable.app` subdomain work.
+2. **The error fragment is invisible to the app.** When the broker redirects back with `#error=…`, our root route renders the logged-out home, the hash is left in the URL, and the user has no signal, no toast, no retry path.
 
 ## Plan
 
-1. **Create one OAuth callback owner**
-   - Add a dedicated auth callback consumer service used by `AuthContext` before normal session bootstrap.
-   - It will handle both callback shapes:
-     - `?code=...` via the existing session port code-exchange method.
-     - `#access_token=...&refresh_token=...` via the existing session restore method.
-   - It will preserve the saved redirect target and navigate to `/dashboard` or the intended route only after a real session exists.
+### Phase 1 — Canonicalize the OAuth origin (prevents the failure)
 
-2. **Remove the stale purge path**
-   - Delete the root-callback “no UI marker = clear auth” behavior from `session.service.ts`.
-   - Keep CSRF/state validation delegated to the managed auth broker/backend instead of local fragile storage markers.
-   - Keep the marker only as a UX hint for redirect deferral, never as authority to destroy a session.
+- Add `src/lib/auth/oauth-origin.ts` exporting `getCanonicalOAuthOrigin()`:
+  - If `window.location.host === "techfleet.network"`, return `https://www.techfleet.network`.
+  - Otherwise return `window.location.origin`.
+  - Pure, unit-tested, no side effects.
+- In `GoogleSignInButton.handleClick`, before calling `lovable.auth.signInWithOAuth`:
+  - Compute `canonical = getCanonicalOAuthOrigin()`.
+  - If `canonical !== window.location.origin`, store the intended post-login redirect (already done) and `window.location.replace(canonical + "/login?from=oauth-canonical")` instead of starting OAuth on the apex. The new page will auto-restart OAuth via a one-shot query flag.
+  - Else pass `redirect_uri: canonical` to `lovable.auth.signInWithOAuth` so the broker round-trips through the same working host.
+- In `LoginPage` (or wherever `/login` mounts), if `?from=oauth-canonical` is present and the user is unauthenticated, auto-click Google sign-in once (guarded with a sessionStorage one-shot key `tfn:oauth-canonical-restart`).
 
-3. **Harden transient failure handling**
-   - If code exchange/token restore fails with a backend timeout or temporary network failure, do not clear auth storage.
-   - Show a 30-second top-center error with plain recovery copy and leave the user on `/login` or the callback page safely.
-   - Only purge on proven invalid/expired local tokens through the existing two-strike session-health gate.
+### Phase 2 — Surface the error fragment (no more silent bounce)
 
-4. **Normalize redirect behavior**
-   - Make Google sign-in store a safe intended destination before starting OAuth.
-   - After successful callback consumption, `AuthRedirectHandler` sends the member to the stored destination or `/dashboard`.
-   - Ensure `/` with an authenticated session never renders the logged-out home first; it redirects after auth settles.
+- Add `src/lib/auth/oauth-error-fragment.ts`:
+  - `readOAuthErrorFragment(): { error: string; description: string } | null` — parses `window.location.hash` for `error=` + `error_description=` (URL-decoded, `+` → space).
+  - `clearOAuthErrorFragment()` — `history.replaceState` to strip the hash without reloading.
+- In `AuthRedirectHandler` (top of the tree), on mount and on every route change:
+  - If a fragment error is present, call `clearOAuthErrorFragment()`, fire a 30-second top-center error toast ("Google sign-in didn't complete. Please try again."), log a `severity:warn` `oauth_broker_error` audit event via the existing reporter (so it shows in System Health > Login Health), and navigate to `/login?from=oauth-error` (preserving any stored `auth_redirect`).
+  - The `?from=oauth-error` page does NOT auto-retry; it just renders normally so the member can click Google again.
+- The classifier in `src/lib/login-telemetry.ts` and `LoginHealthTab` already understands `error_description` strings — extend its `KNOWN_OAUTH_BROKER_ERRORS` map to include `failed to sign in with vendor` → human label "Provider exchange failed" so admins can see the trend.
 
-5. **Add regression coverage + BDD**
-   - Add tests proving:
-     - `/?code=...&state=...` is exchanged and does not clear local auth.
-     - Missing UI marker no longer signs a valid OAuth callback out.
-     - A transient token timeout does not purge a valid stored session.
-     - Successful Google callback lands on `/dashboard` or the saved route.
-   - Add/update BDD scenarios in the database with UI, DB, and code expected results.
+### Phase 3 — Lock the regression
 
-## Verification receipts after build
+- Tests:
+  - `src/test/lib/oauth-origin.test.ts`: `techfleet.network` → `www.techfleet.network`; everything else passes through.
+  - `src/test/lib/oauth-error-fragment.test.ts`: parses `#error=server_error&error_description=failed+to+sign+in+with+vendor&state=…`, returns decoded fields, `clear` strips the hash.
+  - `src/test/ui/oauth-error-handler.test.tsx`: mount `AuthRedirectHandler` with a mocked location hash, assert toast fires, hash cleared, navigation to `/login?from=oauth-error`.
+  - `src/test/ui/GoogleSignInButton.test.tsx`: when host is `techfleet.network`, asserts no broker call and a redirect to `https://www.techfleet.network/login?from=oauth-canonical`.
+- ESLint guard (`eslint-rules/no-raw-window-origin-in-oauth.js`): forbid `window.location.origin` inside `GoogleSignInButton.tsx` and `src/integrations/lovable/index.ts` consumers — must go through `getCanonicalOAuthOrigin()`.
+- BDD scenarios into `bdd_scenarios` table:
+  - `AUTH-OAUTH-APEX-CANONICAL-001` — Google sign-in from apex transparently restarts on `www`.
+  - `AUTH-OAUTH-APEX-CANONICAL-002` — Apex restart only fires once per browser tab.
+  - `AUTH-OAUTH-ERROR-FRAGMENT-001` — `#error=server_error&error_description=failed+to+sign+in+with+vendor` shows a 30s toast, clears the hash, lands on `/login?from=oauth-error`.
+  - `AUTH-OAUTH-ERROR-FRAGMENT-002` — Fragment without `error=` is left untouched (does not interfere with `#access_token=…`).
+  - Each scenario carries tri-layer Then-clauses ([UI]/[DB]/[Code]) per workspace rules.
 
-- List remaining auth entrypoints and prove Google login has one start path and one callback path.
-- Run targeted auth regression tests.
-- Check fresh auth logs for the same callback-loop signature.
-- Verify the dashboard route is reached after callback consumption.
+## Out of scope
+
+- No changes to DB schema beyond the `bdd_scenarios` inserts.
+- No changes to AuthContext OAuth callback consumer (already implemented in the previous fix).
+- No changes to the Lovable OAuth broker config or Google Cloud OAuth client — fix is purely client-side host canonicalization plus visible error handling.
+- No re-enabling of the service worker.
+
+Each phase is independently revertible: Phase 1 alone removes the failure for the apex host; Phase 2 alone keeps members from getting silently dropped on the home page when any broker error returns; Phase 3 stops the bug class from regressing.
