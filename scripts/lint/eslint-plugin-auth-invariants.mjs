@@ -283,6 +283,53 @@ const noSignupStringMatch = {
   },
 };
 
+// 2026-06-22 — bans raw `supabase.auth.getSession()` / `getUser()` outside the
+// session-port + allowlisted callers. Forces every read through
+// `getSessionSafe()` / `getUserSafe()` so GoTrue's Web Locks "AbortError: Lock
+// broken" race during identity bootstrap is retried in one place instead of
+// surfacing to users. See mem://features/session-port-resilience.
+const FORBIDDEN_SESSION_READS = new Set(["getSession", "getUser"]);
+const noDirectAuthSessionReads = {
+  meta: {
+    type: "problem",
+    docs: { description: "supabase.auth.getSession()/getUser() must route through src/lib/auth/session-port.ts (getSessionSafe / getUserSafe / withAuthLockRetry)." },
+    schema: [],
+    messages: {
+      forbidden:
+        "Direct `{{root}}.auth.{{prop}}()` call. Use `getSessionSafe`/`getUserSafe` from `@/lib/auth/session-port` (or wrap with `withAuthLockRetry`) so GoTrue Web Locks contention is retried in one place.",
+    },
+  },
+  create(context) {
+    if (fileInAuthFeature(context)) return {};
+    if (fileEndsWith(context, AUTH_SERVICE_LEGACY)) return {};
+    if (fileEndsWith(context, AUTO_CLIENT)) return {};
+    if (normalisedFilename(context).includes("src/integrations/lovable/")) return {};
+    if (fileEndsWith(context, SESSION_PORT_FILE)) return {};
+    if (fileEndsWith(context, "src/lib/auth/auth-lock-retry.ts")) return {};
+    if (fileEndsWith(context, GOOGLE_BUTTON_FILE)) return {};
+    if (fileEndsWith(context, CACHED_SESSION_FILE)) return {};
+    if (fileEndsWith(context, SESSION_HEALTH_FILE)) return {};
+    if (fileEndsWith(context, AUTH_CONTEXT_FILE)) return {};
+    if (fileEndsWith(context, MFA_SERVICE_FILE)) return {};
+    if (fileEndsWith(context, TOTP_MGMT_FILE)) return {};
+    return {
+      CallExpression(node) {
+        const callee = node.callee;
+        if (callee?.type !== "MemberExpression") return;
+        const propName = callee.property?.type === "Identifier" ? callee.property.name : null;
+        if (!propName || !FORBIDDEN_SESSION_READS.has(propName)) return;
+        const obj = callee.object;
+        if (obj?.type !== "MemberExpression") return;
+        if (obj.property?.type !== "Identifier" || obj.property.name !== "auth") return;
+        const root = obj.object;
+        if (root?.type !== "Identifier") return;
+        if (root.name !== "supabase" && root.name !== "lovable") return;
+        context.report({ node, messageId: "forbidden", data: { root: root.name, prop: propName } });
+      },
+    };
+  },
+};
+
 export default {
   rules: {
     "no-bare-password-set-input": noBarePasswordSetInput,
@@ -292,6 +339,7 @@ export default {
     "no-auth-storage-literals": noAuthStorageLiterals,
     "no-auth-booleans-in-ui": noAuthBooleansInUi,
     "no-direct-auth-mutations": noDirectAuthMutations,
+    "no-direct-auth-session-reads": noDirectAuthSessionReads,
     "no-signup-string-match": noSignupStringMatch,
   },
 };
