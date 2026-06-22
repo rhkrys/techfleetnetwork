@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { createLogger } from "@/services/logger.service";
+import { retryPostgrest } from "@/lib/data/transient-retry";
 
 const log = createLogger("QuestService");
 
