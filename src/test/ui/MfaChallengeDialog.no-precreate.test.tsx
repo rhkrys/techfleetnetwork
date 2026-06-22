@@ -45,12 +45,13 @@ vi.mock("@/services/mfa.service", async () => {
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 // Replace input-otp with a single plain <input data-testid="otp"> that fires
-// the dialog's onChange in jsdom-friendly fashion.
+// the dialog's onChange in jsdom-friendly fashion. We deliberately do NOT
+// call onComplete from the mock — tests click the Verify button explicitly
+// so handleVerify runs in a fresh render with the updated `code` state.
 vi.mock("@/components/ui/input-otp", () => ({
   InputOTP: (props: Record<string, unknown>) => {
     const value = (props.value as string) ?? "";
     const onChange = props.onChange as ((v: string) => void) | undefined;
-    const onComplete = props.onComplete as ((v: string) => void) | undefined;
     const maxLength = (props.maxLength as number) ?? 6;
     return (
       <input
@@ -58,10 +59,7 @@ vi.mock("@/components/ui/input-otp", () => ({
         id={props.id as string | undefined}
         value={value}
         maxLength={maxLength}
-        onChange={(e) => {
-          onChange?.(e.target.value);
-          if (e.target.value.length === maxLength) onComplete?.(e.target.value);
-        }}
+        onChange={(e) => onChange?.(e.target.value)}
       />
     );
   },
