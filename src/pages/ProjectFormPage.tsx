@@ -9,6 +9,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { DiscordRolePicker } from "@/components/DiscordRolePicker";
 import { useQuery, useMutation, useQueryClient } from "@/lib/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { withBoundedSave, SaveIndeterminateError } from "@/lib/data/bounded-save";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { showFormErrors, scrollToFirstError } from "@/lib/form-validation";
@@ -375,8 +376,36 @@ export default function ProjectFormPage() {
 
   const updateMutation = useMutation({
     mutationFn: async (values: ProjectForm) => {
-      const { error } = await supabase.from("projects").update(sanitizeRecordFields(values as unknown as Record<string, unknown>) as any).eq("id", id!);
-      if (error) throw error;
+      const sanitized = sanitizeRecordFields(values as unknown as Record<string, unknown>) as any;
+      return withBoundedSave({
+        timeoutMs: 15_000,
+        save: async () => {
+          const { error } = await supabase.from("projects").update(sanitized).eq("id", id!);
+          if (error) throw error;
+        },
+        probe: async () => {
+          const { data, error } = await supabase
+            .from("projects")
+            .select("id, name, project_status, anticipated_end_date")
+            .eq("id", id!)
+            .maybeSingle();
+          if (error || !data) return "unresolved";
+          const matches =
+            (data as any).name === (sanitized as any).name &&
+            (data as any).project_status === (sanitized as any).project_status;
+          return matches ? "persisted" : "unresolved";
+        },
+        beacon: (outcome, details) => {
+          void supabase.rpc("record_event" as never, {
+            p_sink: "ops_events",
+            p_kind: outcome === "saved" ? "admin.project.save.ok" : `admin.project.save.${outcome}`,
+            p_actor: null,
+            p_payload: { project_id: id, ...(details ?? {}) } as unknown as Record<string, unknown>,
+            p_severity: outcome === "indeterminate_unresolved" || outcome === "error" ? "warn" : "info",
+            p_source_table: "ProjectFormPage",
+          } as never).then(() => {}, () => {});
+        },
+      });
     },
     onSuccess: (_, values) => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
@@ -387,7 +416,15 @@ export default function ProjectFormPage() {
       notifyProjectUpdate("updated", values, id!, changes);
       navigate("/admin/clients?tab=projects");
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => {
+      if (err instanceof SaveIndeterminateError) {
+        toast.error("We couldn't confirm the save. Please try again.", {
+          action: { label: "Retry", onClick: () => updateMutation.mutate(form as ProjectForm) },
+        });
+        return;
+      }
+      toast.error(err.message || "Couldn't save project. Please try again.");
+    },
   });
 
   const handleSubmit = useCallback(() => {
@@ -416,13 +453,23 @@ export default function ProjectFormPage() {
     enabled: isEditing && initialized,
     label: "project-form",
     onSave: async (values) => {
-      const { error } = await supabase
-        .from("projects")
-        .update(sanitizeRecordFields(values as unknown as Record<string, unknown>) as any)
-        .eq("id", id!);
-      if (error) throw error;
+      const sanitized = sanitizeRecordFields(values as unknown as Record<string, unknown>) as any;
+      await withBoundedSave({
+        timeoutMs: 15_000,
+        save: async () => {
+          const { error } = await supabase.from("projects").update(sanitized).eq("id", id!);
+          if (error) throw error;
+        },
+        probe: async () => {
+          const { data, error } = await supabase
+            .from("projects").select("id, name").eq("id", id!).maybeSingle();
+          if (error || !data) return "unresolved";
+          return (data as any).name === (sanitized as any).name ? "persisted" : "unresolved";
+        },
+      });
     },
   });
+
 
 
   if (isEditing && !initialized) {
