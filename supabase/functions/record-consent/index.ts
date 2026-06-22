@@ -67,6 +67,34 @@ Deno.serve(withAuditWrapper("record-consent", async (req: Request) => {
     user_id = data.user?.id ?? null;
   }
 
+  // Server-side dedupe: if the newest stored row for this identifier already
+  // matches the incoming categories + GPC signal, skip the INSERT entirely.
+  // Prevents per-page-load rewrites from saturating Postgres.
+  try {
+    const incomingFp = JSON.stringify({
+      c: categories,
+      g: gpc_signal ? 1 : 0,
+      v: policy_version,
+    });
+    const lookup = user_id
+      ? admin.from("cookie_consents").select("categories,gpc_signal,policy_version").eq("user_id", user_id)
+      : admin.from("cookie_consents").select("categories,gpc_signal,policy_version").eq("anon_id", anon_id);
+    const { data: latest } = await lookup
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (latest) {
+      const latestFp = JSON.stringify({
+        c: latest.categories,
+        g: latest.gpc_signal ? 1 : 0,
+        v: latest.policy_version,
+      });
+      if (latestFp === incomingFp) return json({ ok: true, deduped: true });
+    }
+  } catch {
+    /* fall through to insert — dedupe is best-effort */
+  }
+
   const { error } = await admin.from("cookie_consents").insert({
     user_id,
     anon_id,
