@@ -36,6 +36,13 @@ vi.mock("@/lib/auth/session-port", () => ({
 
 import { MfaService, MfaInvalidCodeError, MfaTransientError } from "@/services/mfa.service";
 
+// Mint a JWT whose payload carries aal=aal2 so persistAal2Session accepts it.
+function aal2Token(): string {
+  const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify({ aal: "aal2", exp: Math.floor(Date.now() / 1000) + 3600 })).toString("base64url");
+  return `${header}.${payload}.sig`;
+}
+
 describe("MfaService.challengeAndVerifyResilient (AUTH-MFA-*)", () => {
   beforeEach(() => {
     mockChallengeAndVerify.mockReset();
@@ -53,7 +60,7 @@ describe("MfaService.challengeAndVerifyResilient (AUTH-MFA-*)", () => {
         }),
       })
       .mockResolvedValueOnce({
-        data: { access_token: "at", refresh_token: "rt" },
+        data: { access_token: aal2Token(), refresh_token: "rt" },
         error: null,
       });
 
