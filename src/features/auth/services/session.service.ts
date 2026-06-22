@@ -92,8 +92,10 @@ function clearLocalAuthArtifacts(reason: "manual" | "refresh_invalid" | "jwt_cor
 function hasStoredAuthSession() {
   const url = new URL(window.location.href);
   const hash = new URLSearchParams(url.hash.replace(/^#/, ""));
+  // OAuth callback in flight — let the AuthContext consumer process it; this
+  // function only reports on tokens already at rest in storage.
   if (url.searchParams.has("code") || hash.has("access_token") || hash.has("refresh_token")) {
-    return isRootOAuthCallback(url) && hasFreshOAuthUiMarker();
+    return isRootOAuthCallback(url);
   }
 
   for (const storage of [localStorage, sessionStorage]) {
@@ -104,6 +106,7 @@ function hasStoredAuthSession() {
   }
   return false;
 }
+
 
 async function recoverFromInvalidRefreshToken(error: unknown, source: string) {
   const maybeError = error as { message?: string; status?: number } | null | undefined;
