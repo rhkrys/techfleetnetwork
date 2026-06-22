@@ -2,8 +2,9 @@
  * SignInScreen — presentation only. All state lives in `useSignInEngine`.
  * Replaces the 568-line LoginPage. Visual contract preserved 1:1.
  */
-import { Suspense, lazy } from "react";
-import { Link } from "react-router-dom";
+import { Suspense, lazy, useEffect, useRef } from "react";
+import { Link, useLocation } from "react-router-dom";
+
 import { Eye, EyeOff, Mail, Lock, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,10 +22,32 @@ const TurnstileCaptchaAdapter = lazy(() =>
   import("@/features/auth/adapters/turnstile-captcha.adapter").then((m) => ({ default: m.TurnstileCaptchaAdapter })),
 );
 
+const CANONICAL_RESTART_KEY = "tfn:oauth-canonical-restart";
+
 export default function SignInScreen() {
   const e = useSignInEngine();
+  const location = useLocation();
+  const googleBtnRef = useRef<HTMLDivElement | null>(null);
   const bc = (field: string, value: string) =>
     validationBorderClass(getFieldValidationState(e.errors[field], value, !!e.touched[field]));
+
+  // AUTH-OAUTH-APEX-CANONICAL-001 — Restarted on the canonical host after the
+  // apex was rejected. Auto-click Google sign-in once per tab.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get("from") !== "oauth-canonical") return;
+    try {
+      if (sessionStorage.getItem(CANONICAL_RESTART_KEY)) return;
+      sessionStorage.setItem(CANONICAL_RESTART_KEY, "1");
+    } catch { /* storage disabled */ }
+    const btn = googleBtnRef.current?.querySelector<HTMLButtonElement>("button");
+    if (btn && !btn.disabled) {
+      // Defer to the next paint so engine state settles first.
+      setTimeout(() => btn.click(), 50);
+    }
+  }, [location.search]);
+
+
 
   return (
     <div className="min-h-[calc(100dvh-4rem)] flex items-center justify-center px-4 py-12">
@@ -67,10 +90,13 @@ export default function SignInScreen() {
             </div>
           )}
 
-          <GoogleSignInButton
-            redirectTo={e.redirectTarget}
-            onBeforeSubmit={() => { recordPolicyAcknowledgment("google-oauth"); return true; }}
-          />
+          <div ref={googleBtnRef}>
+            <GoogleSignInButton
+              redirectTo={e.redirectTarget}
+              onBeforeSubmit={() => { recordPolicyAcknowledgment("google-oauth"); return true; }}
+            />
+          </div>
+
           <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
             By continuing with Google, you confirm that you have read and agree to the <PolicyLinksInline />.
           </p>

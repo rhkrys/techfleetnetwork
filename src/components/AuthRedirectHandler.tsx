@@ -3,6 +3,9 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { normalizeSafeRedirectTarget } from "@/lib/security";
 import { isOAuthCallbackPending } from "@/lib/auth/oauth-callback-pending";
+import { readOAuthErrorFragment, clearOAuthErrorFragment } from "@/lib/auth/oauth-error-fragment";
+import { recordLoginEvent, newAttemptId } from "@/lib/login-telemetry";
+import { toast } from "sonner";
 
 const AUTH_REDIRECT_KEY = "auth_redirect";
 
@@ -23,6 +26,23 @@ export function AuthRedirectHandler() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // AUTH-OAUTH-ERROR-FRAGMENT-001 — Detect `#error=…&error_description=…` left
+  // by a failed OAuth broker round-trip. Without this guard the user lands on
+  // the logged-out home with no signal.
+  useEffect(() => {
+    const fragment = readOAuthErrorFragment(location.hash);
+    if (!fragment) return;
+    clearOAuthErrorFragment();
+    const description = fragment.description || "Google sign-in didn't complete.";
+    toast.error(`${description} Please try again.`, { duration: 30000, position: "top-center" });
+    try {
+      recordLoginEvent(newAttemptId(), "server_error", {
+        branch: `oauth_broker:${fragment.error}`,
+      });
+    } catch { /* telemetry never throws */ }
+    navigate("/login?from=oauth-error", { replace: true });
+  }, [location.hash, navigate]);
 
   useEffect(() => {
     if (loading || !user) return;
