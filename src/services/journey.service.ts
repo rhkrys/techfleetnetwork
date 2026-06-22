@@ -63,11 +63,16 @@ export const JourneyService = {
     }
 
     return log.track("getProgress", `Loading ${phase} progress for user ${userId}`, { userId, phase }, async () => {
-      const { data, error } = await supabase
-        .from("journey_progress")
-        .select("task_id, completed")
-        .eq("user_id", userId)
-        .eq("phase", phase);
+      // Wrapped in retryPostgrest: PGRST002 schema-cache reloads and 5xx
+      // blips during HEAD/GET are transparently retried before the caller
+      // sees a failure. Structural errors (RLS, schema) still surface.
+      const { data, error } = await retryPostgrest(() =>
+        supabase
+          .from("journey_progress")
+          .select("task_id, completed")
+          .eq("user_id", userId)
+          .eq("phase", phase),
+      );
       if (error) {
         log.error("getProgress", `Database query failed for ${phase} progress: ${error.message}`, {
           userId,
