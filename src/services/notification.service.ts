@@ -1,6 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import { createLogger } from "@/services/logger.service";
 import { handleServiceError } from "@/lib/service-result";
+import { retryPostgrest } from "@/lib/data/transient-retry";
 
 const log = createLogger("NotificationService");
 
