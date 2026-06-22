@@ -160,7 +160,7 @@ export const SystemHealthService = {
   },
 
   async getRefactorKpis(days = 30): Promise<RefactorKpi[]> {
-    const { data, error } = await retryPostgrest(() =>
+    const { data, error } = await retryPostgrest<any[]>(() =>
       sb.rpc("get_refactor_kpis", { p_days: days })
     );
     if (error) throw error;
