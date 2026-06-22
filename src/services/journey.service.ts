@@ -2,6 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { createLogger } from "@/services/logger.service";
 import { isTransientError } from "@/lib/transient-error";
+import { retryPostgrest } from "@/lib/data/transient-retry";
 
 const log = createLogger("JourneyService");
 
