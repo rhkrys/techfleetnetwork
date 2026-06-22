@@ -27,32 +27,34 @@ export type CohortRow = {
 
 export const CohortService = {
   async listByClass(classId: string): Promise<CohortRow[]> {
-    const { data, error } = await supabase
-      .from("cohorts")
-      .select("*")
-      .eq("class_id", classId)
-      .order("start_date", { ascending: true });
+    const { data, error } = await retryPostgrest(() =>
+      supabase
+        .from("cohorts")
+        .select("*")
+        .eq("class_id", classId)
+        .order("start_date", { ascending: true })
+    );
     if (error) throw error;
     return (data ?? []) as CohortRow[];
   },
 
   async listPublishedByClass(classId: string): Promise<CohortRow[]> {
-    const { data, error } = await supabase
-      .from("cohorts")
-      .select("*")
-      .eq("class_id", classId)
-      .eq("status", "published")
-      .order("start_date", { ascending: true });
+    const { data, error } = await retryPostgrest(() =>
+      supabase
+        .from("cohorts")
+        .select("*")
+        .eq("class_id", classId)
+        .eq("status", "published")
+        .order("start_date", { ascending: true })
+    );
     if (error) throw error;
     return (data ?? []) as CohortRow[];
   },
 
   async getById(id: string): Promise<CohortRow | null> {
-    const { data, error } = await supabase
-      .from("cohorts")
-      .select("*")
-      .eq("id", id)
-      .maybeSingle();
+    const { data, error } = await retryPostgrest(() =>
+      supabase.from("cohorts").select("*").eq("id", id).maybeSingle()
+    );
     if (error) throw error;
     return (data ?? null) as CohortRow | null;
   },
