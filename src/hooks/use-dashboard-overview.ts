@@ -42,7 +42,8 @@ export function useDashboardOverview() {
   const { user } = useAuth();
   const userId = user?.id;
   return useQuery({
-    queryKey: ["dashboard-overview", userId],
+    queryKey: identityKey(userId, "dashboard-overview"),
+
     enabled: !!userId,
     // Dashboard data is not real-time-critical; 5-minute polling cuts admin/user
     // dashboard load by ~80% versus the previous 60s cadence.
