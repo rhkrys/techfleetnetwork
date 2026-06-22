@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { retryPostgrest } from "@/lib/data/transient-retry";
 
 export interface SystemHealthState {
   status: "healthy" | "degraded" | "overloaded";
