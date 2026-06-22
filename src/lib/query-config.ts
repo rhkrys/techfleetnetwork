@@ -17,11 +17,22 @@ export const CACHE_SEMI_STATIC = { staleTime: 15 * 60 * 1000, gcTime: 30 * 60 * 
 export const CACHE_USER_MUTABLE = { staleTime: 60 * 1000, gcTime: 10 * 60 * 1000 } as const;
 export const CACHE_VOLATILE = { staleTime: 15 * 1000, gcTime: 5 * 60 * 1000 } as const;
 
+// ── Identity-scoped key helper ───────────────────────────────────────
+// Every per-user query MUST start with ["identity", userId, ...] so the
+// React Query cache cannot leak a previous identity's snapshot into a new
+// session (AUTH-RESILIENCE-007, PROFILE-IDENTITY-GUARD-002) and so the
+// duplicate parallel fetches observed during bootstrap (Profile×2,
+// getCompletedCount×4) dedupe to a single in-flight promise.
+export const identityKey = (userId: string | undefined | null, ...parts: readonly unknown[]) =>
+  ["identity", userId ?? "anon", ...parts] as const;
+
 // ── Query key factory ────────────────────────────────────────────────
 // Centralised keys prevent typo-based cache misses and enable targeted invalidation.
 export const queryKeys = {
   // Auth / Profile domain
-  profile: (userId: string) => ["profile", userId] as const,
+  profile: (userId: string) => identityKey(userId, "profile"),
+  mfaGate: (userId: string | undefined | null) => identityKey(userId, "mfa-gate"),
+
 
   // Journey domain
   journeyProgress: (userId: string, phase: string) => ["journey-progress", userId, phase] as const,
