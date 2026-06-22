@@ -203,9 +203,29 @@ const queryClient = new QueryClient({
 
 if (consumeQueryCacheResetPending()) queryClient.clear();
 
+const queryPersister = getQueryPersister();
+
+function QueryRoot({ children }: { children: React.ReactNode }) {
+  if (!queryPersister) {
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+  }
+  return (
+    <PersistQueryClientProvider
+      client={queryClient}
+      persistOptions={{
+        persister: queryPersister,
+        maxAge: 24 * 60 * 60 * 1000, // 24h on-disk retention
+        buster: PERSISTER_BUSTER,
+        dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery },
+      }}
+    >
+      {children}
+    </PersistQueryClientProvider>
+  );
+}
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
+  <QueryRoot>
     <ThemeProvider defaultTheme="dark">
       <TooltipProvider>
         <Toaster />
