@@ -21,6 +21,7 @@ import noLegacyEmailSend from "./scripts/lint/eslint-plugin-no-legacy-email-send
 import noFocusListener from "./scripts/lint/eslint-plugin-no-focus-listener.mjs";
 import authBootstrapNoRefresh from "./scripts/lint/eslint-plugin-auth-bootstrap-no-refresh.mjs";
 import oauthCanonicalOrigin from "./scripts/lint/eslint-plugin-oauth-canonical-origin.mjs";
+import noRawSupabaseRpc from "./scripts/lint/eslint-plugin-no-raw-supabase-rpc.mjs";
 
 export default tseslint.config(
   { ignores: ["dist"] },
@@ -52,6 +53,10 @@ export default tseslint.config(
           // throws "catch is not a function" at runtime (root cause of 18
           // `email_failed` audit rows on 2026-06-05).
           "no-rpc-then-catch": noRpcThenCatch,
+          // 2026-06-22 — kills the PGRST002/503 schema-cache class of incidents
+          // by forcing every service-layer supabase.rpc/from through a
+          // transient-retry wrapper. See mem://tech/observability/transient-retry.
+          "no-raw-supabase-rpc": noRawSupabaseRpc,
         },
       },
       // Email subsystem v2 Phase 6 — bans direct invokes of legacy
@@ -123,6 +128,9 @@ export default tseslint.config(
       "triage-permanent/no-raw-functions-invoke": "warn",
       "triage-permanent/no-supabase-single": "warn",
       "triage-permanent/no-rpc-then-catch": "error",
+      // Warn-only initially — promote to error after services baseline is at
+      // zero unwrapped reads.
+      "triage-permanent/no-raw-supabase-rpc": "warn",
       // Warn-only during v2 strangler-fig migration; promote to error after
       // bitmask=7 + 72h soak per mem://features/email-subsystem-v2.
       "email-v2/no-legacy-email-send": "warn",
