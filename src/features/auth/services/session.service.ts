@@ -21,10 +21,10 @@ import { logAccountActivity } from "@/lib/account-activity";
 import { getSessionPolicyFailureReason } from "@/lib/security";
 import {
   clearOAuthUiMarker,
-  hasFreshOAuthUiMarker,
   isRootOAuthCallback,
   stripRootOAuthCallbackUrl,
 } from "@/lib/oauth-ui-guard";
+
 import { getLastActivityAt } from "@/lib/session-activity";
 import { classifyAuthError, purgeLocalAuthState } from "@/lib/auth/session-health";
 
@@ -92,8 +92,10 @@ function clearLocalAuthArtifacts(reason: "manual" | "refresh_invalid" | "jwt_cor
 function hasStoredAuthSession() {
   const url = new URL(window.location.href);
   const hash = new URLSearchParams(url.hash.replace(/^#/, ""));
+  // OAuth callback in flight — let the AuthContext consumer process it; this
+  // function only reports on tokens already at rest in storage.
   if (url.searchParams.has("code") || hash.has("access_token") || hash.has("refresh_token")) {
-    return isRootOAuthCallback(url) && hasFreshOAuthUiMarker();
+    return isRootOAuthCallback(url);
   }
 
   for (const storage of [localStorage, sessionStorage]) {
@@ -104,6 +106,7 @@ function hasStoredAuthSession() {
   }
   return false;
 }
+
 
 async function recoverFromInvalidRefreshToken(error: unknown, source: string) {
   const maybeError = error as { message?: string; status?: number } | null | undefined;
@@ -178,17 +181,21 @@ export const sessionService = {
 
   async getSession() {
     log.debug("getSession", "Retrieving current session");
-    if (isRootOAuthCallback() && !hasFreshOAuthUiMarker()) {
-      log.warn("getSession", "Blocked direct OAuth callback without a recent UI-initiated sign-in marker");
-      stripRootOAuthCallbackUrl();
-      clearLocalAuthArtifacts();
-      return null;
-    }
+    // AUTH-OAUTH-CALLBACK-OWNER (2026-06-22): the previous "no fresh UI marker
+    // → strip URL + purge local auth" guard was destructive. Storage
+    // partitioning (Safari ITP, third-party bounces, apex↔www) routinely
+    // drops the marker even on legitimate Google sign-ins, and the resulting
+    // purge bounced members back to the logged-out home page. The OAuth
+    // broker already validates `state` cryptographically before emitting
+    // tokens — local CSRF defense via storage marker is redundant and
+    // harmful. The callback consumer in AuthContext bootstrap owns URL
+    // cleanup; this function no longer mutates the URL or local auth state.
 
     if (!hasStoredAuthSession()) {
       log.debug("getSession", "No stored auth session — skipping backend session check");
       return null;
     }
+
 
     let authResult: Awaited<ReturnType<typeof supabase.auth.getSession>>;
     try {
