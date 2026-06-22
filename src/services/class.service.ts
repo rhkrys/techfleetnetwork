@@ -96,35 +96,43 @@ export const ClassService = {
   },
 
   async create(ownerId: string, values: ClassFormValues): Promise<string> {
-    const { data, error } = await supabase
-      .from("classes")
-      .insert({
-        owner_user_id: ownerId,
-        title: values.title,
-        summary: values.summary,
-        description: values.description ?? null,
-        track: values.track,
-        hero_image_url: values.hero_image_url || null,
-        skills: values.skills,
-        outcomes: values.outcomes,
-        why_take: values.why_take,
-        audiences: values.audiences,
-        prerequisites: values.prerequisites,
-        slug: "", // server trigger will populate
-      } as never)
-      .select("id")
-      // single-required: insert returns exactly one row
-      .single();
-    if (error) throw error;
-    return (data as { id: string }).id;
+    return retryTransient(async () => {
+      const { data, error } = await supabase
+        .from("classes")
+        .insert({
+          owner_user_id: ownerId,
+          title: values.title,
+          summary: values.summary,
+          description: values.description ?? null,
+          track: values.track,
+          hero_image_url: values.hero_image_url || null,
+          skills: values.skills,
+          outcomes: values.outcomes,
+          why_take: values.why_take,
+          audiences: values.audiences,
+          prerequisites: values.prerequisites,
+          slug: "", // server trigger will populate
+        } as never)
+        .select("id")
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) {
+        throw new Error(
+          "Class was not created. This usually means your role can't insert this row — refresh and try again or contact an admin."
+        );
+      }
+      return (data as { id: string }).id;
+    });
   },
 
   async update(id: string, values: Partial<ClassFormValues>): Promise<void> {
     const payload: Record<string, unknown> = { ...values };
     if (values.hero_image_url === "") payload.hero_image_url = null;
-    const result = await supabase.from("classes").update(payload).eq("id", id).select("id");
-    if (result.error) throw result.error;
-    assertWritten(result, "class.update", { id });
+    await retryTransient(async () => {
+      const result = await supabase.from("classes").update(payload).eq("id", id).select("id");
+      if (result.error) throw result.error;
+      assertWritten(result, "class.update", { id });
+    });
   },
 
   async submitForReview(id: string, cohortIds: string[] = []): Promise<void> {
