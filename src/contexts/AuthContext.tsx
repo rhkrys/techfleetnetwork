@@ -305,19 +305,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // those here so we don't burn the one-time recovery session.
     const consumeOAuthHashIfPresent = async () => {
       try {
-        if (typeof window === "undefined" || !window.location.hash) return;
+        if (typeof window === "undefined") return;
+        const { markOAuthCallbackPending, clearOAuthCallbackPending } =
+          await import("@/lib/auth/oauth-callback-pending");
+
+        // ── PKCE `?code=` callback ────────────────────────────────────────
+        const url = new URL(window.location.href);
+        const code = url.searchParams.get("code");
+        const hasState = url.searchParams.has("state") || url.searchParams.has("scope");
+        if (code && hasState) {
+          markOAuthCallbackPending();
+          try {
+            const exchange = (supabase.auth as { exchangeCodeForSession?: (c: string) => Promise<{ error: unknown }> }).exchangeCodeForSession;
+            if (typeof exchange === "function") {
+              const { error } = await exchange.call(supabase.auth, code);
+              if (!error) {
+                url.searchParams.delete("code");
+                url.searchParams.delete("state");
+                url.searchParams.delete("scope");
+                const qs = url.searchParams.toString();
+                window.history.replaceState({}, document.title, url.pathname + (qs ? `?${qs}` : ""));
+                beaconWedge("oauth_callback_consumed", "bootstrap_code");
+              } else {
+                // Transient code-exchange failure — leave URL intact so the
+                // member can retry sign-in without losing local auth state.
+                beaconWedge("oauth_callback_no_session", "bootstrap_code");
+              }
+            }
+          } finally {
+            clearOAuthCallbackPending();
+          }
+          return;
+        }
+
+        // ── Implicit `#access_token=…&refresh_token=…` callback ───────────
+        if (!window.location.hash) return;
         const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
         const at = hash.get("access_token");
         const rt = hash.get("refresh_token");
         const type = hash.get("type");
         if (!at || !rt) return;
         if (type === "recovery") return;
-        // Defer ProtectedRoute / AuthRedirectHandler redirects until SIGNED_IN
-        // fires (or the 12s watchdog trips). Without this, the brief window
-        // between hash discovery and setSession() resolution bounces members
-        // back to /login.
-        const { markOAuthCallbackPending, clearOAuthCallbackPending } =
-          await import("@/lib/auth/oauth-callback-pending");
         markOAuthCallbackPending();
         try {
           const { error } = await supabase.auth.setSession({ access_token: at, refresh_token: rt });
@@ -334,6 +362,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Fall through to normal bootstrap.
       }
     };
+
 
     void consumeOAuthHashIfPresent().finally(() => sessionPort.getSession()
       .then(async (initialSession) => {
