@@ -3,9 +3,8 @@
  * Replaces the 568-line LoginPage. Visual contract preserved 1:1.
  */
 import { Suspense, lazy, useEffect, useRef } from "react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
-import { Link } from "react-router-dom";
 import { Eye, EyeOff, Mail, Lock, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
