@@ -41,18 +41,27 @@ export interface Profile {
 export const ProfileService = {
   async fetch(userId: string): Promise<Profile | null> {
     return log.track("fetch", `Fetching profile for user ${userId}`, { userId }, async () => {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("first_name, last_name, email, country, timezone, discord_username, discord_user_id, display_name, avatar_url, profile_completed, interests, portfolio_url, linkedin_url, scheduling_url, experience_areas, professional_goals, notify_training_opportunities, notify_announcements, education_background, has_discord_account, discord_invite_url, membership_tier, is_founding_member, membership_billing_period, membership_sku, membership_gumroad_sale_id, membership_updated_at, preferred_language")
-        .eq("user_id", userId)
-        .maybeSingle();
+      // Wrapped in retryPostgrest + auth-lock retry: this call commonly
+      // races with MfaService.getMfaGateDecision for GoTrue's Web Lock
+      // during identity bootstrap, and the underlying PostgREST request
+      // can flake on schema-cache reloads (PGRST002).
+      const { data, error } = await withAuthLockRetry(() =>
+        retryPostgrest(() =>
+          supabase
+            .from("profiles")
+            .select("first_name, last_name, email, country, timezone, discord_username, discord_user_id, display_name, avatar_url, profile_completed, interests, portfolio_url, linkedin_url, scheduling_url, experience_areas, professional_goals, notify_training_opportunities, notify_announcements, education_background, has_discord_account, discord_invite_url, membership_tier, is_founding_member, membership_billing_period, membership_sku, membership_gumroad_sale_id, membership_updated_at, preferred_language")
+            .eq("user_id", userId)
+            .maybeSingle(),
+        ),
+      );
       if (error) {
-        log.warn("fetch", `Profile not found or query failed for user ${userId}: ${error.message}`, {
+        const err = error as { message?: string; code?: string; details?: string; hint?: string };
+        log.warn("fetch", `Profile not found or query failed for user ${userId}: ${err.message ?? "unknown"}`, {
           userId,
-          errorCode: error.code,
-          errorDetails: error.details,
-          errorHint: error.hint,
-        }, error);
+          errorCode: err.code,
+          errorDetails: err.details,
+          errorHint: err.hint,
+        }, error as Error);
         return null;
       }
       log.info("fetch", `Profile loaded for user ${userId}`, {
