@@ -21,10 +21,10 @@ import { logAccountActivity } from "@/lib/account-activity";
 import { getSessionPolicyFailureReason } from "@/lib/security";
 import {
   clearOAuthUiMarker,
-  hasFreshOAuthUiMarker,
   isRootOAuthCallback,
   stripRootOAuthCallbackUrl,
 } from "@/lib/oauth-ui-guard";
+
 import { getLastActivityAt } from "@/lib/session-activity";
 import { classifyAuthError, purgeLocalAuthState } from "@/lib/auth/session-health";
 
