@@ -9,7 +9,7 @@ import i18n, { ensureLocale } from "@/i18n";
 import type { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { appQueryClient } from "@/lib/react-query";
-import { getActiveQueryPersisterKey, getPersisterKeyForUser, getQueryPersister, purgePersistedCache, setActiveQueryPersisterUser, PERSISTER_BUSTER } from "@/lib/query/persister";
+import { getActiveQueryPersisterKey, getPersisterKeyForUser, getQueryPersister, purgePersistedCache, runWithoutPersistingQueryCache, setActiveQueryPersisterUser, PERSISTER_BUSTER } from "@/lib/query/persister";
 import { persistQueryClientRestore } from "@tanstack/query-persist-client-core";
 
 
@@ -73,7 +73,7 @@ function switchPersistedQueryCacheToUser(userId: string) {
   // User switched without a full reload. Drop memory cache before pointing the
   // persister at the new member key so an empty cache cannot overwrite the new
   // member's last-known dashboard snapshot.
-  appQueryClient.clear();
+  runWithoutPersistingQueryCache(() => appQueryClient.clear());
   setActiveQueryPersisterUser(userId);
   restorePersistedQueryCacheForActiveUser();
 }
