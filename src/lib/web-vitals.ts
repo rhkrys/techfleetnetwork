@@ -48,20 +48,46 @@ function getConnection(): { effectiveType: string | null; saveData: boolean | nu
   };
 }
 
-function send(payload: Record<string, unknown>): void {
-  // Use CORS-safelisted "text/plain" so sendBeacon doesn't trigger a preflight
-  // (which beacons cannot perform). The edge function parses the body as JSON.
-  // No fetch fallback: RUM is best-effort and must never surface in console
-  // (ad-blockers commonly block any URL containing "vital"/analytics paths).
-  const body = JSON.stringify(payload);
+// Buffer samples in memory; flush as one batched POST on visibilitychange→hidden
+// or pagehide. Drastically reduces per-tab insert volume against
+// public.web_vital_samples (previously one row per metric, ~5/page).
+const buffer: Array<Record<string, unknown>> = [];
+let flushScheduled = false;
+
+function flush(): void {
+  if (buffer.length === 0) return;
+  const payload = JSON.stringify({ samples: buffer.splice(0, buffer.length) });
   try {
     if (typeof navigator.sendBeacon === "function") {
-      const blob = new Blob([body], { type: "text/plain;charset=UTF-8" });
+      const blob = new Blob([payload], { type: "text/plain;charset=UTF-8" });
       navigator.sendBeacon(ENDPOINT, blob);
     }
   } catch {
     /* swallow — RUM must never surface */
   }
+}
+
+function send(payload: Record<string, unknown>): void {
+  buffer.push(payload);
+  // Soft flush on the next idle tick if buffer fills up (>= 10 samples).
+  if (buffer.length >= 10) {
+    flush();
+    return;
+  }
+  if (flushScheduled) return;
+  flushScheduled = true;
+  setTimeout(() => {
+    flushScheduled = false;
+    flush();
+  }, 5_000);
+}
+
+if (typeof window !== "undefined") {
+  // Final flush hooks — guaranteed to fire before the page is discarded.
+  window.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flush();
+  });
+  window.addEventListener("pagehide", flush);
 }
 
 let installed = false;
