@@ -64,12 +64,14 @@ function toQuestPathStep(s: Record<string, unknown>): QuestPathStep {
 export const QuestService = {
   async getPaths(): Promise<QuestPath[]> {
     return log.track("getPaths", "Loading all quest paths", {}, async () => {
-      const { data, error } = await supabase
-        .from("quest_paths")
-        .select("*")
-        .order("sort_order", { ascending: true });
+      const { data, error } = await retryPostgrest(() =>
+        supabase
+          .from("quest_paths")
+          .select("*")
+          .order("sort_order", { ascending: true })
+      );
       if (error) {
-        log.error("getPaths", error.message, {}, error);
+        log.error("getPaths", (error as Error).message ?? String(error), {}, error);
         throw new Error("Failed to load quest paths");
       }
       return (data ?? []).map(toQuestPath);
@@ -78,13 +80,15 @@ export const QuestService = {
 
   async getSteps(pathId: string): Promise<QuestPathStep[]> {
     return log.track("getSteps", `Loading steps for path ${pathId}`, { pathId }, async () => {
-      const { data, error } = await supabase
-        .from("quest_path_steps")
-        .select("*")
-        .eq("path_id", pathId)
-        .order("sort_order", { ascending: true });
+      const { data, error } = await retryPostgrest(() =>
+        supabase
+          .from("quest_path_steps")
+          .select("*")
+          .eq("path_id", pathId)
+          .order("sort_order", { ascending: true })
+      );
       if (error) {
-        log.error("getSteps", error.message, { pathId }, error);
+        log.error("getSteps", (error as Error).message ?? String(error), { pathId }, error);
         throw new Error("Failed to load path steps");
       }
       return (data ?? []).map(toQuestPathStep);
@@ -93,12 +97,14 @@ export const QuestService = {
 
   async getAllSteps(): Promise<QuestPathStep[]> {
     return log.track("getAllSteps", "Loading all quest steps", {}, async () => {
-      const { data, error } = await supabase
-        .from("quest_path_steps")
-        .select("*")
-        .order("sort_order", { ascending: true });
+      const { data, error } = await retryPostgrest(() =>
+        supabase
+          .from("quest_path_steps")
+          .select("*")
+          .order("sort_order", { ascending: true })
+      );
       if (error) {
-        log.error("getAllSteps", error.message, {}, error);
+        log.error("getAllSteps", (error as Error).message ?? String(error), {}, error);
         throw new Error("Failed to load all steps");
       }
       return (data ?? []).map(toQuestPathStep);
@@ -107,12 +113,14 @@ export const QuestService = {
 
   async getUserSelections(userId: string): Promise<UserQuestSelection[]> {
     return log.track("getUserSelections", "Loading user quest selections", { userId }, async () => {
-      const { data, error } = await supabase
-        .from("user_quest_selections")
-        .select("*")
-        .eq("user_id", userId);
+      const { data, error } = await retryPostgrest(() =>
+        supabase
+          .from("user_quest_selections")
+          .select("*")
+          .eq("user_id", userId)
+      );
       if (error) {
-        log.error("getUserSelections", error.message, { userId }, error);
+        log.error("getUserSelections", (error as Error).message ?? String(error), { userId }, error);
         throw new Error("Failed to load quest selections");
       }
       return data ?? [];
