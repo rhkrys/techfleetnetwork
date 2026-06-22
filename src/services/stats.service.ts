@@ -104,7 +104,13 @@ export const StatsService = {
   async getNetworkStats(): Promise<NetworkStats> {
     return log.track("getNetworkStats", "Fetching network stats from database", undefined, async () => {
       try {
-        const { data, error } = await supabase.rpc("get_network_stats");
+        // Wrapped in withTransientRetry so PGRST002 / 5xx blips don't
+        // demote the live network-stats RPC to its stale local cache.
+        const { data, error } = await withTransientRetry(async () => {
+          const out = await supabase.rpc("get_network_stats");
+          if (out.error) throw out.error;
+          return out;
+        });
         if (error) throw error;
         const stats = data as unknown as NetworkStats;
         writeCache(stats);
