@@ -90,10 +90,13 @@ export default function SignInScreen() {
             </div>
           )}
 
-          <GoogleSignInButton
-            redirectTo={e.redirectTarget}
-            onBeforeSubmit={() => { recordPolicyAcknowledgment("google-oauth"); return true; }}
-          />
+          <div ref={googleBtnRef}>
+            <GoogleSignInButton
+              redirectTo={e.redirectTarget}
+              onBeforeSubmit={() => { recordPolicyAcknowledgment("google-oauth"); return true; }}
+            />
+          </div>
+
           <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
             By continuing with Google, you confirm that you have read and agree to the <PolicyLinksInline />.
           </p>
