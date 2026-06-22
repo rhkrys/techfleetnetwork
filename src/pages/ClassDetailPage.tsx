@@ -216,6 +216,13 @@ export default function ClassDetailPage() {
                       </a>
                     </Button>
                   )}
+                  {canEdit && (isAdmin || c.status === "draft" || c.status === "pending_review") && (
+                    <Button asChild size="sm" variant="outline">
+                      <Link to={`/teach/classes/${cls.id}/cohorts/${c.id}/edit`} aria-label={`Edit cohort ${c.label}`}>
+                        <Pencil className="h-4 w-4 mr-1" aria-hidden="true" />Edit
+                      </Link>
+                    </Button>
+                  )}
                   {canEdit && c.status === "draft" && (
                     <Button size="sm" variant="outline" onClick={() => submitCohort(c.id)}>
                       Submit
