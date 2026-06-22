@@ -51,7 +51,7 @@ describe("JourneyService.getCompletedCount — transient retry recovery (INFRA-P
       if (call === 1) return chainOnce({ count: null, error: { message: "Service Unavailable", status: 503 } });
       return chainOnce({ count: 3, error: null });
     });
-    const out = await JourneyService.getCompletedCount("u1", "core_courses");
+    const out = await JourneyService.getCompletedCount("u1", "first_steps");
     expect(out).toBe(3);
   });
 });
