@@ -19,26 +19,32 @@ export interface AppNotification {
 export const NotificationService = {
   /** Fetch the latest in-app notifications for the current user */
   async list(userId: string, limit = 50): Promise<AppNotification[]> {
-    const { data, error } = await supabase
-      .from("notifications")
-      .select("id, user_id, title, body_html, notification_type, link_url, read, created_at")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false })
-      .limit(limit);
+    // retryPostgrest absorbs PGRST002 / 5xx blips so a single transient
+    // hiccup doesn't surface as an empty notifications list.
+    const { data, error } = await retryPostgrest(() =>
+      supabase
+        .from("notifications")
+        .select("id, user_id, title, body_html, notification_type, link_url, read, created_at")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(limit),
+    );
 
-    if (handleServiceError(error, { logger: log, action: "list", message: `Failed to fetch notifications: ${error?.message ?? "Unknown error"}`, metadata: { userId }, level: "warn" })) return [];
+    if (handleServiceError(error as Parameters<typeof handleServiceError>[0], { logger: log, action: "list", message: `Failed to fetch notifications: ${(error as { message?: string })?.message ?? "Unknown error"}`, metadata: { userId }, level: "warn" })) return [];
     return (data as unknown as AppNotification[]) || [];
   },
 
   /** Count unread notifications */
   async unreadCount(userId: string): Promise<number> {
-    const { count, error } = await supabase
-      .from("notifications")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", userId)
-      .eq("read", false);
+    const { count, error } = (await retryPostgrest(() =>
+      supabase
+        .from("notifications")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .eq("read", false) as unknown as PromiseLike<{ data: unknown; error: unknown; count?: number | null }>,
+    )) as unknown as { count: number | null; error: { message?: string } | null };
 
-    if (handleServiceError(error, { logger: log, action: "unreadCount", message: `Failed to count unread: ${error?.message ?? "Unknown error"}`, metadata: { userId }, level: "warn" })) return 0;
+    if (handleServiceError(error as Parameters<typeof handleServiceError>[0], { logger: log, action: "unreadCount", message: `Failed to count unread: ${error?.message ?? "Unknown error"}`, metadata: { userId }, level: "warn" })) return 0;
     return count ?? 0;
   },
 
