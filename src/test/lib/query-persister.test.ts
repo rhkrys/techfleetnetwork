@@ -8,6 +8,7 @@ import {
   purgePersistedCache,
   getPersisterKeyForUser,
   getActiveQueryPersisterKey,
+  runWithoutPersistingQueryCache,
   setActiveQueryPersisterUser,
   PERSISTER_KEY_PREFIX,
 } from "@/lib/query/persister";
@@ -63,5 +64,20 @@ describe("persister storage lifecycle", () => {
     await purgePersistedCache();
     expect(window.localStorage.getItem(userAKey)).toBeNull();
     expect(window.localStorage.getItem(userBKey)).not.toBeNull();
+  });
+
+  it("can suppress one cache clear so user switching does not overwrite the next user's snapshot", async () => {
+    const persister = getQueryPersister();
+    expect(persister).toBeDefined();
+    setActiveQueryPersisterUser("user-b");
+    const userBKey = getPersisterKeyForUser("user-b");
+    const snapshot = { buster: "x", timestamp: Date.now(), clientState: { queries: [{ queryKey: ["dashboard-overview", "user-b"] }] } };
+    window.localStorage.setItem(userBKey, JSON.stringify(snapshot));
+
+    runWithoutPersistingQueryCache(() => {
+      void persister?.persistClient({ buster: "x", timestamp: Date.now(), clientState: { queries: [] } });
+    });
+
+    expect(JSON.parse(window.localStorage.getItem(userBKey) ?? "{}")).toEqual(snapshot);
   });
 });
