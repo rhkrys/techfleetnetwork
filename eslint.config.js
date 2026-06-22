@@ -20,6 +20,7 @@ import noRpcThenCatch from "./scripts/lint/eslint-plugin-no-rpc-then-catch.mjs";
 import noLegacyEmailSend from "./scripts/lint/eslint-plugin-no-legacy-email-send.mjs";
 import noFocusListener from "./scripts/lint/eslint-plugin-no-focus-listener.mjs";
 import authBootstrapNoRefresh from "./scripts/lint/eslint-plugin-auth-bootstrap-no-refresh.mjs";
+import oauthCanonicalOrigin from "./scripts/lint/eslint-plugin-oauth-canonical-origin.mjs";
 
 export default tseslint.config(
   { ignores: ["dist"] },
@@ -65,6 +66,7 @@ export default tseslint.config(
       // refreshSession() against a flapping GoTrue on first transient
       // bad_jwt; it bypasses the two-strike protection.
       "auth-bootstrap": authBootstrapNoRefresh,
+      "oauth-origin": oauthCanonicalOrigin,
       "auth-invariants": authInvariants,
       // Part 1 §1.5 — chunk-load brick + AuthProvider hoist invariants.
       lazy: lazyRequiresRetry,
@@ -126,6 +128,7 @@ export default tseslint.config(
       "email-v2/no-legacy-email-send": "warn",
       "tab-switch/no-focus-listener": "error",
       "auth-bootstrap/no-refresh-session": "error",
+      "oauth-origin/oauth-canonical-origin": "error",
       "auth-invariants/no-bare-password-set-input": "error",
       "auth-invariants/no-raw-password-update": "error",
       // Rebuild §8 — single source of truth guards. Warn-only initially so
