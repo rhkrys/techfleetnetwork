@@ -2,6 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { ClassFormValues } from "@/lib/validators/class";
 import { assertWritten } from "@/lib/db-helpers";
 import { retryTransientWrite } from "@/lib/db/retry";
+import { retryPostgrest } from "@/lib/data/transient-retry";
 import { sendClassStatusEmails } from "./class-emails";
 
 // Back-compat local alias — prior callers in this file referenced `retryTransient`.
