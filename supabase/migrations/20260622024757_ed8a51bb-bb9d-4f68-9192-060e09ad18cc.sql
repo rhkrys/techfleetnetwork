@@ -1,0 +1,1 @@
+DROP TRIGGER IF EXISTS trg_ugc_translate_projects ON public.projects;
