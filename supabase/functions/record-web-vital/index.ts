@@ -97,10 +97,8 @@ Deno.serve(withAuditWrapper("record-web-vital", async (req) => {
 
   try {
     // Beacons are sent as text/plain (CORS-safelisted, no preflight).
-    // Parse manually instead of using parseJsonBody (which enforces
-    // Content-Type: application/json).
     const raw = await req.text();
-    if (raw.length > 16 * 1024) {
+    if (raw.length > 64 * 1024) {
       return new Response(null, { status: 204, headers: cors });
     }
     let body: Record<string, unknown> = {};
@@ -109,46 +107,79 @@ Deno.serve(withAuditWrapper("record-web-vital", async (req) => {
     } catch {
       return new Response(null, { status: 204, headers: cors });
     }
-    const metric_name = clampStr(body.name, 8);
-    const rating = clampStr(body.rating, 32);
-    const route = normaliseRoute(body.route);
-    const value = clampNum(body.value, 0, 600_000);
 
-    if (
-      !metric_name ||
-      !ALLOWED_METRICS.has(metric_name) ||
-      !rating ||
-      !ALLOWED_RATINGS.has(rating) ||
-      !route ||
-      value === null
-    ) {
-      // Always 204 so the browser doesn't surface beacon errors to users.
+    // Accept either a single sample (legacy single-row beacon) or a batch
+    // `{samples: [...]}` so the client can collapse 5+ vitals per page into
+    // one POST + one multi-row INSERT (DB pool relief).
+    const rawSamples: Array<Record<string, unknown>> = Array.isArray((body as { samples?: unknown }).samples)
+      ? ((body as { samples: unknown[] }).samples as Array<Record<string, unknown>>)
+      : [body];
+
+    if (rawSamples.length === 0 || rawSamples.length > 50) {
       return new Response(null, { status: 204, headers: cors });
     }
 
-    const navType = clampStr(body.navigationType, 32);
-    const navigation_type = navType && ALLOWED_NAV_TYPES.has(navType) ? navType : null;
-    const connection_type = clampStr(body.connectionType, 32);
-    const save_data = typeof body.saveData === "boolean" ? body.saveData : null;
-    const device_memory = clampNum(body.deviceMemory, 0, 1024);
-    const viewport_w = clampInt(body.viewportW, 0, 16_384);
-    const viewport_h = clampInt(body.viewportH, 0, 16_384);
     const user_agent = clampStr(req.headers.get("user-agent"), 512);
 
-    // Validate user_id format (uuid) without trusting the client to mean it.
-    let user_id: string | null = null;
-    const rawUserId = clampStr(body.userId, 64);
-    if (rawUserId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawUserId)) {
-      user_id = rawUserId.toLowerCase();
+    type Row = {
+      user_id: string | null;
+      metric_name: string;
+      value: number;
+      rating: string;
+      route: string;
+      navigation_type: string | null;
+      connection_type: string | null;
+      save_data: boolean | null;
+      device_memory: number | null;
+      viewport_w: number | null;
+      viewport_h: number | null;
+      user_agent: string | null;
+      browser_name: string | null;
+      browser_major: number | null;
+      os_name: string | null;
+      os_major: number | null;
+      device_type: string | null;
+    };
+
+    const rows: Row[] = [];
+    for (const s of rawSamples) {
+      const metric_name = clampStr(s.name, 8);
+      const rating = clampStr(s.rating, 32);
+      const route = normaliseRoute(s.route);
+      const value = clampNum(s.value, 0, 600_000);
+      if (!metric_name || !ALLOWED_METRICS.has(metric_name) || !rating || !ALLOWED_RATINGS.has(rating) || !route || value === null) continue;
+
+      const navType = clampStr(s.navigationType, 32);
+      const rawDeviceType = clampStr(s.deviceType, 16);
+      const rawUserId = clampStr(s.userId, 64);
+      const user_id = rawUserId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawUserId)
+        ? rawUserId.toLowerCase()
+        : null;
+
+      rows.push({
+        user_id,
+        metric_name,
+        value,
+        rating,
+        route,
+        navigation_type: navType && ALLOWED_NAV_TYPES.has(navType) ? navType : null,
+        connection_type: clampStr(s.connectionType, 32),
+        save_data: typeof s.saveData === "boolean" ? s.saveData : null,
+        device_memory: clampNum(s.deviceMemory, 0, 1024),
+        viewport_w: clampInt(s.viewportW, 0, 16_384),
+        viewport_h: clampInt(s.viewportH, 0, 16_384),
+        user_agent,
+        browser_name: clampStr(s.browserName, 32),
+        browser_major: clampInt(s.browserMajor, 0, 9999),
+        os_name: clampStr(s.osName, 32),
+        os_major: clampInt(s.osMajor, 0, 9999),
+        device_type: rawDeviceType && ALLOWED_DEVICE_TYPES.has(rawDeviceType) ? rawDeviceType : null,
+      });
     }
 
-    // Browser/OS/device breakdown — Track 4 RUM browser breakdown.
-    const browser_name = clampStr(body.browserName, 32);
-    const browser_major = clampInt(body.browserMajor, 0, 9999);
-    const os_name = clampStr(body.osName, 32);
-    const os_major = clampInt(body.osMajor, 0, 9999);
-    const rawDeviceType = clampStr(body.deviceType, 16);
-    const device_type = rawDeviceType && ALLOWED_DEVICE_TYPES.has(rawDeviceType) ? rawDeviceType : null;
+    if (rows.length === 0) {
+      return new Response(null, { status: 204, headers: cors });
+    }
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -156,31 +187,12 @@ Deno.serve(withAuditWrapper("record-web-vital", async (req) => {
       { auth: { persistSession: false } },
     );
 
-    // Best-effort insert — never block beacon caller.
-    await supabase.from("web_vital_samples").insert({
-      user_id,
-      metric_name,
-      value,
-      rating,
-      route,
-      navigation_type,
-      connection_type,
-      save_data,
-      device_memory,
-      viewport_w,
-      viewport_h,
-      user_agent,
-      browser_name,
-      browser_major,
-      os_name,
-      os_major,
-      device_type,
-    });
+    // Single multi-row insert — one round-trip, one connection acquire.
+    await supabase.from("web_vital_samples").insert(rows);
 
     return new Response(null, { status: 204, headers: cors });
   } catch (err) {
     if (err instanceof Response) return err;
-    // Swallow errors — RUM must never surface to users.
     console.error("[record-web-vital] error", (err as Error)?.message);
     return new Response(null, { status: 204, headers: cors });
   }
