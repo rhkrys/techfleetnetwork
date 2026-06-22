@@ -5,6 +5,10 @@ import { isTransientError } from "@/lib/transient-error";
 
 const log = createLogger("JourneyService");
 
+// Per-process dedupe cache: collapses identical task upserts fired within 2s
+// (UI double-clicks, fast re-renders). Keeps the connection pool clear.
+const journeyDedupe = new Map<string, number>();
+
 type JourneyPhase = Database["public"]["Enums"]["journey_phase"];
 
 export interface TaskProgress {
@@ -175,6 +179,20 @@ export const JourneyService = {
         });
         return;
       }
+
+      // Dedupe: if an identical upsert just completed within 2s, skip the
+      // round-trip. Prevents UI double-clicks and rapid re-renders from
+      // saturating the connection pool with duplicate writes.
+      const dedupeKey = `${userId}::${phase}::${taskId}::${completed ? 1 : 0}`;
+      const now = Date.now();
+      const lastAt = journeyDedupe.get(dedupeKey) ?? 0;
+      if (now - lastAt < 2_000) {
+        log.info("upsertTask", `Skipped duplicate upsert for "${taskId}" within 2s`, {
+          userId, phase, taskId, completed,
+        });
+        return;
+      }
+      journeyDedupe.set(dedupeKey, now);
 
       const { error } = await supabase.from("journey_progress").upsert(
         {
