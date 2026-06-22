@@ -172,9 +172,27 @@ export default function DashboardPage() {
   const { data: overview } = useDashboardOverview();
   const phaseCounts = overview?.phase_counts ?? {};
 
-  // Task-id-filtered counts (RPC returns total per phase, can't filter by task subset)
-  const { data: connectDiscordCompleted = 0 } = useCompletedCount(userId, "first_steps", CONNECT_DISCORD_TASK_IDS);
-  const { data: firstStepsCompleted = 0 } = useCompletedCount(userId, "first_steps", FIRST_STEPS_TASK_IDS);
+  // Task-id-filtered counts (RPC returns total per phase, can't filter by task subset).
+  // We track raw (possibly undefined) values so we can distinguish "unknown, still
+  // loading" from "confirmed zero progress" and avoid flashing the empty checklist
+  // to returning users (DASHBOARD-HYDRATE-001..003).
+  const connectDiscordQuery = useCompletedCount(userId, "first_steps", CONNECT_DISCORD_TASK_IDS);
+  const firstStepsQuery = useCompletedCount(userId, "first_steps", FIRST_STEPS_TASK_IDS);
+  const observerQuery = useCompletedCount(userId, "observer", ALL_OBSERVER_LESSON_IDS);
+
+  const connectDiscordCompleted = connectDiscordQuery.data ?? 0;
+  const firstStepsCompleted = firstStepsQuery.data ?? 0;
+  const observerCompleted = observerQuery.data ?? 0;
+
+  // overviewReady = every progress source has at least one successful resolution.
+  // With the persister, returning users hit `true` on first paint (snapshot
+  // restored from localStorage). New users hit `false` until the RPC lands,
+  // and we render the skeleton instead of "0 of 5 complete".
+  const overviewReady = !!userId
+    && overview !== undefined
+    && connectDiscordQuery.data !== undefined
+    && firstStepsQuery.data !== undefined
+    && observerQuery.data !== undefined;
 
   // Phase-total counts (sourced from overview RPC)
   const secondStepsCompleted = phaseCounts.second_steps ?? 0;
@@ -182,7 +200,6 @@ export default function DashboardPage() {
   const teamworkCompleted = phaseCounts.third_steps ?? 0;
   const projectTrainingCompleted = phaseCounts.project_training ?? 0;
   const volunteerCompleted = phaseCounts.volunteer ?? 0;
-  const { data: observerCompleted = 0 } = useCompletedCount(userId, "observer", ALL_OBSERVER_LESSON_IDS);
 
   const { data: latestAnnouncements = [] } = useLatestAnnouncements(5);
 
