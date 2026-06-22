@@ -41,7 +41,7 @@ interface AuditLogEntry {
 
 type TriageState = { triage_status: string | null; silence_state: string | null; fix_queue_id: string | null };
 
-const QUERY_TIMEOUT_MS = 10_000;
+const QUERY_TIMEOUT_MS = 15_000;
 
 async function withTimeout<T>(promise: PromiseLike<T>, label: string): Promise<T> {
   let timeoutId: number | undefined;
