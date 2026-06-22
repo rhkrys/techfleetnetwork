@@ -1,61 +1,59 @@
-# Edit Project save hangs forever — permanent fix
+## Why it timed out
 
-## Symptom
-On `/admin/clients` → edit a project → **Save**, the request spins indefinitely. No toast. No error. Every edit fails the same way. (Backend logs show intermittent `connection closed before message completed` and `canceling statement due to statement timeout` on adjacent project endpoints, confirming Cloud → PostgREST flapping.)
+`/admin/activity-log` runs a **full exact COUNT** against `audit_log` before fetching the first page:
 
-## Root cause
-`src/pages/ProjectFormPage.tsx` calls `supabase.from("projects").update(...).eq("id", id)` inside a React Query mutation with **no timeout, no retry, no resolve-indeterminate**. When PostgREST drops the response mid-flight, the promise never settles → button stays in "Saving…" forever and the user has no recourse. Same shape of bug as the sign-up indeterminate-timeout class we just fixed — but for the admin project editor.
+```ts
+supabase.from("audit_log").select("id", { count: "exact", head: true })
+```
 
-Two contributing factors found in the DB:
-1. `public.projects` has **two identical triggers** firing the same function (`trg_enqueue_ugc_translations` AND `trg_ugc_translate_projects` → both → `enqueue_ugc_translation_jobs`). Doubles the per-row cost on every UPDATE.
-2. There is no client-visible signal when the trigger work (UGC enqueue, audit write, notify_project_opening) pushes the UPDATE past the statement timeout window.
+`audit_log` is the largest, hottest write-only table in the system (every auth event, every error, every triage row). A `COUNT(*)` over the whole table — with no narrow filter — does a sequential scan that routinely exceeds the **10s client timeout** at line 44. When the count promise loses the race, the page short-circuits to the error banner *even though the page rows would have loaded fine*.
 
-## Permanent fix (one shipment, no band-aids)
+So the message is literally true: the **count** timed out, not the data.
 
-### A. Bounded save + indeterminate-resolve in `ProjectFormPage.tsx`
-- Wrap both `updateMutation.mutationFn` and the `useAutosave` `onSave` in a `withBoundedSave(fn, { timeoutMs: 15_000 })` helper:
-  - If the supabase call resolves first → normal path.
-  - If the timeout wins → run a **resolve probe**: `SELECT id, updated_at, <key fields> FROM projects WHERE id = :id` and compare to the submitted values. 
-    - Match → treat as saved → success toast + invalidate caches + navigate. Beacon `admin.project.save.indeterminate_resolved { outcome: "persisted" }` (severity `info`).
-    - Mismatch → throw a typed `SaveIndeterminateError` → show toast "We couldn't confirm the save. Try again." with a Retry button. Beacon outcome `unresolved` (severity `warn`).
-- Surface a real error toast on every failure path (including the new `SaveIndeterminateError`); never let the button hang.
-- Add an `aria-live="polite"` status under the Save button: "Saving…" → "Checking whether your changes were saved…" → "Saved" / "Couldn't confirm".
+## Fix — three layers, no UX regression
 
-### B. Drop the duplicate trigger
-Migration: `DROP TRIGGER IF EXISTS trg_ugc_translate_projects ON public.projects;` (keep `trg_enqueue_ugc_translations`). Add a CI guard `scripts/ci/check-no-duplicate-triggers.mjs` that fails if any table has two triggers wired to the same function on the same event.
+### 1. Replace exact-count with a tiered strategy (SQL + client)
 
-### C. Reuse the helper across other admin editors
-Extract `withBoundedSave` to `src/lib/data/bounded-save.ts` and adopt in the two other admin write paths that have the same shape:
-- `ProjectOpeningDetailPage` opening edits
-- `ClientsPage` client edits
-Documents the pattern in `docs/runbooks/admin-edit-bounded-save.md`.
+Add `public.audit_log_count_fast(p_event_type text, p_from timestamptz, p_to timestamptz) returns bigint` (SECURITY DEFINER, admin-only via `has_role`).
 
-### D. Observability
-- New ops_events kind `admin.project.save.indeterminate` (warn) + `admin.project.save.indeterminate_resolved` (info|warn) via `record_event`.
-- Triage stays gated on severity `error`, so warns don't flood the queue but show on the System Health → Performance tab if they spike.
+Logic:
+- If **no filters** → return `pg_class.reltuples::bigint` for `audit_log` (planner estimate, O(1)).
+- If filters present AND estimated rows ≤ 50k → run exact `COUNT(*)` with the same WHERE clause.
+- Else → return estimate from `EXPLAIN (FORMAT JSON)` of the filtered query (still O(1)).
 
-### E. Guard rails
-- New vitest: `src/test/pages/project-form.bounded-save.contract.test.ts` covering: success, hard error, timeout-then-persisted, timeout-then-mismatch.
-- BDD `ADMIN-PROJECT-SAVE-001..005` in `bdd_scenarios` (tri-layer [UI]/[DB]/[Code]).
-- ESLint rule `auth-invariants/no-unbounded-table-mutation` (warn) flagging `supabase.from(<admin table>).update(...)` without `withBoundedSave` in `src/pages/Admin*` and `src/pages/Project*`.
+Returns a single number in <50ms regardless of table size.
 
-## Out of scope
-- Backend infra (Cloud↔Postgres flapping) — not in app code.
-- No RLS, schema, or auth changes.
-- The other (non-admin) project-detail timeout in `public-project-detail` is a separate read-path issue and stays out of this shipment.
+### 2. Decouple count from rows in `ActivityLogPage.tsx`
+
+- Fetch **rows first** (`Promise.allSettled([rowsPromise, countPromise])` semantically).
+- If count fails or times out → render rows, show `"~N events"` with a tooltip ("Estimated. Refresh to recount.") instead of the full-page error. Pagination uses `hasMore = rows.length === PAGE_SIZE`.
+- Only fail the whole page if **rows** fail.
+- Bump per-query timeout to 15s and wire an `AbortController` to actually cancel the underlying fetch (current `Promise.race` leaks the request).
+
+### 3. Make `audit_log` count-friendly
+
+- Add partial index `audit_log (event_type, created_at DESC)` to back filter+range counts.
+- Confirm existing `audit_log (created_at DESC)` index — add if missing.
+- `ANALYZE public.audit_log` in the migration so `reltuples` is fresh.
 
 ## Files
-```text
-src/pages/ProjectFormPage.tsx                                  (edit — bounded save + resolve-indeterminate, live status)
-src/pages/ProjectOpeningDetailPage.tsx                         (edit — adopt withBoundedSave)
-src/pages/ClientsPage.tsx                                      (edit — adopt withBoundedSave)
-src/lib/data/bounded-save.ts                                   (new — withBoundedSave + SaveIndeterminateError + resolve probe contract)
-src/lib/data/__tests__/bounded-save.test.ts                    (new)
-src/test/pages/project-form.bounded-save.contract.test.ts      (new)
-scripts/ci/check-no-duplicate-triggers.mjs                     (new — CI guard)
-scripts/lint/eslint-plugin-auth-invariants.mjs                 (edit — no-unbounded-table-mutation rule)
-docs/runbooks/admin-edit-bounded-save.md                       (new)
-supabase/migrations/<ts>_drop_duplicate_projects_ugc_trigger.sql (new)
-public.bdd_scenarios                                           (data — ADMIN-PROJECT-SAVE-001..005)
-public.ops_events kinds                                        (data — admin.project.save.indeterminate[_resolved])
-```
+
+- `src/pages/ActivityLogPage.tsx` — call new RPC, allSettled split, AbortController, tooltip on estimated count, 15s timeout.
+- `src/lib/data/with-timeout.ts` *(new, extracted from inline helper)* — reusable `withAbortableTimeout` wrapper.
+- `supabase/migrations/<ts>_audit_log_count_fast.sql` — RPC + GRANT EXECUTE TO authenticated + indexes + ANALYZE.
+- `src/test/pages/activity-log-count-degradation.test.tsx` *(new)* — asserts rows render when count rejects.
+- `src/test/lib/with-timeout.test.ts` *(new)*.
+- `public.bdd_scenarios` — `ACTIVITY-LOG-COUNT-001..004` (no filter → estimate; filter → exact; count failure → rows still render with `~N`; timeout aborts underlying request).
+
+## Out of scope
+
+- No change to `audit_log` retention, RLS, or write path.
+- No change to Triage / System Health tabs that also read `audit_log` (separate ticket if they exhibit the same pattern).
+- No change to the existing tab-switch / sessionStorage state preservation (already covered by NO-RELOAD-TAB-001).
+
+## Receipts after build
+
+- Migration applied; `audit_log_count_fast(null,null,null)` returns in <100ms.
+- Activity Log loads with rows visible even if count RPC is killed mid-flight (forced in test).
+- Old `select("id", { count: "exact", head: true })` on `audit_log` removed from the page (greppable proof).
+- 4 BDD scenarios inserted; 2 vitest specs green.
