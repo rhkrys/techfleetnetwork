@@ -196,13 +196,14 @@ export default function ClassDetailPage() {
         ) : (
           <div className="space-y-2">
             {cohorts.map((c) => (
-              <div key={c.id} className="card-elevated p-4 flex items-center justify-between gap-3">
-                <div>
-                  <div className="font-medium text-foreground">{c.label}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {format(new Date(c.start_date), "MMM d")} – {format(new Date(c.end_date), "MMM d, yyyy")} · {c.timezone}
+              <div key={c.id} className="card-elevated p-4 flex flex-col gap-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-medium text-foreground">{c.label}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {format(new Date(c.start_date), "MMM d")} – {format(new Date(c.end_date), "MMM d, yyyy")} · {c.timezone}
+                    </div>
                   </div>
-                </div>
                 <div className="flex items-center gap-2">
                   <Badge variant="outline">{c.status}</Badge>
                   {c.status === "published" && c.registration_url && (
