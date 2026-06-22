@@ -166,12 +166,14 @@ export const ClassService = {
     actor_user_id: string | null;
     created_at: string;
   }>> {
-    const { data, error } = await supabase
-      .from("class_audit")
-      .select("id, action, from_status, to_status, reason, actor_user_id, created_at")
-      .eq("class_id", classId)
-      .order("created_at", { ascending: false })
-      .limit(50);
+    const { data, error } = await retryPostgrest(() =>
+      supabase
+        .from("class_audit")
+        .select("id, action, from_status, to_status, reason, actor_user_id, created_at")
+        .eq("class_id", classId)
+        .order("created_at", { ascending: false })
+        .limit(50)
+    );
     if (error) throw error;
     return (data ?? []) as never;
   },
@@ -187,11 +189,13 @@ export const ClassService = {
   },
 
   async isFollowing(classId: string, userId: string): Promise<boolean> {
-    const { count, error } = await supabase
-      .from("class_followers")
-      .select("id", { head: true, count: "exact" })
-      .eq("class_id", classId)
-      .eq("user_id", userId);
+    const { count, error } = await retryPostgrest(() =>
+      supabase
+        .from("class_followers")
+        .select("id", { head: true, count: "exact" })
+        .eq("class_id", classId)
+        .eq("user_id", userId)
+    ) as unknown as { count: number | null; error: unknown };
     if (error) throw error;
     return (count ?? 0) > 0;
   },
