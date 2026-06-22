@@ -10,20 +10,34 @@
  * - Only queries that opt-in via `meta: { persist: true }` are dehydrated.
  *   Sensitive things (auth, MFA, admin grace, role grants, triage) stay
  *   memory-only.
- * - Query keys are already user-scoped (e.g. ["dashboard-overview", userId]),
- *   so the cache cannot serve user A's row to user B.
+ * - The localStorage key is namespaced by the active auth user so one member's
+ *   snapshot is never hydrated into another member's session.
  * - On SIGNED_OUT the AuthContext calls `queryClient.clear()` AND
  *   `persister.removeClient()` to wipe the on-disk snapshot.
  * - `buster` is tied to APP_CACHE_RESET_VERSION so deploys that change
  *   shapes invalidate the cache automatically.
  */
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
-import type { Persister } from "@tanstack/react-query-persist-client";
+import type { PersistedClient, Persister } from "@tanstack/query-persist-client-core";
 import type { Query } from "@tanstack/react-query";
 import { APP_CACHE_RESET_VERSION } from "@/lib/app-cache-reset";
 
-export const PERSISTER_KEY = "tfn:rq-cache:v1";
-export const PERSISTER_BUSTER = APP_CACHE_RESET_VERSION;
+export const PERSISTER_KEY_PREFIX = "tfn:rq-cache:v1";
+function getBuildCacheBuster(): string {
+  try {
+    return typeof __BUILD_ID__ !== "undefined" && __BUILD_ID__ ? __BUILD_ID__ : "dev";
+  } catch {
+    return "dev";
+  }
+}
+
+export const PERSISTER_BUSTER = `${APP_CACHE_RESET_VERSION}:${getBuildCacheBuster()}`;
+export const ANONYMOUS_PERSISTER_SCOPE = "anonymous";
+
+export function getPersisterKeyForUser(userId: string | null | undefined): string {
+  const scope = userId && userId.trim().length > 0 ? userId : ANONYMOUS_PERSISTER_SCOPE;
+  return `${PERSISTER_KEY_PREFIX}:${scope}`;
+}
 
 function safeStorage(): Storage | undefined {
   if (typeof window === "undefined") return undefined;
@@ -43,18 +57,61 @@ export function shouldPersistQuery(query: Pick<Query, "meta" | "state">): boolea
   return true;
 }
 
-let cached: Persister | undefined;
+function readInitialUserIdFromAuthStorage(storage: Storage | undefined): string | null {
+  if (!storage) return null;
+  try {
+    for (let i = 0; i < storage.length; i += 1) {
+      const key = storage.key(i);
+      if (!key || !key.startsWith("sb-") || !key.endsWith("-auth-token")) continue;
+      const raw = storage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw) as { user?: { id?: unknown }; currentSession?: { user?: { id?: unknown } } };
+      const userId = parsed.user?.id ?? parsed.currentSession?.user?.id;
+      if (typeof userId === "string" && userId.length > 0) return userId;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
 
-export function getQueryPersister(): Persister | undefined {
-  if (cached) return cached;
+let activeUserId: string | null = readInitialUserIdFromAuthStorage(safeStorage());
+let cachedKey: string | undefined;
+let cachedInner: Persister | undefined;
+let cachedDynamic: Persister | undefined;
+
+function getInnerPersister(): Persister | undefined {
   const storage = safeStorage();
   if (!storage) return undefined;
-  cached = createSyncStoragePersister({
-    storage,
-    key: PERSISTER_KEY,
-    throttleTime: 1000,
-  });
-  return cached;
+  const key = getPersisterKeyForUser(activeUserId);
+  if (cachedInner && cachedKey === key) return cachedInner;
+  cachedKey = key;
+  cachedInner = createSyncStoragePersister({ storage, key, throttleTime: 1000 });
+  return cachedInner;
+}
+
+export function setActiveQueryPersisterUser(userId: string | null | undefined): boolean {
+  const next = userId ?? null;
+  if (next === activeUserId) return false;
+  activeUserId = next;
+  cachedKey = undefined;
+  cachedInner = undefined;
+  return true;
+}
+
+export function getActiveQueryPersisterKey(): string {
+  return getPersisterKeyForUser(activeUserId);
+}
+
+export function getQueryPersister(): Persister | undefined {
+  if (cachedDynamic) return cachedDynamic;
+  if (!safeStorage()) return undefined;
+  cachedDynamic = {
+    persistClient: (client: PersistedClient) => getInnerPersister()?.persistClient(client),
+    restoreClient: () => getInnerPersister()?.restoreClient(),
+    removeClient: () => getInnerPersister()?.removeClient(),
+  };
+  return cachedDynamic;
 }
 
 export async function purgePersistedCache(): Promise<void> {

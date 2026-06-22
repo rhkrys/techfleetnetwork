@@ -8,6 +8,9 @@ import { beaconWedge, decidePurgeOnBadJwt, ensureClientFingerprint, isUnrecovera
 import i18n, { ensureLocale } from "@/i18n";
 import type { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { appQueryClient } from "@/lib/react-query";
+import { getActiveQueryPersisterKey, getPersisterKeyForUser, getQueryPersister, purgePersistedCache, setActiveQueryPersisterUser, PERSISTER_BUSTER } from "@/lib/query/persister";
+import { persistQueryClientRestore } from "@tanstack/query-persist-client-core";
 
 
 /**
@@ -49,6 +52,30 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   signOutAllDevices: () => Promise<void>;
   refreshProfile: () => Promise<void>;
+}
+
+const QUERY_PERSIST_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+function restorePersistedQueryCacheForActiveUser() {
+  const persister = getQueryPersister();
+  if (!persister) return;
+  void persistQueryClientRestore({
+    queryClient: appQueryClient,
+    persister,
+    maxAge: QUERY_PERSIST_MAX_AGE_MS,
+    buster: PERSISTER_BUSTER,
+    hydrateOptions: { defaultOptions: { queries: { meta: { persist: true } } } },
+  });
+}
+
+function switchPersistedQueryCacheToUser(userId: string) {
+  if (getActiveQueryPersisterKey() === getPersisterKeyForUser(userId)) return;
+  // User switched without a full reload. Drop memory cache before pointing the
+  // persister at the new member key so an empty cache cannot overwrite the new
+  // member's last-known dashboard snapshot.
+  appQueryClient.clear();
+  setActiveQueryPersisterUser(userId);
+  restorePersistedQueryCacheForActiveUser();
 }
 
 // Stash the context on globalThis so HMR re-imports of this module reuse the
@@ -176,7 +203,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           sessionPort.clearLocalAuthState();
           // Wipe persisted React Query snapshot so the next user on this device
           // never sees a previous user's dashboard data (DASHBOARD-HYDRATE-003).
-          void import("@/lib/query/persister").then((m) => m.purgePersistedCache());
+          appQueryClient.clear();
+          void purgePersistedCache().finally(() => setActiveQueryPersisterUser(null));
+        }
+
+        if (session?.user) {
+          switchPersistedQueryCacheToUser(session.user.id);
         }
 
         // Note: We previously force-signed-out users on SIGNED_IN at the root
@@ -350,6 +382,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(resolvedSession);
         setUser(resolvedSession?.user ?? null);
         if (resolvedSession?.user) {
+          switchPersistedQueryCacheToUser(resolvedSession.user.id);
           void fetchProfile(resolvedSession.user.id);
         } else {
           setProfile(null);
@@ -374,6 +407,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     await sessionPort.signOut();
+    appQueryClient.clear();
+    await purgePersistedCache();
+    setActiveQueryPersisterUser(null);
     setUser(null);
     setSession(null);
     setProfile(null);
@@ -382,6 +418,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOutAllDevices = useCallback(async () => {
     await sessionPort.signOutAllDevices();
+    appQueryClient.clear();
+    await purgePersistedCache();
+    setActiveQueryPersisterUser(null);
     setUser(null);
     setSession(null);
     setProfile(null);
