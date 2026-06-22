@@ -70,29 +70,23 @@ export async function withTransientRetry<T>(
 }
 
 /**
- * Specialized wrapper for PostgREST `{ data, error }` tuples. Treats a
- * transient `error` as a throw so retries kick in, then re-packages the
- * final outcome.
+ * Specialized wrapper for PostgREST `{ data, error }` tuples. Retries on
+ * transient `error`, then returns the final tuple to the caller so existing
+ * error-handling code paths are unchanged.
  */
 export async function retryPostgrest<T>(
   fn: () => Promise<{ data: T; error: unknown }>,
   opts: TransientRetryOptions = {},
 ): Promise<{ data: T; error: unknown }> {
-  let final: { data: T; error: unknown } | null = null;
-  await withTransientRetry(async () => {
-    const out = await fn();
-    if (out.error && isTransientError(out.error)) {
-      // Force a retry by throwing — the catch in withTransientRetry will
-      // re-run us if attempts remain.
-      throw out.error;
-    }
-    final = out;
-  }, opts).catch((err) => {
-    // All retries exhausted on a transient error — return as if it was the
-    // last `{ data, error }` tuple so callers' existing error paths run.
-    final = { data: null as unknown as T, error: err };
-  });
-  return final!;
+  try {
+    return await withTransientRetry(async () => {
+      const out = await fn();
+      if (out.error && isTransientError(out.error)) throw out.error;
+      return out;
+    }, opts);
+  } catch (err) {
+    return { data: null as unknown as T, error: err };
+  }
 }
 
 function defaultShouldRetry(err: unknown): boolean {
