@@ -37,4 +37,32 @@ for (const value of forbidden) {
   if (jsBundle.includes(value)) fail(`bundle contains a known blank-screen risk: ${value}`);
 }
 
-console.log("Post-build smoke passed: production config and app entry are present.");
+// Preload hygiene — each `<link rel="preload">` in the built index.html
+// MUST declare `as` (browsers throw a console warning otherwise and skip
+// the preload entirely) and MUST point at an asset that actually exists in
+// the build output. Stale preloads were the source of the 22 "preload not
+// used" warnings on 2026-06-22.
+const preloadRegex = /<link\b[^>]*\brel=["']preload["'][^>]*>/gi;
+const preloadTags = html.match(preloadRegex) ?? [];
+for (const tag of preloadTags) {
+  if (!/\bas=["'][^"']+["']/i.test(tag)) {
+    fail(`<link rel="preload"> missing required \`as\` attribute: ${tag}`);
+  }
+  const hrefMatch = tag.match(/\bhref=["']([^"']+)["']/i);
+  const href = hrefMatch?.[1];
+  if (!href) {
+    fail(`<link rel="preload"> missing \`href\`: ${tag}`);
+  }
+  // Skip absolute URLs (CDN-hosted assets) — only local /-rooted hrefs
+  // map to a file we can stat in dist/.
+  if (href.startsWith("/") && !href.startsWith("//")) {
+    const localPath = join(distDir, href.replace(/^\//, "").split(/[?#]/)[0]);
+    if (!existsSync(localPath)) {
+      fail(`<link rel="preload"> points at a non-emitted asset: ${href}`);
+    }
+  }
+}
+
+console.log(
+  `Post-build smoke passed: production config, app entry, and ${preloadTags.length} preload tag(s) verified.`,
+);
