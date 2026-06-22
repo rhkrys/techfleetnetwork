@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { createLogger } from "@/services/logger.service";
+import { retryPostgrest } from "@/lib/data/transient-retry";
 
 const log = createLogger("QuestService");
 
@@ -63,12 +64,14 @@ function toQuestPathStep(s: Record<string, unknown>): QuestPathStep {
 export const QuestService = {
   async getPaths(): Promise<QuestPath[]> {
     return log.track("getPaths", "Loading all quest paths", {}, async () => {
-      const { data, error } = await supabase
-        .from("quest_paths")
-        .select("*")
-        .order("sort_order", { ascending: true });
+      const { data, error } = await retryPostgrest(() =>
+        supabase
+          .from("quest_paths")
+          .select("*")
+          .order("sort_order", { ascending: true })
+      );
       if (error) {
-        log.error("getPaths", error.message, {}, error);
+        log.error("getPaths", (error as Error).message ?? String(error), {}, error);
         throw new Error("Failed to load quest paths");
       }
       return (data ?? []).map(toQuestPath);
@@ -77,13 +80,15 @@ export const QuestService = {
 
   async getSteps(pathId: string): Promise<QuestPathStep[]> {
     return log.track("getSteps", `Loading steps for path ${pathId}`, { pathId }, async () => {
-      const { data, error } = await supabase
-        .from("quest_path_steps")
-        .select("*")
-        .eq("path_id", pathId)
-        .order("sort_order", { ascending: true });
+      const { data, error } = await retryPostgrest(() =>
+        supabase
+          .from("quest_path_steps")
+          .select("*")
+          .eq("path_id", pathId)
+          .order("sort_order", { ascending: true })
+      );
       if (error) {
-        log.error("getSteps", error.message, { pathId }, error);
+        log.error("getSteps", (error as Error).message ?? String(error), { pathId }, error);
         throw new Error("Failed to load path steps");
       }
       return (data ?? []).map(toQuestPathStep);
@@ -92,12 +97,14 @@ export const QuestService = {
 
   async getAllSteps(): Promise<QuestPathStep[]> {
     return log.track("getAllSteps", "Loading all quest steps", {}, async () => {
-      const { data, error } = await supabase
-        .from("quest_path_steps")
-        .select("*")
-        .order("sort_order", { ascending: true });
+      const { data, error } = await retryPostgrest(() =>
+        supabase
+          .from("quest_path_steps")
+          .select("*")
+          .order("sort_order", { ascending: true })
+      );
       if (error) {
-        log.error("getAllSteps", error.message, {}, error);
+        log.error("getAllSteps", (error as Error).message ?? String(error), {}, error);
         throw new Error("Failed to load all steps");
       }
       return (data ?? []).map(toQuestPathStep);
@@ -106,12 +113,14 @@ export const QuestService = {
 
   async getUserSelections(userId: string): Promise<UserQuestSelection[]> {
     return log.track("getUserSelections", "Loading user quest selections", { userId }, async () => {
-      const { data, error } = await supabase
-        .from("user_quest_selections")
-        .select("*")
-        .eq("user_id", userId);
+      const { data, error } = await retryPostgrest(() =>
+        supabase
+          .from("user_quest_selections")
+          .select("*")
+          .eq("user_id", userId)
+      );
       if (error) {
-        log.error("getUserSelections", error.message, { userId }, error);
+        log.error("getUserSelections", (error as Error).message ?? String(error), { userId }, error);
         throw new Error("Failed to load quest selections");
       }
       return data ?? [];
@@ -197,17 +206,19 @@ export const QuestService = {
 
   async getSelfReportProgress(userId: string): Promise<Map<string, boolean>> {
     return log.track("getSelfReportProgress", "Loading self-report progress", { userId }, async () => {
-      const { data, error } = await supabase
-        .from("journey_progress")
-        .select("task_id, completed")
-        .eq("user_id", userId)
-        .like("task_id", "quest-step-%");
+      const { data, error } = await retryPostgrest(() =>
+        supabase
+          .from("journey_progress")
+          .select("task_id, completed")
+          .eq("user_id", userId)
+          .like("task_id", "quest-step-%")
+      );
       if (error) {
-        log.error("getSelfReportProgress", error.message, { userId }, error);
+        log.error("getSelfReportProgress", (error as Error).message ?? String(error), { userId }, error);
         throw new Error("Failed to load self-report progress");
       }
       const map = new Map<string, boolean>();
-      for (const row of data ?? []) {
+      for (const row of (data ?? []) as Array<{ task_id: string; completed: boolean }>) {
         const stepId = row.task_id.replace("quest-step-", "");
         map.set(stepId, row.completed);
       }
@@ -221,17 +232,19 @@ export const QuestService = {
    */
   async getAllJourneyProgress(userId: string): Promise<Map<string, { task_id: string; completed: boolean }[]>> {
     return log.track("getAllJourneyProgress", "Loading all journey progress", { userId }, async () => {
-      const { data, error } = await supabase
-        .from("journey_progress")
-        .select("phase, task_id, completed")
-        .eq("user_id", userId);
+      const { data, error } = await retryPostgrest(() =>
+        supabase
+          .from("journey_progress")
+          .select("phase, task_id, completed")
+          .eq("user_id", userId)
+      );
       if (error) {
-        log.error("getAllJourneyProgress", error.message, { userId }, error);
+        log.error("getAllJourneyProgress", (error as Error).message ?? String(error), { userId }, error);
         throw new Error("Failed to load journey progress");
       }
       const map = new Map<string, { task_id: string; completed: boolean }[]>();
-      for (const row of data ?? []) {
-        const phase = row.phase as string;
+      for (const row of (data ?? []) as Array<{ phase: string; task_id: string; completed: boolean }>) {
+        const phase = row.phase;
         if (!map.has(phase)) map.set(phase, []);
         map.get(phase)!.push({ task_id: row.task_id, completed: row.completed });
       }

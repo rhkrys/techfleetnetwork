@@ -3,6 +3,8 @@ import { createLogger } from "@/services/logger.service";
 import { reportError } from "@/services/error-reporter.service";
 import { emailInputSchema } from "@/lib/validators/auth";
 import { safeLongTextSchema } from "@/lib/validators/shared-input";
+import { retryPostgrest } from "@/lib/data/transient-retry";
+import { retryTransientWrite } from "@/lib/db/retry";
 import { z } from "zod";
 
 const log = createLogger("FeedbackService");
@@ -63,14 +65,17 @@ export const FeedbackService = {
         });
         return false;
       }
-      const { error } = await supabase
-        .from("feedback")
-        .insert({
-          user_id: userId,
-          user_email: parsed.data.email,
-          system_area: parsed.data.systemArea,
-          message: parsed.data.message,
-        });
+      const { error } = await retryTransientWrite(async () => {
+        const res = await supabase
+          .from("feedback")
+          .insert({
+            user_id: userId,
+            user_email: parsed.data.email,
+            system_area: parsed.data.systemArea,
+            message: parsed.data.message,
+          });
+        return res;
+      });
 
       if (error) {
         log.error(
@@ -109,10 +114,12 @@ export const FeedbackService = {
   },
 
   async listAll(): Promise<Feedback[]> {
-    const { data, error } = await supabase
-      .from("feedback")
-      .select("id, user_id, user_email, system_area, message, created_at")
-      .order("created_at", { ascending: false });
+    const { data, error } = await retryPostgrest(() =>
+      supabase
+        .from("feedback")
+        .select("id, user_id, user_email, system_area, message, created_at")
+        .order("created_at", { ascending: false })
+    );
 
     if (error) {
       log.error("listAll", `Failed to list feedback: ${error.message}`, {}, error);

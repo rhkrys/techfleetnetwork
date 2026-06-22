@@ -2,6 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { ClassFormValues } from "@/lib/validators/class";
 import { assertWritten } from "@/lib/db-helpers";
 import { retryTransientWrite } from "@/lib/db/retry";
+import { retryPostgrest } from "@/lib/data/transient-retry";
 import { sendClassStatusEmails } from "./class-emails";
 
 // Back-compat local alias — prior callers in this file referenced `retryTransient`.
@@ -32,43 +33,50 @@ export type ClassRow = {
 
 export const ClassService = {
   async listPublishedByTrack(track: ClassRow["track"]): Promise<ClassRow[]> {
-    const { data, error } = await supabase
-      .from("classes")
-      .select("*")
-      .eq("status", "published")
-      .eq("track", track)
-      .order("published_at", { ascending: false });
+    const { data, error } = await retryPostgrest(() =>
+      supabase
+        .from("classes")
+        .select("*")
+        .eq("status", "published")
+        .eq("track", track)
+        .order("published_at", { ascending: false })
+    );
     if (error) throw error;
     return (data ?? []) as ClassRow[];
   },
 
   async listMine(ownerId: string): Promise<ClassRow[]> {
-    const { data, error } = await supabase
-      .from("classes")
-      .select("*")
-      .eq("owner_user_id", ownerId)
-      .order("updated_at", { ascending: false });
+    const { data, error } = await retryPostgrest(() =>
+      supabase
+        .from("classes")
+        .select("*")
+        .eq("owner_user_id", ownerId)
+        .order("updated_at", { ascending: false })
+    );
     if (error) throw error;
     return (data ?? []) as ClassRow[];
   },
 
   async listAll(): Promise<ClassRow[]> {
-    const { data, error } = await supabase
-      .from("classes")
-      .select("*")
-      .order("updated_at", { ascending: false });
+    const { data, error } = await retryPostgrest(() =>
+      supabase.from("classes").select("*").order("updated_at", { ascending: false })
+    );
     if (error) throw error;
     return (data ?? []) as ClassRow[];
   },
 
   async getById(id: string): Promise<ClassRow | null> {
-    const { data, error } = await supabase.from("classes").select("*").eq("id", id).maybeSingle();
+    const { data, error } = await retryPostgrest(() =>
+      supabase.from("classes").select("*").eq("id", id).maybeSingle()
+    );
     if (error) throw error;
     return (data ?? null) as ClassRow | null;
   },
 
   async getBySlug(slug: string): Promise<ClassRow | null> {
-    const { data, error } = await supabase.from("classes").select("*").eq("slug", slug).maybeSingle();
+    const { data, error } = await retryPostgrest(() =>
+      supabase.from("classes").select("*").eq("slug", slug).maybeSingle()
+    );
     if (error) throw error;
     return (data ?? null) as ClassRow | null;
   },
@@ -158,12 +166,14 @@ export const ClassService = {
     actor_user_id: string | null;
     created_at: string;
   }>> {
-    const { data, error } = await supabase
-      .from("class_audit")
-      .select("id, action, from_status, to_status, reason, actor_user_id, created_at")
-      .eq("class_id", classId)
-      .order("created_at", { ascending: false })
-      .limit(50);
+    const { data, error } = await retryPostgrest(() =>
+      supabase
+        .from("class_audit")
+        .select("id, action, from_status, to_status, reason, actor_user_id, created_at")
+        .eq("class_id", classId)
+        .order("created_at", { ascending: false })
+        .limit(50)
+    );
     if (error) throw error;
     return (data ?? []) as never;
   },
@@ -179,11 +189,13 @@ export const ClassService = {
   },
 
   async isFollowing(classId: string, userId: string): Promise<boolean> {
-    const { count, error } = await supabase
-      .from("class_followers")
-      .select("id", { head: true, count: "exact" })
-      .eq("class_id", classId)
-      .eq("user_id", userId);
+    const { count, error } = await retryPostgrest(() =>
+      supabase
+        .from("class_followers")
+        .select("id", { head: true, count: "exact" })
+        .eq("class_id", classId)
+        .eq("user_id", userId)
+    ) as unknown as { count: number | null; error: unknown };
     if (error) throw error;
     return (count ?? 0) > 0;
   },
