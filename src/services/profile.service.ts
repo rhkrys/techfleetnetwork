@@ -2,6 +2,8 @@ import { supabase } from "@/integrations/supabase/client";
 import type { ProfileInput } from "@/lib/validators/profile";
 import { createLogger } from "@/services/logger.service";
 import { pickAllowedFields, deepSanitize } from "@/lib/security";
+import { retryPostgrest } from "@/lib/data/transient-retry";
+import { withAuthLockRetry } from "@/lib/auth/auth-lock-retry";
 
 const log = createLogger("ProfileService");
 
