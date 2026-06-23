@@ -1,5 +1,5 @@
 const BUILD_ID = "2026-03-04";
-const ACCESS_KEY = "9f28a652c0d8af87793b5f150cfa7058521ad0973231a8ad";
+const ACCESS_KEY = "accesscode";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
