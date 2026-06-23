@@ -308,5 +308,5 @@ project_id = "iqsjhrhsjlgjiaedzmtz"
     # JWTs and opaque sb_secret_* tokens), so `verify_jwt = false`.
     verify_jwt = false
   [functions.migrate-helper]
-    verify_jwt = true
+    verify_jwt = false
 
