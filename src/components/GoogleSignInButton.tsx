@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { lovable } from "@/integrations/lovable/index";
+import { supabase } from "@/integrations/supabase/client";
 import { isSafeRedirectUrl } from "@/lib/security";
 import { markOAuthUiInitiated } from "@/lib/oauth-ui-guard";
 import { markOAuthCallbackPending } from "@/lib/auth/oauth-callback-pending";
@@ -36,20 +36,28 @@ export function GoogleSignInButton({ label = "Sign in with Google", className, o
       if (redirectTo && redirectTo !== "/dashboard" && isSafeRedirectUrl(redirectTo)) {
         storeAuthRedirect(redirectTo);
       }
-      // AUTH-OAUTH-APEX-EDGE-301-001 — apex→www 301/302 lives at the Lovable
-      // hosting edge, so this code only ever runs on www. redirect_uri is
-      // still pinned to the canonical origin as defense-in-depth.
+      // Native Supabase Google OAuth against the owned project. (Replaced the
+      // Lovable Cloud adapter `lovable.auth.signInWithOAuth`, which pointed at
+      // Lovable's managed OAuth infra and 404s now that we've migrated off
+      // Lovable.) GoogleSignInButton remains the SINGLE Google entrypoint
+      // (check-no-direct-google-oauth + no-direct-auth-mutations allowlist it);
+      // the return leg (`?code=`/`#access_token=`) is consumed natively by
+      // AuthContext via exchangeCodeForSession. redirectTo is pinned to the
+      // canonical origin as defense-in-depth.
       markOAuthUiInitiated("google");
       // Arm the callback-pending guard so when Google bounces us back with
       // `?code=` or `#access_token=…`, ProtectedRoute / AuthRedirectHandler
       // defer redirects until the consumer finishes (12s watchdog).
       markOAuthCallbackPending();
       try { beaconWedge("oauth_start", "google_sign_in_button"); } catch { /* noop */ }
-      const result = await lovable.auth.signInWithOAuth("google", {
-        redirect_uri: getCanonicalOAuthOrigin(),
-        extraParams: { prompt: "select_account" },
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: getCanonicalOAuthOrigin(),
+          queryParams: { prompt: "select_account" },
+        },
       });
-      if (result.error) {
+      if (error) {
         console.error("OAuth provider error occurred");
         toast.error("Google sign-in could not start. Please try again.", { duration: 30000, position: "top-center" });
       }

@@ -3,7 +3,10 @@
  * AUTH-ARCH-CUTOVER-004 — single Google OAuth entrypoint guard.
  *
  * The ONE allowed Google sign-in caller is `src/components/GoogleSignInButton.tsx`
- * via `lovable.auth.signInWithOAuth("google", …)` (Lovable Cloud managed OAuth).
+ * via `supabase.auth.signInWithOAuth({ provider: "google", … })` (native OAuth
+ * against the owned Supabase project). The legacy `lovable.auth.signInWithOAuth`
+ * adapter is retired — it pointed at Lovable Cloud's managed OAuth and 404s
+ * post-migration.
  *
  * Any other file in `src/` or `supabase/functions/` that calls
  * `supabase.auth.signInWithOAuth(... provider: "google" ...)` OR
