@@ -9,7 +9,7 @@ The `freescout-validate-secret` edge function is the live-probe contract — it 
 1. In Freescout admin, generate a new admin API key. Keep the old key active.
 2. **Pre-flight (mandatory):** run the validator with the candidate key, signed in as an admin:
    ```bash
-   curl -sS -X POST "https://iqsjhrhsjlgjiaedzmtz.supabase.co/functions/v1/freescout-validate-secret" \
+   curl -sS -X POST "https://pzvqxdgoztbfikfuifix.supabase.co/functions/v1/freescout-validate-secret" \
      -H "Authorization: Bearer $ADMIN_JWT" -H "Content-Type: application/json" \
      -d "$(jq -nc --arg k "$NEW_KEY" '{candidateApiKey:$k}')"
    ```

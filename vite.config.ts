@@ -14,10 +14,10 @@ const BUILD_ID =
   process.env.GITHUB_SHA ||
   `${Date.now()}`;
 
-const LOVABLE_CLOUD_URL = process.env.VITE_SUPABASE_URL || "https://iqsjhrhsjlgjiaedzmtz.supabase.co";
+const LOVABLE_CLOUD_URL = process.env.VITE_SUPABASE_URL || "https://pzvqxdgoztbfikfuifix.supabase.co";
 const LOVABLE_CLOUD_PUBLISHABLE_KEY =
-  process.env.VITE_SUPABASE_PUBLISHABLE_KEY || "sb_publishable_NnnYUf3wUfVWGyOlhQf9UQ_92QsC3YE";
-const LOVABLE_CLOUD_PROJECT_ID = process.env.VITE_SUPABASE_PROJECT_ID || "iqsjhrhsjlgjiaedzmtz";
+  process.env.VITE_SUPABASE_PUBLISHABLE_KEY || "sb_publishable_yKbfQNAnhEEW-9TPII5_Og_8G7gOzm2";
+const LOVABLE_CLOUD_PROJECT_ID = process.env.VITE_SUPABASE_PROJECT_ID || "pzvqxdgoztbfikfuifix";
 
 /**
  * Emit /version.json into the build output. This file is intentionally

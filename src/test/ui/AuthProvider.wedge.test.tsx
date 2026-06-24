@@ -20,7 +20,7 @@ function Probe() {
 }
 
 function seedWedgedStorage() {
-  const url = (import.meta.env.VITE_SUPABASE_URL as string) || "https://iqsjhrhsjlgjiaedzmtz.supabase.co";
+  const url = (import.meta.env.VITE_SUPABASE_URL as string) || "https://pzvqxdgoztbfikfuifix.supabase.co";
   const ref = new URL(url).hostname.split(".")[0];
   localStorage.setItem(
     `sb-${ref}-auth-token`,

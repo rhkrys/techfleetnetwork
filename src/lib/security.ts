@@ -706,7 +706,7 @@ export function isAllowedOrigin(origin: string | null): boolean {
  * on shared/public devices. Preserves session management keys.
  */
 export function clearSensitiveSessionData(): void {
-  const keysToKeep = new Set(["session_started_at", "theme", "sb-iqsjhrhsjlgjiaedzmtz-auth-token"]);
+  const keysToKeep = new Set(["session_started_at", "theme", `sb-${import.meta.env.VITE_SUPABASE_PROJECT_ID}-auth-token`]);
   const keysToRemove: string[] = [];
   for (let i = 0; i < sessionStorage.length; i++) {
     const key = sessionStorage.key(i);

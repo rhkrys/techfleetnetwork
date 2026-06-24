@@ -17,7 +17,7 @@ test.describe("Auth wedge recovery (AUTH-WEDGE-001..007)", () => {
   test.describe.configure({ retries: 1 });
 
   test("403 bad_jwt mid-session → clean redirect, storage purged, no refresh storm", async ({ page, context }) => {
-    const supabaseUrl = process.env.VITE_SUPABASE_URL || "https://iqsjhrhsjlgjiaedzmtz.supabase.co";
+    const supabaseUrl = process.env.VITE_SUPABASE_URL || "https://pzvqxdgoztbfikfuifix.supabase.co";
 
     // Seed a non-JWT access token to simulate a wedged session BEFORE any app code runs.
     await context.addInitScript(([url]) => {
