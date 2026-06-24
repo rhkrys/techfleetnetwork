@@ -1,3 +1,4 @@
+// @edge-cron
 // auth-prober — cron-poked synthetic E2E auth probe.
 //
 // Runs the reset→sign-out→sign-in path against the deployed `auth-broker`
@@ -14,12 +15,7 @@ import { authorizeServiceRoleRequest } from "../_shared/service-role-auth.ts";
 
 const PROBER_USER_AGENT = "TFN-AuthProber/1.0";
 
-type ProbeStage =
-  | "reset_request"
-  | "reset_complete"
-  | "sign_out"
-  | "sign_in"
-  | "session_refresh";
+type ProbeStage = "reset_request" | "reset_complete" | "sign_out" | "sign_in" | "session_refresh";
 
 interface ProbeResult {
   stage: ProbeStage;
@@ -31,7 +27,8 @@ interface ProbeResult {
 
 const corsHeaders: HeadersInit = {
   "access-control-allow-origin": "*",
-  "access-control-allow-headers": "authorization, x-client-info, apikey, content-type, x-trace-id, x-request-id",
+  "access-control-allow-headers":
+    "authorization, x-client-info, apikey, content-type, x-trace-id, x-request-id",
   "access-control-allow-methods": "POST, OPTIONS",
 };
 
@@ -47,7 +44,7 @@ async function callBroker(
   anonKey: string,
   route: string,
   body: Record<string, unknown>,
-  correlationId: string,
+  correlationId: string
 ): Promise<{ status: number; json: { ok: boolean; code?: string }; latencyMs: number }> {
   const start = Date.now();
   try {
@@ -75,11 +72,22 @@ function newId(): string {
   return crypto.randomUUID();
 }
 
-async function runProbe(brokerUrl: string, anonKey: string, email: string, password: string): Promise<ProbeResult[]> {
+async function runProbe(
+  brokerUrl: string,
+  anonKey: string,
+  email: string,
+  password: string
+): Promise<ProbeResult[]> {
   const results: ProbeResult[] = [];
   const correlationId = newId();
 
-  const reset = await callBroker(brokerUrl, anonKey, "password-reset/request", { email }, correlationId);
+  const reset = await callBroker(
+    brokerUrl,
+    anonKey,
+    "password-reset/request",
+    { email },
+    correlationId
+  );
   results.push({
     stage: "reset_request",
     outcome: reset.json.ok ? "ok" : "err",
@@ -96,7 +104,7 @@ async function runProbe(brokerUrl: string, anonKey: string, email: string, passw
     anonKey,
     "sign-in/password",
     { email, password },
-    correlationId,
+    correlationId
   );
   results.push({
     stage: "sign_in",
@@ -137,7 +145,7 @@ Deno.serve(async (req: Request) => {
   if (!proberEmail || !proberPassword) {
     return jsonResponse(
       { ok: false, error: "AUTH_PROBER_EMAIL and AUTH_PROBER_PASSWORD must be set" },
-      412,
+      412
     );
   }
 
@@ -179,7 +187,7 @@ Deno.serve(async (req: Request) => {
       const priorErrStages = new Set(
         prior
           .filter((row: { outcome: string }) => row.outcome === "err")
-          .map((row: { stage: string }) => row.stage as ProbeStage),
+          .map((row: { stage: string }) => row.stage as ProbeStage)
       );
       shouldPage = errStages.some((s) => priorErrStages.has(s));
     }

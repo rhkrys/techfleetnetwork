@@ -1,3 +1,4 @@
+// @edge-public
 // AUTH-ENGINE Ship 6: client telemetry sink for `auth_engine.*` ops_events.
 //
 // The auth screens fire state-transition pings (started/succeeded/failed,
@@ -55,16 +56,25 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed();
 
   let body: Body;
-  try { body = await req.json(); } catch { return jsonResponse({ error: "invalid_json" }, 400); }
+  try {
+    body = await req.json();
+  } catch {
+    return jsonResponse({ error: "invalid_json" }, 400);
+  }
 
   const kind = typeof body.kind === "string" ? body.kind : "";
   if (!ALLOWED_KINDS.has(kind)) return jsonResponse({ error: "kind_not_allowed" }, 400);
 
-  const payload = (body.payload && typeof body.payload === "object" ? body.payload : {}) as Record<string, unknown>;
+  const payload = (body.payload && typeof body.payload === "object" ? body.payload : {}) as Record<
+    string,
+    unknown
+  >;
   const serialized = JSON.stringify(payload);
-  if (serialized.length > MAX_PAYLOAD_BYTES) return jsonResponse({ error: "payload_too_large" }, 413);
+  if (serialized.length > MAX_PAYLOAD_BYTES)
+    return jsonResponse({ error: "payload_too_large" }, 413);
 
-  const actor = typeof body.actor === "string" && /^[0-9a-f-]{36}$/i.test(body.actor) ? body.actor : null;
+  const actor =
+    typeof body.actor === "string" && /^[0-9a-f-]{36}$/i.test(body.actor) ? body.actor : null;
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;

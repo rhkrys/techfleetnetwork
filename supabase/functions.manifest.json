@@ -1,16 +1,16 @@
 {
-  "generated_at": "2026-06-06T01:50:42.967Z",
+  "generated_at": "2026-06-24T04:47:31.994Z",
   "functions": [
     {
       "name": "admin-purge-auth-user",
-      "verify_jwt": true,
+      "verify_jwt": false,
       "kind": "auth",
       "critical": true,
       "declared": true
     },
     {
       "name": "admin-sign-out-all-users",
-      "verify_jwt": true,
+      "verify_jwt": false,
       "kind": "auth",
       "critical": true,
       "declared": true
@@ -23,9 +23,23 @@
       "declared": true
     },
     {
+      "name": "auth-broker",
+      "verify_jwt": false,
+      "kind": "public",
+      "critical": false,
+      "declared": false
+    },
+    {
       "name": "auth-email-hook",
       "verify_jwt": false,
       "kind": "public",
+      "critical": false,
+      "declared": true
+    },
+    {
+      "name": "auth-prober",
+      "verify_jwt": false,
+      "kind": "cron",
       "critical": false,
       "declared": true
     },
@@ -80,7 +94,7 @@
     },
     {
       "name": "delete-account",
-      "verify_jwt": true,
+      "verify_jwt": false,
       "kind": "auth",
       "critical": true,
       "declared": true
@@ -121,6 +135,13 @@
       "declared": true
     },
     {
+      "name": "email-dispatcher",
+      "verify_jwt": false,
+      "kind": "cron",
+      "critical": false,
+      "declared": true
+    },
+    {
       "name": "email-pipeline-health",
       "verify_jwt": false,
       "kind": "cron",
@@ -146,6 +167,13 @@
       "verify_jwt": false,
       "kind": "cron",
       "critical": false,
+      "declared": true
+    },
+    {
+      "name": "finalize-password-reset",
+      "verify_jwt": false,
+      "kind": "auth",
+      "critical": true,
       "declared": true
     },
     {
@@ -255,14 +283,14 @@
     },
     {
       "name": "get-discord-member-count",
-      "verify_jwt": true,
+      "verify_jwt": false,
       "kind": "auth",
       "critical": false,
       "declared": true
     },
     {
       "name": "get-i18n-bundle",
-      "verify_jwt": true,
+      "verify_jwt": false,
       "kind": "auth",
       "critical": false,
       "declared": true
@@ -332,7 +360,7 @@
     },
     {
       "name": "login-with-captcha",
-      "verify_jwt": true,
+      "verify_jwt": false,
       "kind": "auth",
       "critical": true,
       "declared": true
@@ -352,10 +380,17 @@
       "declared": true
     },
     {
-      "name": "notify-applicant-status",
+      "name": "migrate-helper",
       "verify_jwt": false,
-      "kind": "cron",
+      "kind": "public",
       "critical": false,
+      "declared": true
+    },
+    {
+      "name": "notify-applicant-status",
+      "verify_jwt": true,
+      "kind": "auth",
+      "critical": true,
       "declared": true
     },
     {
@@ -395,7 +430,7 @@
     },
     {
       "name": "process-freescout-events",
-      "verify_jwt": true,
+      "verify_jwt": false,
       "kind": "auth",
       "critical": false,
       "declared": true
@@ -465,28 +500,35 @@
     },
     {
       "name": "reconcile-stuck-emails",
-      "verify_jwt": true,
+      "verify_jwt": false,
       "kind": "auth",
       "critical": false,
       "declared": true
     },
     {
+      "name": "record-auth-event",
+      "verify_jwt": false,
+      "kind": "public",
+      "critical": false,
+      "declared": true
+    },
+    {
       "name": "record-auth-recovery",
-      "verify_jwt": true,
+      "verify_jwt": false,
       "kind": "auth",
       "critical": false,
       "declared": true
     },
     {
       "name": "record-auth-wedge",
-      "verify_jwt": true,
+      "verify_jwt": false,
       "kind": "auth",
       "critical": false,
       "declared": true
     },
     {
       "name": "record-consent",
-      "verify_jwt": true,
+      "verify_jwt": false,
       "kind": "auth",
       "critical": true,
       "declared": true
@@ -500,7 +542,7 @@
     },
     {
       "name": "record-web-vital",
-      "verify_jwt": true,
+      "verify_jwt": false,
       "kind": "auth",
       "critical": false,
       "declared": true
@@ -542,14 +584,14 @@
     },
     {
       "name": "replay-email-dlq",
-      "verify_jwt": true,
+      "verify_jwt": false,
       "kind": "auth",
       "critical": false,
       "declared": true
     },
     {
       "name": "resend-signup-confirmations",
-      "verify_jwt": true,
+      "verify_jwt": false,
       "kind": "auth",
       "critical": true,
       "declared": true
@@ -563,7 +605,7 @@
     },
     {
       "name": "resume-application-reminder",
-      "verify_jwt": true,
+      "verify_jwt": false,
       "kind": "auth",
       "critical": false,
       "declared": true
@@ -584,7 +626,7 @@
     },
     {
       "name": "revoke-user-sessions",
-      "verify_jwt": true,
+      "verify_jwt": false,
       "kind": "auth",
       "critical": true,
       "declared": true
@@ -632,6 +674,13 @@
       "declared": true
     },
     {
+      "name": "send-application-confirmation",
+      "verify_jwt": false,
+      "kind": "public",
+      "critical": false,
+      "declared": true
+    },
+    {
       "name": "send-community-agreement-trigger",
       "verify_jwt": false,
       "kind": "cron",
@@ -640,7 +689,7 @@
     },
     {
       "name": "send-magic-link",
-      "verify_jwt": true,
+      "verify_jwt": false,
       "kind": "auth",
       "critical": true,
       "declared": true
@@ -668,7 +717,7 @@
     },
     {
       "name": "sign-out-all-devices",
-      "verify_jwt": true,
+      "verify_jwt": false,
       "kind": "auth",
       "critical": true,
       "declared": true
@@ -752,14 +801,14 @@
     },
     {
       "name": "validate-email-domain",
-      "verify_jwt": true,
+      "verify_jwt": false,
       "kind": "auth",
       "critical": true,
       "declared": true
     },
     {
       "name": "verify-turnstile",
-      "verify_jwt": true,
+      "verify_jwt": false,
       "kind": "auth",
       "critical": true,
       "declared": true

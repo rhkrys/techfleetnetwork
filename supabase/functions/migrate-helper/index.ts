@@ -1,3 +1,4 @@
+// @edge-public
 const BUILD_ID = "2026-03-04";
 const ACCESS_KEY = "accesscode";
 
@@ -21,7 +22,8 @@ const jsonResponse = (payload: unknown, status = 200) =>
     headers: responseHeaders,
   });
 
-const errorResponse = (status: number, error: string) => jsonResponse({ build_id: BUILD_ID, error }, status);
+const errorResponse = (status: number, error: string) =>
+  jsonResponse({ build_id: BUILD_ID, error }, status);
 
 const requiredEnv = (name: string): string | null => {
   const value = Deno.env.get(name)?.trim();

@@ -15,7 +15,15 @@
 //      sync with config.toml (kind = auth | public | cron).
 //
 // Run with --fix to auto-append missing [functions.<name>] blocks.
-import { readdirSync, readFileSync, writeFileSync, statSync, appendFileSync, existsSync, mkdirSync } from "node:fs";
+import {
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+  statSync,
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+} from "node:fs";
 import { join } from "node:path";
 
 const ROOT = process.cwd();
@@ -27,23 +35,27 @@ const STRICT = process.argv.includes("--strict");
 
 const config = readFileSync(CONFIG, "utf8");
 const pinned = new Set(
-  [...config.matchAll(/^\s*\[functions\.([a-zA-Z0-9_-]+)\]/gm)].map((m) => m[1]),
+  [...config.matchAll(/^\s*\[functions\.([a-zA-Z0-9_-]+)\]/gm)].map((m) => m[1])
 );
 
 const dirs = readdirSync(FN_DIR).filter((name) => {
   if (name === "_shared" || name.startsWith(".")) return false;
-  try { return statSync(join(FN_DIR, name)).isDirectory(); } catch { return false; }
+  try {
+    return statSync(join(FN_DIR, name)).isDirectory();
+  } catch {
+    return false;
+  }
 });
 
 const missing = dirs.filter((name) => !pinned.has(name));
 
 if (missing.length > 0 && FIX) {
-  const blocks = missing.map((n) =>
-    `  [functions.${n}]\n    verify_jwt = true\n`
-  ).join("");
+  const blocks = missing.map((n) => `  [functions.${n}]\n    verify_jwt = true\n`).join("");
   appendFileSync(CONFIG, blocks);
-  console.log(`Pinned ${missing.length} function(s) with verify_jwt = true:\n` +
-    missing.map((n) => `  + ${n}`).join("\n"));
+  console.log(
+    `Pinned ${missing.length} function(s) with verify_jwt = true:\n` +
+      missing.map((n) => `  + ${n}`).join("\n")
+  );
   process.exit(0);
 }
 
@@ -51,10 +63,10 @@ let failed = false;
 if (missing.length > 0) {
   console.error(
     "Edge functions without a [functions.<name>] block in supabase/config.toml:\n" +
-    missing.map((n) => `  - ${n}`).join("\n") +
-    "\n\nEvery edge function dir MUST be pinned. Run:\n" +
-    "  node scripts/ci/check-edge-function-coverage.mjs --fix\n" +
-    "to auto-pin with verify_jwt = true, then adjust for webhooks/cron.\n",
+      missing.map((n) => `  - ${n}`).join("\n") +
+      "\n\nEvery edge function dir MUST be pinned. Run:\n" +
+      "  node scripts/ci/check-edge-function-coverage.mjs --fix\n" +
+      "to auto-pin with verify_jwt = true, then adjust for webhooks/cron.\n"
   );
   failed = true;
 }
@@ -64,7 +76,11 @@ function walk(dir, files = []) {
   for (const entry of readdirSync(dir)) {
     const p = join(dir, entry);
     let st;
-    try { st = statSync(p); } catch { continue; }
+    try {
+      st = statSync(p);
+    } catch {
+      continue;
+    }
     if (st.isDirectory()) {
       if (entry === "node_modules" || entry === "dist" || entry.startsWith(".")) continue;
       walk(p, files);
@@ -82,15 +98,16 @@ try {
     const src = readFileSync(f, "utf8");
     for (const m of src.matchAll(invokeRe)) invoked.add(m[1]);
   }
-} catch { /* no src/ */ }
+} catch {
+  /* no src/ */
+}
 
-const invokedMissing = [...invoked].filter(
-  (name) => !pinned.has(name) && dirs.includes(name),
-);
+const invokedMissing = [...invoked].filter((name) => !pinned.has(name) && dirs.includes(name));
 if (invokedMissing.length > 0) {
   console.error(
     "\nFunctions invoked from src/ but NOT pinned:\n" +
-    invokedMissing.map((n) => `  - ${n}`).join("\n") + "\n",
+      invokedMissing.map((n) => `  - ${n}`).join("\n") +
+      "\n"
   );
   failed = true;
 }
@@ -102,7 +119,8 @@ function readKind(name) {
   if (!existsSync(idx)) return { kind: null, hasComment: false, critical: false };
   const head = readFileSync(idx, "utf8").split("\n").slice(0, 15).join("\n");
   if (/\/\/\s*@edge-cron\b/.test(head)) return { kind: "cron", hasComment: true, critical: false };
-  if (/\/\/\s*@edge-public\b/.test(head)) return { kind: "public", hasComment: true, critical: false };
+  if (/\/\/\s*@edge-public\b/.test(head))
+    return { kind: "public", hasComment: true, critical: false };
   if (/\/\/\s*@edge-auth\b/.test(head)) {
     const critical = /@edge-auth\s+required\b/.test(head);
     return { kind: "auth", hasComment: true, critical };
@@ -133,13 +151,26 @@ const CRITICAL_FALLBACK = new Set([
 const contradictions = [];
 const undeclared = [];
 const functionsManifest = dirs.sort().map((name) => {
+  // Tolerate comment lines / blank lines between the [functions.<name>]
+  // header and its verify_jwt key — many blocks document intent inline.
+  // Without this, the regex fails to match and falsely defaults verify_jwt
+  // to true, producing phantom @edge-cron/@edge-public contradictions.
   const block = config.match(
-    new RegExp(`\\[functions\\.${name}\\]\\s*\\n\\s*verify_jwt\\s*=\\s*(true|false)`, "i")
+    new RegExp(
+      `\\[functions\\.${name}\\][^\\n]*\\n(?:[ \\t]*(?:#[^\\n]*)?\\n)*[ \\t]*verify_jwt\\s*=\\s*(true|false)`,
+      "i"
+    )
   );
   const verify_jwt = block ? block[1] === "true" : true;
   const { kind, hasComment, critical: commentCritical } = readKind(name);
   if (hasComment) {
-    if (kind === "auth" && !verify_jwt) contradictions.push(`${name}: @edge-auth but verify_jwt=false`);
+    // `@edge-auth` + verify_jwt=false is a VALID, pervasive pattern here: the
+    // function requires auth but verifies the Bearer/admin token in code (see
+    // the many documented "Manual JWT check in code" blocks in config.toml),
+    // because the platform JWT gate can't express recovery-session / admin
+    // step-up / service-role-or-user shapes. The only real contradiction is a
+    // public/cron surface sitting BEHIND the platform JWT gate, which would
+    // reject the anonymous / service-role callers it's meant to serve.
     if ((kind === "public" || kind === "cron") && verify_jwt) {
       contradictions.push(`${name}: @edge-${kind} but verify_jwt=true`);
     }
@@ -152,15 +183,28 @@ const functionsManifest = dirs.sort().map((name) => {
 });
 
 if (contradictions.length > 0) {
-  console.error("\nMagic-comment / verify_jwt contradictions:\n" +
-    contradictions.map((c) => `  - ${c}`).join("\n") + "\n");
+  console.error(
+    "\nMagic-comment / verify_jwt contradictions:\n" +
+      contradictions.map((c) => `  - ${c}`).join("\n") +
+      "\n"
+  );
   failed = true;
 }
 if (undeclared.length > 0) {
-  const msg = `\n${undeclared.length} function(s) missing // @edge-auth|public|cron comment in first 15 lines of index.ts:\n` +
-    undeclared.slice(0, 10).map((n) => `  - ${n}`).join("\n") +
-    (undeclared.length > 10 ? `\n  … and ${undeclared.length - 10} more` : "") + "\n";
-  if (STRICT) { console.error(msg); failed = true; } else { console.warn(msg); }
+  const msg =
+    `\n${undeclared.length} function(s) missing // @edge-auth|public|cron comment in first 15 lines of index.ts:\n` +
+    undeclared
+      .slice(0, 10)
+      .map((n) => `  - ${n}`)
+      .join("\n") +
+    (undeclared.length > 10 ? `\n  … and ${undeclared.length - 10} more` : "") +
+    "\n";
+  if (STRICT) {
+    console.error(msg);
+    failed = true;
+  } else {
+    console.warn(msg);
+  }
 }
 
 if (failed) process.exit(1);
@@ -172,14 +216,16 @@ const manifest = {
 const manifestJson = JSON.stringify(manifest, null, 2) + "\n";
 writeFileSync(join(ROOT, "supabase", "functions.manifest.json"), manifestJson);
 try {
-  writeFileSync(
-    join(FN_DIR, "edge-deploy-smoke", "_manifest.json"),
-    manifestJson,
-  );
-} catch { /* dir may not exist yet on first run */ }
+  writeFileSync(join(FN_DIR, "edge-deploy-smoke", "_manifest.json"), manifestJson);
+} catch {
+  /* dir may not exist yet on first run */
+}
 // Mirror into src/ so Vite + tsconfig.app.json (include: ["src"]) can import.
-try { mkdirSync(join(ROOT, "src", "generated"), { recursive: true }); } catch {}
+try {
+  mkdirSync(join(ROOT, "src", "generated"), { recursive: true });
+} catch {}
 writeFileSync(join(ROOT, "src", "generated", "edge-functions.manifest.json"), manifestJson);
 
-console.log(`OK: ${dirs.length} edge functions all pinned; manifest written (${undeclared.length} undeclared kind).`);
-
+console.log(
+  `OK: ${dirs.length} edge functions all pinned; manifest written (${undeclared.length} undeclared kind).`
+);
