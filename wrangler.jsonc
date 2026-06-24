@@ -1,17 +1,13 @@
 {
-  "observability": {
-    "enabled": false,
-    "head_sampling_rate": 1,
-    "logs": {
-      "enabled": true,
-      "head_sampling_rate": 1,
-      "persist": true,
-      "invocation_logs": true
-    },
-    "traces": {
-      "enabled": false,
-      "persist": true,
-      "head_sampling_rate": 1
-    }
+  // Cloudflare Workers config for the TechFleet Network static SPA.
+  // Deploys the built ./dist folder as static assets (no server code).
+  "name": "techfleetnetwork",
+  "compatibility_date": "2026-06-01",
+  "assets": {
+    // Vite outputs the built site here:
+    "directory": "./dist",
+    // For a React single-page app: any URL that isn't a real file
+    // serves index.html so client-side routing works (no 404s on deep links).
+    "not_found_handling": "single-page-application"
   }
 }
