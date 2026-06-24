@@ -64,8 +64,8 @@ function readFromSession<T extends StateShape>(key: string, defaults: T): Partia
   }
 }
 
-function mergeHydration<T extends StateShape>(defaults: T): T {
-  return { ...defaults, ...readFromSession(arguments[1] as unknown as string, defaults), ...readFromUrl(defaults) } as T;
+function mergeHydration<T extends StateShape>(defaults: T, key: string): T {
+  return { ...defaults, ...readFromSession(key, defaults), ...readFromUrl(defaults) } as T;
 }
 
 /**

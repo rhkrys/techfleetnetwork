@@ -205,6 +205,7 @@ export function CookieConsentBanner() {
         reconcileFromCookieYes(initial, "reconcile");
       }
     };
+    // reason: tab-switch-safe — reconciles cookie-consent state on tab return; never reloads or redirects.
     document.addEventListener("visibilitychange", onVisibility);
 
     return () => {

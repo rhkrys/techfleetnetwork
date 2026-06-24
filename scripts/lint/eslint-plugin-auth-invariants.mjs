@@ -78,6 +78,12 @@ const noRawPasswordUpdate = {
   create(context) {
     if (fileEndsWith(context, AUTH_SERVICE_LEGACY)) return {};
     if (fileInAuthFeature(context)) return {};
+    // Server-side edge functions (auth-broker, finalize-password-reset, admin
+    // resets) ARE the canonical place a password update happens — there is no
+    // client confirm-password UI to route through, so this client-scoped rule
+    // (message references AuthService.updatePassword + confirmation) does not
+    // apply. The broker validates input via zod server-side.
+    if (normalisedFilename(context).includes("supabase/functions/")) return {};
     return {
       CallExpression(node) {
         const callee = node.callee;

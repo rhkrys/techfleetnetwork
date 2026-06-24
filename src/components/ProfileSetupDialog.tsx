@@ -194,6 +194,7 @@ export function ProfileSetupDialog() {
       }
     };
     window.addEventListener("beforeunload", flush);
+    // reason: tab-switch-safe — flushes a debounced autosave when the tab is hidden; never reloads or redirects.
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "hidden") flush();
     });
