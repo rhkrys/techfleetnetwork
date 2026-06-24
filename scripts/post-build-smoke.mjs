@@ -3,9 +3,10 @@ import { join } from "node:path";
 
 const distDir = "dist";
 const assetsDir = join(distDir, "assets");
+
 const required = [
-  "https://iqsjhrhsjlgjiaedzmtz.supabase.co",
-  "sb_publishable_NnnYUf3wUfVWGyOlhQf9UQ_92QsC3YE",
+  "https://pzvqxdgoztbfikfuifix.supabase.co",
+  "sb_publishable_yKbfQNAnhEEW-9TPII5_Og_8G7gOzm2",
 ];
 const forbidden = [
   "VITE_SUPABASE_URL}/functions",
