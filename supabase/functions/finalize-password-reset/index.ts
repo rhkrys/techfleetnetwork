@@ -105,15 +105,17 @@ Deno.serve(withAuditWrapper("finalize-password-reset", async (req) => {
     revocationRecorded = !insertError;
 
     await admin.auth.admin.signOut(auth.userId, "others").catch(() => undefined);
-    await admin.rpc("record_event", {
-      p_sink: "ops_events",
-      p_kind: "auth.recovery.update_success",
-      p_actor: auth.userId,
-      p_payload: { other_sessions_revoked: revocationRecorded },
-      p_severity: "info",
-      p_ref_table: "auth.users",
-      p_ref_id: auth.userId,
-    }).catch(() => undefined);
+    try {
+      await admin.rpc("record_event", {
+        p_sink: "ops_events",
+        p_kind: "auth.recovery.update_success",
+        p_actor: auth.userId,
+        p_payload: { other_sessions_revoked: revocationRecorded },
+        p_severity: "info",
+        p_ref_table: "auth.users",
+        p_ref_id: auth.userId,
+      });
+    } catch { /* telemetry is best-effort — never fail the password reset on it */ }
 
     return jsonResponse({ ok: true, other_devices_revoked: revocationRecorded });
   } catch (err) {

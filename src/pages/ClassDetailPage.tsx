@@ -41,6 +41,23 @@ export default function ClassDetailPage() {
     queryFn: () => (id ? ClassService.listAuditHistory(id) : Promise.resolve([])),
     enabled: !!id,
   });
+  // Enrollment check for curriculum tab visibility (learners). Hoisted above the
+  // loading early-return below so hook order stays stable (react-hooks/rules-of-hooks).
+  const { data: isEnrolled = false } = useQuery({
+    queryKey: ["class-enrollment", id ?? "none", user?.id ?? "anon"] as const,
+    queryFn: async () => {
+      if (!id || !user?.id) return false;
+      const { data: rows } = await supabase
+        .from("cohort_registrations")
+        .select("cohorts!inner(class_id)")
+        .eq("user_id", user.id)
+        .eq("cohorts.class_id", id)
+        .limit(1);
+      return (rows?.length ?? 0) > 0;
+    },
+    enabled: !!id && !!user?.id,
+    staleTime: 60_000,
+  });
   const latestChangesReason = (() => {
     if (cls?.status !== "draft") return null;
     const r = history.find((h) => h.action === "request_changes");
@@ -59,22 +76,6 @@ export default function ClassDetailPage() {
   const canEdit = isOwner || isAdmin;
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["classes"] });
 
-  // Enrollment check for curriculum tab visibility (learners).
-  const { data: isEnrolled = false } = useQuery({
-    queryKey: ["class-enrollment", id ?? "none", user?.id ?? "anon"] as const,
-    queryFn: async () => {
-      if (!id || !user?.id) return false;
-      const { data: rows } = await supabase
-        .from("cohort_registrations")
-        .select("cohorts!inner(class_id)")
-        .eq("user_id", user.id)
-        .eq("cohorts.class_id", id)
-        .limit(1);
-      return (rows?.length ?? 0) > 0;
-    },
-    enabled: !!id && !!user?.id,
-    staleTime: 60_000,
-  });
   const canSeeCurriculum = canEdit || isEnrolled;
 
   const submitCohort = async (cohortId: string) => {
