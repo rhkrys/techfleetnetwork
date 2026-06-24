@@ -38,7 +38,7 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Guard — access token present
         id: guard
@@ -62,8 +62,38 @@ jobs:
         with:
           version: latest
 
-      - name: Deploy all edge functions
+      - name: Deploy edge functions (one by one, resilient)
         if: steps.guard.outputs.skip != 'true'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-        run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_REF"
+        run: |
+          set -u
+          ok=0
+          failed=""
+          for dir in supabase/functions/*/; do
+            name="$(basename "$dir")"
+            [ "$name" = "_shared" ] && continue
+            [ -f "${dir}index.ts" ] || { echo "skip $name (no index.ts)"; continue; }
+            echo "::group::deploy $name"
+            if supabase functions deploy "$name" --project-ref "$SUPABASE_PROJECT_REF"; then
+              ok=$((ok + 1))
+              echo "OK: $name"
+            else
+              failed="$failed $name"
+              echo "::warning::FAILED to deploy $name"
+            fi
+            echo "::endgroup::"
+          done
+          echo "==================================================="
+          echo "Deployed OK: $ok"
+          if [ -n "$failed" ]; then
+            echo "FAILED functions:$failed"
+            echo "::warning::These functions failed to deploy:$failed"
+          else
+            echo "All functions deployed successfully."
+          fi
+          # Only hard-fail if NOTHING deployed (systemic auth/CLI/project issue).
+          if [ "$ok" -eq 0 ]; then
+            echo "::error::No functions deployed — check SUPABASE_ACCESS_TOKEN and project ref."
+            exit 1
+          fi
