@@ -1,11 +1,24 @@
 name: Deploy edge functions
 
-# Deploys every supabase/functions/* to the owned Supabase project on push to
-# main. Closes the cutover gap that broke Fleety/captcha/auth: the migration
-# moved the frontend, DB, and storage but never deployed the edge functions to
-# the new project, so every /functions/v1/* returned a gateway 503 ("Failed to
-# fetch"). On Lovable, deploys were automatic; on the owned project they are
-# not — this workflow makes them automatic again so they can't silently drift.
+# Deploys supabase/functions/* to the owned Supabase project on push to main.
+# Closes the cutover gap that broke Fleety/captcha/auth: the migration moved the
+# frontend, DB, and storage but never deployed the edge functions to the new
+# project, so every /functions/v1/* returned a gateway 503 ("Failed to fetch").
+# On Lovable, deploys were automatic; on the owned project they are not — this
+# workflow makes them automatic again so they can't silently drift.
+#
+# CHANGE-DETECTION (why this isn't a deploy-all every push):
+#   Deploying all ~117 functions back-to-back hammered the Supabase Management
+#   API and a scattered subset failed on transient throttling. A push now
+#   deploys only the functions whose files changed since the previous commit.
+#   A change under supabase/functions/_shared/** or supabase/config.toml affects
+#   every function, so those fan out to a full deploy. Retry + pacing remain as a
+#   backstop for genuine transients.
+#
+# RECOVERY / FULL REDEPLOY:
+#   Run this workflow manually (Actions → Deploy edge functions → Run workflow).
+#   The `deploy_all` input defaults to true, so a manual run redeploys every
+#   function — use it to land functions that failed a previous run.
 #
 # One-time setup (Cowork):
 #   - Add repo secret SUPABASE_ACCESS_TOKEN (Supabase → Account → Access Tokens).
@@ -23,7 +36,12 @@ on:
     paths:
       - "supabase/functions/**"
       - "supabase/config.toml"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      deploy_all:
+        description: "Deploy every function (recovery / full redeploy). Default true for manual runs."
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -34,6 +52,12 @@ concurrency:
 
 env:
   SUPABASE_PROJECT_REF: pzvqxdgoztbfikfuifix
+  # Single knob for the Supabase CLI version. `latest` floats; once a green run
+  # records a known-good version (see the "Record CLI version" step output),
+  # pin it here (e.g. "2.30.4") so deploys are reproducible and don't drift when
+  # a new CLI changes deploy behavior. We don't hard-code a guess here because a
+  # nonexistent version string would brick every deploy — worse than floating.
+  SUPABASE_CLI_VERSION: latest
 
 jobs:
   deploy:
@@ -55,45 +79,156 @@ jobs:
       - name: Checkout
         if: steps.guard.outputs.skip != 'true'
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          # Full history so we can diff the push range to find changed functions.
+          fetch-depth: 0
 
       - name: Install Supabase CLI
         if: steps.guard.outputs.skip != 'true'
         uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: ${{ env.SUPABASE_CLI_VERSION }}
 
-      - name: Deploy edge functions (one by one, resilient)
+      - name: Record CLI version
         if: steps.guard.outputs.skip != 'true'
+        run: |
+          # Surface the resolved CLI version so it can be pinned in env above.
+          echo "Supabase CLI: $(supabase --version 2>&1 | head -n1)"
+
+      - name: Select functions to deploy
+        id: select
+        if: steps.guard.outputs.skip != 'true'
+        run: |
+          set -u
+          list_all() {
+            for d in supabase/functions/*/; do
+              n="$(basename "$d")"
+              [ "$n" = "_shared" ] && continue
+              [ -f "${d}index.ts" ] || continue
+              echo "$n"
+            done
+          }
+
+          all=false
+          # Manual run: honor deploy_all (default true). This is the recovery path.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.deploy_all }}" != "false" ]; then
+            echo "Manual run with deploy_all — selecting all functions."
+            all=true
+          fi
+
+          before="${{ github.event.before }}"
+          after="${{ github.sha }}"
+          changed=""
+          if [ "$all" != "true" ]; then
+            # No usable base commit (first push, force-push, all-zero SHA) => deploy all (safe default).
+            if ! git rev-parse --quiet --verify "${before}^{commit}" >/dev/null 2>&1; then
+              echo "No usable base commit ('$before') — selecting all functions."
+              all=true
+            else
+              changed="$(git diff --name-only "$before" "$after" -- supabase/functions supabase/config.toml)"
+              # A shared-module or config.toml change affects every function.
+              if printf '%s\n' "$changed" | grep -qE '^supabase/functions/_shared/|^supabase/config\.toml$'; then
+                echo "Detected change under _shared/ or config.toml — selecting all functions."
+                all=true
+              fi
+            fi
+          fi
+
+          out="$RUNNER_TEMP/selected-functions.txt"
+          : > "$out"
+          if [ "$all" = "true" ]; then
+            list_all > "$out"
+          else
+            printf '%s\n' "$changed" \
+              | sed -n 's#^supabase/functions/\([^/]*\)/.*#\1#p' \
+              | sort -u \
+              | while read -r n; do
+                  [ -z "$n" ] && continue
+                  [ "$n" = "_shared" ] && continue
+                  [ -f "supabase/functions/$n/index.ts" ] || continue
+                  echo "$n"
+                done > "$out"
+          fi
+
+          count="$(grep -c . "$out" || true)"
+          echo "Selected $count function(s) to deploy:"
+          cat "$out"
+          echo "list_file=$out" >> "$GITHUB_OUTPUT"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy selected functions (resilient + retry)
+        if: steps.guard.outputs.skip != 'true' && steps.select.outputs.count != '0'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          LIST_FILE: ${{ steps.select.outputs.list_file }}
         run: |
           set -u
           ok=0
+          attempted=0
           failed=""
-          for dir in supabase/functions/*/; do
-            name="$(basename "$dir")"
-            [ "$name" = "_shared" ] && continue
-            [ -f "${dir}index.ts" ] || { echo "skip $name (no index.ts)"; continue; }
+
+          # Retry + pacing backstop. Even with change-detection a batch can hit
+          # transient Management API throttling (429/5xx). Exponential backoff
+          # absorbs it; a small gap between functions keeps us under the limit.
+          # We CAPTURE each deploy's output and, on final failure, print the
+          # error tail into the summary — so any genuinely non-transient failure
+          # names its own cause instead of hiding in a collapsed ::group:: line.
+          deploy_one() {
+            name="$1"
+            attempt=1
+            max=3
+            log="$(mktemp)"
+            while :; do
+              if supabase functions deploy "$name" --project-ref "$SUPABASE_PROJECT_REF" >"$log" 2>&1; then
+                cat "$log"
+                rm -f "$log"
+                return 0
+              fi
+              if [ "$attempt" -ge "$max" ]; then
+                cat "$log"
+                echo "---- error tail for $name (attempt $attempt/$max) ----"
+                tail -n 25 "$log"
+                rm -f "$log"
+                return 1
+              fi
+              wait_s=$((attempt * 10))
+              echo "attempt $attempt/$max for $name failed; retrying in ${wait_s}s (likely Management API throttling)"
+              sleep "$wait_s"
+              attempt=$((attempt + 1))
+            done
+          }
+
+          while read -r name; do
+            [ -z "$name" ] && continue
+            attempted=$((attempted + 1))
             echo "::group::deploy $name"
-            if supabase functions deploy "$name" --project-ref "$SUPABASE_PROJECT_REF"; then
+            if deploy_one "$name"; then
               ok=$((ok + 1))
               echo "OK: $name"
             else
               failed="$failed $name"
-              echo "::warning::FAILED to deploy $name"
+              echo "::warning::FAILED to deploy $name (see error tail above)"
             fi
             echo "::endgroup::"
-          done
+            # Pace the loop to stay under the deploy rate limit.
+            sleep 2
+          done < "$LIST_FILE"
+
           echo "==================================================="
-          echo "Deployed OK: $ok"
+          echo "Attempted: $attempted · Deployed OK: $ok"
           if [ -n "$failed" ]; then
             echo "FAILED functions:$failed"
             echo "::warning::These functions failed to deploy:$failed"
           else
-            echo "All functions deployed successfully."
+            echo "All selected functions deployed successfully."
           fi
-          # Only hard-fail if NOTHING deployed (systemic auth/CLI/project issue).
-          if [ "$ok" -eq 0 ]; then
+          # Hard-fail only if we attempted at least one and NONE succeeded
+          # (systemic auth/CLI/project issue, not a single bad function).
+          if [ "$attempted" -gt 0 ] && [ "$ok" -eq 0 ]; then
             echo "::error::No functions deployed — check SUPABASE_ACCESS_TOKEN and project ref."
             exit 1
           fi
+
+      - name: Nothing to deploy
+        if: steps.guard.outputs.skip != 'true' && steps.select.outputs.count == '0'
+        run: echo "No edge functions changed in this push — nothing to deploy."
