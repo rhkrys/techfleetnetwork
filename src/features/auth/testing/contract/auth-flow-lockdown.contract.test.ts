@@ -55,6 +55,7 @@ vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     auth: {
       signUp: vi.fn(),
+      signInWithPassword: vi.fn(),
       resetPasswordForEmail: vi.fn(),
       updateUser: vi.fn(),
       exchangeCodeForSession: vi.fn(),
@@ -111,6 +112,24 @@ describe("AUTH-LOCKDOWN-01 — sign-in (password)", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe("rate_limited");
   });
+
+  // Each server/transport shape must map to its exact code — a misclassification
+  // here is the class of bug that locked ~52 members out in June.
+  it.each([
+    ["server account_locked code", { code: "account_locked" }, "account_locked"],
+    ["server captcha_failed code", { code: "captcha_failed" }, "captcha_failed"],
+    ["server mfa_required code", { code: "mfa_required" }, "mfa_required"],
+    ["HTTP 503", { status: 503 }, "service_unavailable"],
+    ["a network failure", new Error("Failed to fetch"), "network_error"],
+    ["an unknown shape", { weird: true }, "unexpected"],
+  ])("maps %s to error %s", async (_label, thrown, expectedCode) => {
+    vi.mocked(signInWithPasswordService).mockRejectedValue(thrown);
+
+    const result = await signInWithPassword({ email: "m@example.com", password: "x", captchaToken: "tok" });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe(expectedCode);
+  });
 });
 
 describe("AUTH-LOCKDOWN-02 — sign-up", () => {
@@ -137,6 +156,24 @@ describe("AUTH-LOCKDOWN-02 — sign-up", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe("account_exists");
   });
+
+  it("on an indeterminate 5xx, probes and resolves to signed_in if the row was created", async () => {
+    // SIGNUP-TIMEOUT-PROBE-001: a Cloud Auth blip that already persisted the
+    // user must not strand them — the flow probes via sign-in and recovers.
+    vi.mocked(supabase.auth.signUp).mockResolvedValue({
+      data: {},
+      error: { status: 503, message: "upstream unavailable" },
+    } as never);
+    vi.mocked(supabase.auth.signInWithPassword).mockResolvedValue({
+      data: { user: { id: "u9" } },
+      error: null,
+    } as never);
+
+    const result = await signUp({ email: "probe@example.com", password: "StrongPass123!" });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.kind).toBe("signed_in");
+  });
 });
 
 describe("AUTH-LOCKDOWN-03 — request password reset", () => {
@@ -159,6 +196,15 @@ describe("AUTH-LOCKDOWN-03 — request password reset", () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.value.kind).toBe("password_reset_email_sent");
+  });
+
+  it("returns service_unavailable when the GoTrue call throws (transport failure)", async () => {
+    vi.mocked(supabase.auth.resetPasswordForEmail).mockRejectedValue(new Error("network down"));
+
+    const result = await requestPasswordReset({ email: "m@example.com" });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe("service_unavailable");
   });
 });
 
@@ -204,6 +250,32 @@ describe("AUTH-LOCKDOWN-05 — consume recovery link", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe("recovery_session_expired");
     expect(supabase.auth.exchangeCodeForSession).not.toHaveBeenCalled();
+  });
+
+  it("maps an already-used ?code= link to recovery_link_consumed", async () => {
+    vi.mocked(supabase.auth.exchangeCodeForSession).mockResolvedValue({
+      data: {},
+      error: { message: "code already used" },
+    } as never);
+
+    const result = await consumeRecoveryLink({ url: "https://app.test/reset-password?code=used123" });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe("recovery_link_consumed");
+  });
+
+  it("accepts an implicit-flow hash recovery link when a session is present", async () => {
+    vi.mocked(supabase.auth.getSession).mockResolvedValue({
+      data: { session: { user: { id: "u1" } } },
+      error: null,
+    } as never);
+
+    const result = await consumeRecoveryLink({
+      url: "https://app.test/reset-password#access_token=abc&type=recovery",
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.kind).toBe("password_reset_email_sent");
   });
 });
 
