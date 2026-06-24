@@ -114,7 +114,14 @@ Legend: ✅ done · 🟡 in flight (written, pending verify/commit) · ⬜ plann
 
 ### Wave 2 — Unify observability + SLO paging (the literal "walk away" mechanism)
 - ⬜ **W2.1** One read model over the high-risk signals on the `ops_events`/`ops_metrics` spine (auth_wedge, chunk_stale, infra_transient, login failure-rate, email delivery).
-- ⬜ **W2.2** Capture identity/IP on the auth-failure path (today `failed_login_attempts.ip_address` is NULL — that's why attack-vs-systemic needed a manual check).
+- ⬜ **W2.2** Capture identity/IP on the auth-failure path. Root cause located:
+  `src/features/auth/engine/failure-policy.ts` calls `record_failed_login` with
+  `_ip: null` — the client can't know its own public IP, so every
+  `failed_login_attempts.ip_address` is NULL (that's why June's attack-vs-systemic
+  needed a manual check). Fix server-side: have the `record_failed_login` DB
+  function derive `_ip` from `current_setting('request.headers', true)::json ->>
+  'cf-connecting-ip'` when null, OR record the failure from the auth-broker edge
+  function (which already sees the header). Migration + Cowork to apply.
 - ⬜ **W2.3** Define member-facing SLOs (login success rate, app-load success, reset-email delivery, p95) and page **only** on breach.
 
 ### Wave 3 — Harden self-healing, then retire band-aids
