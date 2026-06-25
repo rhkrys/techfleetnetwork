@@ -99,15 +99,15 @@ Legend: ✅ done · 🟡 in flight (written, pending verify/commit) · ⬜ plann
 ### Wave 0 — Make the truth trustworthy
 - ✅ **W0.1** Lockfile drift fixed (`npm ci` works again) — `4a0803f7`.
 - ☁️ **W0.2** Point GitHub Actions `vars`/`secrets` at the new project `pzvqxdgoztbfikfuifix` (else DB-backed gates skip-green).
-- 🟡 **W0.3a** `auto_resolve_stale_fix_queue → dormant` migration (`supabase/migrations/20260624000000_fix_queue_dormant_status.sql`) — drafted; needs Cowork to apply to live DB.
-- ⬜ **W0.3b** Make `bdd-incident-gate` / `bdd-gate` fail-closed **in CI** (skip locally), with an actionable message.
+- ✅ **W0.3a** `auto_resolve_stale_fix_queue → dormant` migration (`supabase/migrations/20260624000000_fix_queue_dormant_status.sql`) — committed `ea462690`. ☁️ Still needs Cowork to apply to the live DB.
+- ✅ **W0.3b** Make `bdd-incident-gate` / `bdd-gate` fail-closed **in CI** (skip locally), with an actionable message — `bdd-incident-gate.mjs` + `bdd-gate.yml` now exit 1 in CI when the Supabase vars are unset, pointing at W0.2. ⚠️ Depends on **W0.2** (Cowork): until the repo vars are set, these gate checks will now go **red** instead of silently green — by design.
 - ⬜ **W0.3c** Close the `manual` loophole in `bdd-coverage` for `severity=error` scenarios.
-- ⬜ **W0.4** Fix the pre-existing `auth-broker:447` eslint debt (`no-raw-password-update`) on its own.
+- ✅ **W0.4** Pre-existing `auth-broker` eslint debt cleared (`eslint .` exits 0) — `7587eb7e`, `9e62a91c`.
 
 ### Wave 1 — Lock the critical flows
 - ✅ **W1.1** AUTH-FLOW-LOCKDOWN suite, 6 flows — `7cee0bcf`; widened 12→22 — `90921a4c`.
-- 🟡 **W1.2** MFA lockdown suite (AUTH-LOCKDOWN-08, 9 tests, green) — pending commit.
-- 🟡 **W1.3** Google OAuth fix: route the single entrypoint (`GoogleSignInButton`) through native Supabase instead of the retired Lovable adapter (the 404 cause) — pending verify/commit.
+- ✅ **W1.2** MFA lockdown suite (AUTH-LOCKDOWN-08, 9 tests, green) — committed `8ae02bb6`.
+- ✅ **W1.3** Google OAuth fix: route the single entrypoint (`GoogleSignInButton`) through native Supabase instead of the retired Lovable adapter (the 404 cause) — committed `024b4f5a`. ☁️ Still gated on **W1.4** (Cowork) to fully work.
 - ☁️ **W1.4** Enable Google provider on new Supabase + add redirect URIs in Google Cloud + Supabase URL config (code is necessary but not sufficient without this).
 - ⬜ **W1.5** Backfill real AUTH-CORE tests + relink `bdd_scenarios` so "implemented" becomes true.
 - ⬜ **W1.6** Google OAuth lockdown test (AUTH-LOCKDOWN-07) — after the path stabilizes post-cutover.

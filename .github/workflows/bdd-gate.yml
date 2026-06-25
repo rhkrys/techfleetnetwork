@@ -29,15 +29,25 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Guard — secrets present
+      - name: Guard — secrets present (fail closed in CI)
         id: guard
         run: |
+          # Epic W0.3b: this gate runs only in CI, so a missing Supabase var is a
+          # misconfiguration (the repo vars were never pointed at the new project —
+          # epic W0.2), not a reason to skip green. Fail loudly with an actionable
+          # message instead of silently passing as theater.
           if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
-            echo "::warning::Skipping BDD gate — Supabase vars unset."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "## ❌ BDD gate — not configured"
+              echo
+              echo "Repo vars \`VITE_SUPABASE_URL\` / \`VITE_SUPABASE_PUBLISHABLE_KEY\` are unset,"
+              echo "so this DB-backed gate cannot query \`bdd_scenarios\` and must not pass silently."
+              echo "Point the GitHub Actions repo vars at the new project (epic W0.2)."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::BDD gate cannot run — set repo vars VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY (epic W0.2)."
+            exit 1
           fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
 
       - name: Compute changed feature modules
         if: steps.guard.outputs.skip != 'true'

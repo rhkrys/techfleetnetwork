@@ -8,16 +8,36 @@
  * incident is locked in by a regression test reference.
  *
  * Exits 1 with a GitHub Actions summary if any fingerprint is uncovered.
- * Skips silently when Supabase env vars are missing (local dev).
+ *
+ * Env handling (epic W0.3b — fail closed in CI, skip only locally):
+ * this gate runs ONLY in CI, so a missing Supabase env is a misconfiguration
+ * (the repo vars/secrets were never pointed at the new project — epic W0.2),
+ * not a reason to pass. It used to exit(0) silently on missing env, which made
+ * it skip green in CI too — running as theater. Now: missing env in CI fails
+ * loudly with an actionable message; missing env locally still skips so dev
+ * isn't blocked.
  */
 
 const url = process.env.SUPABASE_URL;
-const key =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.SUPABASE_ANON_KEY;
+const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+
+const inCI = process.env.CI === "true" || process.env.GITHUB_ACTIONS === "true";
 
 if (!url || !key) {
-  console.warn("bdd-incident-gate: Supabase env vars unset; skipping.");
+  if (inCI) {
+    const msg =
+      "bdd-incident-gate: SUPABASE_URL / (SERVICE_ROLE|ANON)_KEY are unset in CI — " +
+      "this DB-backed gate cannot run and must not pass silently. " +
+      "Point the GitHub Actions repo vars/secrets at the new project (epic W0.2).";
+    const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+    if (summaryPath) {
+      const fs = await import("node:fs");
+      fs.appendFileSync(summaryPath, `## ❌ BDD incident gate — not configured\n\n${msg}\n`);
+    }
+    console.error(`::error::${msg}`);
+    process.exit(1);
+  }
+  console.warn("bdd-incident-gate: Supabase env vars unset; skipping (local dev).");
   process.exit(0);
 }
 
@@ -68,15 +88,11 @@ for (const { pattern, reason } of fingerprints) {
 }
 
 if (missing.length === 0) {
-  console.log(
-    `bdd-incident-gate: OK — all ${fingerprints.length} fingerprint(s) covered.`
-  );
+  console.log(`bdd-incident-gate: OK — all ${fingerprints.length} fingerprint(s) covered.`);
   process.exit(0);
 }
 
-const summary =
-  process.env.GITHUB_STEP_SUMMARY ||
-  "/dev/stderr";
+const summary = process.env.GITHUB_STEP_SUMMARY || "/dev/stderr";
 const lines = [
   "## ❌ BDD incident gate",
   "",
@@ -84,9 +100,7 @@ const lines = [
   "regression test reference in `bdd_scenarios` (looked for `incident:<fingerprint>`",
   "in `notes` or `test_file`):",
   "",
-  ...missing.map(
-    (m) => `- \`${m.tag}\` — pattern: \`${m.pattern.slice(0, 80)}\` — ${m.reason}`
-  ),
+  ...missing.map((m) => `- \`${m.tag}\` — pattern: \`${m.pattern.slice(0, 80)}\` — ${m.reason}`),
   "",
   "Add a regression spec and tag the scenario with `incident:<tag>` (slug of the catalog pattern) before merging.",
 ];
