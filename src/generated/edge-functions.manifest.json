@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-24T04:47:31.994Z",
+  "generated_at": "2026-06-26T01:15:25.216Z",
   "functions": [
     {
       "name": "admin-purge-auth-user",
@@ -376,13 +376,6 @@
       "name": "mark-interview-scheduled",
       "verify_jwt": false,
       "kind": "cron",
-      "critical": false,
-      "declared": true
-    },
-    {
-      "name": "migrate-helper",
-      "verify_jwt": false,
-      "kind": "public",
       "critical": false,
       "declared": true
     },
