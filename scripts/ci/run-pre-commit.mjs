@@ -19,11 +19,53 @@ import path from "path";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const isMerge = process.argv.includes("--merge");
 
+// When invoked via `exec node` from an MSYS2/Cygwin sh.exe hook, PATH is
+// POSIX-style (/c/Program Files/nodejs) which native Windows node.exe can't
+// resolve.  Convert those entries back to Windows paths (C:\...) before
+// spawning any child processes.
+function fixedEnv() {
+  if (process.platform !== "win32") return process.env;
+  const rawPath = process.env.PATH || process.env.Path || "";
+  if (!rawPath.includes(":/")) return process.env;
+
+  // GIT_EXEC_PATH = C:/Git/mingw64/libexec/git-core → gitRoot = C:/Git
+  // This lets us convert MSYS2 mount-points /cmd and /mingw64/bin which
+  // lint-staged needs to find git.exe.
+  const gitExecPath = process.env.GIT_EXEC_PATH || "";
+  const gitRoot = gitExecPath
+    ? path.resolve(gitExecPath.replace(/\//g, path.sep), "..", "..", "..") + path.sep
+    : null;
+
+  const winPATH = rawPath
+    .split(":")
+    .map((p) => {
+      if (p.match(/^\/([a-zA-Z])\//)) {
+        // /c/foo → C:\foo
+        return p.replace(/^\/([a-zA-Z])\//, (_, d) => d.toUpperCase() + ":\\").replace(/\//g, "\\");
+      }
+      if (gitRoot) {
+        if (p === "/cmd") return path.join(gitRoot, "cmd");
+        if (p === "/mingw64/bin") return path.join(gitRoot, "mingw64", "bin");
+        if (p === "/usr/bin") return path.join(gitRoot, "usr", "bin");
+        if (p === "/usr/local/bin") return path.join(gitRoot, "usr", "local", "bin");
+        if (p === "/bin") return path.join(gitRoot, "usr", "bin");
+      }
+      return p; // leave unresolvable MSYS2 mount-points as-is
+    })
+    .join(";");
+  return { ...process.env, PATH: winPATH };
+}
+
+const env = fixedEnv();
+
 function run(cmd, args, opts = {}) {
   const result = spawnSync(cmd, args, {
     cwd: repoRoot,
     stdio: "inherit",
-    shell: false,
+    // On Windows: .cmd/.bat wrappers (npx, npm, etc.) require cmd.exe.
+    // shell:true also ensures the Windows PATH (after fixedEnv conversion) is used.
+    shell: isWin,
+    env,
     ...opts,
   });
   if (result.error) {
@@ -34,6 +76,10 @@ function run(cmd, args, opts = {}) {
     process.exit(result.status ?? 1);
   }
 }
+
+// On Windows, npm CLI wrappers (.cmd files) require cmd.exe — run()'s
+// shell option handles this; we keep command names portable across platforms.
+const isWin = process.platform === "win32";
 
 if (isMerge) {
   // Merge commits: skip lint-staged. The merged files were already linted in
