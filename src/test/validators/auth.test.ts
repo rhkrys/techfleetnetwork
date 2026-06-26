@@ -55,7 +55,10 @@ describe("passwordSchema (BDD 2.3: Weak password rejection)", () => {
 
 describe("loginSchema (BDD 2.5: Invalid email format)", () => {
   it("accepts valid email and password", () => {
-    const result = loginSchema.safeParse({ email: "test@example.com", password: "Str0ng!PassWord" });
+    const result = loginSchema.safeParse({
+      email: "test@example.com",
+      password: "Str0ng!PassWord",
+    });
     expect(result.success).toBe(true);
   });
 
@@ -73,11 +76,14 @@ describe("loginSchema (BDD 2.5: Invalid email format)", () => {
   it("rejects empty password", () => {
     const result = loginSchema.safeParse({ email: "test@example.com", password: "" });
     expect(result.success).toBe(false);
-    expect(result.error?.issues[0].message).toContain("12 characters");
+    expect(result.error?.issues[0].message).toContain("required");
   });
 
   it("trims whitespace from email", () => {
-    const result = loginSchema.safeParse({ email: "  test@example.com  ", password: "Str0ng!PassWord" });
+    const result = loginSchema.safeParse({
+      email: "  test@example.com  ",
+      password: "Str0ng!PassWord",
+    });
     expect(result.success).toBe(true);
     expect(result.data?.email).toBe("test@example.com");
   });
@@ -95,7 +101,10 @@ describe("loginSchema (BDD 2.5: Invalid email format)", () => {
   });
 
   it("normalizes email before disposable domain validation", () => {
-    const result = loginSchema.safeParse({ email: "  PERSON@MAILINATOR.COM  ", password: "Str0ng!PassWord" });
+    const result = loginSchema.safeParse({
+      email: "  PERSON@MAILINATOR.COM  ",
+      password: "Str0ng!PassWord",
+    });
     expect(result.success).toBe(false);
     expect(result.error?.issues.some((i) => i.message.includes("permanent email"))).toBe(true);
   });
@@ -108,6 +117,10 @@ describe("registerSchema (BDD 2.1: Successful registration, 2.7: Missing fields,
     email: "jane@example.com",
     password: "Str0ng!PassWord",
     confirmPassword: "Str0ng!PassWord",
+    birthYear: 1990,
+    birthMonth: 1,
+    birthDay: 1,
+    electronicCommsConsent: true as const,
     agreedToTerms: true as const,
   };
 
@@ -138,7 +151,11 @@ describe("registerSchema (BDD 2.1: Successful registration, 2.7: Missing fields,
   });
 
   it("rejects weak password", () => {
-    const result = registerSchema.safeParse({ ...validInput, password: "weak", confirmPassword: "weak" });
+    const result = registerSchema.safeParse({
+      ...validInput,
+      password: "weak",
+      confirmPassword: "weak",
+    });
     expect(result.success).toBe(false);
   });
 
@@ -162,18 +179,28 @@ describe("registerSchema (BDD 2.1: Successful registration, 2.7: Missing fields,
   });
 
   it("rejects XSS in first name (A03 security)", () => {
-    const result = registerSchema.safeParse({ ...validInput, firstName: '<script>alert("xss")</script>' });
+    const result = registerSchema.safeParse({
+      ...validInput,
+      firstName: '<script>alert("xss")</script>',
+    });
     expect(result.success).toBe(false);
     expect(result.error?.issues.some((i) => i.message.includes("invalid content"))).toBe(true);
   });
 
   it("rejects XSS in last name (A03 security)", () => {
-    const result = registerSchema.safeParse({ ...validInput, lastName: '<script src="evil.js"></script>' });
+    const result = registerSchema.safeParse({
+      ...validInput,
+      lastName: '<script src="evil.js"></script>',
+    });
     expect(result.success).toBe(false);
   });
 
   it("trims whitespace from names", () => {
-    const result = registerSchema.safeParse({ ...validInput, firstName: "  Jane  ", lastName: "  Doe  " });
+    const result = registerSchema.safeParse({
+      ...validInput,
+      firstName: "  Jane  ",
+      lastName: "  Doe  ",
+    });
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.firstName).toBe("Jane");
