@@ -1,0 +1,16 @@
+-- Remove the CD-PREVIEW-001 BDD scenario ("Every PR receives a Lovable
+-- preview URL comment").
+--
+-- It described .github/workflows/preview-comment.yml, which was deleted when
+-- the app migrated off Lovable to Cloudflare Workers + owned Supabase. Lovable
+-- no longer publishes previews, so the link that workflow posted is dead and
+-- no replacement preview deployment is configured.
+--
+-- The scenario can no longer be "implemented" against a file that does not
+-- exist, and the bdd_status enum has no "deprecated"/"removed" value
+-- (it is only 'implemented' | 'partial' | 'not_built'), so the truthful record
+-- is to drop the row rather than leave a false 'implemented' marker or
+-- mislabel a removed feature as 'not_built'.
+--
+-- Idempotent: a no-op if the row is already gone.
+delete from public.bdd_scenarios where scenario_id = 'CD-PREVIEW-001';
