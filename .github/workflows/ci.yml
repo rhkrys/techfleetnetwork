@@ -1,0 +1,333 @@
+name: CI
+
+# Unified pipeline — single source of truth (replaces regression.yml).
+# See docs/epics/03-cicd-overhaul.md and CICD-PRD-v1.1.docx.
+#
+#   gate            REQUIRED  <8 min   typecheck + lint + unit tests + build (no prod, no e2e)
+#   lint-arch       informational      structural architecture checks, parallel matrix
+#   migration-smoke conditional        runs only when supabase/migrations/ changes
+#   e2e             conditional        Playwright vs staging, only when src/ or functions/ change
+#
+# Branch protection requires ONLY "ci / gate". lint-arch never blocks merge.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# OWASP CI/CD: least privilege by default; jobs opt into more.
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # detect-changes — compute which conditional jobs need to run, from the diff.
+  # Native git (no extra action dependency) to stay SHA-pin-clean.
+  # ---------------------------------------------------------------------------
+  detect-changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      migrations: ${{ steps.filter.outputs.migrations }}
+      e2e: ${{ steps.filter.outputs.e2e }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 0
+      - name: Compute changed paths
+        id: filter
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+            BASE="origin/${{ github.base_ref }}"
+            CHANGED=$(git diff --name-only "$BASE"...HEAD)
+          else
+            BASE="${{ github.event.before }}"
+            CHANGED=$(git diff --name-only "$BASE" HEAD 2>/dev/null || git diff --name-only HEAD~1 HEAD)
+          fi
+          echo "Changed files:"; echo "$CHANGED"
+          if echo "$CHANGED" | grep -q '^supabase/migrations/'; then
+            echo "migrations=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "migrations=false" >> "$GITHUB_OUTPUT"
+          fi
+          if echo "$CHANGED" | grep -qE '^(src/|supabase/functions/)'; then
+            echo "e2e=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "e2e=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ---------------------------------------------------------------------------
+  # setup — install deps ONCE, share node_modules (zstd artifact) downstream.
+  # ---------------------------------------------------------------------------
+  setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version-file: .nvmrc
+      - name: Cache node_modules + npm tarballs
+        id: cache-modules
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        with:
+          path: |
+            node_modules
+            ~/.npm
+          key: ${{ runner.os }}-node-v2-${{ hashFiles('package.json', 'package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-v2-
+      - name: Install dependencies (cache miss)
+        if: steps.cache-modules.outputs.cache-hit != 'true'
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Package node_modules for downstream jobs
+        run: tar --use-compress-program=zstd -cf /tmp/node_modules.tar.zst node_modules
+      - name: Upload node_modules artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: node-modules-${{ github.sha }}
+          path: /tmp/node_modules.tar.zst
+          retention-days: 1
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # gate — THE required check. Fast, deterministic, no production dependency.
+  # No structural scripts (those are lint-arch). No Playwright. No Supabase.
+  # Target: < 8 minutes on a warm cache.
+  # ---------------------------------------------------------------------------
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: setup
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version-file: .nvmrc
+      - name: Restore node_modules
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: node-modules-${{ github.sha }}
+          path: /tmp
+      - run: tar --use-compress-program="zstd -d" -xf /tmp/node_modules.tar.zst
+
+      # No-prod guard — gate must never call the production Supabase project.
+      # (T2.1) Implemented as a repo grep over the test tree.
+      - name: Guard — no production Supabase URL in tests
+        run: node scripts/ci/check-no-prod-supabase-in-tests.mjs
+
+      # No-hang guard — unguarded networkidle waits cause 45s CI hangs (P-15).
+      - name: Guard — no unguarded waitForLoadState("networkidle") in e2e
+        run: node scripts/ci/check-no-unguarded-networkidle.mjs
+
+      - name: Type-check
+        run: npx tsc --noEmit
+      - name: Lint (ESLint)
+        run: npm run lint
+      - name: Lint CSS
+        run: npm run lint:css
+      # Unit tests only. Intentionally NO VITE_SUPABASE_URL: the suite must pass
+      # against jsdom + local fixtures, never the live project (PRD G-03/P-05).
+      - name: Unit tests (Vitest)
+        run: npm run test
+      - name: Build production bundle
+        run: npm run build
+      - name: Generate CycloneDX SBOM
+        run: npm run sbom
+      - name: Upload SBOM artifact
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cyclonedx-sbom
+          path: sbom.json
+          retention-days: 90
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # lint-arch — structural architecture checks, parallel + isolated. One failing
+  # script never skips the others. INFORMATIONAL: does not block merge.
+  # ---------------------------------------------------------------------------
+  lint-arch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: setup
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        check:
+          - check-edge-function-coverage.mjs
+          - check-auth-layer-graph.mjs
+          - check-auth-result-contract.mjs
+          - check-auth-counter-coverage.mjs
+          - check-auth-engine-swallow.mjs
+          - check-auth-screen-imports.mjs
+          - check-auth-warn-snapshot.mjs
+          - check-auth-direct-signin.mjs
+          - check-no-direct-google-oauth.mjs
+          - check-no-legacy-auth-service.mjs
+          - check-legacy-auth-importers.mjs
+          - check-email-architecture.mjs
+          - check-plpgsql-variable-conflict.mjs
+          - check-progress-read-identity.mjs
+          - check-no-rpc-catch.mjs
+          - check-audit-sink-coverage.mjs
+          - check-translator-volatile-regions.mjs
+          - check-triage-actionable-parity.mjs
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version-file: .nvmrc
+      - name: Restore node_modules
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: node-modules-${{ github.sha }}
+          path: /tmp
+      - run: tar --use-compress-program="zstd -d" -xf /tmp/node_modules.tar.zst
+      - name: ${{ matrix.check }}
+        run: node "scripts/ci/${{ matrix.check }}"
+
+  # ---------------------------------------------------------------------------
+  # audit-triggers — bash structural check kept separate (shell, not node).
+  # Informational, same as lint-arch.
+  # ---------------------------------------------------------------------------
+  audit-triggers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: setup
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - name: Verify audit trigger backstop
+        run: bash scripts/ci/check-audit-triggers.sh
+
+  # ---------------------------------------------------------------------------
+  # migration-smoke — apply ALL migrations in sequence against a local Postgres.
+  # Required for PRs that touch supabase/migrations/ (see branch protection).
+  # ---------------------------------------------------------------------------
+  migration-smoke:
+    needs: [detect-changes, gate]
+    if: needs.detect-changes.outputs.migrations == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 0
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.30.4
+      - name: Start local Supabase (Postgres + pgvector)
+        run: supabase start
+      - name: Apply all migrations in sequence
+        run: supabase db reset --no-seed
+      - name: Stop local Supabase
+        if: always()
+        run: supabase stop --no-backup
+
+  # ---------------------------------------------------------------------------
+  # e2e — Playwright against STAGING (never production). Conditional + sharded.
+  # ---------------------------------------------------------------------------
+  e2e:
+    needs: [detect-changes, setup, gate]
+    if: needs.detect-changes.outputs.e2e == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
+    env:
+      # Staging only — set as repo vars. Turnstile test key prevents the
+      # challenge from hanging headless browsers (PRD D-18, auth stays frozen).
+      VITE_SUPABASE_URL: ${{ vars.STAGING_SUPABASE_URL }}
+      VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.STAGING_SUPABASE_PUBLISHABLE_KEY }}
+      VITE_SUPABASE_PROJECT_ID: ${{ vars.STAGING_SUPABASE_PROJECT_ID }}
+      VITE_TURNSTILE_SITE_KEY: ${{ vars.VITE_TURNSTILE_SITE_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version-file: .nvmrc
+      - name: Restore node_modules
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: node-modules-${{ github.sha }}
+          path: /tmp
+      - run: tar --use-compress-program="zstd -d" -xf /tmp/node_modules.tar.zst
+      - name: Resolve Playwright version
+        id: pw-version
+        run: echo "version=$(node -p "require('./node_modules/@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ steps.pw-version.outputs.version }}-chromium
+      - name: Install Playwright browser (cache miss)
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60
+        with:
+          timeout_minutes: 8
+          max_attempts: 3
+          command: npx playwright install --with-deps chromium
+      - name: Install Playwright system deps (cache hit)
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Run Playwright shard ${{ matrix.shard }}/6
+        run: npx playwright test --shard=${{ matrix.shard }}/6
+      - name: Upload blob report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: playwright-blob-shard-${{ matrix.shard }}
+          path: blob-report
+          retention-days: 7
+          if-no-files-found: ignore
+
+  dependency-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - name: Dependency Review
+        uses: actions/dependency-review-action@4081bf99e2866ebe428fc0477b69eb4fcda7220a
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure

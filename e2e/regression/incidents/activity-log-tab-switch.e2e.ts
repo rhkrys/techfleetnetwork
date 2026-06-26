@@ -25,7 +25,7 @@ test("admin activity log: tab switch and reload both preserve state", async ({ c
 
   // ── Visit /admin/activity-log and set non-default state ───────────────
   await page.goto("/admin/activity-log");
-  await page.waitForLoadState("networkidle");
+  await page.waitForLoadState("networkidle").catch(() => {});
 
   // Severity = error
   await page.getByLabel(/filter by severity/i).click();

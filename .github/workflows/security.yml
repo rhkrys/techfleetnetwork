@@ -1,0 +1,85 @@
+name: Security
+
+# Consolidated security scan: npm audit + secret detection.
+# Runs on PRs and weekly to catch new advisories in unchanged code.
+# Dependency-review (supply-chain diff) lives in ci.yml (PR-only).
+#
+# Neither job fails the build automatically — advisories → PR review.
+# Secret scan is the exception: a committed secret IS a fail.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # npm-audit — report high+critical advisories. Report-only (no auto-fail)
+  # because patch bumps need review to avoid surprise breakage.
+  # ---------------------------------------------------------------------------
+  npm-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version-file: .nvmrc
+
+      - name: Run npm audit (high+critical, report-only)
+        run: |
+          set +e
+          npm audit --audit-level=high --json > npm-audit.json
+          echo "npm audit exit code: $?"
+          npm audit --audit-level=high || true
+          exit 0
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: npm-audit-report
+          path: npm-audit.json
+          retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  # secret-scan — block committed secrets. This one IS a hard fail.
+  # ---------------------------------------------------------------------------
+  secret-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version-file: .nvmrc
+
+      - name: Cache node_modules
+        id: cache-modules
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        with:
+          path: |
+            node_modules
+            ~/.npm
+          key: ${{ runner.os }}-node-v2-${{ hashFiles('package.json', 'package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-v2-
+
+      - name: Install dependencies (cache miss)
+        if: steps.cache-modules.outputs.cache-hit != 'true'
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Block committed env files and private secrets
+        run: npm run scan:secrets
