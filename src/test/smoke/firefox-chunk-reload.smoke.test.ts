@@ -15,7 +15,7 @@ describe("Firefox stale-chunk redirect loop (smoke)", () => {
   });
 
   it("FIREFOX-CHUNK-002: inline reloader ignores lazyWithRetry retry URLs", () => {
-    expect(indexHtml).toContain("/[?&](_n|__r)=/.test(src)");
+    expect(indexHtml).toContain("/[?&](_n|__r|_r)=/.test(src)");
   });
 
   it("FIREFOX-CHUNK-003: recovery flag is cleared only after mount + 10s", () => {
