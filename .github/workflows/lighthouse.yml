@@ -15,13 +15,13 @@ jobs:
           node-version: 20
       - name: Install LHCI
         run: npm i -g @lhci/cli@0.13.x
-      - name: Run Lighthouse against published preview
+      - name: Run Lighthouse against production
         run: |
           lhci collect \
-            --url=https://techfleetnetwork.lovable.app/ \
-            --url=https://techfleetnetwork.lovable.app/login \
-            --url=https://techfleetnetwork.lovable.app/register \
-            --url=https://techfleetnetwork.lovable.app/project-openings \
+            --url=https://www.techfleet.network/ \
+            --url=https://www.techfleet.network/login \
+            --url=https://www.techfleet.network/register \
+            --url=https://www.techfleet.network/project-openings \
             --numberOfRuns=2 \
             --settings.preset=desktop \
             --settings.throttlingMethod=devtools \
