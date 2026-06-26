@@ -1,6 +1,6 @@
 // @edge-public
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 import { z } from "npm:zod@3.23.8";
 import { createEdgeLogger } from "../_shared/logger.ts";
 import { applyWaf } from "../_shared/waf.ts";
@@ -113,52 +113,10 @@ const MAX_BODY_BYTES = 256 * 1024;
 const MAX_MESSAGES = 50;
 /** Max length per message content */
 const MAX_MESSAGE_LENGTH = 20_000;
-/** Firecrawl search timeout in ms */
-const WEB_SEARCH_TIMEOUT_MS = 5000;
-
-/**
- * Module-level Fleety knowledge base cache (audit 2026-04-18).
- *
- * Deno isolates persist across invocations within the same worker, so a
- * module-level `let` is shared across requests. At 30 req/s of chat traffic
- * we were doing 30 full-table scans/sec of `knowledge_base` and pushing
- * ~6.8 MB/s of identical system prompts into the AI gateway. With this
- * cache the table is read once per isolate per TTL window.
- */
-const KB_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-type KbEntry = { title: string; content: string; url: string };
-let kbCache: KbEntry[] | null = null;
-let kbCacheExpiresAt = 0;
-let kbInflight: Promise<KbEntry[]> | null = null;
-
-async function loadKnowledgeBaseCached(
-  client: SupabaseClient<any, any, any>,
-  requestId: string,
-): Promise<KbEntry[]> {
-  const now = Date.now();
-  if (kbCache && now < kbCacheExpiresAt) {
-    log.info("kb-cache", `KB cache HIT [${requestId}] (${kbCache.length} entries, ${Math.round((kbCacheExpiresAt - now) / 1000)}s left)`, { requestId });
-    return kbCache;
-  }
-  if (kbInflight) {
-    log.info("kb-cache", `KB cache COALESCE [${requestId}] — joining in-flight refresh`, { requestId });
-    return kbInflight;
-  }
-  log.info("kb-cache", `KB cache MISS [${requestId}] — refreshing`, { requestId });
-  kbInflight = (async () => {
-    const { data, error } = await client.from("knowledge_base").select("title, content, url").order("title");
-    if (error) throw error;
-    const entries = (data ?? []) as KbEntry[];
-    kbCache = entries;
-    kbCacheExpiresAt = Date.now() + KB_CACHE_TTL_MS;
-    return entries;
-  })();
-  try {
-    return await kbInflight;
-  } finally {
-    kbInflight = null;
-  }
-}
+// D-11: the module-level KB cache and its alphabetical full-table fallback were
+// removed. All KB access now goes through the indexed fleety_kb_semantic_search
+// RPC, so there are no per-isolate full-table scans at scale.
+// D-04: the web-search timeout was removed along with web search.
 
 /**
  * OWASP AI: Prompt injection detection patterns.
@@ -225,126 +183,40 @@ function sanitizeAIOutput(text: string): string {
   return sanitized;
 }
 
-/**
- * Trusted, reputable domains for web search results.
- * Only results from these domains will be returned by Firecrawl.
- */
-const TRUSTED_DOMAINS = [
-  "harvard.edu",
-  "hbr.org",
-  "atlassian.com",
-  "scrumalliance.org",
-  "scrum.org",
-  "agilealliance.org",
-  "nngroup.com",
-  "interaction-design.org",
-  "smashingmagazine.com",
-  "uxdesign.cc",
-  "medium.com",
-  "wikipedia.org",
-  "coursera.org",
-  "edx.org",
-  "linkedin.com/pulse",
-  "thoughtworks.com",
-  "martinfowler.com",
-  "mckinsey.com",
-  "deloitte.com",
-  "productplan.com",
-  "mindtheproduct.com",
-  "svpg.com",
-  "leanagile.pm",
-  "figma.com",
-  "miro.com",
-  "notion.so",
-  "asana.com",
-  "monday.com",
-  "pmi.org",
-  "aiga.org",
-  "designcouncil.org.uk",
-  "gov.uk",
-  "digital.gov",
-  "18f.gsa.gov",
-  "usability.gov",
-  "w3.org",
-  "developer.mozilla.org",
-];
+// D-04: the web-search trigger heuristics and the trusted-domain list were
+// removed. Fleety answers only from Tech Fleet's own knowledge sources.
 
 /**
- * Keywords that indicate the user wants practical/how-to guidance,
- * triggering a web search for supplementary tips.
- */
-const HOW_TO_PATTERNS = [
-  /\bhow\s+(do|to|can|should|would)\b/i,
-  /\bsteps?\s+(to|for)\b/i,
-  /\btips?\s+(for|on|to)\b/i,
-  /\bbest\s+practi[cs]e/i,
-  /\bguide\s+(to|for|on)\b/i,
-  /\bcomplete\s+(the|a|my)\b/i,
-  /\bdeliver(able)?s?\b/i,
-  /\bworkshop\b/i,
-  /\bmilestone\b/i,
-  /\bactivit(y|ies)\b/i,
-  /\bhat(s)?\b.*\bteam\b/i,
-  /\bteam\b.*\bhat(s)?\b/i,
-  /\bwhat\s+(is|are)\b/i,
-  /\bexplain\b/i,
-  /\bexample/i,
-  /\btemplate/i,
-  /\bcreate\s+(a|the|my)\b/i,
-  /\bwrite\s+(a|the|my)\b/i,
-  /\bprepare\s+(a|the|for)\b/i,
-  /\bconduct\s+(a|the)\b/i,
-  /\bfacilitat/i,
-  /\brun\s+(a|the)\b/i,
-];
-
-function shouldSearchWeb(userMessage: string): boolean {
-  return HOW_TO_PATTERNS.some((p) => p.test(userMessage));
-}
-
-/**
- * Generate a 768-dim embedding for the user's query.
- * Tries direct Gemini API first (free, fast), falls back to gateway.
- * Returns null on failure so callers can degrade to legacy trigram retrieval.
+ * Generate a 768-dim embedding for the user's query via Gemini
+ * text-embedding-004 (the single embedding model across Fleety, D-01). No
+ * external-gateway fallback (D-04). Returns null on failure so callers can
+ * degrade to trigram retrieval (UC-22).
  */
 const EMBED_DIM = 768;
 async function embedQuery(text: string, requestId: string): Promise<number[] | null> {
   const trimmed = (text || "").slice(0, 4000);
   if (!trimmed.trim()) return null;
   const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") || "";
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY") || "";
+  if (!GEMINI_API_KEY) return null;
   try {
-    if (GEMINI_API_KEY) {
-      const r = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${GEMINI_API_KEY}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "models/text-embedding-004",
-            content: { parts: [{ text: trimmed }] },
-          }),
-        },
-      );
-      if (r.ok) {
-        const j = await r.json();
-        const v = j?.embedding?.values;
-        if (Array.isArray(v) && v.length === EMBED_DIM) return v;
-      } else {
-        log.warn("embed", `Gemini embed HTTP ${r.status} [${requestId}]`, { requestId });
-      }
+    const r = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "models/text-embedding-004",
+          content: { parts: [{ text: trimmed }] },
+        }),
+      },
+    );
+    if (!r.ok) {
+      log.warn("embed", `Gemini embed HTTP ${r.status} [${requestId}]`, { requestId });
+      return null;
     }
-    // Gateway fallback (best-effort)
-    const r = await fetch("https://ai.gateway.lovable.dev/v1/embeddings", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "google/text-embedding-004", input: trimmed }),
-    });
-    if (!r.ok) return null;
     const j = await r.json();
-    const v = j?.data?.[0]?.embedding;
-    if (!Array.isArray(v)) return null;
-    return v.length === EMBED_DIM ? v : v.slice(0, EMBED_DIM);
+    const v = j?.embedding?.values;
+    return Array.isArray(v) && v.length === EMBED_DIM ? v : null;
   } catch (e) {
     log.warn("embed", `embedQuery failed [${requestId}]: ${e instanceof Error ? e.message : "unknown"}`, { requestId });
     return null;
@@ -422,23 +294,24 @@ function isOperationalIntent(i: Intent): boolean {
 }
 
 /**
- * Stage-1 router: cheap Gemini Flash Lite call returning structured intent +
- * web-search decision via tool calling. Runs in parallel with embedding so it
- * adds zero serial latency. Silently falls back to regex on any failure.
+ * Stage-1 router: a cheap Groq (Llama 3.3 70B) tool call returning structured
+ * intent. Runs in parallel with embedding so it adds zero serial latency.
+ * Silently falls back to regex (classifyIntent) on any failure. The web-search
+ * decision fields are vestigial — web search was removed (D-04) and is ignored.
  */
 type RouterDecision = { intent: Intent; needsWeb: boolean; webQuery: string | null };
 async function routeWithModel(userMessage: string, requestId: string): Promise<RouterDecision | null> {
-  const apiKey = Deno.env.get("LOVABLE_API_KEY");
+  const apiKey = Deno.env.get("GROQ_API_KEY");
   if (!apiKey) return null;
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 2500);
-    const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       signal: controller.signal,
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
+        model: "llama-3.3-70b-versatile",
         messages: [
           { role: "system", content: "You route user questions for a coaching assistant. Reply only via the route tool." },
           { role: "user", content: userMessage.slice(0, 1000) },
@@ -480,83 +353,8 @@ async function routeWithModel(userMessage: string, requestId: string): Promise<R
   }
 }
 
-/**
- * Extract a concise search query from the user message for web search.
- * Strips filler words and keeps topic-relevant terms.
- */
-function buildSearchQuery(userMessage: string): string {
-  const trimmed = userMessage.slice(0, 200).replace(/\b(please|can you|could you|i want to|i need to|tell me|help me)\b/gi, "").trim();
-  return `how to ${trimmed} best practices tips`;
-}
-
-/**
- * Search the web via Firecrawl for supplementary tips.
- * Returns formatted context string or empty string on failure.
- */
-async function searchWebForTips(query: string): Promise<{ context: string; sources: { title: string; url: string }[] }> {
-  const apiKey = Deno.env.get("FIRECRAWL_API_KEY");
-  if (!apiKey) {
-    log.warn("web-search", "FIRECRAWL_API_KEY not configured, skipping web search");
-    return { context: "", sources: [] };
-  }
-
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), WEB_SEARCH_TIMEOUT_MS);
-
-    const response = await fetch("https://api.firecrawl.dev/v1/search", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        query,
-        limit: 8,
-        search_domain_filter: TRUSTED_DOMAINS,
-        scrapeOptions: { formats: ["markdown"] },
-      }),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      log.warn("web-search", `Firecrawl returned ${response.status}`);
-      return { context: "", sources: [] };
-    }
-
-    const data = await response.json();
-    const results = data?.data || [];
-    if (!Array.isArray(results) || results.length === 0) {
-      return { context: "", sources: [] };
-    }
-
-    const sources: { title: string; url: string }[] = [];
-    let context = "\n\nWEB SEARCH RESULTS (use these to supplement your answer with practical tips and best practices):\n";
-
-    for (const result of results.slice(0, 5)) {
-      const title = result.title || "Untitled";
-      const url = result.url || "";
-      const content = (result.markdown || result.description || "").slice(0, 1500);
-
-      if (!content) continue;
-
-      context += `\n---\nWEB SOURCE: ${title} (${url})\n${content}\n`;
-      sources.push({ title, url });
-    }
-
-    log.info("web-search", `Found ${sources.length} web results`);
-    return { context, sources };
-  } catch (err) {
-    if (err instanceof DOMException && err.name === "AbortError") {
-      log.warn("web-search", "Web search timed out");
-    } else {
-      log.warn("web-search", `Web search failed: ${err instanceof Error ? err.message : "unknown"}`);
-    }
-    return { context: "", sources: [] };
-  }
-}
+// D-04: the web-search helper functions were removed. Fleety answers
+// exclusively from Tech Fleet's own knowledge sources.
 
 serve(withAuditWrapper("techfleet-chat", async (req) => {
   if (req.method === "OPTIONS") {
@@ -678,9 +476,9 @@ serve(withAuditWrapper("techfleet-chat", async (req) => {
       lastUserMessage: lastUserMessage.substring(0, 100),
     });
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      log.error("config", `LOVABLE_API_KEY is not configured [${requestId}]`, { requestId });
+    const GROQ_API_KEY = Deno.env.get("GROQ_API_KEY");
+    if (!GROQ_API_KEY) {
+      log.error("config", `GROQ_API_KEY is not configured [${requestId}]`, { requestId });
       return new Response(
         JSON.stringify({ error: "AI service is not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -852,9 +650,7 @@ serve(withAuditWrapper("techfleet-chat", async (req) => {
       }
     }
 
-    // Load knowledge base via semantic top-K (with full-table cache fallback).
-    const doWebSearch = routerDecision?.needsWeb ?? shouldSearchWeb(lastUserMessage);
-    log.info("web-search", `Web search decision [${requestId}]: ${doWebSearch} (router=${!!routerDecision})`, { requestId, doWebSearch });
+    // Load knowledge base via semantic top-K. (Web search removed — D-04.)
 
     // Lean RAG (Cost Plan v2 §5): tighter KB context. Was 12×2000/60000.
     // Quality preserved by semantic top-K + framework graph + few-shot still
@@ -880,20 +676,13 @@ serve(withAuditWrapper("techfleet-chat", async (req) => {
       }
     }
 
-    // Fallback: cached full KB (legacy behavior, still capped)
-    if (kbHits.length === 0) {
-      const knowledge = await loadKnowledgeBaseCached(supabase, requestId).catch((e) => {
-        log.error("kb", `Failed to load knowledge base [${requestId}]: ${e instanceof Error ? e.message : "unknown"}`, { requestId }, e);
-        return [] as KbEntry[];
-      });
-      // Take first 12 alphabetically as a degraded fallback
-      kbHits = knowledge.slice(0, KB_TOPK);
-    }
+    // D-11: no full-table fallback. If semantic search returns nothing, kbHits
+    // stays empty and the honest "no knowledge available" path below handles it
+    // (a trigram fallback for embedding outages is tracked separately — UC-22).
 
-    // Web search runs in parallel with everything else
-    const webResult = await (doWebSearch
-      ? searchWebForTips(routerDecision?.webQuery ?? buildSearchQuery(lastUserMessage))
-      : Promise.resolve({ context: "", sources: [] }));
+    // D-04: web search removed. webResult kept as an empty shape so downstream
+    // logging and turn-signal counts stay valid without further edits.
+    const webResult: { context: string; sources: { title: string; url: string }[] } = { context: "", sources: [] };
 
     log.info("kb", `Using ${kbHits.length} KB entries [${requestId}] (semantic=${haveEmbeddings})`, { requestId });
 
@@ -1360,9 +1149,9 @@ serve(withAuditWrapper("techfleet-chat", async (req) => {
       + frameworkContext
       + fewShotContext
       + webResult.context;
-    log.info("ai", `Sending request to AI gateway [${requestId}]`, {
+    log.info("ai", `Sending request to Groq [${requestId}]`, {
       requestId,
-      model: "google/gemini-2.5-flash",
+      model: "llama-3.3-70b-versatile",
       systemPromptLength: fullSystemPrompt.length,
       webSourceCount: webResult.sources.length,
       frameworkContextLength: frameworkContext.length,
@@ -1375,25 +1164,10 @@ serve(withAuditWrapper("techfleet-chat", async (req) => {
       exampleHits,
     });
 
-    // Pick a prompt version label (weighted random across active versions).
-    // Falls back to 'baseline-2026-05' if the table is empty/unreachable.
-    let promptVersion = "baseline-2026-05";
-    try {
-      const { data: versions } = await supabase
-        .from("fleety_prompt_versions")
-        .select("label, weight, is_default")
-        .or("weight.gt.0,is_default.eq.true");
-      const rows = (versions ?? []) as Array<{ label: string; weight: number; is_default: boolean }>;
-      const active = rows.filter((v) => v.weight > 0);
-      if (active.length > 0) {
-        const total = active.reduce((s, v) => s + v.weight, 0);
-        let r = Math.random() * total;
-        for (const v of active) { r -= v.weight; if (r <= 0) { promptVersion = v.label; break; } }
-      } else {
-        const def = rows.find((v) => v.is_default);
-        if (def) promptVersion = def.label;
-      }
-    } catch (_) { /* keep fallback */ }
+    // D-17a / D-15: prompt version is the CI-injected git SHA (PROMPT_VERSION),
+    // recorded per turn for observability. No DB-backed version weighting / A/B
+    // layer (the fleety_prompt_versions table and Prompt Versions tab are gone).
+    const promptVersion = Deno.env.get("PROMPT_VERSION") || "dev";
 
     // Capture per-turn signals (best-effort, non-blocking)
     const turnStart = Date.now();
@@ -1426,11 +1200,11 @@ serve(withAuditWrapper("techfleet-chat", async (req) => {
     // Output tokens are accounted as max_tokens budget — refined in Phase 3.
     const estTokensIn = Math.ceil(fullSystemPrompt.length / 4)
       + Math.ceil(sanitizedMessages.reduce((n: number, m: { content: string }) => n + (m.content?.length || 0), 0) / 4);
-    const PRICE_FLASH_IN = 0.30 / 1_000_000;  // $/token, gemini-2.5-flash
-    const PRICE_FLASH_OUT = 2.50 / 1_000_000;
-    const estUsd = estTokensIn * PRICE_FLASH_IN + 4096 * PRICE_FLASH_OUT * 0.4; // assume 40% of cap
+    const PRICE_LLAMA_IN = 0.59 / 1_000_000;  // $/token, Groq llama-3.3-70b-versatile
+    const PRICE_LLAMA_OUT = 0.79 / 1_000_000;
+    const estUsd = estTokensIn * PRICE_LLAMA_IN + 4096 * PRICE_LLAMA_OUT * 0.4; // assume 40% of cap
     supabase.rpc("fleety_record_cost", {
-      _model: "google/gemini-2.5-flash",
+      _model: "llama-3.3-70b-versatile",
       _tier: "B",
       _tokens_in: estTokensIn,
       _tokens_out: Math.round(4096 * 0.4),
@@ -1454,14 +1228,14 @@ serve(withAuditWrapper("techfleet-chat", async (req) => {
     // Cost guard caps output: medium 4096→2048, hard (admin only here) 4096→3072
     const maxTokensCap = costGuardStep === "medium" ? 2048 : costGuardStep === "hard" ? 3072 : 4096;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${GROQ_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "llama-3.3-70b-versatile",
         messages: [{ role: "system", content: fullSystemPrompt }, ...sanitizedMessages],
         stream: true,
         max_tokens: maxTokensCap, // LLM10 + Cost Plan v2 §7

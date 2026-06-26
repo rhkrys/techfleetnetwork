@@ -5,10 +5,10 @@
 //   POST { mode: "backfill", limit?: 50, table?: "kb"|"playbooks"|"examples"|"all" }
 //                                         -> embeds rows whose embedding IS NULL  (auth: admin or service role)
 //
-// Embeddings provider: Google Gemini text-embedding-004 (768-dim, free tier).
-// Called directly via the Generative Language API using LOVABLE_API_KEY-style fallback:
-//   - Prefer GEMINI_API_KEY when set
-//   - Fall back to LOVABLE_API_KEY against the gateway's /v1/embeddings (OpenAI-compatible)
+// Embeddings provider: Google Gemini text-embedding-004 (768-dim, free tier),
+// called directly via the Generative Language API with GEMINI_API_KEY. This is
+// the single embedding model across all of Fleety (PRD D-01) — no other
+// provider and no external gateway fallback.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
@@ -26,7 +26,6 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY") || "";
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") || "";
 
 const EMBED_DIM = 768;
@@ -37,7 +36,7 @@ async function embedText(text: string): Promise<number[]> {
 
   // Path A: direct Gemini API with retry on 429/5xx
   if (GEMINI_API_KEY) {
-    const m = "models/gemini-embedding-001";
+    const m = "models/text-embedding-004";
     let lastErr = "";
     for (let attempt = 0; attempt < 4; attempt++) {
       const r = await fetch(
@@ -74,24 +73,11 @@ async function embedText(text: string): Promise<number[]> {
     throw new Error(`Gemini embed failed: ${lastErr}`);
   }
 
-  // Path B: gateway OpenAI-compatible (best-effort)
-  const r = await fetch("https://ai.gateway.lovable.dev/v1/embeddings", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${LOVABLE_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "google/text-embedding-004",
-      input: trimmed,
-    }),
-  });
-  if (!r.ok) throw new Error(`Gateway embed failed: ${r.status} ${await r.text()}`);
-  const j = await r.json();
-  const v = j?.data?.[0]?.embedding;
-  if (!Array.isArray(v)) throw new Error("Unexpected gateway embedding shape");
-  // If gateway returns 1536-dim, truncate to 768 (lossy but functional fallback)
-  return v.length === EMBED_DIM ? v : v.slice(0, EMBED_DIM);
+  // Single embedding model across Fleety: Gemini text-embedding-004 (PRD
+  // D-01/D-04). The former third-party gateway fallback was removed — zero
+  // external-gateway calls are permitted (UC-23). If the key is missing we
+  // fail loudly rather than silently embedding in a different vector space.
+  throw new Error("GEMINI_API_KEY is not configured — cannot embed");
 }
 
 function vecLiteral(v: number[]): string {
@@ -186,7 +172,7 @@ serve(withAuditWrapper("fleety-embed", async (req) => {
         while (processed < limit) {
           const q = admin
             .from("knowledge_base")
-            .select("id,title,content,embedding")
+            .select("id,title,content,embedding,embedding_model")
             .order("id", { ascending: true })
             .limit(50);
           if (lastId) q.gt("id", lastId);
@@ -194,12 +180,18 @@ serve(withAuditWrapper("fleety-embed", async (req) => {
           if (!rows || rows.length === 0) break;
           for (const r of rows) {
             lastId = r.id;
-            if (r.embedding) continue;
+            // Re-embed rows that are unembedded OR were embedded under a
+            // previous model (D-01 one-time backfill to text-embedding-004).
+            if (r.embedding && r.embedding_model === "text-embedding-004") continue;
             try {
               const v = await embedText(`${r.title}\n\n${r.content}`);
               await admin
                 .from("knowledge_base")
-                .update({ embedding: vecLiteral(v) as unknown as number[], embedding_updated_at: new Date().toISOString() })
+                .update({
+                  embedding: vecLiteral(v) as unknown as number[],
+                  embedding_model: "text-embedding-004",
+                  embedding_updated_at: new Date().toISOString(),
+                })
                 .eq("id", r.id);
               n++;
               processed++;

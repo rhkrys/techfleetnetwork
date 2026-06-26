@@ -21,7 +21,7 @@ PostgREST + GoTrue auth + RLS + edge functions). ~767 real users — treat as pr
 
 ## Fix config problems in config (this app's #1 recurring mistake)
 Apex/www, OAuth origins, redirects, caching, deploys, domains are INFRASTRUCTURE. Solve them
-in Nginx/DNS/CDN/CI, not by adding client-site guards. The boot sequence in `main.tsx` is a
+in Nginx/DNS/CDN/CI, not by adding client-side guards. The boot sequence in `main.tsx` is a
 pile of such band-aids; the goal is to REMOVE them as the real fixes land, not add more.
 When a root cause is fixed at the proper layer, delete the band-aid it replaces in the same PR.
 

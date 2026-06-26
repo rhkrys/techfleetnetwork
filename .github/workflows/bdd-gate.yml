@@ -30,7 +30,9 @@ jobs:
         run: |
           git fetch origin "${{ github.base_ref }}" --depth=1
           mapfile -t files < <(git diff --name-only "origin/${{ github.base_ref }}"...HEAD \
-            | grep -E '^(src/services/|src/pages/|supabase/functions/)' || true)
+            | grep -E '^(src/services/|src/pages/|supabase/functions/)' \
+            | grep -v '_manifest\.json$' \
+            || true)
           if [ "${#files[@]}" -eq 0 ]; then
             echo "No feature modules changed."
             echo "modules=" >> "$GITHUB_OUTPUT"

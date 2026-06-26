@@ -13,17 +13,86 @@ import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 
-function Probe() {
-  const { user, loading } = useAuth();
-  if (loading) return <div data-testid="state">loading</div>;
-  return <div data-testid="state">{user ? "signed-in" : "signed-out"}</div>;
+// ── Module mocks (hoisted — createClient never runs) ─────────────────────────
+
+// Helper: read what the real SDK would return as a session from localStorage.
+function getLocalSession() {
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const key = localStorage.key(i);
+    if (key && /^sb-.*-auth-token$/.test(key)) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw) return JSON.parse(raw);
+      } catch {
+        /* noop */
+      }
+    }
+  }
+  return null;
 }
 
+// Subscribers for the simulated onAuthStateChange channel.
+const authSubscribers = new Set<(event: string, session: unknown) => void>();
+
+vi.mock("@/integrations/supabase/client", () => ({
+  supabase: {
+    auth: {
+      getSession: vi.fn().mockImplementation(async () => {
+        const session = getLocalSession();
+        return { data: { session }, error: null };
+      }),
+      // Simulate the Supabase server returning bad_jwt for the garbage token.
+      getUser: vi.fn().mockResolvedValue({
+        data: { user: null },
+        error: { message: "bad_jwt: invalid number of segments", status: 401, name: "AuthApiError" },
+      }),
+      signOut: vi.fn().mockImplementation(async () => {
+        for (const cb of authSubscribers) {
+          setTimeout(() => cb("SIGNED_OUT", null), 0);
+        }
+        return { error: null };
+      }),
+      onAuthStateChange: vi.fn().mockImplementation((cb: (event: string, session: unknown) => void) => {
+        authSubscribers.add(cb);
+        const session = getLocalSession();
+        setTimeout(() => cb("INITIAL_SESSION", session), 0);
+        return { data: { subscription: { unsubscribe: () => authSubscribers.delete(cb) } } };
+      }),
+    },
+    from: vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({ data: null, error: null }),
+      maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+      insert: vi.fn().mockResolvedValue({ data: null, error: null }),
+      update: vi.fn().mockResolvedValue({ data: null, error: null }),
+    }),
+    rpc: vi.fn().mockResolvedValue({ data: null, error: null }),
+    functions: { invoke: vi.fn().mockResolvedValue({ data: null, error: null }) },
+    channel: vi.fn().mockReturnValue({ on: vi.fn().mockReturnThis(), subscribe: vi.fn() }),
+  },
+}));
+
+vi.mock("@/services/profile.service", () => ({
+  ProfileService: {
+    fetch: vi.fn().mockResolvedValue(null),
+    updateNames: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
+vi.mock("@/services/discord-notify.service", () => ({
+  DiscordNotifyService: { userSignedUp: vi.fn() },
+}));
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+// Use a stable key — the purgeLocalAuthState in session-health.ts scans for
+// any key matching /^sb-.*-auth-token$/, so the exact ref doesn't matter here.
+const WEDGE_STORAGE_KEY = "sb-testref-auth-token";
+
 function seedWedgedStorage() {
-  const url = (import.meta.env.VITE_SUPABASE_URL as string) || "https://pzvqxdgoztbfikfuifix.supabase.co";
-  const ref = new URL(url).hostname.split(".")[0];
   localStorage.setItem(
-    `sb-${ref}-auth-token`,
+    WEDGE_STORAGE_KEY,
     JSON.stringify({
       access_token: "not-a-jwt-just-garbage",
       refresh_token: "rt-garbage",
@@ -34,10 +103,20 @@ function seedWedgedStorage() {
   );
 }
 
+function Probe() {
+  const { user, loading } = useAuth();
+  if (loading) return <div data-testid="state">loading</div>;
+  return <div data-testid="state">{user ? "signed-in" : "signed-out"}</div>;
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
 describe("AuthProvider — wedge recovery", () => {
   beforeEach(() => {
     localStorage.clear();
-    vi.restoreAllMocks();
+    sessionStorage.clear();
+    authSubscribers.clear();
+    vi.clearAllMocks();
   });
 
   it("settles to signed-out when a non-JWT access token is in storage", async () => {
