@@ -9,6 +9,9 @@ concurrency:
   group: visual-regression-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   visual:
     runs-on: ubuntu-latest
@@ -16,26 +19,43 @@ jobs:
     env:
       PLAYWRIGHT_VISUAL: "1"
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        # actions/checkout@v5.0.0 — SHA-pinned (OWASP CI/CD)
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           lfs: true
 
-      - uses: oven-sh/setup-bun@v2
+      - name: Setup Node
+        # actions/setup-node@v5.0.0 — SHA-pinned
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
-          bun-version: latest
+          node-version-file: .nvmrc
 
-      - run: bun install --frozen-lockfile
+      - name: Cache node_modules + npm tarballs
+        id: cache-modules
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        with:
+          path: |
+            node_modules
+            ~/.npm
+          key: ${{ runner.os }}-node-v2-${{ hashFiles('package.json', 'package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-v2-
+
+      - name: Install dependencies (cache miss)
+        if: steps.cache-modules.outputs.cache-hit != 'true'
+        run: npm ci --prefer-offline --no-audit --no-fund
 
       - name: Install Playwright browsers
-        run: bunx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium
 
       - name: Run visual regression suite
-        run: bunx playwright test e2e/visual --project=visual-desktop --project=visual-mobile
-        continue-on-error: false
+        run: npx playwright test e2e/visual --project=visual-desktop --project=visual-mobile
 
       - name: Upload diff report
         if: always()
-        uses: actions/upload-artifact@v4
+        # actions/upload-artifact@v7.0.1 — SHA-pinned
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: visual-regression-report
           path: |
@@ -45,4 +65,4 @@ jobs:
 
       - name: Update baseline (label-gated)
         if: contains(github.event.pull_request.labels.*.name, 'visual-baseline-update')
-        run: bunx playwright test e2e/visual --update-snapshots --project=visual-desktop --project=visual-mobile
+        run: npx playwright test e2e/visual --update-snapshots --project=visual-desktop --project=visual-mobile

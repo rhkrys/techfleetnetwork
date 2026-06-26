@@ -57,7 +57,7 @@ env:
   # pin it here (e.g. "2.30.4") so deploys are reproducible and don't drift when
   # a new CLI changes deploy behavior. We don't hard-code a guess here because a
   # nonexistent version string would brick every deploy — worse than floating.
-  SUPABASE_CLI_VERSION: latest
+  SUPABASE_CLI_VERSION: 2.30.4
 
 jobs:
   deploy:
@@ -70,35 +70,29 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
           if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
-            echo "::warning::SUPABASE_ACCESS_TOKEN is not set — skipping edge-function deploy. Add the repo secret to enable automatic deploys."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "::error::SUPABASE_ACCESS_TOKEN is not set. Add this repo secret (Supabase → Account → Access Tokens) to enable automatic edge-function deploys."
+            exit 1
           fi
 
       - name: Checkout
-        if: steps.guard.outputs.skip != 'true'
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           # Full history so we can diff the push range to find changed functions.
           fetch-depth: 0
 
       - name: Install Supabase CLI
-        if: steps.guard.outputs.skip != 'true'
-        uses: supabase/setup-cli@v1
+uses: supabase/setup-cli@v1
         with:
           version: ${{ env.SUPABASE_CLI_VERSION }}
 
       - name: Record CLI version
-        if: steps.guard.outputs.skip != 'true'
-        run: |
+run: |
           # Surface the resolved CLI version so it can be pinned in env above.
           echo "Supabase CLI: $(supabase --version 2>&1 | head -n1)"
 
       - name: Select functions to deploy
         id: select
-        if: steps.guard.outputs.skip != 'true'
-        run: |
+run: |
           set -u
           list_all() {
             for d in supabase/functions/*/; do
@@ -230,5 +224,20 @@ jobs:
           fi
 
       - name: Nothing to deploy
-        if: steps.guard.outputs.skip != 'true' && steps.select.outputs.count == '0'
+        if: steps.select.outputs.count == '0'
         run: echo "No edge functions changed in this push — nothing to deploy."
+
+      - name: Post-deploy smoke (edge function runtime up)
+        if: steps.select.outputs.count != '0'
+        env:
+          SUPABASE_PROJECT_REF: ${{ env.SUPABASE_PROJECT_REF }}
+        run: |
+          url="https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/"
+          status=$(curl -s -o /dev/null -w '%{http_code}' "$url")
+          # 503 = edge function gateway is down (all functions unreachable).
+          # 404 is expected (no root handler), anything else is also fine.
+          if [ "$status" = "503" ]; then
+            echo "::error::Post-deploy smoke failed — edge function gateway returned 503. Check Supabase project health."
+            exit 1
+          fi
+          echo "Post-deploy smoke OK (HTTP $status)"

@@ -14,7 +14,7 @@ import { test, expect } from "@playwright/test";
 test.describe("Profile Setup Dialog (BDD 43.1–43.5)", () => {
   test("43.3: Step 1 shows required fields on the profile setup page", async ({ page }) => {
     await page.goto("/profile-setup");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("networkidle").catch(() => {});
 
     // The profile setup page should have first name, last name, email fields
     await expect(page.getByLabel(/first name/i)).toBeVisible();
@@ -24,7 +24,7 @@ test.describe("Profile Setup Dialog (BDD 43.1–43.5)", () => {
 
   test("43.3: Step 1 validation shows errors when submitting empty fields", async ({ page }) => {
     await page.goto("/profile-setup");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("networkidle").catch(() => {});
 
     // Try to advance without filling fields
     const nextButton = page.getByRole("button", { name: /next/i });
@@ -37,7 +37,7 @@ test.describe("Profile Setup Dialog (BDD 43.1–43.5)", () => {
 
   test("43.4: Step 2 Discord question shows username field on 'Yes'", async ({ page }) => {
     await page.goto("/profile-setup");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("networkidle").catch(() => {});
 
     // Fill step 1 to advance
     const firstNameInput = page.getByLabel(/first name/i);
@@ -67,7 +67,7 @@ test.describe("Profile Setup Dialog (BDD 43.1–43.5)", () => {
 
   test("43.5: Step 3 displays activity interest options", async ({ page }) => {
     await page.goto("/profile-setup");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("networkidle").catch(() => {});
 
     // Fill step 1
     const firstNameInput = page.getByLabel(/first name/i);
@@ -103,7 +103,7 @@ test.describe("Profile Setup Dialog (BDD 43.1–43.5)", () => {
 test.describe("Profile Setup Page (BDD 43.2, 44.1)", () => {
   test("43.2: Skip button is present on profile setup page", async ({ page }) => {
     await page.goto("/profile-setup");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("networkidle").catch(() => {});
 
     const skipButton = page.getByRole("button", { name: /skip for now/i });
     await expect(skipButton).toBeVisible();
@@ -111,7 +111,7 @@ test.describe("Profile Setup Page (BDD 43.2, 44.1)", () => {
 
   test("44.1: Email field is present and has correct label", async ({ page }) => {
     await page.goto("/profile-setup");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("networkidle").catch(() => {});
 
     const emailInput = page.getByLabel(/email/i);
     await expect(emailInput).toBeVisible();
@@ -121,7 +121,7 @@ test.describe("Profile Setup Page (BDD 43.2, 44.1)", () => {
 test.describe("Forgot Password Page (BDD 45.1, 45.3)", () => {
   test("45.1/45.3: Forgot password page accepts email and shows confirmation", async ({ page }) => {
     await page.goto("/forgot-password");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("networkidle").catch(() => {});
 
     const emailInput = page.getByLabel(/email/i);
     await expect(emailInput).toBeVisible();

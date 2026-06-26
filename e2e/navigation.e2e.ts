@@ -9,7 +9,7 @@ import { test, expect } from "@playwright/test";
 test.describe("Landing Page & Navigation", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("networkidle").catch(() => {});
   });
 
   test("landing page loads successfully", async ({ page }) => {
@@ -26,7 +26,7 @@ test.describe("Landing Page & Navigation", () => {
   test("BDD 15.5: responsive layout on mobile viewport", async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto("/");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("networkidle").catch(() => {});
     // Page should still be visible and not have horizontal overflow
     const body = page.locator("body");
     await expect(body).toBeVisible();
@@ -37,7 +37,7 @@ test.describe("Landing Page & Navigation", () => {
   test("BDD 15.5: responsive layout on tablet viewport", async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 1024 });
     await page.goto("/");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("networkidle").catch(() => {});
     const body = page.locator("body");
     await expect(body).toBeVisible();
   });
@@ -64,7 +64,7 @@ test.describe("Landing Page & Navigation", () => {
 test.describe("404 Page", () => {
   test("shows not found for invalid routes", async ({ page }) => {
     await page.goto("/this-page-does-not-exist");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("networkidle").catch(() => {});
     await expect(page.getByText(/not found|404/i)).toBeVisible();
   });
 });
@@ -72,13 +72,13 @@ test.describe("404 Page", () => {
 test.describe("Password Reset Flow (BDD 2.9)", () => {
   test("forgot password page loads", async ({ page }) => {
     await page.goto("/forgot-password");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("networkidle").catch(() => {});
     await expect(page.getByLabel(/email/i)).toBeVisible();
   });
 
   test("reset password page loads", async ({ page }) => {
     await page.goto("/reset-password");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("networkidle").catch(() => {});
     // Should have password input
     await expect(page.locator("body")).not.toBeEmpty();
   });

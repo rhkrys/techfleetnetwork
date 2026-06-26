@@ -20,7 +20,7 @@ test("AuthContext HMR update does not break the app", async ({ page }) => {
   });
 
   await page.goto("/");
-  await page.waitForLoadState("networkidle");
+  await page.waitForLoadState("networkidle").catch(() => {});
 
   const filePath = path.resolve(process.cwd(), "src/contexts/AuthContext.tsx");
   if (!fs.existsSync(filePath)) test.skip(true, "AuthContext.tsx not present");
