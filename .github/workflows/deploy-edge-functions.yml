@@ -75,24 +75,24 @@ jobs:
           fi
 
       - name: Checkout
-uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           # Full history so we can diff the push range to find changed functions.
           fetch-depth: 0
 
       - name: Install Supabase CLI
-uses: supabase/setup-cli@v1
+        uses: supabase/setup-cli@v1
         with:
           version: ${{ env.SUPABASE_CLI_VERSION }}
 
       - name: Record CLI version
-run: |
+        run: |
           # Surface the resolved CLI version so it can be pinned in env above.
           echo "Supabase CLI: $(supabase --version 2>&1 | head -n1)"
 
       - name: Select functions to deploy
         id: select
-run: |
+        run: |
           set -u
           list_all() {
             for d in supabase/functions/*/; do
