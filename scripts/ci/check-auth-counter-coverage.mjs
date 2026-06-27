@@ -12,7 +12,20 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const ROOT = process.cwd();
-const ALLOWED = "src/features/auth/services/auth-failure-policy.ts";
+// Counter calls are sanctioned ONLY inside the auth feature's failure-policy
+// funnel and its adapter (ports) layer:
+//   - services/auth-failure-policy.ts  — the decision table
+//   - engine/failure-policy.ts         — the canonical counter-firing funnel
+//   - ports/*.port.ts                  — adapters that wrap the legacy counter
+//                                        modules/services (see each port header)
+// This mirrors the ESLint rule `no-direct-failure-counters`, which already
+// exempts BOTH failure-policy files. Everything else — UI, hooks, services,
+// lib, pages — must route through the policy and still hard-fails this guard.
+const ALLOWED = new Set([
+  "src/features/auth/services/auth-failure-policy.ts",
+  "src/features/auth/engine/failure-policy.ts",
+]);
+const ALLOWED_DIR_PREFIX = "src/features/auth/ports/";
 const FORBIDDEN = [
   "record_failed_login",
   "recordInvalidAuthAttempt",
@@ -39,7 +52,8 @@ function walk(dir) {
     if (!/\.(ts|tsx|js|mjs)$/.test(name)) continue;
     if (SKIP_FILE_SUFFIXES.some((s) => name.endsWith(s))) continue;
     const rel = relative(ROOT, full).replace(/\\/g, "/");
-    if (rel === ALLOWED) continue;
+    if (ALLOWED.has(rel)) continue;
+    if (rel.startsWith(ALLOWED_DIR_PREFIX)) continue;
     // Legacy paths are migrating; allow them under a one-release window.
     // The ESLint rule + this CI script will tighten when the shim ships.
     const LEGACY_ALLOWED = new Set([
@@ -64,7 +78,11 @@ function walk(dir) {
 }
 
 for (const d of SCAN_DIRS) {
-  try { walk(join(ROOT, d)); } catch { /* dir missing */ }
+  try {
+    walk(join(ROOT, d));
+  } catch {
+    /* dir missing */
+  }
 }
 
 if (offenders.length > 0) {

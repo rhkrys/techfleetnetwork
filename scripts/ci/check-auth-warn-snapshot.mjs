@@ -16,7 +16,7 @@
  */
 import { execSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { resolve, relative } from "node:path";
 
 const SNAPSHOT_PATH = resolve("scripts/ci/auth-warn-snapshot.json");
 const RULES = [
@@ -44,7 +44,10 @@ function collect() {
   for (const f of data) {
     for (const m of f.messages) {
       if (!RULES.includes(m.ruleId)) continue;
-      const rel = f.filePath.replace(process.cwd() + "/", "");
+      // Path-separator agnostic: produce stable POSIX-relative keys so the
+      // snapshot is identical on Windows and Linux CI (a bare
+      // `replace(cwd + "/")` left absolute back-slashed paths on Windows).
+      const rel = relative(process.cwd(), f.filePath).replace(/\\/g, "/");
       const k = `${rel}|${m.ruleId}`;
       counts[k] = (counts[k] || 0) + 1;
     }
@@ -57,7 +60,6 @@ function collect() {
     }, {});
 }
 
-
 const current = collect();
 
 if (process.argv.includes("--write")) {
@@ -66,8 +68,8 @@ if (process.argv.includes("--write")) {
     JSON.stringify(
       { generatedAt: new Date().toISOString().slice(0, 10), rules: RULES, counts: current },
       null,
-      2,
-    ) + "\n",
+      2
+    ) + "\n"
   );
   console.log(`[check-auth-warn-snapshot] wrote ${Object.keys(current).length} entries`);
   process.exit(0);
@@ -85,15 +87,21 @@ if (grew.length || newFiles.length) {
   console.error("[check-auth-warn-snapshot] AUTH-ARCH-CUTOVER-023 ratchet violation:");
   if (newFiles.length) console.error("\n  New offending files:\n   - " + newFiles.join("\n   - "));
   if (grew.length) console.error("\n  Increased counts:\n   - " + grew.join("\n   - "));
-  console.error("\nFix by routing through src/features/auth/** (sessionPort or a use-case service).");
-  console.error("If the legacy surface genuinely shrank, run: node scripts/ci/check-auth-warn-snapshot.mjs --write\n");
+  console.error(
+    "\nFix by routing through src/features/auth/** (sessionPort or a use-case service)."
+  );
+  console.error(
+    "If the legacy surface genuinely shrank, run: node scripts/ci/check-auth-warn-snapshot.mjs --write\n"
+  );
   process.exit(1);
 }
 
 const shrank = Object.entries(snapshot).filter(([k, v]) => (current[k] || 0) < v);
 if (shrank.length) {
   console.warn(
-    `[check-auth-warn-snapshot] ${shrank.length} entries shrank — regenerate the snapshot to lock the new floor.`,
+    `[check-auth-warn-snapshot] ${shrank.length} entries shrank — regenerate the snapshot to lock the new floor.`
   );
 }
-console.log(`[check-auth-warn-snapshot] OK (${Object.keys(current).length} entries within snapshot)`);
+console.log(
+  `[check-auth-warn-snapshot] OK (${Object.keys(current).length} entries within snapshot)`
+);

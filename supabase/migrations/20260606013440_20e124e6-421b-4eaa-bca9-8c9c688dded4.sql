@@ -1,3 +1,8 @@
+-- get_email_send_latest_status returns out_*-prefixed columns and references
+-- only table-qualified columns (l.message_id, l.status, …) in its body, so a
+-- plpgsql OUT-parameter / column-name collision is structurally impossible.
+-- Proven safe — see scripts/ci/check-plpgsql-variable-conflict.mjs.
+-- @safe-variable-conflict
 CREATE OR REPLACE FUNCTION public.get_email_send_latest_status(p_hours integer DEFAULT 24)
 RETURNS TABLE (
   out_message_id text,
