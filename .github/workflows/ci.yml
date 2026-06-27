@@ -104,13 +104,19 @@ jobs:
           if-no-files-found: error
 
   # ---------------------------------------------------------------------------
-  # gate — THE required check. Fast, deterministic, no production dependency.
-  # No structural scripts (those are lint-arch). No Playwright. No Supabase.
-  # Target: < 8 minutes on a warm cache.
+  # gate — THE required check (branch protection requires ONLY "ci / gate").
+  # It is now a lightweight AGGREGATOR over three parallel jobs, so wall-clock is
+  # the slowest job (≈ one test shard) instead of the SUM of every step. The old
+  # single serial job hit the 25-min timeout; vitest (288 files) was the long
+  # pole. Heavy work is split across:
+  #   gate-verify  typecheck + eslint + stylelint + repo guards
+  #   gate-test    vitest, sharded across 4 runners
+  #   gate-build   production build + SBOM
+  # No production dependency, no Playwright, no Supabase. Target: < 8 minutes.
   # ---------------------------------------------------------------------------
-  gate:
+  gate-verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
     needs: setup
     permissions:
       contents: read
@@ -143,10 +149,55 @@ jobs:
         run: npm run lint
       - name: Lint CSS
         run: npm run lint:css
-      # Unit tests only. Intentionally NO VITE_SUPABASE_URL: the suite must pass
-      # against jsdom + local fixtures, never the live project (PRD G-03/P-05).
-      - name: Unit tests (Vitest)
-        run: npm run test
+
+  gate-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: setup
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version-file: .nvmrc
+      - name: Restore node_modules
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: node-modules-${{ github.sha }}
+          path: /tmp
+      - run: tar --use-compress-program="zstd -d" -xf /tmp/node_modules.tar.zst
+      # Unit tests only, sharded across 4 runners. Intentionally NO
+      # VITE_SUPABASE_URL: the suite must pass against jsdom + local fixtures,
+      # never the live project (PRD G-03/P-05).
+      - name: Unit tests (Vitest) — shard ${{ matrix.shard }}/4
+        run: npx vitest run --shard=${{ matrix.shard }}/4
+
+  gate-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: setup
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version-file: .nvmrc
+      - name: Restore node_modules
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: node-modules-${{ github.sha }}
+          path: /tmp
+      - run: tar --use-compress-program="zstd -d" -xf /tmp/node_modules.tar.zst
       - name: Build production bundle
         run: npm run build
       - name: Generate CycloneDX SBOM
@@ -159,6 +210,30 @@ jobs:
           path: sbom.json
           retention-days: 90
           if-no-files-found: ignore
+
+  # Required status check — stays named "gate" so branch protection is unchanged.
+  # Aggregates the three parallel gate jobs and fails if any did not succeed.
+  # `if: always()` so it still runs (and reports failure) when a dependency fails,
+  # instead of being skipped (a skipped required check blocks the merge ambiguously).
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [gate-verify, gate-test, gate-build]
+    if: always()
+    permissions:
+      contents: read
+    steps:
+      - name: Verify all gate jobs passed
+        run: |
+          verify='${{ needs.gate-verify.result }}'
+          test='${{ needs.gate-test.result }}'
+          build='${{ needs.gate-build.result }}'
+          echo "gate-verify=$verify  gate-test=$test  gate-build=$build"
+          if [ "$verify" != "success" ] || [ "$test" != "success" ] || [ "$build" != "success" ]; then
+            echo "::error::One or more gate jobs failed (verify=$verify test=$test build=$build)."
+            exit 1
+          fi
+          echo "All gate jobs passed."
 
   # ---------------------------------------------------------------------------
   # lint-arch — structural architecture checks, parallel + isolated. One failing
