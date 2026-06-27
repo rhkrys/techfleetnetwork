@@ -9,6 +9,8 @@ concurrency:
   group: visual-regression-${{ github.ref }}
   cancel-in-progress: true
 
+# Default least-privilege. The job opts up to contents: write ONLY so the
+# baseline-update path can push regenerated snapshots back to the PR branch.
 permissions:
   contents: read
 
@@ -16,14 +18,36 @@ jobs:
   visual:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    permissions:
+      contents: write
     env:
       PLAYWRIGHT_VISUAL: "1"
+      PLAYWRIGHT_START_SERVER: "1"
+      # Supabase env is required at Vite BUILD time — the Playwright webServer runs
+      # `npm run build && vite preview`. Without these the SPA renders blank and
+      # every screenshot diffs. Set them as repo Variables (Settings → Secrets and
+      # variables → Actions → Variables).
+      VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+      VITE_SUPABASE_PROJECT_ID: ${{ vars.VITE_SUPABASE_PROJECT_ID }}
     steps:
+      - name: Detect baseline-update label
+        id: flags
+        run: |
+          if [ "${{ contains(github.event.pull_request.labels.*.name, 'visual-baseline-update') }}" = "true" ]; then
+            echo "update=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "update=0" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout
-        # actions/checkout@v5.0.0 — SHA-pinned (OWASP CI/CD)
+        # actions/checkout@v5.0.0 — SHA-pinned (OWASP CI/CD). Check out the PR
+        # HEAD branch (not the detached merge ref) so the baseline-update path can
+        # push regenerated snapshots back to it.
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           lfs: true
+          ref: ${{ github.head_ref }}
 
       - name: Setup Node
         # actions/setup-node@v5.0.0 — SHA-pinned
@@ -49,8 +73,35 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
+      # Compare against committed baselines. The canonical npm script selects the
+      # visual-chromium-desktop + visual-mobile-chrome projects via
+      # PLAYWRIGHT_VISUAL=1. (The previous `--project=visual-desktop/visual-mobile`
+      # names did not exist in playwright.config.ts, so the suite matched no
+      # projects.)
       - name: Run visual regression suite
-        run: npx playwright test e2e/visual --project=visual-desktop --project=visual-mobile
+        if: steps.flags.outputs.update != '1'
+        run: npm run test:visual
+
+      # Label path: (re)generate baselines and commit them to the PR branch so they
+      # persist. This also BOOTSTRAPS baselines on Linux/CI the first time — they
+      # must be generated where they are compared (local OS renders differ).
+      - name: Regenerate baselines (label-gated)
+        if: steps.flags.outputs.update == '1'
+        run: npm run test:visual:update
+
+      - name: Commit regenerated baselines
+        if: steps.flags.outputs.update == '1' && github.event_name == 'pull_request'
+        run: |
+          if [ -n "$(git status --porcelain -- e2e/visual)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add e2e/visual
+            git commit -m "test(visual): update screenshot baselines [skip ci]"
+            git push origin "HEAD:${{ github.head_ref }}"
+            echo "Committed updated baselines to ${{ github.head_ref }}."
+          else
+            echo "No baseline changes to commit."
+          fi
 
       - name: Upload diff report
         if: always()
@@ -61,8 +112,5 @@ jobs:
           path: |
             playwright-report/
             test-results/
+            e2e/visual/**/*.png
           retention-days: 14
-
-      - name: Update baseline (label-gated)
-        if: contains(github.event.pull_request.labels.*.name, 'visual-baseline-update')
-        run: npx playwright test e2e/visual --update-snapshots --project=visual-desktop --project=visual-mobile
