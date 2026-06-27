@@ -209,12 +209,35 @@ if (undeclared.length > 0) {
 
 if (failed) process.exit(1);
 
+// Preserve `generated_at` when the functions content is unchanged so the
+// manifest stays byte-identical across commits. Bumping the timestamp on every
+// run produced a perpetual working-tree diff (the pre-commit hook auto-staged
+// it) and gratuitous merge conflicts on the timestamp line. The timestamp is
+// metadata; it should only change when the pinned-functions content changes.
+const CANONICAL_MANIFEST = join(ROOT, "supabase", "functions.manifest.json");
+const functionsJson = JSON.stringify(functionsManifest);
+let generatedAt = new Date().toISOString();
+try {
+  if (existsSync(CANONICAL_MANIFEST)) {
+    const prev = JSON.parse(readFileSync(CANONICAL_MANIFEST, "utf8"));
+    if (
+      prev &&
+      JSON.stringify(prev.functions) === functionsJson &&
+      typeof prev.generated_at === "string"
+    ) {
+      generatedAt = prev.generated_at; // content unchanged — keep the old stamp
+    }
+  }
+} catch {
+  /* malformed previous manifest — fall through to a fresh timestamp */
+}
+
 const manifest = {
-  generated_at: new Date().toISOString(),
+  generated_at: generatedAt,
   functions: functionsManifest,
 };
 const manifestJson = JSON.stringify(manifest, null, 2) + "\n";
-writeFileSync(join(ROOT, "supabase", "functions.manifest.json"), manifestJson);
+writeFileSync(CANONICAL_MANIFEST, manifestJson);
 try {
   writeFileSync(join(FN_DIR, "edge-deploy-smoke", "_manifest.json"), manifestJson);
 } catch {

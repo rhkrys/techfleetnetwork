@@ -1,0 +1,56 @@
+name: Incident gate
+
+# Every resolved fingerprint in known_issue_catalog must be locked in by a
+# regression scenario tagged `incident:<fingerprint>` (BDD Wave 4).
+#
+# SECURITY — why this runs on push/schedule and NOT pull_request:
+# this gate is DB-backed and needs SUPABASE_SERVICE_ROLE_KEY (the key bypasses
+# all RLS). On `pull_request` events GitHub exposes repo secrets to the workflow
+# even for branch PRs, so a PR that edits scripts/bdd-incident-gate.mjs could
+# exfiltrate the service-role key. Running only on trusted refs (push to main +
+# schedule) means the key is only ever handed to code already merged to main.
+# This was never a required PR check, so moving it off PRs changes no gate.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # Daily at 08:00 UTC — drift check independent of merge cadence.
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: incident-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  incident-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version-file: .nvmrc
+      - name: Cache node_modules
+        id: cache-modules
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        with:
+          path: |
+            node_modules
+            ~/.npm
+          key: ${{ runner.os }}-node-v2-${{ hashFiles('package.json', 'package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-v2-
+      - name: Install dependencies (cache miss)
+        if: steps.cache-modules.outputs.cache-hit != 'true'
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Run incident gate
+        run: node scripts/bdd-incident-gate.mjs
