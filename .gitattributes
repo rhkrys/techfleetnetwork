@@ -1,0 +1,8 @@
+# Generated edge-function manifests are written by
+# scripts/ci/check-edge-function-coverage.mjs (Node, always LF). Pin them to LF
+# so Windows core.autocrlf=true does not flag them as perpetually modified after
+# every pre-commit hook run (which previously auto-staged a no-op line-ending
+# change and caused gratuitous merge conflicts).
+supabase/functions.manifest.json text eol=lf
+supabase/functions/*/_manifest.json text eol=lf
+src/generated/edge-functions.manifest.json text eol=lf
