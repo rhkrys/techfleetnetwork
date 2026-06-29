@@ -125,7 +125,7 @@
     "tailwind-merge": "2.6.0",
     "tailwindcss-animate": "1.0.7",
     "topojson-client": "3.1.0",
-    "vaul": "0.9.9",
+    "vaul": "1.1.2",
     "web-vitals": "^5.2.0",
     "world-atlas": "2.0.2",
     "xstate": "^5",
