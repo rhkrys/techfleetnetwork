@@ -1,8 +1,18 @@
 import { describe, it, expect } from "vitest";
 import {
-  sanitizeText, stripHtml, isSafeUrl, maskPii, safeCompare,
-  deepSanitize, isSafeExternalUrl, maskEmail, enforceMaxBytes,
-  hasSqlInjectionPattern, safeJsonParse, generateCsrfToken, safeHref,
+  sanitizeText,
+  stripHtml,
+  isSafeUrl,
+  maskPii,
+  safeCompare,
+  deepSanitize,
+  isSafeExternalUrl,
+  maskEmail,
+  enforceMaxBytes,
+  hasSqlInjectionPattern,
+  safeJsonParse,
+  generateCsrfToken,
+  safeHref,
 } from "@/lib/security";
 
 describe("sanitizeText", () => {
@@ -17,33 +27,59 @@ describe("sanitizeText", () => {
 });
 
 describe("stripHtml", () => {
-  it("removes HTML tags", () => { expect(stripHtml("<b>bold</b> text")).toBe("bold text"); });
-  it("removes script tags", () => { expect(stripHtml('<script>alert("x")</script>')).toBe('alert("x")'); });
-  it("preserves plain text", () => { expect(stripHtml("no tags here")).toBe("no tags here"); });
+  it("removes HTML tags", () => {
+    expect(stripHtml("<b>bold</b> text")).toBe("bold text");
+  });
+  it("removes script tags and their bodies", () => {
+    expect(stripHtml('<script>alert("x")</script>')).toBe("");
+  });
+  it("preserves plain text", () => {
+    expect(stripHtml("no tags here")).toBe("no tags here");
+  });
 });
 
 describe("isSafeUrl", () => {
-  it("allows https URLs", () => { expect(isSafeUrl("https://example.com")).toBe(true); });
-  it("allows http URLs", () => { expect(isSafeUrl("http://example.com")).toBe(true); });
-  it("allows mailto URLs", () => { expect(isSafeUrl("mailto:test@example.com")).toBe(true); });
-  it("rejects javascript: protocol", () => { expect(isSafeUrl("javascript:alert(1)")).toBe(false); });
-  it("rejects data: protocol", () => { expect(isSafeUrl("data:text/html,<script>alert(1)</script>")).toBe(false); });
+  it("allows https URLs", () => {
+    expect(isSafeUrl("https://example.com")).toBe(true);
+  });
+  it("allows http URLs", () => {
+    expect(isSafeUrl("http://example.com")).toBe(true);
+  });
+  it("allows mailto URLs", () => {
+    expect(isSafeUrl("mailto:test@example.com")).toBe(true);
+  });
+  it("rejects javascript: protocol", () => {
+    expect(isSafeUrl("javascript:alert(1)")).toBe(false);
+  });
+  it("rejects data: protocol", () => {
+    expect(isSafeUrl("data:text/html,<script>alert(1)</script>")).toBe(false);
+  });
 });
 
 describe("maskPii", () => {
-  it("masks all but last 4 characters", () => { expect(maskPii("test@example.com")).toBe("************.com"); });
-  it("fully masks short strings", () => { expect(maskPii("ab")).toBe("****"); });
+  it("masks all but last 4 characters", () => {
+    expect(maskPii("test@example.com")).toBe("************.com");
+  });
+  it("fully masks short strings", () => {
+    expect(maskPii("ab")).toBe("****");
+  });
 });
 
 describe("safeCompare", () => {
-  it("returns true for identical strings", () => { expect(safeCompare("abc", "abc")).toBe(true); });
-  it("returns false for different strings of same length", () => { expect(safeCompare("abc", "abd")).toBe(false); });
-  it("returns false for different length strings", () => { expect(safeCompare("abc", "abcd")).toBe(false); });
+  it("returns true for identical strings", () => {
+    expect(safeCompare("abc", "abc")).toBe(true);
+  });
+  it("returns false for different strings of same length", () => {
+    expect(safeCompare("abc", "abd")).toBe(false);
+  });
+  it("returns false for different length strings", () => {
+    expect(safeCompare("abc", "abcd")).toBe(false);
+  });
 });
 
 describe("deepSanitize", () => {
   it("strips script tags from nested strings", () => {
-    const obj = { name: "ok", bio: '<script>alert(1)</script>Hello' };
+    const obj = { name: "ok", bio: "<script>alert(1)</script>Hello" };
     const result = deepSanitize(obj);
     expect(result.bio).not.toContain("<script");
     expect(result.bio).toContain("Hello");
@@ -67,12 +103,24 @@ describe("deepSanitize", () => {
 });
 
 describe("isSafeExternalUrl", () => {
-  it("blocks localhost", () => { expect(isSafeExternalUrl("http://localhost/admin")).toBe(false); });
-  it("blocks 127.0.0.1", () => { expect(isSafeExternalUrl("http://127.0.0.1")).toBe(false); });
-  it("blocks 10.x private range", () => { expect(isSafeExternalUrl("http://10.0.0.1")).toBe(false); });
-  it("blocks AWS metadata endpoint", () => { expect(isSafeExternalUrl("http://169.254.169.254/latest/meta-data")).toBe(false); });
-  it("allows legitimate external URL", () => { expect(isSafeExternalUrl("https://techfleet.org")).toBe(true); });
-  it("rejects non-http protocols", () => { expect(isSafeExternalUrl("ftp://example.com")).toBe(false); });
+  it("blocks localhost", () => {
+    expect(isSafeExternalUrl("http://localhost/admin")).toBe(false);
+  });
+  it("blocks 127.0.0.1", () => {
+    expect(isSafeExternalUrl("http://127.0.0.1")).toBe(false);
+  });
+  it("blocks 10.x private range", () => {
+    expect(isSafeExternalUrl("http://10.0.0.1")).toBe(false);
+  });
+  it("blocks AWS metadata endpoint", () => {
+    expect(isSafeExternalUrl("http://169.254.169.254/latest/meta-data")).toBe(false);
+  });
+  it("allows legitimate external URL", () => {
+    expect(isSafeExternalUrl("https://techfleet.org")).toBe(true);
+  });
+  it("rejects non-http protocols", () => {
+    expect(isSafeExternalUrl("ftp://example.com")).toBe(false);
+  });
 });
 
 describe("safeHref", () => {
@@ -109,10 +157,18 @@ describe("enforceMaxBytes", () => {
 });
 
 describe("hasSqlInjectionPattern", () => {
-  it("detects OR 1=1", () => { expect(hasSqlInjectionPattern("' OR 1=1 --")).toBe(true); });
-  it("detects UNION SELECT", () => { expect(hasSqlInjectionPattern("UNION SELECT * FROM users")).toBe(true); });
-  it("allows normal text", () => { expect(hasSqlInjectionPattern("I love learning agile methods")).toBe(false); });
-  it("detects SQL comments after injection", () => { expect(hasSqlInjectionPattern("'; --")).toBe(true); });
+  it("detects OR 1=1", () => {
+    expect(hasSqlInjectionPattern("' OR 1=1 --")).toBe(true);
+  });
+  it("detects UNION SELECT", () => {
+    expect(hasSqlInjectionPattern("UNION SELECT * FROM users")).toBe(true);
+  });
+  it("allows normal text", () => {
+    expect(hasSqlInjectionPattern("I love learning agile methods")).toBe(false);
+  });
+  it("detects SQL comments after injection", () => {
+    expect(hasSqlInjectionPattern("'; --")).toBe(true);
+  });
 });
 
 describe("safeJsonParse", () => {

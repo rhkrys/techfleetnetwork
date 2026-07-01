@@ -12,6 +12,7 @@ import { toast } from "@/hooks/use-toast";
 import { Loader2, Send, Users } from "lucide-react";
 import { useServerDraft } from "@/hooks/use-server-draft";
 import { DraftRestoredBanner } from "@/components/forms/DraftRestoredBanner";
+import { stripHtml } from "@/lib/strip-html";
 
 const SUBJECT_MAX = 150;
 const BODY_MAX = 50_000;
@@ -22,7 +23,11 @@ interface Props {
   canSend?: boolean;
 }
 
-export default function ProjectBlastComposer({ projectId, projectName, canSend: canSendProp = true }: Props) {
+export default function ProjectBlastComposer({
+  projectId,
+  projectName,
+  canSend: canSendProp = true,
+}: Props) {
   const { user } = useAuth();
   const qc = useQueryClient();
   const draft = useServerDraft<{ subject: string; body: string }>({
@@ -53,9 +58,8 @@ export default function ProjectBlastComposer({ projectId, projectName, canSend: 
     enabled: !!user && canSendProp,
   });
 
-
   const subjectTrim = subject.trim();
-  const bodyText = useMemo(() => body.replace(/<[^>]+>/g, "").trim(), [body]);
+  const bodyText = useMemo(() => stripHtml(body), [body]);
   const canSend =
     canSendProp &&
     subjectTrim.length > 0 &&
@@ -71,9 +75,7 @@ export default function ProjectBlastComposer({ projectId, projectName, canSend: 
       <Card>
         <CardHeader>
           <CardTitle>Project blasts</CardTitle>
-          <CardDescription>
-            Only admins can send project blasts.
-          </CardDescription>
+          <CardDescription>Only admins can send project blasts.</CardDescription>
         </CardHeader>
       </Card>
     );
@@ -95,10 +97,17 @@ export default function ProjectBlastComposer({ projectId, projectName, canSend: 
             const parsed = await ctx.json();
             serverMsg = parsed?.error || parsed?.detail;
           }
-        } catch { /* fall through to generic */ }
+        } catch {
+          /* fall through to generic */
+        }
         throw new Error(serverMsg || error.message || "Send failed");
       }
-      const result = data as { recipientCount: number; emailSent: number; emailFailed: number; status: string };
+      const result = data as {
+        recipientCount: number;
+        emailSent: number;
+        emailFailed: number;
+        status: string;
+      };
       toast({
         title: `Blast sent to ${result.recipientCount} ${result.recipientCount === 1 ? "applicant" : "applicants"}`,
         description: `${result.emailSent} delivered · ${result.emailFailed} failed`,
@@ -133,10 +142,10 @@ export default function ProjectBlastComposer({ projectId, projectName, canSend: 
       )}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">Send a project blast
-          </CardTitle>
+          <CardTitle className="flex items-center gap-2">Send a project blast</CardTitle>
           <CardDescription>
-            Sends a branded email and an in-app notification to everyone who applied to this project.
+            Sends a branded email and an in-app notification to everyone who applied to this
+            project.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -144,8 +153,8 @@ export default function ProjectBlastComposer({ projectId, projectName, canSend: 
             <Users className="h-4 w-4 text-muted-foreground" aria-hidden />
             <span>
               This will reach <strong>{applicantCount}</strong>{" "}
-              {applicantCount === 1 ? "applicant" : "applicants"} for{" "}
-              <strong>{projectName}</strong>.
+              {applicantCount === 1 ? "applicant" : "applicants"} for <strong>{projectName}</strong>
+              .
             </span>
           </div>
 
@@ -175,22 +184,25 @@ export default function ProjectBlastComposer({ projectId, projectName, canSend: 
           <div className="flex items-center justify-end gap-2 pt-2">
             <Button
               variant="outline"
-              onClick={() => { setSubject(""); setBody(""); }}
+              onClick={() => {
+                setSubject("");
+                setBody("");
+              }}
               disabled={sending || (!subject && !body)}
             >
               Clear draft
             </Button>
-            <Button
-              disabled={!canSend}
-              onClick={() => setConfirmOpen(true)}
-            >
-              {sending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+            <Button disabled={!canSend} onClick={() => setConfirmOpen(true)}>
+              {sending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4 mr-2" />
+              )}
               Send blast
             </Button>
           </div>
         </CardContent>
       </Card>
-
 
       <ConfirmDialog
         open={confirmOpen}
@@ -198,8 +210,8 @@ export default function ProjectBlastComposer({ projectId, projectName, canSend: 
         title={`Send blast to ${applicantCount} ${applicantCount === 1 ? "applicant" : "applicants"}?`}
         consequence={
           <>
-            Each applicant will receive an email and an in-app notification.
-            This action can't be undone.
+            Each applicant will receive an email and an in-app notification. This action can't be
+            undone.
           </>
         }
         actionLabel="Send blast"
