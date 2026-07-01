@@ -11,7 +11,6 @@ const BATCH = 25;
 const VT_SECONDS = 60;
 const MAX_ATTEMPTS = 3;
 
-
 interface FreescoutEvent {
   msg_id: number;
   read_ct: number;
@@ -26,9 +25,12 @@ async function processOne(admin: ReturnType<typeof getAdminClient>, ev: Freescou
   const { payload, event_type: eventType } = ev.message;
 
   const conv = (payload?.conversation as Record<string, unknown>) ?? payload;
-  const conversationId = Number((conv as { id?: unknown })?.id ?? (payload as { conversation_id?: unknown }).conversation_id);
-  const customerEmail = (conv as { customer?: { email?: string } })?.customer?.email
-    ?? (payload as { customer?: { email?: string } })?.customer?.email;
+  const conversationId = Number(
+    (conv as { id?: unknown })?.id ?? (payload as { conversation_id?: unknown }).conversation_id
+  );
+  const customerEmail =
+    (conv as { customer?: { email?: string } })?.customer?.email ??
+    (payload as { customer?: { email?: string } })?.customer?.email;
 
   let customerUserId: string | null = null;
   const freescoutCustomerId = (conv as { customer?: { id?: number | string } })?.customer?.id
@@ -44,7 +46,10 @@ async function processOne(admin: ReturnType<typeof getAdminClient>, ev: Freescou
     if (prof?.id) {
       customerUserId = prof.id;
       if (freescoutCustomerId && !prof.freescout_customer_id) {
-        await admin.from("profiles").update({ freescout_customer_id: freescoutCustomerId }).eq("id", prof.id);
+        await admin
+          .from("profiles")
+          .update({ freescout_customer_id: freescoutCustomerId })
+          .eq("id", prof.id);
       }
     }
   }
@@ -56,8 +61,10 @@ async function processOne(admin: ReturnType<typeof getAdminClient>, ev: Freescou
       freescout_customer_id: freescoutCustomerId,
       subject: (conv as { subject?: string })?.subject ?? null,
       last_status: (conv as { status?: string })?.status ?? null,
-      mailbox_id: (conv as { mailboxId?: number; mailbox_id?: number })?.mailboxId
-        ?? (conv as { mailbox_id?: number })?.mailbox_id ?? null,
+      mailbox_id:
+        (conv as { mailboxId?: number; mailbox_id?: number })?.mailboxId ??
+        (conv as { mailbox_id?: number })?.mailbox_id ??
+        null,
       last_synced_at: new Date().toISOString(),
     });
 
@@ -65,11 +72,15 @@ async function processOne(admin: ReturnType<typeof getAdminClient>, ev: Freescou
       conversation_id: conversationId,
       customer_user_id: customerUserId,
       event_type: eventType,
-      actor_email: (payload as { user?: { email?: string }; actor?: { email?: string } })?.user?.email
-        ?? (payload as { actor?: { email?: string } })?.actor?.email ?? null,
+      actor_email:
+        (payload as { user?: { email?: string }; actor?: { email?: string } })?.user?.email ??
+        (payload as { actor?: { email?: string } })?.actor?.email ??
+        null,
       actor_kind: (payload as { user?: unknown }).user
         ? "user"
-        : (payload as { customer?: unknown }).customer ? "customer" : null,
+        : (payload as { customer?: unknown }).customer
+          ? "customer"
+          : null,
       payload,
     });
 
@@ -82,28 +93,37 @@ async function processOne(admin: ReturnType<typeof getAdminClient>, ev: Freescou
         await admin.from("notifications").insert({
           user_id: customerUserId,
           title: isStatusChange ? "Ticket status updated" : "New reply on your ticket",
-          body: (conv as { subject?: string })?.subject ? `Re: ${(conv as { subject?: string }).subject}` : "View your support ticket for details.",
+          body: (conv as { subject?: string })?.subject
+            ? `Re: ${(conv as { subject?: string }).subject}`
+            : "View your support ticket for details.",
           link: `/community/get-help?ticket=${conversationId}`,
           category: "support",
         });
-      } catch { /* best effort */ }
+      } catch {
+        /* best effort */
+      }
     }
 
     // Email the customer when an admin replies (in-app notification above + email).
     if (customerUserId && customerEmail && isUserReply) {
       try {
-        const thread = (payload as { thread?: Record<string, unknown> })?.thread
-          ?? (Array.isArray((conv as { threads?: unknown[] })?.threads)
+        const thread =
+          (payload as { thread?: Record<string, unknown> })?.thread ??
+          (Array.isArray((conv as { threads?: unknown[] })?.threads)
             ? ((conv as { threads: Record<string, unknown>[] }).threads[0] ?? null)
             : null);
         const threadId = thread ? Number((thread as { id?: unknown })?.id ?? 0) : 0;
         const rawBody = String(
-          (thread as { body?: unknown })?.body
-          ?? (thread as { text?: unknown })?.text
-          ?? "",
+          (thread as { body?: unknown })?.body ?? (thread as { text?: unknown })?.text ?? ""
         );
-        // Strip HTML for the preview snippet.
-        const previewText = rawBody.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim().slice(0, 280);
+        // Strip HTML for the preview snippet (remove script/style blocks first, then all tags).
+        const previewText = rawBody
+          .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, " ")
+          .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, " ")
+          .replace(/<[^>]*>/g, "")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 280);
         const subject = (conv as { subject?: string })?.subject ?? "your support ticket";
         const actor = (payload as { user?: { firstName?: string; lastName?: string } })?.user;
         const replierName = actor
@@ -111,7 +131,10 @@ async function processOne(admin: ReturnType<typeof getAdminClient>, ev: Freescou
           : "The Tech Fleet team";
 
         const { data: prof } = await admin
-          .from("profiles").select("first_name").eq("id", customerUserId).maybeSingle();
+          .from("profiles")
+          .select("first_name")
+          .eq("id", customerUserId)
+          .maybeSingle();
 
         await admin.functions.invoke("send-transactional-email", {
           body: {
@@ -128,10 +151,15 @@ async function processOne(admin: ReturnType<typeof getAdminClient>, ev: Freescou
           },
         });
       } catch (err) {
-        console.error(JSON.stringify({
-          level: "warn", fn: "process-freescout-events", code: "support_reply_email_failed",
-          conversationId, msg: err instanceof Error ? err.message : String(err),
-        }));
+        console.error(
+          JSON.stringify({
+            level: "warn",
+            fn: "process-freescout-events",
+            code: "support_reply_email_failed",
+            conversationId,
+            msg: err instanceof Error ? err.message : String(err),
+          })
+        );
       }
     }
   }
@@ -143,7 +171,6 @@ Deno.serve(async (req) => {
   const auth = authorizeServiceRoleRequest(req);
   if (!auth.ok) return jsonResponse({ error: auth.error }, auth.status);
 
-
   const admin = getAdminClient();
   let processed = 0;
   let failed = 0;
@@ -151,10 +178,18 @@ Deno.serve(async (req) => {
 
   for (let i = 0; i < BATCH; i++) {
     const { data, error } = await admin.rpc("freescout_dequeue_events", {
-      p_batch: 1, p_vt: VT_SECONDS,
+      p_batch: 1,
+      p_vt: VT_SECONDS,
     });
     if (error) {
-      console.error(JSON.stringify({ level: "error", fn: "process-freescout-events", code: "dequeue_failed", msg: error.message }));
+      console.error(
+        JSON.stringify({
+          level: "error",
+          fn: "process-freescout-events",
+          code: "dequeue_failed",
+          msg: error.message,
+        })
+      );
       break;
     }
     const rows = (data ?? []) as FreescoutEvent[];
@@ -167,11 +202,16 @@ Deno.serve(async (req) => {
       processed++;
     } catch (e) {
       failed++;
-      console.error(JSON.stringify({
-        level: "error", fn: "process-freescout-events", code: "processing_failed",
-        msgId: ev.msg_id, readCt: ev.read_ct,
-        msg: e instanceof Error ? e.message : String(e),
-      }));
+      console.error(
+        JSON.stringify({
+          level: "error",
+          fn: "process-freescout-events",
+          code: "processing_failed",
+          msgId: ev.msg_id,
+          readCt: ev.read_ct,
+          msg: e instanceof Error ? e.message : String(e),
+        })
+      );
       if (ev.read_ct >= MAX_ATTEMPTS) {
         await admin.rpc("freescout_send_to_dlq", {
           p_msg_id: ev.msg_id,
