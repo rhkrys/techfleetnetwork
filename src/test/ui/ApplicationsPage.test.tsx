@@ -74,47 +74,52 @@ describe("Admin Application Review (ADMIN-APPS-001 to ADMIN-APPS-005)", () => {
   });
 
   /**
-   * ADMIN-APPS-001: Admin sees Application Postings and Submitted Applications tabs
+   * ADMIN-APPS-001: Admin sees the "Your Applications" and "All Applications" tabs,
+   * both enabled.
    */
-  it("ADMIN-APPS-001: admin sees both tabs on the Applications page", () => {
+  it("ADMIN-APPS-001: admin sees both tabs enabled on the Applications page", () => {
     mockIsAdmin = true;
     renderPage();
 
-    expect(screen.getByRole("tab", { name: /Application Postings/i })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /Submitted Applications/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Your Applications/i })).toBeInTheDocument();
+    const allTab = screen.getByRole("tab", { name: /All Applications/i });
+    expect(allTab).toBeInTheDocument();
+    expect(allTab).not.toBeDisabled();
   });
 
   /**
-   * ADMIN-APPS-001 (cont): Application Postings tab shows existing application cards
+   * ADMIN-APPS-001 (cont): The default "Your Applications" tab shows the
+   * "My General Application" card.
    */
-  it("ADMIN-APPS-001: Application Postings tab shows General Application card", () => {
+  it("ADMIN-APPS-001: Your Applications tab shows the My General Application card", () => {
     mockIsAdmin = true;
     renderPage();
 
-    // The default tab is "postings" which includes the General Application card
-    expect(screen.getByText("General Application")).toBeInTheDocument();
+    expect(screen.getByText("My General Application")).toBeInTheDocument();
   });
 
   /**
-   * ADMIN-APPS-005: Non-admin users do not see admin tabs
+   * ADMIN-APPS-005: Non-admin users see the "All Applications" tab but it is
+   * disabled — only "Your Applications" is usable.
    */
-  it("ADMIN-APPS-005: non-admin user does not see admin tabs", () => {
+  it("ADMIN-APPS-005: non-admin user cannot use the All Applications tab", () => {
     mockIsAdmin = false;
     renderPage();
 
-    expect(screen.queryByRole("tab", { name: /Application Postings/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: /Submitted Applications/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Your Applications/i })).not.toBeDisabled();
+    expect(screen.getByRole("tab", { name: /All Applications/i })).toBeDisabled();
   });
 
   /**
-   * ADMIN-APPS-005 (cont): Non-admin sees standard application cards directly
+   * ADMIN-APPS-005 (cont): Non-admin sees their own application cards on the
+   * default tab.
    */
-  it("ADMIN-APPS-005: non-admin sees application cards directly without tabs", () => {
+  it("ADMIN-APPS-005: non-admin sees their own application cards", () => {
     mockIsAdmin = false;
     renderPage();
 
-    expect(screen.getByText("General Application")).toBeInTheDocument();
-    expect(screen.getByText("Project Applications")).toBeInTheDocument();
-    expect(screen.getByText("Volunteer Applications")).toBeInTheDocument();
+    expect(screen.getByText("My General Application")).toBeInTheDocument();
+    expect(screen.getByText("My Project Applications")).toBeInTheDocument();
+    expect(screen.getByText("My Volunteer Applications")).toBeInTheDocument();
   });
 });
