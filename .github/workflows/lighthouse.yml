@@ -4,6 +4,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Least-privilege default token: this workflow only checks out code and runs
+# Lighthouse against the production URL (CodeQL actions/missing-workflow-permissions).
+permissions:
+  contents: read
+
 jobs:
   lhci:
     runs-on: ubuntu-latest

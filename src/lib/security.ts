@@ -43,26 +43,45 @@ export function hasActiveXssPattern(input: string): boolean {
 /** Sanitize a string for safe display (prevents XSS via innerHTML) */
 export function sanitizeText(input: string): string {
   if (typeof document === "undefined") {
-    return input.replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char] ?? char);
+    return input.replace(
+      /[&<>'"]/g,
+      (char) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char] ?? char
+    );
   }
   const div = document.createElement("div");
   div.textContent = input;
   return div.innerHTML;
 }
 
-/** Strip all HTML tags from input */
+/**
+ * Strip all HTML tags from input, returning plain text.
+ *
+ * Uses the DOM parser so obfuscated / nested tags (e.g. `<scr<script>ipt>`)
+ * that defeat a single-pass regex are removed correctly — a regex blocklist
+ * here was flagged by CodeQL (js/incomplete-multi-character-sanitization).
+ * Falls back to a best-effort regex only when no DOM is available (non-browser
+ * SSR), where the result is used as plain text and never as an HTML sink.
+ */
 export function stripHtml(input: string): string {
-  return input.replace(/<[^>]*>/g, "");
+  if (!input) return "";
+  if (typeof DOMParser !== "undefined") {
+    return new DOMParser().parseFromString(input, "text/html").body.textContent ?? "";
+  }
+  return input.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, "").replace(/<[^>]*>/g, "");
 }
 
 export function safeHref(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
-  if (value.length > 2_048 || hasHeaderInjection(value) || hasActiveXssPattern(value)) return undefined;
+  if (value.length > 2_048 || hasHeaderInjection(value) || hasActiveXssPattern(value))
+    return undefined;
   try {
     const parsed = new URL(value, window.location.origin);
     if (!["http:", "https:", "mailto:"].includes(parsed.protocol)) return undefined;
-    if (parsed.protocol === "mailto:" && !/^mailto:[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(parsed.href)) return undefined;
-    if (["http:", "https:"].includes(parsed.protocol) && !isSafeExternalUrl(parsed.href)) return undefined;
+    if (parsed.protocol === "mailto:" && !/^mailto:[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(parsed.href))
+      return undefined;
+    if (["http:", "https:"].includes(parsed.protocol) && !isSafeExternalUrl(parsed.href))
+      return undefined;
     return parsed.href;
   } catch {
     return undefined;
@@ -80,19 +99,20 @@ export function deepSanitize<T>(obj: T, depth = 0): T {
   if (depth > 20) return obj;
 
   if (typeof obj === "string") {
-    const stripped = obj
-      .replace(/<script[\s>]/gi, "")
-      .replace(/<\/script>/gi, "")
-      .replace(/on\w+\s*=/gi, "")
+    // Remove all HTML tags robustly via the DOM parser (stripHtml), then
+    // neutralize dangerous text-level tokens that can still matter if the
+    // value is later interpolated into markup. The previous regex tag
+    // blocklist (`<script[\s>]`, `<iframe[\s>]`, …) was single-pass and
+    // bypassable (CodeQL js/incomplete-multi-character-sanitization), so tag
+    // removal is delegated to the parser rather than hand-rolled regexes.
+    const text = stripHtml(obj);
+    const scrubbed = text
       .replace(/javascript\s*:/gi, "")
       .replace(/vbscript\s*:/gi, "")
       .replace(/data\s*:\s*text\/html/gi, "")
       .replace(/expression\s*\(/gi, "")
-      .replace(/<iframe[\s>]/gi, "")
-      .replace(/<object[\s>]/gi, "")
-      .replace(/<embed[\s>]/gi, "")
-      .replace(/<form[\s>]/gi, "");
-    return stripHtml(stripped) as unknown as T;
+      .replace(/on\w+\s*=/gi, "");
+    return scrubbed as unknown as T;
   }
   if (Array.isArray(obj)) {
     return obj.map((item) => deepSanitize(item, depth + 1)) as unknown as T;
@@ -133,12 +153,12 @@ const BLOCKED_HOST_PATTERNS = [
   /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/,
   /^192\.168\.\d+\.\d+$/,
   /^0\.0\.0\.0$/,
-  /^169\.254\.\d+\.\d+$/,        // Link-local / AWS metadata
-  /^\[::1?\]$/,                   // IPv6 loopback
+  /^169\.254\.\d+\.\d+$/, // Link-local / AWS metadata
+  /^\[::1?\]$/, // IPv6 loopback
   /^metadata\.google\.internal$/i,
-  /^\.internal$/i,                // GCP internal
-  /^fd[0-9a-f]{2}:/i,            // IPv6 ULA
-  /^fc[0-9a-f]{2}:/i,            // IPv6 ULA
+  /^\.internal$/i, // GCP internal
+  /^fd[0-9a-f]{2}:/i, // IPv6 ULA
+  /^fc[0-9a-f]{2}:/i, // IPv6 ULA
 ];
 
 export function isSafeExternalUrl(url: string): boolean {
@@ -160,7 +180,10 @@ export function isPrivateNetworkHost(hostname: string): boolean {
   return BLOCKED_HOST_PATTERNS.some((p) => p.test(normalized));
 }
 
-export function requireSafeOutboundUrl(value: string, allowedHosts?: readonly string[]): URL | null {
+export function requireSafeOutboundUrl(
+  value: string,
+  allowedHosts?: readonly string[]
+): URL | null {
   try {
     const parsed = new URL(value);
     if (!isSafeExternalUrl(parsed.href)) return null;
@@ -175,10 +198,7 @@ export function requireSafeOutboundUrl(value: string, allowedHosts?: readonly st
  * Prevent open redirect attacks by validating redirect targets.
  * Only allows same-origin or explicitly allowed external domains.
  */
-const ALLOWED_REDIRECT_DOMAINS = [
-  "techfleetnetwork.lovable.app",
-  "guide.techfleet.org",
-];
+const ALLOWED_REDIRECT_DOMAINS = ["techfleetnetwork.lovable.app", "guide.techfleet.org"];
 
 export function isSafeRedirectUrl(url: string): boolean {
   try {
@@ -195,7 +215,8 @@ export function isSafeRedirectUrl(url: string): boolean {
 export function normalizeSafeRedirectTarget(value: string, fallback = "/dashboard"): string {
   if (!isSafeRedirectUrl(value)) return fallback;
   const parsed = new URL(value, window.location.origin);
-  if (parsed.origin === window.location.origin) return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  if (parsed.origin === window.location.origin)
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
   return parsed.href;
 }
 
@@ -226,7 +247,8 @@ export function isTrustedThirdPartyScriptUrl(src: string, integrity?: string): b
     if (!TRUSTED_THIRD_PARTY_SCRIPT_HOSTS.has(parsed.hostname)) return false;
     // SRI is required where providers support static assets. Dynamic providers
     // that cannot support SRI must be explicitly allowlisted above and covered by CSP.
-    if (parsed.hostname === "js.stripe.com" || parsed.hostname === "challenges.cloudflare.com") return true;
+    if (parsed.hostname === "js.stripe.com" || parsed.hostname === "challenges.cloudflare.com")
+      return true;
     return typeof integrity === "string" && /^sha(256|384|512)-[A-Za-z0-9+/=]+$/.test(integrity);
   } catch {
     return false;
@@ -267,9 +289,15 @@ export interface TransactionAuthorizationInput {
 }
 
 export function isHighRiskTransactionAuthorized(input: TransactionAuthorizationInput): boolean {
-  if (!isValidUuid(input.actorUserId) || input.actorUserId !== input.confirmationUserId) return false;
-  if (!input.action || !input.resourceId || input.nonce.length < 16 || input.replayedNonce) return false;
-  if (input.amountCents !== undefined && (!Number.isInteger(input.amountCents) || input.amountCents < 0)) return false;
+  if (!isValidUuid(input.actorUserId) || input.actorUserId !== input.confirmationUserId)
+    return false;
+  if (!input.action || !input.resourceId || input.nonce.length < 16 || input.replayedNonce)
+    return false;
+  if (
+    input.amountCents !== undefined &&
+    (!Number.isInteger(input.amountCents) || input.amountCents < 0)
+  )
+    return false;
   if (input.requiresMfa && !input.mfaVerified) return false;
   return true;
 }
@@ -305,12 +333,19 @@ export function maskEmail(email: string): string {
   return email[0] + "***" + email.slice(at);
 }
 
-const SENSITIVE_LOG_KEY_PATTERN = /password|passcode|secret|token|jwt|authorization|cookie|api[_-]?key|private[_-]?key|session|otp|totp|mfa|ssn|credit|card/i;
+const SENSITIVE_LOG_KEY_PATTERN =
+  /password|passcode|secret|token|jwt|authorization|cookie|api[_-]?key|private[_-]?key|session|otp|totp|mfa|ssn|credit|card/i;
 
 export type SecurityEventOutcome = "success" | "failure" | "denied" | "error";
 
 export interface SecurityLogEntry {
-  "event.category": "authentication" | "authorization" | "data_access" | "validation" | "system" | "ai_tool";
+  "event.category":
+    | "authentication"
+    | "authorization"
+    | "data_access"
+    | "validation"
+    | "system"
+    | "ai_tool";
   "event.action": string;
   "event.outcome": SecurityEventOutcome;
   "user.id"?: string;
@@ -324,13 +359,19 @@ function redactLogValue(value: unknown, key = ""): unknown {
   if (typeof value === "string") {
     return value
       .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer [REDACTED]")
-      .replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, "[REDACTED_JWT]")
+      .replace(
+        /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g,
+        "[REDACTED_JWT]"
+      )
       .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z]{2,}\b/gi, "[REDACTED_EMAIL]");
   }
   if (Array.isArray(value)) return value.map((item) => redactLogValue(item, key));
   if (value && typeof value === "object") {
     return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([childKey, childValue]) => [childKey, redactLogValue(childValue, childKey)]),
+      Object.entries(value as Record<string, unknown>).map(([childKey, childValue]) => [
+        childKey,
+        redactLogValue(childValue, childKey),
+      ])
     );
   }
   return value;
@@ -339,7 +380,7 @@ function redactLogValue(value: unknown, key = ""): unknown {
 export function createSecurityLogEntry(entry: SecurityLogEntry): SecurityLogEntry {
   return {
     ...entry,
-    details: entry.details ? redactLogValue(entry.details) as Record<string, unknown> : undefined,
+    details: entry.details ? (redactLogValue(entry.details) as Record<string, unknown>) : undefined,
   };
 }
 
@@ -426,10 +467,12 @@ export function hasSqlInjectionPattern(input: string): boolean {
  */
 export function hasPathTraversal(input: string): boolean {
   const normalized = decodeURIComponent(input);
-  return /\.\.[/\\]/.test(normalized) ||
+  return (
+    /\.\.[/\\]/.test(normalized) ||
     /%2e%2e[/\\%]/i.test(input) ||
     /\.\.%2f/i.test(input) ||
-    /\.\.%5c/i.test(input);
+    /\.\.%5c/i.test(input)
+  );
 }
 
 /**
@@ -442,12 +485,16 @@ export function hasHeaderInjection(input: string): boolean {
 
 export function validateRestQueryParams(
   params: URLSearchParams,
-  allowedKeys: readonly string[],
+  allowedKeys: readonly string[]
 ): { valid: boolean; unexpected: string[] } {
   const allowed = new Set(allowedKeys);
   const unexpected = [...params.keys()].filter((key) => !allowed.has(key));
-  const hasUnsafeValue = [...params.values()].some((value) =>
-    value.length > 1_000 || hasSqlInjectionPattern(value) || hasHeaderInjection(value) || hasCRSAttackPattern(value),
+  const hasUnsafeValue = [...params.values()].some(
+    (value) =>
+      value.length > 1_000 ||
+      hasSqlInjectionPattern(value) ||
+      hasHeaderInjection(value) ||
+      hasCRSAttackPattern(value)
   );
   return { valid: unexpected.length === 0 && !hasUnsafeValue, unexpected };
 }
@@ -459,7 +506,7 @@ export function validateRestQueryParams(
  */
 export function pickAllowedFields<T extends Record<string, unknown>>(
   data: T,
-  allowedKeys: string[],
+  allowedKeys: string[]
 ): Partial<T> {
   const result: Partial<T> = {};
   const allowedSet = new Set(allowedKeys);
@@ -473,7 +520,7 @@ export function pickAllowedFields<T extends Record<string, unknown>>(
 
 export function getUnexpectedFields<T extends Record<string, unknown>>(
   data: T,
-  allowedKeys: string[],
+  allowedKeys: string[]
 ): string[] {
   const allowedSet = new Set(allowedKeys);
   return Object.keys(data).filter((key) => !allowedSet.has(key));
@@ -512,9 +559,9 @@ export function isAuthorizedObjectAccess(scope: ObjectAccessScope): boolean {
  */
 export function sanitizeFileName(name: string): string {
   return name
-    .replace(/[^\w\s.-]/g, "_")  // Replace non-safe chars
-    .replace(/\.{2,}/g, ".")     // Collapse multiple dots
-    .slice(0, 200);              // Max length
+    .replace(/[^\w\s.-]/g, "_") // Replace non-safe chars
+    .replace(/\.{2,}/g, ".") // Collapse multiple dots
+    .slice(0, 200); // Max length
 }
 
 // ─── ReDoS Protection ───────────────────────────────────────────────
@@ -523,11 +570,7 @@ export function sanitizeFileName(name: string): string {
  * Safely test a regex against input with a length limit.
  * Prevents ReDoS by rejecting excessively long inputs.
  */
-export function safeRegexTest(
-  pattern: RegExp,
-  input: string,
-  maxLength = 10_000,
-): boolean {
+export function safeRegexTest(pattern: RegExp, input: string, maxLength = 10_000): boolean {
   if (input.length > maxLength) return false;
   return pattern.test(input);
 }
@@ -556,7 +599,7 @@ export function safeJsonParse<T = unknown>(json: string): T {
  *
  *   • No `style` attribute (forbids inline CSS)
  *   • No `class` attribute (forbids referencing global Tailwind/utility CSS)
-   *   • No `id` or `name` attributes (forbids `:target` abuse + DOM clobbering)
+ *   • No `id` or `name` attributes (forbids `:target` abuse + DOM clobbering)
  *   • No `<style>`, `<link>`, `<svg>`, `<math>`, `<iframe>`, `<object>`, `<embed>`
  *   • No `<div>`, `<span>`, `<img>`, `<table>` (positional/visual abuse vectors)
  *
@@ -577,27 +620,79 @@ export function sanitizeHtml(dirty: string): string {
     .replace(/[ \t]{2,}/g, " ");
   return DOMPurify.sanitize(normalized, {
     ALLOWED_TAGS: [
-      "p", "br", "strong", "b", "em", "i", "u", "s",
-      "a", "ul", "ol", "li", "h2", "h3", "blockquote",
+      "p",
+      "br",
+      "strong",
+      "b",
+      "em",
+      "i",
+      "u",
+      "s",
+      "a",
+      "ul",
+      "ol",
+      "li",
+      "h2",
+      "h3",
+      "blockquote",
     ],
     ALLOWED_ATTR: ["href", "target", "rel"],
     ALLOW_DATA_ATTR: false,
     ALLOW_UNKNOWN_PROTOCOLS: false,
     ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|\/(?!\/)|#)/i,
     FORBID_TAGS: [
-      "style", "link", "meta", "base", "script", "iframe",
-      "object", "embed", "form", "input", "button", "textarea",
-      "select", "option", "svg", "math", "img", "video", "audio",
-      "source", "track", "frame", "frameset", "applet",
-      "div", "span", "table", "thead", "tbody", "tfoot",
-      "tr", "th", "td", "colgroup", "col", "caption",
+      "style",
+      "link",
+      "meta",
+      "base",
+      "script",
+      "iframe",
+      "object",
+      "embed",
+      "form",
+      "input",
+      "button",
+      "textarea",
+      "select",
+      "option",
+      "svg",
+      "math",
+      "img",
+      "video",
+      "audio",
+      "source",
+      "track",
+      "frame",
+      "frameset",
+      "applet",
+      "div",
+      "span",
+      "table",
+      "thead",
+      "tbody",
+      "tfoot",
+      "tr",
+      "th",
+      "td",
+      "colgroup",
+      "col",
+      "caption",
     ],
     FORBID_ATTR: [
-      "style", "class", "id", "name", "srcset", "sizes", "loading",
-      "ping", "formaction", "background", "poster",
+      "style",
+      "class",
+      "id",
+      "name",
+      "srcset",
+      "sizes",
+      "loading",
+      "ping",
+      "formaction",
+      "background",
+      "poster",
     ],
-    KEEP_CONTENT: true,            // keep inner text of stripped wrapper tags
-    SANITIZE_DOM: true,             // mitigate DOM clobbering
+    KEEP_CONTENT: true, // keep inner text of stripped wrapper tags
+    SANITIZE_DOM: true, // mitigate DOM clobbering
     SANITIZE_NAMED_PROPS: true,
     IN_PLACE: false,
   });
@@ -633,7 +728,16 @@ const ALLOWED_UPLOAD_TYPES = new Set([
 ]);
 
 const ALLOWED_UPLOAD_EXTENSIONS = new Set([
-  "jpg", "jpeg", "png", "gif", "webp", "pdf", "mp4", "webm", "mp3", "m4a",
+  "jpg",
+  "jpeg",
+  "png",
+  "gif",
+  "webp",
+  "pdf",
+  "mp4",
+  "webm",
+  "mp3",
+  "m4a",
 ]);
 
 /** Max file size in bytes (10 MB) */
@@ -649,7 +753,10 @@ export function validateFileUpload(file: File): { valid: boolean; error?: string
     return { valid: false, error: `File type "${file.type}" is not allowed` };
   }
   if (file.size > MAX_UPLOAD_SIZE) {
-    return { valid: false, error: `File size exceeds the ${MAX_UPLOAD_SIZE / (1024 * 1024)}MB limit` };
+    return {
+      valid: false,
+      error: `File size exceeds the ${MAX_UPLOAD_SIZE / (1024 * 1024)}MB limit`,
+    };
   }
   if (hasPathTraversal(file.name)) {
     return { valid: false, error: "Invalid file name" };
@@ -665,11 +772,7 @@ export function validateFileUpload(file: File): { valid: boolean; error?: string
  */
 const actionTimestamps = new globalThis.Map<string, number[]>();
 
-export function isClientRateLimited(
-  action: string,
-  maxAttempts = 5,
-  windowMs = 60_000,
-): boolean {
+export function isClientRateLimited(action: string, maxAttempts = 5, windowMs = 60_000): boolean {
   const now = Date.now();
   const timestamps = actionTimestamps.get(action) || [];
   // Remove expired entries
@@ -706,7 +809,11 @@ export function isAllowedOrigin(origin: string | null): boolean {
  * on shared/public devices. Preserves session management keys.
  */
 export function clearSensitiveSessionData(): void {
-  const keysToKeep = new Set(["session_started_at", "theme", `sb-${import.meta.env.VITE_SUPABASE_PROJECT_ID}-auth-token`]);
+  const keysToKeep = new Set([
+    "session_started_at",
+    "theme",
+    `sb-${import.meta.env.VITE_SUPABASE_PROJECT_ID}-auth-token`,
+  ]);
   const keysToRemove: string[] = [];
   for (let i = 0; i < sessionStorage.length; i++) {
     const key = sessionStorage.key(i);
@@ -743,12 +850,19 @@ export function isSessionWithinPolicy({
   return true;
 }
 
-export function getSessionPolicyFailureReason(input: SessionPolicyInput): "revoked" | "invalid" | "idle_timeout" | "absolute_timeout" | null {
+export function getSessionPolicyFailureReason(
+  input: SessionPolicyInput
+): "revoked" | "invalid" | "idle_timeout" | "absolute_timeout" | null {
   const now = input.now ?? Date.now();
   const idleTimeoutMs = input.idleTimeoutMs ?? 20 * 60 * 1000;
   const absoluteTimeoutMs = input.absoluteTimeoutMs ?? 4 * 60 * 60 * 1000;
   if (input.revoked) return "revoked";
-  if (!Number.isFinite(input.startedAt) || !Number.isFinite(input.lastActivityAt) || input.lastActivityAt < input.startedAt) return "invalid";
+  if (
+    !Number.isFinite(input.startedAt) ||
+    !Number.isFinite(input.lastActivityAt) ||
+    input.lastActivityAt < input.startedAt
+  )
+    return "invalid";
   if (now - input.lastActivityAt > idleTimeoutMs) return "idle_timeout";
   if (now - input.startedAt > absoluteTimeoutMs) return "absolute_timeout";
   return null;
@@ -777,11 +891,16 @@ export function isWebSocketHandshakeAllowed(policy: WebSocketHandshakePolicy): b
 
 export function isXmlPayloadSafe(xml: string): boolean {
   if (xml.length > 100_000) return false;
-  return !/(<!DOCTYPE|<!ENTITY|SYSTEM\s+["']|PUBLIC\s+["']|xinclude|file:\/\/|expect:\/\/|php:\/\/)/i.test(xml);
+  return !/(<!DOCTYPE|<!ENTITY|SYSTEM\s+["']|PUBLIC\s+["']|xinclude|file:\/\/|expect:\/\/|php:\/\/)/i.test(
+    xml
+  );
 }
 
 export function isJsonOnlyContentType(contentType: string | null): boolean {
-  return isExpectedContentType(contentType, "application/json") && !/xml|html|text\/plain/i.test(contentType ?? "");
+  return (
+    isExpectedContentType(contentType, "application/json") &&
+    !/xml|html|text\/plain/i.test(contentType ?? "")
+  );
 }
 
 // ─── CRS-Inspired WAF Patterns (ModSecurity CRS) ───────────────────
@@ -821,7 +940,10 @@ export function hasCRSAttackPattern(input: string): boolean {
   return CRS_ATTACK_PATTERNS.some((p) => p.test(input));
 }
 
-export function shouldApplyVirtualPatch(input: string, activeSignatures: readonly RegExp[] = CRS_ATTACK_PATTERNS): boolean {
+export function shouldApplyVirtualPatch(
+  input: string,
+  activeSignatures: readonly RegExp[] = CRS_ATTACK_PATTERNS
+): boolean {
   return activeSignatures.some((signature) => signature.test(input));
 }
 
@@ -851,8 +973,17 @@ export interface PrivacyDisclosurePolicy {
 export function isPrivacyDisclosureAllowed(policy: PrivacyDisclosurePolicy): boolean {
   if (!policy.purpose || policy.dataCategories.length === 0) return false;
   if (!policy.consentGranted) return false;
-  if (!Number.isInteger(policy.retentionDays) || policy.retentionDays < 1 || policy.retentionDays > 365) return false;
-  if (policy.thirdPartySharing && policy.dataCategories.some((category) => /ssn|password|token|secret|mfa/i.test(category))) return false;
+  if (
+    !Number.isInteger(policy.retentionDays) ||
+    policy.retentionDays < 1 ||
+    policy.retentionDays > 365
+  )
+    return false;
+  if (
+    policy.thirdPartySharing &&
+    policy.dataCategories.some((category) => /ssn|password|token|secret|mfa/i.test(category))
+  )
+    return false;
   return true;
 }
 
@@ -869,10 +1000,15 @@ export function isZeroTrustAccessAllowed(context: ZeroTrustAccessContext): boole
   if (!context.authenticated) return false;
   if (!isAuthorizedObjectAccess(context)) return false;
   if (!context.allowedActions.includes(context.requestedAction)) return false;
-  if ((context.requestedAction === "delete" || context.requestedAction === "admin") && !context.mfaVerified) return false;
+  if (
+    (context.requestedAction === "delete" || context.requestedAction === "admin") &&
+    !context.mfaVerified
+  )
+    return false;
   // Never trust the network by itself; a trusted device can lower friction only
   // after identity, resource scope, and action checks have passed.
-  if (context.networkTrusted && !context.deviceTrusted && context.requestedAction !== "read") return false;
+  if (context.networkTrusted && !context.deviceTrusted && context.requestedAction !== "read")
+    return false;
   return true;
 }
 
@@ -909,7 +1045,8 @@ export interface DependencyRiskInput {
 export function isDependencyAcceptableForUse(dep: DependencyRiskInput): boolean {
   if (!dep.name || !dep.version || dep.version === "latest" || dep.pinned === false) return false;
   if (dep.maintained === false) return false;
-  if (dep.knownVulnerabilitySeverity === "high" || dep.knownVulnerabilitySeverity === "critical") return false;
+  if (dep.knownVulnerabilitySeverity === "high" || dep.knownVulnerabilitySeverity === "critical")
+    return false;
   return true;
 }
 
@@ -927,17 +1064,17 @@ export function hasNullBytes(input: string): boolean {
  * Validate Content-Type header matches expected value (WSTG-CONF-02).
  * Prevents content-type confusion attacks.
  */
-export function isExpectedContentType(
-  actual: string | null,
-  expected: string,
-): boolean {
+export function isExpectedContentType(actual: string | null, expected: string): boolean {
   if (!actual) return false;
   return actual.toLowerCase().startsWith(expected.toLowerCase());
 }
 
 export function isTrustedCssToken(value: string): boolean {
-  return /^(?:[a-z][a-z0-9-]*:)?(?:bg|text|border|ring|shadow|from|to|via|fill|stroke|accent|muted|primary|secondary|destructive|card|popover|background|foreground)(?:-[a-z0-9/.[\]:]+)*$/i.test(value) &&
-    !/[;{}()@]|url\s*\(|expression\s*\(|import/i.test(value);
+  return (
+    /^(?:[a-z][a-z0-9-]*:)?(?:bg|text|border|ring|shadow|from|to|via|fill|stroke|accent|muted|primary|secondary|destructive|card|popover|background|foreground)(?:-[a-z0-9/.[\]:]+)*$/i.test(
+      value
+    ) && !/[;{}()@]|url\s*\(|expression\s*\(|import/i.test(value)
+  );
 }
 
 // ─── OWASP LLM Top 10: Client-Side AI Security ─────────────────────
@@ -947,10 +1084,10 @@ export function isTrustedCssToken(value: string): boolean {
  * Use as a defense-in-depth layer — server-side filtering is primary.
  */
 const CLIENT_PII_PATTERNS = [
-  /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z]{2,}\b/gi,  // emails
-  /\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g,                       // US phone numbers
-  /\b\d{3}-\d{2}-\d{4}\b/g,                               // SSN
-  /\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g,         // credit cards
+  /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z]{2,}\b/gi, // emails
+  /\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g, // US phone numbers
+  /\b\d{3}-\d{2}-\d{4}\b/g, // SSN
+  /\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g, // credit cards
 ];
 
 export function redactPIIFromOutput(text: string): string {
@@ -966,13 +1103,13 @@ export function redactPIIFromOutput(text: string): string {
  * Prevents XSS from AI output that may contain injected scripts.
  */
 export function sanitizeAIMarkdown(markdown: string): string {
-  return markdown
-    .replace(/<script[\s>][^]*?<\/script>/gi, "")
-    .replace(/<iframe[\s>][^]*?<\/iframe>/gi, "")
-    .replace(/on\w+\s*=\s*["'][^"']*["']/gi, "")
-    .replace(/javascript\s*:/gi, "")
-    .replace(/vbscript\s*:/gi, "")
-    .replace(/data\s*:\s*text\/html/gi, "");
+  if (typeof markdown !== "string" || markdown.length === 0) return "";
+  // Delegate to the DOMPurify allowlist sanitizer rather than a regex
+  // blocklist. Regex stripping of <script>/<iframe>/on*= was bypassable and
+  // mis-escaped & characters (CodeQL js/incomplete-multi-character-sanitization,
+  // js/bad-tag-filter, js/double-escaping). DOMPurify parses the markup and
+  // drops anything not on the allowlist, which is robust to obfuscation.
+  return sanitizeHtml(markdown);
 }
 
 export interface AiToolPolicy {

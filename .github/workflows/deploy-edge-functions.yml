@@ -179,9 +179,12 @@ jobs:
                 return 0
               fi
               if [ "$attempt" -ge "$max" ]; then
-                cat "$log"
+                # Re-run with --debug on final failure to surface the real error
+                # (the normal run prints "Try rerunning with --debug" but swallows it).
                 echo "---- error tail for $name (attempt $attempt/$max) ----"
-                tail -n 25 "$log"
+                cat "$log"
+                echo "---- debug output for $name ----"
+                supabase functions deploy "$name" --project-ref "$SUPABASE_PROJECT_REF" --debug 2>&1 || true
                 rm -f "$log"
                 return 1
               fi
