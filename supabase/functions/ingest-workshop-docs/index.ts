@@ -45,16 +45,20 @@ function slugify(input: string): string {
  * system prompt later.
  */
 function sanitizeMarkdown(md: string): string {
-  return md
-    .replace(/<script[\s>][^]*?<\/script>/gi, "")
-    .replace(/<iframe[\s>][^]*?<\/iframe>/gi, "")
-    .replace(/javascript\s*:/gi, "")
-    .replace(/on\w+\s*=\s*["'][^"']*["']/gi, "")
-    // Strip attempts to fake a new system message
-    .replace(/\<\|im_start\|/gi, "")
-    .replace(/\<\|im_end\|/gi, "")
-    .replace(/\[SYSTEM\]/gi, "[system]")
-    .trim();
+  return (
+    md
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, "")
+      .replace(/<script\b[^>]*\/?>/gi, "")
+      .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe\s*>/gi, "")
+      .replace(/<iframe\b[^>]*\/?>/gi, "")
+      .replace(/javascript\s*:/gi, "")
+      .replace(/on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+      // Strip attempts to fake a new system message
+      .replace(/\<\|im_start\|/gi, "")
+      .replace(/\<\|im_end\|/gi, "")
+      .replace(/\[SYSTEM\]/gi, "[system]")
+      .trim()
+  );
 }
 
 /**
@@ -95,143 +99,151 @@ function buildEntry(doc: WorkshopDoc): { url: string; title: string; content: st
   };
 }
 
-serve(withAuditWrapper("ingest-workshop-docs", async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+serve(
+  withAuditWrapper("ingest-workshop-docs", async (req) => {
+    if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
-      status: 405,
-      headers: { ...corsHeaders, "Content-Type": "application/json", Allow: "POST, OPTIONS" },
-    });
-  }
-
-  const requestId = crypto.randomUUID().substring(0, 8);
-
-  // ── Admin-only auth ─────────────────────────────────────────────────
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-  const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY")!;
-  const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-  const anonClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    global: { headers: { Authorization: authHeader } },
-  });
-  const { data: userData, error: userErr } = await anonClient.auth.getUser();
-  if (userErr || !userData?.user) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-  const { data: roleData } = await adminClient
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", userData.user.id)
-    .eq("role", "admin")
-    .maybeSingle();
-  if (!roleData) {
-    log.warn("auth", `Non-admin upload attempt [${requestId}]: ${userData.user.id}`, { requestId });
-    return new Response(JSON.stringify({ error: "Forbidden" }), {
-      status: 403,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  // ── Validation ──────────────────────────────────────────────────────
-  let body: { docs?: WorkshopDoc[] };
-  try {
-    const _raw = await req.json();
-    const _parsed = BodySchema.safeParse(_raw);
-    if (!_parsed.success) {
-      return new Response(JSON.stringify({ error: "Invalid request body" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    if (req.method !== "POST") {
+      return new Response(JSON.stringify({ error: "Method not allowed" }), {
+        status: 405,
+        headers: { ...corsHeaders, "Content-Type": "application/json", Allow: "POST, OPTIONS" },
       });
     }
-    body = _parsed.data as { docs?: WorkshopDoc[] };
-  } catch {
-    return new Response(JSON.stringify({ error: "Invalid JSON" }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
 
-  const docs = body.docs;
-  if (!Array.isArray(docs) || docs.length === 0) {
-    return new Response(JSON.stringify({ error: "docs must be a non-empty array" }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-  if (docs.length > MAX_DOCS_PER_REQUEST) {
-    return new Response(
-      JSON.stringify({ error: `Maximum ${MAX_DOCS_PER_REQUEST} documents per request` }),
-      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
-  }
+    const requestId = crypto.randomUUID().substring(0, 8);
 
-  for (const d of docs) {
-    if (!d || typeof d.title !== "string" || typeof d.content !== "string") {
-      return new Response(JSON.stringify({ error: "Each doc requires string title and content" }), {
+    // ── Admin-only auth ─────────────────────────────────────────────────
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SUPABASE_ANON_KEY =
+      Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY")!;
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    const anonClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: userData, error: userErr } = await anonClient.auth.getUser();
+    if (userErr || !userData?.user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const { data: roleData } = await adminClient
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userData.user.id)
+      .eq("role", "admin")
+      .maybeSingle();
+    if (!roleData) {
+      log.warn("auth", `Non-admin upload attempt [${requestId}]: ${userData.user.id}`, {
+        requestId,
+      });
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ── Validation ──────────────────────────────────────────────────────
+    let body: { docs?: WorkshopDoc[] };
+    try {
+      const _raw = await req.json();
+      const _parsed = BodySchema.safeParse(_raw);
+      if (!_parsed.success) {
+        return new Response(JSON.stringify({ error: "Invalid request body" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      body = _parsed.data as { docs?: WorkshopDoc[] };
+    } catch {
+      return new Response(JSON.stringify({ error: "Invalid JSON" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    if (!d.title.trim() || !d.content.trim()) {
-      return new Response(JSON.stringify({ error: "Title and content cannot be empty" }), {
+
+    const docs = body.docs;
+    if (!Array.isArray(docs) || docs.length === 0) {
+      return new Response(JSON.stringify({ error: "docs must be a non-empty array" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-  }
-
-  log.info("ingest", `Ingesting ${docs.length} workshop docs [${requestId}]`, {
-    requestId,
-    userId: userData.user.id,
-    docCount: docs.length,
-  });
-
-  let inserted = 0;
-  let errors = 0;
-  const results: { title: string; url: string; ok: boolean; error?: string }[] = [];
-
-  for (const doc of docs) {
-    const entry = buildEntry(doc);
-    const { error } = await adminClient.from("knowledge_base").upsert(
-      {
-        url: entry.url,
-        title: entry.title,
-        content: entry.content,
-        scraped_at: new Date().toISOString(),
-      },
-      { onConflict: "url" },
-    );
-    if (error) {
-      errors++;
-      results.push({ title: entry.title, url: entry.url, ok: false, error: error.message });
-      log.error("upsert", `Failed [${requestId}]: ${entry.title}`, { requestId }, error);
-    } else {
-      inserted++;
-      results.push({ title: entry.title, url: entry.url, ok: true });
+    if (docs.length > MAX_DOCS_PER_REQUEST) {
+      return new Response(
+        JSON.stringify({ error: `Maximum ${MAX_DOCS_PER_REQUEST} documents per request` }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
-  }
 
-  log.info("ingest", `Done [${requestId}]: ${inserted} inserted, ${errors} errors`, {
-    requestId,
-    inserted,
-    errors,
-  });
+    for (const d of docs) {
+      if (!d || typeof d.title !== "string" || typeof d.content !== "string") {
+        return new Response(
+          JSON.stringify({ error: "Each doc requires string title and content" }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+      if (!d.title.trim() || !d.content.trim()) {
+        return new Response(JSON.stringify({ error: "Title and content cannot be empty" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
 
-  return new Response(
-    JSON.stringify({ success: true, inserted, errors, results }),
-    { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-  );
-}));
+    log.info("ingest", `Ingesting ${docs.length} workshop docs [${requestId}]`, {
+      requestId,
+      userId: userData.user.id,
+      docCount: docs.length,
+    });
+
+    let inserted = 0;
+    let errors = 0;
+    const results: { title: string; url: string; ok: boolean; error?: string }[] = [];
+
+    for (const doc of docs) {
+      const entry = buildEntry(doc);
+      const { error } = await adminClient.from("knowledge_base").upsert(
+        {
+          url: entry.url,
+          title: entry.title,
+          content: entry.content,
+          scraped_at: new Date().toISOString(),
+        },
+        { onConflict: "url" }
+      );
+      if (error) {
+        errors++;
+        results.push({ title: entry.title, url: entry.url, ok: false, error: error.message });
+        log.error("upsert", `Failed [${requestId}]: ${entry.title}`, { requestId }, error);
+      } else {
+        inserted++;
+        results.push({ title: entry.title, url: entry.url, ok: true });
+      }
+    }
+
+    log.info("ingest", `Done [${requestId}]: ${inserted} inserted, ${errors} errors`, {
+      requestId,
+      inserted,
+      errors,
+    });
+
+    return new Response(JSON.stringify({ success: true, inserted, errors, results }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  })
+);

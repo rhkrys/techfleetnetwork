@@ -89,6 +89,9 @@ Deno.serve(async (req) => {
     p_ref_table: null,
     p_ref_id: null,
   });
-  if (error) return jsonResponse({ error: "record_failed", detail: error.message }, 500);
+  if (error) {
+    console.error("[record-auth-event] write_audit_log failed:", error);
+    return jsonResponse({ error: "record_failed" }, 500);
+  }
   return jsonResponse({ ok: true });
 });
