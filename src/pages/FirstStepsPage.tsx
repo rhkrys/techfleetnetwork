@@ -1,5 +1,18 @@
 import { useState, useEffect, useRef, startTransition } from "react";
-import { CheckCircle2, Circle, Play, User, ExternalLink, Figma, ScrollText, ShieldCheck, FileText, Cookie, Gavel, ChevronRight } from "lucide-react";
+import {
+  CheckCircle2,
+  Circle,
+  Play,
+  User,
+  ExternalLink,
+  PenTool,
+  ScrollText,
+  ShieldCheck,
+  FileText,
+  Cookie,
+  Gavel,
+  ChevronRight,
+} from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
@@ -118,13 +131,22 @@ const baseTasks: Omit<Task, "completed">[] = [
     id: "figma-account",
     title: "Register for Figma Educational Account",
     description: "Join the Tech Fleet Figma educational workspace.",
-    icon: Figma,
+    icon: PenTool,
     action: "https://guide.techfleet.org/resources/join-the-tech-fleet-figma-educational-space",
     external: true,
   },
 ];
 
-const LEGAL_PANELS: Record<string, { title: string; description: string; policyKey: string; downloadUrl: string; acceptLabel: string }> = {
+const LEGAL_PANELS: Record<
+  string,
+  {
+    title: string;
+    description: string;
+    policyKey: string;
+    downloadUrl: string;
+    acceptLabel: string;
+  }
+> = {
   "terms-conditions": {
     title: "Tech Fleet Terms & Conditions",
     description: "Master agreement governing your membership and use of Tech Fleet services.",
@@ -223,7 +245,6 @@ export default function FirstStepsPage() {
 
     const newCompleted = !task.completed;
 
-
     // CWV pass 4 (INP): paint the optimistic state IMMEDIATELY so the click
     // commits within the 200ms INP budget. The network round-trip and the
     // Discord notify happen after the paint; a failure rolls the row back.
@@ -243,7 +264,7 @@ export default function FirstStepsPage() {
         const discordId = getDiscordUserId();
 
         // Check if all tasks are now complete — send phase notification instead of task
-        const newCompletedCount = tasks.filter((t) => t.id !== id ? t.completed : true).length;
+        const newCompletedCount = tasks.filter((t) => (t.id !== id ? t.completed : true)).length;
         if (newCompletedCount === tasks.length) {
           // Fire-and-forget — must not block the click commit.
           void DiscordNotifyService.phaseCompleted(name, "first_steps", discord, discordId);
@@ -258,7 +279,9 @@ export default function FirstStepsPage() {
     } catch (err: any) {
       // Roll back optimistic update on failure.
       startTransition(() => {
-        setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, completed: task.completed } : t)));
+        setTasks((prev) =>
+          prev.map((t) => (t.id === id ? { ...t, completed: task.completed } : t))
+        );
       });
       console.error("[FirstSteps] toggleTask failed:", err);
       toast.error("We couldn't update that task. Please try again.", {
@@ -276,7 +299,10 @@ export default function FirstStepsPage() {
     if (!user || !pendingUncomplete) return;
     const id = pendingUncomplete;
     const task = tasks.find((t) => t.id === id);
-    if (!task) { setPendingUncomplete(null); return; }
+    if (!task) {
+      setPendingUncomplete(null);
+      return;
+    }
     setLoadingId(id);
     startTransition(() => {
       setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, completed: false } : t)));
@@ -298,16 +324,12 @@ export default function FirstStepsPage() {
     }
   };
 
-
-
   const handlePanelAccepted = async (taskId: string) => {
     if (!user) return;
     setLoadingId(taskId);
     try {
       await JourneyService.upsertTask(user.id, "first_steps", taskId, true);
-      setTasks((prev) =>
-        prev.map((t) => (t.id === taskId ? { ...t, completed: true } : t))
-      );
+      setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, completed: true } : t)));
       queryClient.invalidateQueries({ queryKey: ["journey-completed", user.id, "first_steps"] });
       queryClient.invalidateQueries({ queryKey: ["journey-progress", user.id, "first_steps"] });
 
@@ -316,7 +338,7 @@ export default function FirstStepsPage() {
       const discordId = getDiscordUserId();
 
       // Send phase notification instead of task if all tasks are now complete
-      const newCompletedCount = tasks.filter((t) => t.id !== taskId ? t.completed : true).length;
+      const newCompletedCount = tasks.filter((t) => (t.id !== taskId ? t.completed : true)).length;
       if (newCompletedCount === tasks.length) {
         DiscordNotifyService.phaseCompleted(name, "first_steps", discord, discordId);
         if (!completionShownRef.current) {
@@ -359,16 +381,31 @@ export default function FirstStepsPage() {
             </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
-        <p className="text-muted-foreground mt-2">Complete all {tasks.length} tasks below to unlock the next phase. You can do them in any order.</p>
+        <p className="text-muted-foreground mt-2">
+          Complete all {tasks.length} tasks below to unlock the next phase. You can do them in any
+          order.
+        </p>
       </div>
 
       <div className="mb-8">
         <div className="flex items-center justify-between text-sm mb-2">
-          <span className="text-muted-foreground">{completedCount} of {tasks.length} tasks completed</span>
+          <span className="text-muted-foreground">
+            {completedCount} of {tasks.length} tasks completed
+          </span>
           <span className="font-medium text-foreground">{Math.round(progress)}%</span>
         </div>
-        <div className="h-2 bg-muted rounded-full overflow-hidden" role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100} aria-label="Onboarding Steps progress">
-          <div className="h-full bg-primary rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />
+        <div
+          className="h-2 bg-muted rounded-full overflow-hidden"
+          role="progressbar"
+          aria-valuenow={progress}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label="Onboarding Steps progress"
+        >
+          <div
+            className="h-full bg-primary rounded-full transition-all duration-500"
+            style={{ width: `${progress}%` }}
+          />
         </div>
       </div>
 
@@ -379,14 +416,18 @@ export default function FirstStepsPage() {
           const Icon = task.icon;
 
           return (
-            <div key={task.id} className={`card-elevated p-5 transition-all duration-200 ${task.completed ? "border-success/30 bg-success/5" : ""}`}>
+            <div
+              key={task.id}
+              className={`card-elevated p-5 transition-all duration-200 ${task.completed ? "border-success/30 bg-success/5" : ""}`}
+            >
               <div className="flex items-start gap-4">
                 {/* Completion toggle */}
                 <button
                   type="button"
                   onClick={() => {
                     if (task.panelAction && !task.completed) {
-                      if (task.panelId && task.panelId in LEGAL_PANELS) setLegalPanelId(task.panelId as keyof typeof LEGAL_PANELS);
+                      if (task.panelId && task.panelId in LEGAL_PANELS)
+                        setLegalPanelId(task.panelId as keyof typeof LEGAL_PANELS);
                       else setAgreementOpen(true);
                     } else {
                       toggleTask(task.id);
@@ -404,12 +445,16 @@ export default function FirstStepsPage() {
                   {task.completed ? (
                     <CheckCircle2 className="h-7 w-7 text-success drop-shadow-[0_0_4px_hsl(var(--success)/0.4)]" />
                   ) : (
-                    <div className={`h-7 w-7 rounded-full border-2 ${task.panelAction ? "border-muted-foreground/30" : "border-primary/60 hover:border-primary hover:bg-primary/10 cursor-pointer"} transition-all`} />
+                    <div
+                      className={`h-7 w-7 rounded-full border-2 ${task.panelAction ? "border-muted-foreground/30" : "border-primary/60 hover:border-primary hover:bg-primary/10 cursor-pointer"} transition-all`}
+                    />
                   )}
                 </button>
 
                 <div className="flex-1 min-w-0">
-                  <h3 className={`font-semibold ${task.completed ? "text-muted-foreground line-through" : "text-foreground"}`}>
+                  <h3
+                    className={`font-semibold ${task.completed ? "text-muted-foreground line-through" : "text-foreground"}`}
+                  >
                     {task.title}
                   </h3>
                   <p className="text-sm text-muted-foreground mt-0.5">{task.description}</p>
@@ -422,7 +467,8 @@ export default function FirstStepsPage() {
                         size="sm"
                         disabled={task.completed}
                         onClick={() => {
-                          if (task.panelId && task.panelId in LEGAL_PANELS) setLegalPanelId(task.panelId as keyof typeof LEGAL_PANELS);
+                          if (task.panelId && task.panelId in LEGAL_PANELS)
+                            setLegalPanelId(task.panelId as keyof typeof LEGAL_PANELS);
                           else setAgreementOpen(true);
                         }}
                       >
@@ -458,7 +504,9 @@ export default function FirstStepsPage() {
           <CheckCircle2 className="h-12 w-12 text-success mx-auto mb-3" />
           <h2 className="text-xl font-bold text-foreground mb-2">🎉 Onboarding Complete!</h2>
           <p className="text-muted-foreground mb-4">You've unlocked Build an Agile Mindset.</p>
-          <Link to="/courses/agile-mindset"><Button>Continue to Build an Agile Mindset</Button></Link>
+          <Link to="/courses/agile-mindset">
+            <Button>Continue to Build an Agile Mindset</Button>
+          </Link>
         </div>
       )}
 
@@ -471,7 +519,9 @@ export default function FirstStepsPage() {
       {legalPanelId && (
         <LegalPolicyPanel
           open={legalPanelId !== null}
-          onOpenChange={(o) => { if (!o) setLegalPanelId(null); }}
+          onOpenChange={(o) => {
+            if (!o) setLegalPanelId(null);
+          }}
           onAccepted={() => handlePanelAccepted(legalPanelId)}
           loading={loadingId === legalPanelId}
           panelKey={legalPanelId}
@@ -487,15 +537,18 @@ export default function FirstStepsPage() {
         <DialogContent className="sm:max-w-md text-center">
           <DialogHeader className="items-center">
             <div className="text-5xl mb-2">🎉</div>
-            <DialogTitle className="text-xl">
-              Onboarding Steps Complete!
-            </DialogTitle>
+            <DialogTitle className="text-xl">Onboarding Steps Complete!</DialogTitle>
             <DialogDescription className="text-muted-foreground pt-2">
               You've completed all onboarding tasks. You're ready for the next course!
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-2 pt-2">
-            <Button onClick={() => { setShowCompletionDialog(false); navigate("/courses/agile-mindset"); }}>
+            <Button
+              onClick={() => {
+                setShowCompletionDialog(false);
+                navigate("/courses/agile-mindset");
+              }}
+            >
               Continue to Build an Agile Mindset
               <ChevronRight className="h-4 w-4 ml-1" />
             </Button>
@@ -509,7 +562,9 @@ export default function FirstStepsPage() {
       {/* §2B1: verb+object confirm before uncompleting a finished onboarding task */}
       <ConfirmDialog
         open={pendingUncomplete !== null}
-        onOpenChange={(o) => { if (!o) setPendingUncomplete(null); }}
+        onOpenChange={(o) => {
+          if (!o) setPendingUncomplete(null);
+        }}
         title="Mark this task incomplete?"
         consequence="Your progress for this step will be cleared. You can complete it again anytime."
         actionLabel="Mark incomplete"
