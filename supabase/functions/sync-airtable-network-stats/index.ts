@@ -10,8 +10,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -60,7 +59,7 @@ async function fetchAll(table: string, fields?: string[]): Promise<AirtableRecor
     }
     if (!res || !res.ok) throw new Error(`Airtable ${table} retry exhausted`);
 
-    const data = await res.json() as { records: AirtableRecord[]; offset?: string };
+    const data = (await res.json()) as { records: AirtableRecord[]; offset?: string };
     all.push(...data.records);
     if (!data.offset) return all;
     offset = data.offset;
@@ -72,7 +71,8 @@ function uniqueKey(rec: AirtableRecord, fieldCandidates: string[]): string | nul
   for (const f of fieldCandidates) {
     const v = rec.fields[f];
     if (typeof v === "string" && v.trim()) return v.trim().toLowerCase();
-    if (Array.isArray(v) && v.length && typeof v[0] === "string") return (v[0] as string).trim().toLowerCase();
+    if (Array.isArray(v) && v.length && typeof v[0] === "string")
+      return (v[0] as string).trim().toLowerCase();
   }
   // fallback: stable rec id (won't collapse duplicates but never inflates)
   return rec.id;
@@ -95,13 +95,15 @@ Deno.serve(async (req) => {
   if (!isServiceRole && !isCron) {
     if (!token) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     const { data: userRes, error: userErr } = await supabaseAdmin.auth.getUser(token);
     if (userErr || !userRes.user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     const { data: isAdmin } = await supabaseAdmin.rpc("has_role", {
@@ -110,14 +112,16 @@ Deno.serve(async (req) => {
     });
     if (!isAdmin) {
       return new Response(JSON.stringify({ error: "Forbidden" }), {
-        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
   }
 
   if (!AIRTABLE_PAT || !AIRTABLE_BASE_ID) {
     return new Response(JSON.stringify({ error: "Airtable env not configured" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
@@ -139,10 +143,16 @@ Deno.serve(async (req) => {
       // Check any text field for service leadership match (regex still matches legacy "servant" rows)
       let matched = false;
       for (const v of Object.values(r.fields)) {
-        if (typeof v === "string" && SERVICE_LEADERSHIP_REGEX.test(v)) { matched = true; break; }
+        if (typeof v === "string" && SERVICE_LEADERSHIP_REGEX.test(v)) {
+          matched = true;
+          break;
+        }
         if (Array.isArray(v)) {
           for (const item of v) {
-            if (typeof item === "string" && SERVICE_LEADERSHIP_REGEX.test(item)) { matched = true; break; }
+            if (typeof item === "string" && SERVICE_LEADERSHIP_REGEX.test(item)) {
+              matched = true;
+              break;
+            }
           }
           if (matched) break;
         }
@@ -150,7 +160,11 @@ Deno.serve(async (req) => {
       if (!matched) continue;
       const k = uniqueKey(r, [
         "Masterclass Attendee Unique ID",
-        "Email", "email", "Attendee Email", "Name", "Full Name",
+        "Email",
+        "email",
+        "Attendee Email",
+        "Name",
+        "Full Name",
       ]);
       if (k) slKeys.add(k);
     }
@@ -159,16 +173,22 @@ Deno.serve(async (req) => {
     // Never regress: keep max(existing, new) so baseline only goes up
     const { data: current } = await supabaseAdmin
       .from("network_stats_baselines")
-      .select("airtable_general_apps, airtable_service_leadership_unique, airtable_masterclass_total")
+      .select(
+        "airtable_general_apps, airtable_service_leadership_unique, airtable_masterclass_total"
+      )
       .eq("id", 1)
       .maybeSingle();
 
     const next = {
       airtable_general_apps: Math.max(current?.airtable_general_apps ?? 0, airtable_general_apps),
       airtable_service_leadership_unique: Math.max(
-        current?.airtable_service_leadership_unique ?? 0, airtable_service_leadership_unique,
+        current?.airtable_service_leadership_unique ?? 0,
+        airtable_service_leadership_unique
       ),
-      airtable_masterclass_total: Math.max(current?.airtable_masterclass_total ?? 0, airtable_masterclass_total),
+      airtable_masterclass_total: Math.max(
+        current?.airtable_masterclass_total ?? 0,
+        airtable_masterclass_total
+      ),
       last_synced_at: new Date().toISOString(),
       last_sync_status: "ok",
       last_sync_error: null as string | null,
@@ -180,11 +200,18 @@ Deno.serve(async (req) => {
       .eq("id", 1);
     if (updErr) throw updErr;
 
-    return new Response(JSON.stringify({
-      success: true,
-      computed: { airtable_general_apps, airtable_service_leadership_unique, airtable_masterclass_total },
-      stored: next,
-    }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(
+      JSON.stringify({
+        success: true,
+        computed: {
+          airtable_general_apps,
+          airtable_service_leadership_unique,
+          airtable_masterclass_total,
+        },
+        stored: next,
+      }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error("sync-airtable-network-stats error:", msg);
@@ -197,8 +224,9 @@ Deno.serve(async (req) => {
         last_sync_error: msg.slice(0, 500),
       })
       .eq("id", 1);
-    return new Response(JSON.stringify({ success: false, error: msg }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return new Response(JSON.stringify({ success: false, error: "Sync failed" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });

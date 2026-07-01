@@ -23,8 +23,7 @@ import { fromZonedTime } from "npm:date-fns-tz@3.2.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
 const ICAL_URL =
@@ -66,14 +65,13 @@ function unfoldIcs(raw: string): string[] {
 }
 
 function unescapeIcsText(s: string): string {
-  return s
-    .replace(/\\n/gi, "\n")
-    .replace(/\\,/g, ",")
-    .replace(/\\;/g, ";")
-    .replace(/\\\\/g, "\\");
+  return s.replace(/\\n/gi, "\n").replace(/\\,/g, ",").replace(/\\;/g, ";").replace(/\\\\/g, "\\");
 }
 
-function parseIcsDate(value: string, params: Record<string, string>): { date: Date; allDay: boolean } {
+function parseIcsDate(
+  value: string,
+  params: Record<string, string>
+): { date: Date; allDay: boolean } {
   const isAllDay = params.VALUE === "DATE" || /^\d{8}$/.test(value);
   if (isAllDay) {
     const y = +value.slice(0, 4);
@@ -97,7 +95,9 @@ function parseIcsDate(value: string, params: Record<string, string>): { date: Da
     try {
       const local = `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}T${value.slice(9, 11)}:${value.slice(11, 13)}:${value.slice(13, 15) || "00"}`;
       return { date: fromZonedTime(local, tzid), allDay: false };
-    } catch { /* fall through to UTC */ }
+    } catch {
+      /* fall through to UTC */
+    }
   }
   // Floating local time without TZID — treat as UTC (best-effort, matches prior behaviour).
   return { date: new Date(Date.UTC(y, mo, d, h, mi, s)), allDay: false };
@@ -209,7 +209,11 @@ function parseVEvents(ics: string, pastCutoff: Date): RawVEvent[] {
   return events;
 }
 
-function expandOccurrences(ev: RawVEvent, windowStart: Date, windowEnd: Date): Array<{ start: Date; end: Date }> {
+function expandOccurrences(
+  ev: RawVEvent,
+  windowStart: Date,
+  windowEnd: Date
+): Array<{ start: Date; end: Date }> {
   if (!ev.start) return [];
   const start = ev.start.date;
   const end = ev.end?.date ?? new Date(start.getTime() + 60 * 60 * 1000);
@@ -245,12 +249,13 @@ function expandOccurrences(ev: RawVEvent, windowStart: Date, windowEnd: Date): A
     // a finite series like RRULE:FREQ=WEEKLY;COUNT=2 from 2022 would skip
     // forward to 2026 and emit a fresh batch of 2 — leaking ancient series
     // into the upcoming week. (The #1 cause of "events from years ago".)
-    const occPerStep =
-      freq === "WEEKLY" && byday && byday.length > 0 ? byday.length : 1;
+    const occPerStep = freq === "WEEKLY" && byday && byday.length > 0 ? byday.length : 1;
     // Fast-forward cursor close to windowStart for efficiency
     let cursor = new Date(start.getTime());
     if (cursor < windowStart) {
-      const stepsBehind = Math.floor((windowStart.getTime() - cursor.getTime()) / (stepMs[freq] * interval));
+      const stepsBehind = Math.floor(
+        (windowStart.getTime() - cursor.getTime()) / (stepMs[freq] * interval)
+      );
       if (stepsBehind > 0) {
         cursor = new Date(cursor.getTime() + stepsBehind * stepMs[freq] * interval);
         // Charge the skipped occurrences against COUNT so finite series stop.
@@ -263,7 +268,12 @@ function expandOccurrences(ev: RawVEvent, windowStart: Date, windowEnd: Date): A
     // UNTIL guard: if the series ended before the window, skip entirely.
     if (until && until < windowStart) return out;
     let iterations = 0;
-    while (cursor <= windowEnd && occurrencesEmitted < count && out.length < MAX_INSTANCES && iterations < 5000) {
+    while (
+      cursor <= windowEnd &&
+      occurrencesEmitted < count &&
+      out.length < MAX_INSTANCES &&
+      iterations < 5000
+    ) {
       iterations++;
       if (until && cursor > until) break;
       const candidates: Date[] = [];
@@ -298,7 +308,12 @@ function expandOccurrences(ev: RawVEvent, windowStart: Date, windowEnd: Date): A
     let occurrencesEmitted = 0;
     const cursor = new Date(start.getTime());
     let iterations = 0;
-    while (cursor <= windowEnd && occurrencesEmitted < count && out.length < MAX_INSTANCES && iterations < 200) {
+    while (
+      cursor <= windowEnd &&
+      occurrencesEmitted < count &&
+      out.length < MAX_INSTANCES &&
+      iterations < 200
+    ) {
       iterations++;
       if (until && cursor > until) break;
       if (cursor >= start && !exdateSet.has(cursor.getTime())) {
@@ -337,12 +352,12 @@ Deno.serve(async (req) => {
       try {
         const payload = token.split(".")[1];
         if (payload) {
-          const json = JSON.parse(
-            atob(payload.replace(/-/g, "+").replace(/_/g, "/")),
-          );
+          const json = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
           if (json?.role === "service_role") authorized = true;
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
   }
   if (!authorized) {
@@ -352,10 +367,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    serviceRoleKey,
-  );
+  const supabase = createClient(Deno.env.get("SUPABASE_URL")!, serviceRoleKey);
 
   const t0 = Date.now();
   try {
@@ -393,10 +405,10 @@ Deno.serve(async (req) => {
           updated_at: new Date().toISOString(),
         })
         .eq("id", 1);
-      return new Response(
-        JSON.stringify({ status: "not_modified", durationMs: Date.now() - t0 }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return new Response(JSON.stringify({ status: "not_modified", durationMs: Date.now() - t0 }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Soft-fail on upstream rate-limit / transient errors: keep serving cached
@@ -404,7 +416,9 @@ Deno.serve(async (req) => {
     // Honors Retry-After so we don't hammer the source.
     if (res.status === 429 || res.status === 503) {
       const retryAfterHeader = res.headers.get("retry-after");
-      const retryAfterSec = retryAfterHeader ? Math.max(60, parseInt(retryAfterHeader, 10) || 300) : 300;
+      const retryAfterSec = retryAfterHeader
+        ? Math.max(60, parseInt(retryAfterHeader, 10) || 300)
+        : 300;
       const nextRetryAt = new Date(Date.now() + retryAfterSec * 1000).toISOString();
       await supabase
         .from("community_events_cache")
@@ -415,10 +429,12 @@ Deno.serve(async (req) => {
           updated_at: new Date().toISOString(),
         })
         .eq("id", 1);
-      console.warn(`refresh-community-events soft-fail: ${res.status}, retry after ${retryAfterSec}s`);
+      console.warn(
+        `refresh-community-events soft-fail: ${res.status}, retry after ${retryAfterSec}s`
+      );
       return new Response(
         JSON.stringify({ status: "rate_limited", retryAfterSec, durationMs: Date.now() - t0 }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
     if (!res.ok) {
@@ -489,7 +505,7 @@ Deno.serve(async (req) => {
         durationMs: Date.now() - t0,
         ics_bytes: text.length,
       }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -503,8 +519,8 @@ Deno.serve(async (req) => {
       })
       .eq("id", 1);
     return new Response(
-      JSON.stringify({ status: "error", error: message, durationMs: Date.now() - t0 }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      JSON.stringify({ status: "error", error: "Refresh failed", durationMs: Date.now() - t0 }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
