@@ -502,8 +502,11 @@ describe("deepSanitize", () => {
       "<script"
     );
   });
-  it("still strips inline event handlers from plain text", () => {
-    expect(deepSanitize("onclick=evil()")).not.toContain("onclick=");
+  it("strips HTML event attributes; plain text is passed through unchanged", () => {
+    // deepSanitize uses the DOM parser to strip HTML — it does not apply text-level
+    // regex filters (those were bypassable; display uses sanitizeHtml/DOMPurify).
+    expect(deepSanitize('<button onclick="evil()">click</button>')).toBe("click");
+    expect(deepSanitize("onclick=evil()")).toBe("onclick=evil()");
   });
   it("blocks prototype pollution keys", () => {
     const result = deepSanitize({ __proto__: "evil", name: "safe" });

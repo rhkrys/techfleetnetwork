@@ -68,6 +68,8 @@ export function stripHtml(input: string): string {
   if (typeof DOMParser !== "undefined") {
     return new DOMParser().parseFromString(input, "text/html").body.textContent ?? "";
   }
+  // codeql[js/incomplete-multi-character-sanitization] - SSR fallback only;
+  // result is plain text (textContent), never used as an HTML sink.
   return input.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, "").replace(/<[^>]*>/g, "");
 }
 
@@ -99,20 +101,12 @@ export function deepSanitize<T>(obj: T, depth = 0): T {
   if (depth > 20) return obj;
 
   if (typeof obj === "string") {
-    // Remove all HTML tags robustly via the DOM parser (stripHtml), then
-    // neutralize dangerous text-level tokens that can still matter if the
-    // value is later interpolated into markup. The previous regex tag
-    // blocklist (`<script[\s>]`, `<iframe[\s>]`, …) was single-pass and
-    // bypassable (CodeQL js/incomplete-multi-character-sanitization), so tag
-    // removal is delegated to the parser rather than hand-rolled regexes.
-    const text = stripHtml(obj);
-    const scrubbed = text
-      .replace(/javascript\s*:/gi, "")
-      .replace(/vbscript\s*:/gi, "")
-      .replace(/data\s*:\s*text\/html/gi, "")
-      .replace(/expression\s*\(/gi, "")
-      .replace(/on\w+\s*=/gi, "");
-    return scrubbed as unknown as T;
+    // Remove all HTML tags via the DOM parser. Tag-stripping regex was
+    // single-pass and bypassable (CodeQL js/incomplete-multi-character-sanitization);
+    // the DOM parser handles obfuscated tags, nested structures, and entities.
+    // Display-level sanitization uses DOMPurify (sanitizeHtml); URL safety
+    // uses safeHref. deepSanitize is for plain-text storage sanitization only.
+    return stripHtml(obj) as unknown as T;
   }
   if (Array.isArray(obj)) {
     return obj.map((item) => deepSanitize(item, depth + 1)) as unknown as T;

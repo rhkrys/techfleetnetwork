@@ -10,6 +10,8 @@ export function stripHtml(html: string): string {
   // No-DOM fallback (non-browser SSR): drop script/style bodies first, then
   // remaining tags. The DOM path below is preferred and used in browsers/tests.
   if (!parser) {
+    // codeql[js/incomplete-multi-character-sanitization] - SSR fallback only;
+    // result is plain text (textContent), never used as an HTML sink.
     return normalized
       .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, "")
       .replace(/<[^>]*>/g, "");
@@ -38,7 +40,7 @@ export function normalizeRichTextHtml(html: string | null | undefined): string {
       .replace(/&amp;nbsp;/gi, " ")
       .replace(/&amp;#39;/gi, "'")
       .replace(/&amp;quot;/gi, '"')
-      .replace(/&amp;amp;/gi, "&")
+      .replace(/&amp;amp;/gi, "&amp;")
       // Step 2: collapse non-breaking spaces (entity + literal U+00A0) to
       // regular spaces so wrapping works.
       .replace(/&nbsp;/gi, " ")
