@@ -15,7 +15,12 @@ import {
   Eye,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { ResponsiveTabs, ResponsiveTabsList, ResponsiveTabsContent, type TabItem } from "@/components/ui/responsive-tabs";
+import {
+  ResponsiveTabs,
+  ResponsiveTabsList,
+  ResponsiveTabsContent,
+  type TabItem,
+} from "@/components/ui/responsive-tabs";
 import { useAuth } from "@/contexts/AuthContext";
 import { TOTAL_AGILE_LESSONS } from "@/data/agile-course";
 import { TOTAL_DISCORD_LESSONS } from "@/data/discord-course";
@@ -24,7 +29,10 @@ import { TOTAL_PROJECT_TRAINING_LESSONS } from "@/data/project-training-course";
 import { TOTAL_VOLUNTEER_LESSONS } from "@/data/volunteer-teams-course";
 import { TOTAL_OBSERVER_LESSONS } from "@/data/observer-course";
 import { useCompletedCount } from "@/hooks/use-journey-progress";
-import { useCourseCompletionCounts, type CourseCompletionSpec } from "@/hooks/use-course-completion-counts";
+import {
+  useCourseCompletionCounts,
+  type CourseCompletionSpec,
+} from "@/hooks/use-course-completion-counts";
 import { TOTAL_FIRST_STEPS, FIRST_STEPS_TASK_IDS } from "@/pages/FirstStepsPage";
 import { TOTAL_CONNECT_DISCORD, CONNECT_DISCORD_TASK_IDS } from "@/pages/ConnectDiscordPage";
 import { ALL_AGILE_LESSON_IDS } from "@/data/agile-course";
@@ -34,6 +42,7 @@ import { ALL_PROJECT_TRAINING_LESSON_IDS } from "@/data/project-training-course"
 import { ALL_VOLUNTEER_LESSON_IDS } from "@/data/volunteer-teams-course";
 import { ALL_OBSERVER_LESSON_IDS } from "@/data/observer-course";
 import { usePublishedClassesByTrack } from "@/hooks/use-classes";
+import { stripHtml as stripHtmlToText } from "@/lib/strip-html";
 
 interface CourseCard {
   id: string;
@@ -56,7 +65,6 @@ function formatCompleters(n: number, _viewerCompleted: boolean): string {
   return `${n.toLocaleString()} members completed this course`;
 }
 
-
 function CourseGrid({ courses }: { courses: CourseCard[] }) {
   if (courses.length === 0) {
     return (
@@ -71,11 +79,8 @@ function CourseGrid({ courses }: { courses: CourseCard[] }) {
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
       {courses.map((course) => {
         const progress =
-          course.totalTasks > 0
-            ? Math.round((course.completedTasks / course.totalTasks) * 100)
-            : 0;
-        const isComplete =
-          course.totalTasks > 0 && course.completedTasks >= course.totalTasks;
+          course.totalTasks > 0 ? Math.round((course.completedTasks / course.totalTasks) * 100) : 0;
+        const isComplete = course.totalTasks > 0 && course.completedTasks >= course.totalTasks;
         const isStarted = course.completedTasks > 0;
         const Icon = course.icon;
 
@@ -94,7 +99,10 @@ function CourseGrid({ courses }: { courses: CourseCard[] }) {
                 <div className="h-10 w-10 rounded-md bg-muted flex items-center justify-center">
                   <Lock className="h-5 w-5 text-muted-foreground" />
                 </div>
-                <Badge variant="outline" className="bg-muted text-muted-foreground border-muted-foreground/20 text-xs gap-1">
+                <Badge
+                  variant="outline"
+                  className="bg-muted text-muted-foreground border-muted-foreground/20 text-xs gap-1"
+                >
                   <Lock className="h-3 w-3" />
                   Guided
                 </Badge>
@@ -104,7 +112,8 @@ function CourseGrid({ courses }: { courses: CourseCard[] }) {
               <div className="flex items-center gap-1.5 text-xs text-warning bg-warning/10 rounded-md px-2.5 py-1.5 mt-2">
                 <Lock className="h-3 w-3 flex-shrink-0" />
                 <span>
-                  Suggested first: <strong className="text-warning">{course.prerequisiteLabel}</strong>
+                  Suggested first:{" "}
+                  <strong className="text-warning">{course.prerequisiteLabel}</strong>
                 </span>
               </div>
             </Link>
@@ -122,15 +131,23 @@ function CourseGrid({ courses }: { courses: CourseCard[] }) {
                 <Icon className="h-5 w-5 text-primary" />
               </div>
               {isComplete ? (
-                <Badge variant="outline" className="bg-success/10 text-success border-success/20 text-xs">
+                <Badge
+                  variant="outline"
+                  className="bg-success/10 text-success border-success/20 text-xs"
+                >
                   Complete
                 </Badge>
               ) : isStarted ? (
-                <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20 text-xs">
+                <Badge
+                  variant="outline"
+                  className="bg-warning/10 text-warning border-warning/20 text-xs"
+                >
                   In Progress
                 </Badge>
               ) : (
-                <Badge variant="secondary" className="text-xs">Not Started</Badge>
+                <Badge variant="secondary" className="text-xs">
+                  Not Started
+                </Badge>
               )}
             </div>
             <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors mb-1">
@@ -140,7 +157,9 @@ function CourseGrid({ courses }: { courses: CourseCard[] }) {
             {course.totalTasks > 0 && (
               <div className="space-y-1">
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>{course.completedTasks}/{course.totalTasks} tasks</span>
+                  <span>
+                    {course.completedTasks}/{course.totalTasks} tasks
+                  </span>
                   <span>{progress}%</span>
                 </div>
                 <div className="h-1.5 bg-muted rounded-full overflow-hidden">
@@ -188,8 +207,16 @@ export default function TrainingPage() {
 
   const totalFirstSteps = TOTAL_FIRST_STEPS;
 
-  const { data: connectDiscordCompleted = 0 } = useCompletedCount(userId, "first_steps", CONNECT_DISCORD_TASK_IDS);
-  const { data: firstCompleted = 0 } = useCompletedCount(userId, "first_steps", FIRST_STEPS_TASK_IDS);
+  const { data: connectDiscordCompleted = 0 } = useCompletedCount(
+    userId,
+    "first_steps",
+    CONNECT_DISCORD_TASK_IDS
+  );
+  const { data: firstCompleted = 0 } = useCompletedCount(
+    userId,
+    "first_steps",
+    FIRST_STEPS_TASK_IDS
+  );
   const { data: agileCompleted = 0 } = useCompletedCount(userId, "second_steps");
   const { data: discordCompleted = 0 } = useCompletedCount(userId, "discord_learning");
   const { data: teamworkCompleted = 0 } = useCompletedCount(userId, "third_steps");
@@ -218,7 +245,8 @@ export default function TrainingPage() {
     {
       id: "onboarding",
       title: "Onboarding Steps",
-      description: "Set up your profile, complete onboarding class, sign up for service leadership, and review the user guide.",
+      description:
+        "Set up your profile, complete onboarding class, sign up for service leadership, and review the user guide.",
       icon: ClipboardCheck,
       href: "/courses/onboarding",
       totalTasks: totalFirstSteps,
@@ -304,24 +332,15 @@ export default function TrainingPage() {
   const { data: basicClasses = [] } = usePublishedClassesByTrack("basic_training");
   const { data: advancedClasses = [] } = usePublishedClassesByTrack("advanced_training");
 
+  // Plain-text preview for course cards. Tag stripping is delegated to the
+  // shared DOM-parser helper (robust against the regex bypasses CodeQL flagged);
+  // this only adds the 180-char truncation.
   const stripHtml = (html: string | null | undefined): string => {
-    if (!html) return "";
-    const text = html
-      .replace(/<\/(p|div|li|h[1-6]|br)>/gi, " ")
-      .replace(/<br\s*\/?>/gi, " ")
-      .replace(/<[^>]+>/g, "")
-      .replace(/&nbsp;/gi, " ")
-      .replace(/&amp;/gi, "&")
-      .replace(/&lt;/gi, "<")
-      .replace(/&gt;/gi, ">")
-      .replace(/&quot;/gi, '"')
-      .replace(/&#39;/gi, "'")
-      .replace(/\s+/g, " ")
-      .trim();
+    const text = stripHtmlToText(html);
     return text.length > 180 ? `${text.slice(0, 177).trimEnd()}…` : text;
   };
 
-  const mapClassToCard = (c: typeof basicClasses[number]): CourseCard => ({
+  const mapClassToCard = (c: (typeof basicClasses)[number]): CourseCard => ({
     id: `class-${c.id}`,
     title: c.title,
     description: stripHtml(c.summary),
@@ -336,7 +355,8 @@ export default function TrainingPage() {
   const advancedCourses: CourseCard[] = advancedClasses.map(mapClassToCard);
 
   const isTabComplete = (courses: CourseCard[]) =>
-    courses.length > 0 && courses.every((c) => c.totalTasks > 0 && c.completedTasks >= c.totalTasks);
+    courses.length > 0 &&
+    courses.every((c) => c.totalTasks > 0 && c.completedTasks >= c.totalTasks);
 
   const gettingStartedComplete = isTabComplete(gettingStartedCourses);
   const coreComplete = isTabComplete(coreCourses);
@@ -410,22 +430,39 @@ function TrainingTabs({
     {
       value: "getting-started",
       icon: <ClipboardCheck className="h-4 w-4" />,
-      label: <span className="flex items-center gap-1.5">Onboard to Tech Fleet <TabBadge complete={gettingStartedComplete} count={gettingStartedCourses.length} /></span>,
+      label: (
+        <span className="flex items-center gap-1.5">
+          Onboard to Tech Fleet{" "}
+          <TabBadge complete={gettingStartedComplete} count={gettingStartedCourses.length} />
+        </span>
+      ),
     },
     {
       value: "core",
       icon: <GraduationCap className="h-4 w-4" />,
-      label: <span className="flex items-center gap-1.5">Core Courses <TabBadge complete={coreComplete} count={coreCourses.length} /></span>,
+      label: (
+        <span className="flex items-center gap-1.5">
+          Core Courses <TabBadge complete={coreComplete} count={coreCourses.length} />
+        </span>
+      ),
     },
     {
       value: "beginner",
       icon: <Lightbulb className="h-4 w-4" />,
-      label: <span className="flex items-center gap-1.5">Basic Training <TabBadge complete={beginnerComplete} count={beginnerCourses.length} /></span>,
+      label: (
+        <span className="flex items-center gap-1.5">
+          Basic Training <TabBadge complete={beginnerComplete} count={beginnerCourses.length} />
+        </span>
+      ),
     },
     {
       value: "advanced",
       icon: <Rocket className="h-4 w-4" />,
-      label: <span className="flex items-center gap-1.5">Advanced Training <TabBadge complete={advancedComplete} count={advancedCourses.length} /></span>,
+      label: (
+        <span className="flex items-center gap-1.5">
+          Advanced Training <TabBadge complete={advancedComplete} count={advancedCourses.length} />
+        </span>
+      ),
     },
   ];
 

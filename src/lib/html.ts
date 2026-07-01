@@ -7,7 +7,13 @@ const parser = typeof DOMParser !== "undefined" ? new DOMParser() : null;
 export function stripHtml(html: string): string {
   if (!html) return "";
   const normalized = normalizeRichTextHtml(html);
-  if (!parser) return normalized.replace(/<[^>]*>/g, "");
+  // No-DOM fallback (non-browser SSR): drop script/style bodies first, then
+  // remaining tags. The DOM path below is preferred and used in browsers/tests.
+  if (!parser) {
+    return normalized
+      .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, "")
+      .replace(/<[^>]*>/g, "");
+  }
   const doc = parser.parseFromString(normalized, "text/html");
   return doc.body.textContent || "";
 }
@@ -26,16 +32,18 @@ export function stripHtml(html: string): string {
  */
 export function normalizeRichTextHtml(html: string | null | undefined): string {
   if (!html) return "";
-  return html
-    // Step 1: undo double-escaping for the entities we care about.
-    .replace(/&amp;nbsp;/gi, " ")
-    .replace(/&amp;#39;/gi, "'")
-    .replace(/&amp;quot;/gi, '"')
-    .replace(/&amp;amp;/gi, "&")
-    // Step 2: collapse non-breaking spaces (entity + literal U+00A0) to
-    // regular spaces so wrapping works.
-    .replace(/&nbsp;/gi, " ")
-    .replace(/\u00a0/g, " ")
-    // Step 3: collapse runs of plain spaces/tabs (but preserve newlines).
-    .replace(/[ \t]{2,}/g, " ");
+  return (
+    html
+      // Step 1: undo double-escaping for the entities we care about.
+      .replace(/&amp;nbsp;/gi, " ")
+      .replace(/&amp;#39;/gi, "'")
+      .replace(/&amp;quot;/gi, '"')
+      .replace(/&amp;amp;/gi, "&")
+      // Step 2: collapse non-breaking spaces (entity + literal U+00A0) to
+      // regular spaces so wrapping works.
+      .replace(/&nbsp;/gi, " ")
+      .replace(/\u00a0/g, " ")
+      // Step 3: collapse runs of plain spaces/tabs (but preserve newlines).
+      .replace(/[ \t]{2,}/g, " ")
+  );
 }
