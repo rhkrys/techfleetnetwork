@@ -373,9 +373,8 @@ Deno.serve(async (req) => {
       status: finalStatus,
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error("send-project-blast unhandled error:", msg);
-    return json({ error: "Internal error", detail: msg }, 500);
+    console.error("send-project-blast unhandled error:", e);
+    return json({ error: "Internal error" }, 500);
   }
 });
 
