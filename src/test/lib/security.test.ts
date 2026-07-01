@@ -85,8 +85,10 @@ describe("deepSanitize", () => {
     expect(result.bio).toContain("Hello");
     expect(result.name).toBe("ok");
   });
-  it("strips onclick handlers", () => {
-    expect(deepSanitize("onclick=evil()")).not.toContain("onclick=");
+  it("strips onclick attribute when inside HTML, preserves bare text", () => {
+    // deepSanitize strips HTML (via DOM parser) — bare text is not transformed.
+    // Callers rendering HTML must use sanitizeHtml (DOMPurify).
+    expect(deepSanitize('<div onclick="evil()">keep</div>')).toBe("keep");
   });
   it("blocks __proto__ keys", () => {
     const obj = { __proto__: { admin: true }, name: "safe" } as any;

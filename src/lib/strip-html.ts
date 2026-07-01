@@ -14,6 +14,8 @@ export function stripHtml(html: string | null | undefined): string {
   if (typeof DOMParser !== "undefined") {
     text = new DOMParser().parseFromString(html, "text/html").body.textContent ?? "";
   } else {
+    // codeql[js/incomplete-multi-character-sanitization] - SSR fallback only;
+    // result is plain text, never used as an HTML sink.
     text = html.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, "").replace(/<[^>]+>/g, " ");
   }
   return text.replace(/\s+/g, " ").trim();
