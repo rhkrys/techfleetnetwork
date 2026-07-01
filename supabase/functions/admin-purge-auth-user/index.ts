@@ -155,7 +155,8 @@ Deno.serve(
     ];
     for (const t of tablesByEmail) {
       const { error } = await admin.from(t).delete().eq("email", email);
-      cleanupResults[t] = error ? `error: ${error.message}` : "ok";
+      if (error) console.error(`[admin-purge-auth-user] cleanup ${t} failed:`, error);
+      cleanupResults[t] = error ? "cleanup_failed" : "ok";
     }
 
     const hashedRateLimitIdentifier = await hashRateLimitIdentifier(email);
@@ -164,17 +165,17 @@ Deno.serve(
       .delete()
       .in("identifier", [hashedRateLimitIdentifier, email])
       .in("action", ["signup_attempt", "password_reset", "login_attempt"]);
-    cleanupResults.rate_limits = rateLimitError ? `error: ${rateLimitError.message}` : "ok";
+    if (rateLimitError)
+      console.error("[admin-purge-auth-user] rate_limits cleanup failed:", rateLimitError);
+    cleanupResults.rate_limits = rateLimitError ? "cleanup_failed" : "ok";
 
     // 5) Hard-delete the auth user (uses service role; bypasses the SQL grant gap).
     let authDeleted = false;
     if (target) {
       const { error: delErr } = await admin.auth.admin.deleteUser(target.id);
       if (delErr) {
-        return jsonResponse(
-          { error: `Auth delete failed: ${delErr.message}`, cleanupResults },
-          500
-        );
+        console.error("[admin-purge-auth-user] auth.admin.deleteUser failed:", delErr);
+        return jsonResponse({ error: "Auth delete failed", cleanupResults }, 500);
       }
       authDeleted = true;
     }
