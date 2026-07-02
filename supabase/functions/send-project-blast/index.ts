@@ -160,7 +160,10 @@ Deno.serve(async (req) => {
       .select("user_id")
       .eq("project_id", projectId)
       .eq("status", "completed");
-    if (appErr) return json({ error: "Recipient lookup failed", detail: appErr.message }, 500);
+    if (appErr) {
+      console.error("[send-project-blast] recipient lookup failed:", appErr);
+      return json({ error: "Recipient lookup failed" }, 500);
+    }
 
     const userIds = Array.from(
       new Set((applicants ?? []).map((r: any) => r.user_id).filter(Boolean))
@@ -174,7 +177,10 @@ Deno.serve(async (req) => {
       .from("profiles")
       .select("user_id, email, first_name")
       .in("user_id", userIds);
-    if (profErr) return json({ error: "Profile lookup failed", detail: profErr.message }, 500);
+    if (profErr) {
+      console.error("[send-project-blast] profile lookup failed:", profErr);
+      return json({ error: "Profile lookup failed" }, 500);
+    }
 
     const recipients = (profileRows ?? [])
       .map((p: any) => ({
@@ -277,7 +283,8 @@ Deno.serve(async (req) => {
         }
       } catch (e) {
         emailFailed++;
-        errMsg = e instanceof Error ? e.message : "send failed";
+        console.error("[send-project-blast] send error:", e);
+        errMsg = "send failed";
       }
 
       // In-app notification — skipped for the sender's self-copy (they triggered it)
@@ -366,9 +373,8 @@ Deno.serve(async (req) => {
       status: finalStatus,
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error("send-project-blast unhandled error:", msg);
-    return json({ error: "Internal error", detail: msg }, 500);
+    console.error("send-project-blast unhandled error:", e);
+    return json({ error: "Internal error" }, 500);
   }
 });
 

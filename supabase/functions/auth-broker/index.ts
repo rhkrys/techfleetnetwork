@@ -1,3 +1,4 @@
+// @edge-public
 // supabase/functions/auth-broker — single edge function fronting every
 // credentialed auth operation. Routes are dispatched off the URL pathname
 // suffix: /auth-broker/sign-in/password, /auth-broker/sign-out, etc.
@@ -25,19 +26,12 @@ import {
   type SignUpRes,
   type AuthErrorCode,
 } from "./schemas.ts";
-import {
-  handleCors,
-  jsonResponse,
-  methodNotAllowed,
-  parseJsonBody,
-} from "../_shared/http.ts";
+import { handleCors, jsonResponse, methodNotAllowed, parseJsonBody } from "../_shared/http.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const SERVICE_ROLE_KEY =
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
-  Deno.env.get("SERVICE_ROLE_KEY") ??
-  "";
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SERVICE_ROLE_KEY") ?? "";
 
 // ─────────────────────────────── classifier ────────────────────────────────
 // Server is the ONE place message-string matching is allowed. Client must
@@ -49,12 +43,10 @@ function gotrueErrorToCode(err: {
   message?: string;
 }): AuthErrorCode {
   const c = (err.code || "").toLowerCase();
-  if (c === "invalid_credentials" || c === "invalid_grant")
-    return "invalid_credentials";
+  if (c === "invalid_credentials" || c === "invalid_grant") return "invalid_credentials";
   if (c === "email_not_confirmed") return "email_not_confirmed";
   if (c === "user_banned" || c === "user_locked") return "account_locked";
-  if (c === "over_email_send_rate_limit" || c === "over_request_rate_limit")
-    return "rate_limited";
+  if (c === "over_email_send_rate_limit" || c === "over_request_rate_limit") return "rate_limited";
   if (c === "captcha_failed") return "captcha_failed";
   if (c === "mfa_required") return "mfa_required";
   if (c === "weak_password") return "weak_password";
@@ -73,10 +65,8 @@ function gotrueErrorToCode(err: {
   if (m.includes("invalid login") || m.includes("invalid credentials"))
     return "invalid_credentials";
   if (m.includes("rate limit")) return "rate_limited";
-  if (m.includes("password should") || m.includes("weak password"))
-    return "weak_password";
-  if (m.includes("new password") && m.includes("different"))
-    return "same_password";
+  if (m.includes("password should") || m.includes("weak password")) return "weak_password";
+  if (m.includes("new password") && m.includes("different")) return "same_password";
 
   return "unexpected";
 }
@@ -137,7 +127,7 @@ async function handleSignInPassword(req: Request): Promise<Response> {
     if (e instanceof Response) return e;
     return jsonResponse(
       { ok: false, code: "unexpected", correlationId: "" } satisfies SignInPasswordRes,
-      400,
+      400
     );
   }
   const parsed = SIGN_IN_PASSWORD_REQ.safeParse(body);
@@ -146,10 +136,9 @@ async function handleSignInPassword(req: Request): Promise<Response> {
       {
         ok: false,
         code: "unexpected",
-        correlationId:
-          (body as { correlationId?: string })?.correlationId ?? "",
+        correlationId: (body as { correlationId?: string })?.correlationId ?? "",
       } satisfies SignInPasswordRes,
-      400,
+      400
     );
   }
   const { email, password, captchaToken, correlationId } = parsed.data;
@@ -157,7 +146,7 @@ async function handleSignInPassword(req: Request): Promise<Response> {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     return jsonResponse(
       { ok: false, code: "service_unavailable", correlationId } satisfies SignInPasswordRes,
-      503,
+      503
     );
   }
 
@@ -171,9 +160,7 @@ async function handleSignInPassword(req: Request): Promise<Response> {
   const latency = Math.round(performance.now() - t0);
 
   if (error) {
-    const code = gotrueErrorToCode(
-      error as { code?: string; status?: number; message?: string },
-    );
+    const code = gotrueErrorToCode(error as { code?: string; status?: number; message?: string });
     emitOpsEvent({
       kind: `auth.signin.${code}`,
       route: "sign-in/password",
@@ -184,7 +171,7 @@ async function handleSignInPassword(req: Request): Promise<Response> {
     });
     return jsonResponse(
       { ok: false, code, correlationId } satisfies SignInPasswordRes,
-      code === "rate_limited" ? 429 : 401,
+      code === "rate_limited" ? 429 : 401
     );
   }
 
@@ -199,7 +186,7 @@ async function handleSignInPassword(req: Request): Promise<Response> {
     });
     return jsonResponse(
       { ok: false, code: "client_session_write_failed", correlationId } satisfies SignInPasswordRes,
-      502,
+      502
     );
   }
 
@@ -224,7 +211,7 @@ async function handleSignInPassword(req: Request): Promise<Response> {
       },
       correlationId,
     } satisfies SignInPasswordRes,
-    200,
+    200
   );
 }
 
@@ -236,19 +223,29 @@ async function handleSignUp(req: Request): Promise<Response> {
     body = await parseJsonBody(req);
   } catch (e) {
     if (e instanceof Response) return e;
-    return jsonResponse({ ok: false, code: "unexpected", correlationId: "" } satisfies SignUpRes, 400);
+    return jsonResponse(
+      { ok: false, code: "unexpected", correlationId: "" } satisfies SignUpRes,
+      400
+    );
   }
   const parsed = SIGN_UP_REQ.safeParse(body);
   if (!parsed.success) {
     return jsonResponse(
-      { ok: false, code: "unexpected", correlationId: (body as { correlationId?: string })?.correlationId ?? "" } satisfies SignUpRes,
-      400,
+      {
+        ok: false,
+        code: "unexpected",
+        correlationId: (body as { correlationId?: string })?.correlationId ?? "",
+      } satisfies SignUpRes,
+      400
     );
   }
   const { email, password, captchaToken, fullName, redirectTo, correlationId } = parsed.data;
 
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    return jsonResponse({ ok: false, code: "service_unavailable", correlationId } satisfies SignUpRes, 503);
+    return jsonResponse(
+      { ok: false, code: "service_unavailable", correlationId } satisfies SignUpRes,
+      503
+    );
   }
 
   const anon = anonClient();
@@ -275,7 +272,7 @@ async function handleSignUp(req: Request): Promise<Response> {
     });
     return jsonResponse(
       { ok: false, code, correlationId } satisfies SignUpRes,
-      code === "rate_limited" ? 429 : 400,
+      code === "rate_limited" ? 429 : 400
     );
   }
 
@@ -301,7 +298,7 @@ async function handleSignUp(req: Request): Promise<Response> {
         },
         correlationId,
       } satisfies SignUpRes,
-      200,
+      200
     );
   }
 
@@ -320,7 +317,7 @@ async function handleSignUp(req: Request): Promise<Response> {
       userId: data.user?.id ?? undefined,
       correlationId,
     } satisfies SignUpRes,
-    200,
+    200
   );
 }
 
@@ -334,14 +331,18 @@ async function handleResetRequest(req: Request): Promise<Response> {
     if (e instanceof Response) return e;
     return jsonResponse(
       { ok: false, code: "unexpected", correlationId: "" } satisfies ResetRequestRes,
-      400,
+      400
     );
   }
   const parsed = RESET_REQUEST_REQ.safeParse(body);
   if (!parsed.success) {
     return jsonResponse(
-      { ok: false, code: "unexpected", correlationId: (body as { correlationId?: string })?.correlationId ?? "" } satisfies ResetRequestRes,
-      400,
+      {
+        ok: false,
+        code: "unexpected",
+        correlationId: (body as { correlationId?: string })?.correlationId ?? "",
+      } satisfies ResetRequestRes,
+      400
     );
   }
   const { email, captchaToken, redirectTo, correlationId } = parsed.data;
@@ -349,7 +350,7 @@ async function handleResetRequest(req: Request): Promise<Response> {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     return jsonResponse(
       { ok: false, code: "service_unavailable", correlationId } satisfies ResetRequestRes,
-      503,
+      503
     );
   }
 
@@ -376,7 +377,7 @@ async function handleResetRequest(req: Request): Promise<Response> {
     if (code === "rate_limited") {
       return jsonResponse(
         { ok: false, code: "rate_limited", correlationId } satisfies ResetRequestRes,
-        429,
+        429
       );
     }
     // Swallow other errors into the constant-shape success to prevent
@@ -392,7 +393,7 @@ async function handleResetRequest(req: Request): Promise<Response> {
   });
   return jsonResponse(
     { ok: true, kind: "password_reset_email_sent", correlationId } satisfies ResetRequestRes,
-    200,
+    200
   );
 }
 
@@ -405,7 +406,7 @@ async function handleResetComplete(req: Request): Promise<Response> {
   if (!authHeader.toLowerCase().startsWith("bearer ")) {
     return jsonResponse(
       { ok: false, code: "recovery_session_expired", correlationId: "" } satisfies ResetCompleteRes,
-      401,
+      401
     );
   }
   const token = authHeader.slice(7).trim();
@@ -417,14 +418,18 @@ async function handleResetComplete(req: Request): Promise<Response> {
     if (e instanceof Response) return e;
     return jsonResponse(
       { ok: false, code: "unexpected", correlationId: "" } satisfies ResetCompleteRes,
-      400,
+      400
     );
   }
   const parsed = RESET_COMPLETE_REQ.safeParse(body);
   if (!parsed.success) {
     return jsonResponse(
-      { ok: false, code: "weak_password", correlationId: (body as { correlationId?: string })?.correlationId ?? "" } satisfies ResetCompleteRes,
-      400,
+      {
+        ok: false,
+        code: "weak_password",
+        correlationId: (body as { correlationId?: string })?.correlationId ?? "",
+      } satisfies ResetCompleteRes,
+      400
     );
   }
   const { newPassword, correlationId } = parsed.data;
@@ -439,7 +444,7 @@ async function handleResetComplete(req: Request): Promise<Response> {
   if (claimsErr || !claims?.user) {
     return jsonResponse(
       { ok: false, code: "recovery_session_expired", correlationId } satisfies ResetCompleteRes,
-      401,
+      401
     );
   }
 
@@ -457,10 +462,7 @@ async function handleResetComplete(req: Request): Promise<Response> {
       latencyMs: latency,
       actorId: claims.user.id,
     });
-    return jsonResponse(
-      { ok: false, code, correlationId } satisfies ResetCompleteRes,
-      400,
-    );
+    return jsonResponse({ ok: false, code, correlationId } satisfies ResetCompleteRes, 400);
   }
 
   // Best-effort: clear server-side login lockout so the user can immediately
@@ -484,7 +486,7 @@ async function handleResetComplete(req: Request): Promise<Response> {
   });
   return jsonResponse(
     { ok: true, kind: "password_updated", correlationId } satisfies ResetCompleteRes,
-    200,
+    200
   );
 }
 
@@ -495,7 +497,7 @@ async function handleSignOut(req: Request): Promise<Response> {
   if (!authHeader.toLowerCase().startsWith("bearer ")) {
     return jsonResponse(
       { ok: false, code: "unexpected", correlationId: "" } satisfies SignOutRes,
-      401,
+      401
     );
   }
   const token = authHeader.slice(7).trim();
@@ -507,14 +509,18 @@ async function handleSignOut(req: Request): Promise<Response> {
     if (e instanceof Response) return e;
     return jsonResponse(
       { ok: false, code: "unexpected", correlationId: "" } satisfies SignOutRes,
-      400,
+      400
     );
   }
   const parsed = SIGN_OUT_REQ.safeParse(body);
   if (!parsed.success) {
     return jsonResponse(
-      { ok: false, code: "unexpected", correlationId: (body as { correlationId?: string })?.correlationId ?? "" } satisfies SignOutRes,
-      400,
+      {
+        ok: false,
+        code: "unexpected",
+        correlationId: (body as { correlationId?: string })?.correlationId ?? "",
+      } satisfies SignOutRes,
+      400
     );
   }
   const { correlationId, scope } = parsed.data;
@@ -547,10 +553,7 @@ async function handleSignOut(req: Request): Promise<Response> {
     actorId,
   });
 
-  return jsonResponse(
-    { ok: true, kind: "signed_out", correlationId } satisfies SignOutRes,
-    200,
-  );
+  return jsonResponse({ ok: true, kind: "signed_out", correlationId } satisfies SignOutRes, 200);
 }
 
 // ────────────────────────── route: identity/check ──────────────────────────
@@ -563,19 +566,34 @@ async function handleIdentityCheck(req: Request): Promise<Response> {
     body = await parseJsonBody(req);
   } catch (e) {
     if (e instanceof Response) return e;
-    return jsonResponse({ ok: false, code: "unexpected", correlationId: "" } satisfies IdentityCheckRes, 400);
+    return jsonResponse(
+      { ok: false, code: "unexpected", correlationId: "" } satisfies IdentityCheckRes,
+      400
+    );
   }
   const parsed = IDENTITY_CHECK_REQ.safeParse(body);
   if (!parsed.success) {
     return jsonResponse(
-      { ok: false, code: "unexpected", correlationId: (body as { correlationId?: string })?.correlationId ?? "" } satisfies IdentityCheckRes,
-      400,
+      {
+        ok: false,
+        code: "unexpected",
+        correlationId: (body as { correlationId?: string })?.correlationId ?? "",
+      } satisfies IdentityCheckRes,
+      400
     );
   }
   const { email, correlationId } = parsed.data;
 
   if (!SERVICE_ROLE_KEY) {
-    return jsonResponse({ ok: true, kind: "identity_hint", providers: ["password"], correlationId } satisfies IdentityCheckRes, 200);
+    return jsonResponse(
+      {
+        ok: true,
+        kind: "identity_hint",
+        providers: ["password"],
+        correlationId,
+      } satisfies IdentityCheckRes,
+      200
+    );
   }
 
   // Look up providers via the existing `get_account_identity_providers` RPC
@@ -591,9 +609,7 @@ async function handleIdentityCheck(req: Request): Promise<Response> {
     if (Array.isArray(data) && data.length > 0) {
       providers = data
         .map((row: { provider?: string }) => row?.provider ?? "")
-        .filter((p: string): p is "password" | "google" =>
-          p === "password" || p === "google",
-        );
+        .filter((p: string): p is "password" | "google" => p === "password" || p === "google");
       if (providers.length === 0) providers = ["password"];
     }
   } catch {
@@ -609,7 +625,7 @@ async function handleIdentityCheck(req: Request): Promise<Response> {
   });
   return jsonResponse(
     { ok: true, kind: "identity_hint", providers, correlationId } satisfies IdentityCheckRes,
-    200,
+    200
   );
 }
 

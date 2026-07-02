@@ -46,8 +46,7 @@ import { z } from "npm:zod@3.23.8";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 const JSON_HEADERS = { ...CORS_HEADERS, "Content-Type": "application/json" };
@@ -66,15 +65,23 @@ function json(data: Record<string, unknown>, status = 200) {
 // --- Announcement re-renderer (kept in sync with send-announcement-email) ---
 const URL_RE = /\b((?:https?:\/\/|www\.)[^\s<>"'()]+[^\s<>"'(),.;:!?])/gi;
 const EMAIL_RE = /\b([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})\b/gi;
-const escHtml = (s: string) => s.replace(/&(?!(?:[a-zA-Z][a-zA-Z0-9]*|#\d+|#x[0-9a-fA-F]+);)/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+const escHtml = (s: string) =>
+  s
+    .replace(/&(?!(?:[a-zA-Z][a-zA-Z0-9]*|#\d+|#x[0-9a-fA-F]+);)/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 const escAttr = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 
 function linkifyTextNode(text: string): string {
   type M = { start: number; end: number; html: string };
   const ms: M[] = [];
   const collect = (re: RegExp, build: (m: string) => string) => {
-    re.lastIndex = 0; let m: RegExpExecArray | null;
-    while ((m = re.exec(text)) !== null) ms.push({ start: m.index, end: m.index + m[0].length, html: build(m[0]) });
+    re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null)
+      ms.push({ start: m.index, end: m.index + m[0].length, html: build(m[0]) });
   };
   collect(URL_RE, (raw) => {
     const href = raw.startsWith("www.") ? `https://${raw}` : raw;
@@ -83,23 +90,48 @@ function linkifyTextNode(text: string): string {
   collect(EMAIL_RE, (raw) => `<a href="mailto:${escAttr(raw)}">${escHtml(raw)}</a>`);
   if (ms.length === 0) return escHtml(text);
   ms.sort((a, b) => a.start - b.start || a.end - b.end);
-  const filtered: M[] = []; let lastEnd = -1;
-  for (const m of ms) { if (m.start >= lastEnd) { filtered.push(m); lastEnd = m.end; } }
-  let out = ""; let cursor = 0;
-  for (const m of filtered) { out += escHtml(text.slice(cursor, m.start)); out += m.html; cursor = m.end; }
+  const filtered: M[] = [];
+  let lastEnd = -1;
+  for (const m of ms) {
+    if (m.start >= lastEnd) {
+      filtered.push(m);
+      lastEnd = m.end;
+    }
+  }
+  let out = "";
+  let cursor = 0;
+  for (const m of filtered) {
+    out += escHtml(text.slice(cursor, m.start));
+    out += m.html;
+    cursor = m.end;
+  }
   return out + escHtml(text.slice(cursor));
 }
 
 function linkifyHtml(html: string): string {
   if (typeof html !== "string" || !html) return "";
-  let i = 0, out = "", inAnchor = 0; const len = html.length;
+  let i = 0,
+    out = "",
+    inAnchor = 0;
+  const len = html.length;
   while (i < len) {
     const lt = html.indexOf("<", i);
-    if (lt === -1) { const rest = html.slice(i); out += inAnchor > 0 ? rest : linkifyTextNode(rest); break; }
-    if (lt > i) { const t = html.slice(i, lt); out += inAnchor > 0 ? t : linkifyTextNode(t); }
+    if (lt === -1) {
+      const rest = html.slice(i);
+      out += inAnchor > 0 ? rest : linkifyTextNode(rest);
+      break;
+    }
+    if (lt > i) {
+      const t = html.slice(i, lt);
+      out += inAnchor > 0 ? t : linkifyTextNode(t);
+    }
     const gt = html.indexOf(">", lt + 1);
-    if (gt === -1) { out += html.slice(lt); break; }
-    const tag = html.slice(lt, gt + 1); out += tag;
+    if (gt === -1) {
+      out += html.slice(lt);
+      break;
+    }
+    const tag = html.slice(lt, gt + 1);
+    out += tag;
     if (/^<a\b/i.test(tag)) inAnchor++;
     else if (/^<\/a\s*>/i.test(tag) && inAnchor > 0) inAnchor--;
     i = gt + 1;
@@ -107,17 +139,41 @@ function linkifyHtml(html: string): string {
   return out;
 }
 
-function renderAnnouncementEmail(title: string, bodyHtml: string, announcementId: string): { html: string; text: string; subject: string; url: string } {
+function renderAnnouncementEmail(
+  title: string,
+  bodyHtml: string,
+  announcementId: string
+): { html: string; text: string; subject: string; url: string } {
   const announcementUrl = `https://techfleet.network/updates?highlight=${announcementId}`;
   const inlineFormattedBody = linkifyHtml(bodyHtml || "")
-    .replace(/<p(\s[^>]*)?>/gi, '<p style="margin:0 0 12px 0; font-size:15px; line-height:1.6; color:#3f3f46;">')
-    .replace(/<h2(\s[^>]*)?>/gi, '<h2 style="font-size:18px; font-weight:700; color:#18181b; margin:20px 0 10px 0; line-height:1.3;">')
-    .replace(/<h3(\s[^>]*)?>/gi, '<h3 style="font-size:16px; font-weight:600; color:#18181b; margin:18px 0 8px 0; line-height:1.3;">')
-    .replace(/<ul(\s[^>]*)?>/gi, '<ul style="margin:0 0 12px 0; padding-left:24px; font-size:15px; line-height:1.6; color:#3f3f46;">')
-    .replace(/<ol(\s[^>]*)?>/gi, '<ol style="margin:0 0 12px 0; padding-left:24px; font-size:15px; line-height:1.6; color:#3f3f46;">')
+    .replace(
+      /<p(\s[^>]*)?>/gi,
+      '<p style="margin:0 0 12px 0; font-size:15px; line-height:1.6; color:#3f3f46;">'
+    )
+    .replace(
+      /<h2(\s[^>]*)?>/gi,
+      '<h2 style="font-size:18px; font-weight:700; color:#18181b; margin:20px 0 10px 0; line-height:1.3;">'
+    )
+    .replace(
+      /<h3(\s[^>]*)?>/gi,
+      '<h3 style="font-size:16px; font-weight:600; color:#18181b; margin:18px 0 8px 0; line-height:1.3;">'
+    )
+    .replace(
+      /<ul(\s[^>]*)?>/gi,
+      '<ul style="margin:0 0 12px 0; padding-left:24px; font-size:15px; line-height:1.6; color:#3f3f46;">'
+    )
+    .replace(
+      /<ol(\s[^>]*)?>/gi,
+      '<ol style="margin:0 0 12px 0; padding-left:24px; font-size:15px; line-height:1.6; color:#3f3f46;">'
+    )
     .replace(/<li(\s[^>]*)?>/gi, '<li style="margin:0 0 4px 0;">')
-    .replace(/<blockquote(\s[^>]*)?>/gi, '<blockquote style="margin:0 0 12px 0; padding:8px 16px; border-left:4px solid #e4e4e7; color:#52525b; font-style:italic;">')
-    .replace(/<a(\s[^>]*)?>/gi, (m: string) => m.replace(/<a/i, '<a style="color:#2563eb; text-decoration:underline;"'))
+    .replace(
+      /<blockquote(\s[^>]*)?>/gi,
+      '<blockquote style="margin:0 0 12px 0; padding:8px 16px; border-left:4px solid #e4e4e7; color:#52525b; font-style:italic;">'
+    )
+    .replace(/<a(\s[^>]*)?>/gi, (m: string) =>
+      m.replace(/<a/i, '<a style="color:#2563eb; text-decoration:underline;"')
+    )
     .replace(/<strong(\s[^>]*)?>/gi, '<strong style="font-weight:700; color:#18181b;">')
     .replace(/<b(\s[^>]*)?>/gi, '<b style="font-weight:700; color:#18181b;">')
     .replace(/<em(\s[^>]*)?>/gi, '<em style="font-style:italic;">')
@@ -151,13 +207,16 @@ function renderAnnouncementEmail(title: string, bodyHtml: string, announcementId
 </html>`;
 
   const text = [
-    `Tech Fleet Announcement`, '',
-    title, '',
-    'A new announcement is available in Tech Fleet Network.',
-    `View it here: ${announcementUrl}`, '',
-    'You received this because you opted in to announcements.',
-    'To unsubscribe, update your notification preferences in your profile settings.',
-  ].join('\n');
+    `Tech Fleet Announcement`,
+    "",
+    title,
+    "",
+    "A new announcement is available in Tech Fleet Network.",
+    `View it here: ${announcementUrl}`,
+    "",
+    "You received this because you opted in to announcements.",
+    "To unsubscribe, update your notification preferences in your profile settings.",
+  ].join("\n");
 
   return { html, text, subject: `[Tech Fleet] ${title}`, url: announcementUrl };
 }
@@ -195,17 +254,23 @@ Deno.serve(async (req) => {
     });
     const admin = createClient(supabaseUrl, serviceKey);
 
-    const { data: { user }, error: userErr } = await userClient.auth.getUser();
+    const {
+      data: { user },
+      error: userErr,
+    } = await userClient.auth.getUser();
     if (userErr || !user) return json({ error: "Unauthorized" }, 401);
 
     const { count: adminCount } = await admin
-      .from("user_roles").select("id", { head: true, count: "exact" })
-      .eq("user_id", user.id).eq("role", "admin");
+      .from("user_roles")
+      .select("id", { head: true, count: "exact" })
+      .eq("user_id", user.id)
+      .eq("role", "admin");
     if (!adminCount || adminCount < 1) return json({ error: "Forbidden" }, 403);
 
     const raw = await req.json().catch(() => ({}));
     const parsed = BodySchema.safeParse(raw);
-    if (!parsed.success) return json({ error: "Invalid request body", detail: parsed.error.flatten() }, 400);
+    if (!parsed.success)
+      return json({ error: "Invalid request body", detail: parsed.error.flatten() }, 400);
     const { template_name, since_iso, message_ids, dry_run } = parsed.data;
 
     const sinceIso = since_iso ?? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -231,12 +296,20 @@ Deno.serve(async (req) => {
     }
 
     const { data: dlqRows, error: dlqErr } = await dlqQuery;
-    if (dlqErr) return json({ error: "DLQ query failed", detail: dlqErr.message }, 500);
+    if (dlqErr) {
+      console.error("[replay-dlq-emails] DLQ query failed:", dlqErr);
+      return json({ error: "DLQ query failed" }, 500);
+    }
 
     // Dedupe by recipient_email (keep most recent DLQ row per recipient)
-    const byRecipient = new Map<string, { message_id: string; recipient_email: string; metadata: any; created_at: string }>();
-    for (const r of (dlqRows ?? [])) {
-      const email = String(r.recipient_email ?? "").trim().toLowerCase();
+    const byRecipient = new Map<
+      string,
+      { message_id: string; recipient_email: string; metadata: any; created_at: string }
+    >();
+    for (const r of dlqRows ?? []) {
+      const email = String(r.recipient_email ?? "")
+        .trim()
+        .toLowerCase();
       if (!email) continue;
       if (!byRecipient.has(email)) byRecipient.set(email, r as any);
     }
@@ -244,7 +317,13 @@ Deno.serve(async (req) => {
 
     // --- Filter out suppressed + already-delivered recipients ---
     const recipientEmails = candidates.map((c) => c.recipient_email.toLowerCase());
-    const reasons = { suppressed: 0, already_delivered: 0, not_replayable: 0, source_missing: 0, error: 0 };
+    const reasons = {
+      suppressed: 0,
+      already_delivered: 0,
+      not_replayable: 0,
+      source_missing: 0,
+      error: 0,
+    };
 
     const { data: suppRows } = await admin
       .from("suppressed_emails")
@@ -261,7 +340,7 @@ Deno.serve(async (req) => {
       .eq("status", "sent")
       .in("recipient_email", recipientEmails);
     const sentByEmail = new Map<string, string>();
-    for (const r of (sentRows ?? [])) {
+    for (const r of sentRows ?? []) {
       const email = String(r.recipient_email).toLowerCase();
       const existing = sentByEmail.get(email);
       if (!existing || r.created_at > existing) sentByEmail.set(email, r.created_at as string);
@@ -270,7 +349,10 @@ Deno.serve(async (req) => {
     if (dry_run) {
       return json({
         requested: candidates.length,
-        candidates: candidates.map((c) => ({ message_id: c.message_id, recipient_email: c.recipient_email })),
+        candidates: candidates.map((c) => ({
+          message_id: c.message_id,
+          recipient_email: c.recipient_email,
+        })),
         batch_id: batchId,
       });
     }
@@ -283,9 +365,15 @@ Deno.serve(async (req) => {
     for (const cand of candidates) {
       const email = cand.recipient_email.toLowerCase();
 
-      if (suppressed.has(email)) { reasons.suppressed++; continue; }
+      if (suppressed.has(email)) {
+        reasons.suppressed++;
+        continue;
+      }
       const sentAt = sentByEmail.get(email);
-      if (sentAt && sentAt >= cand.created_at) { reasons.already_delivered++; continue; }
+      if (sentAt && sentAt >= cand.created_at) {
+        reasons.already_delivered++;
+        continue;
+      }
 
       if (template_name !== "announcement") {
         reasons.not_replayable++;
@@ -293,7 +381,10 @@ Deno.serve(async (req) => {
       }
 
       const parsedId = parseMessageId(template_name, cand.message_id);
-      if (!parsedId) { reasons.source_missing++; continue; }
+      if (!parsedId) {
+        reasons.source_missing++;
+        continue;
+      }
 
       // Load source announcement
       const { data: announcement, error: annErr } = await admin
@@ -301,12 +392,15 @@ Deno.serve(async (req) => {
         .select("title, body_html")
         .eq("id", parsedId.sourceId)
         .maybeSingle();
-      if (annErr || !announcement) { reasons.source_missing++; continue; }
+      if (annErr || !announcement) {
+        reasons.source_missing++;
+        continue;
+      }
 
       const { html, text, subject } = renderAnnouncementEmail(
         announcement.title as string,
         (announcement.body_html as string) ?? "",
-        parsedId.sourceId,
+        parsedId.sourceId
       );
 
       const newMessageId = `replay-${cand.message_id}`;
@@ -314,10 +408,16 @@ Deno.serve(async (req) => {
 
       try {
         // Unsubscribe token (one per email; ignore unique-violation if it already exists)
-        await admin.from("email_unsubscribe_tokens").insert({
-          email,
-          token: unsubscribeToken,
-        }).then(() => {}, () => {});
+        await admin
+          .from("email_unsubscribe_tokens")
+          .insert({
+            email,
+            token: unsubscribeToken,
+          })
+          .then(
+            () => {},
+            () => {}
+          );
 
         await admin.from("email_send_log").insert({
           message_id: newMessageId,
@@ -362,18 +462,23 @@ Deno.serve(async (req) => {
     }
 
     // Audit log (best-effort; never block replay on audit failure)
-    await admin.rpc("write_audit_log", {
-      p_event_type: "email.dlq.replay",
-      p_table_name: "email_send_log",
-      p_record_id: batchId,
-      p_user_id: user.id,
-      p_changed_fields: [
-        `template:${template_name}`,
-        `replayed:${replayed}`,
-        `skipped:${reasons.suppressed + reasons.already_delivered + reasons.not_replayable + reasons.source_missing + reasons.error}`,
-        `batch:${batchId}`,
-      ],
-    }).then(() => {}, (e: unknown) => console.warn("audit_log write failed:", e));
+    await admin
+      .rpc("write_audit_log", {
+        p_event_type: "email.dlq.replay",
+        p_table_name: "email_send_log",
+        p_record_id: batchId,
+        p_user_id: user.id,
+        p_changed_fields: [
+          `template:${template_name}`,
+          `replayed:${replayed}`,
+          `skipped:${reasons.suppressed + reasons.already_delivered + reasons.not_replayable + reasons.source_missing + reasons.error}`,
+          `batch:${batchId}`,
+        ],
+      })
+      .then(
+        () => {},
+        (e: unknown) => console.warn("audit_log write failed:", e)
+      );
 
     return json({
       requested: candidates.length,
@@ -384,8 +489,7 @@ Deno.serve(async (req) => {
       replayed_message_ids: replayedMessageIds.slice(0, 50), // truncate large lists
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error("replay-dlq-emails unhandled error:", msg);
-    return json({ error: "Internal error", detail: msg }, 500);
+    console.error("replay-dlq-emails unhandled error:", e);
+    return json({ error: "Internal error" }, 500);
   }
 });
