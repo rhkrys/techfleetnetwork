@@ -53,22 +53,22 @@ describe("AvatarUpload — BDD 30.x", () => {
     fireEvent.change(input, { target: { files: [file] } });
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith("Please upload a PNG or JPG image.");
+      expect(toast.error).toHaveBeenCalledWith("Please upload a PNG, JPG, or WEBP image.");
     });
     expect(defaultProps.onUploaded).not.toHaveBeenCalled();
   });
 
-  // BDD 30.4: Oversized file is rejected
-  it("rejects files over 2MB", async () => {
+  // BDD 30.4: Oversized file is rejected (limit is 5MB pre-crop)
+  it("rejects files over 5MB", async () => {
     render(<AvatarUpload {...defaultProps} />);
     const input = screen.getByLabelText("Upload profile picture");
 
-    const bigContent = new Uint8Array(2 * 1024 * 1024 + 1);
+    const bigContent = new Uint8Array(5 * 1024 * 1024 + 1);
     const file = new File([bigContent], "big.png", { type: "image/png" });
     fireEvent.change(input, { target: { files: [file] } });
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith("Image must be under 2MB.");
+      expect(toast.error).toHaveBeenCalledWith("Image must be under 5MB.");
     });
     expect(defaultProps.onUploaded).not.toHaveBeenCalled();
   });

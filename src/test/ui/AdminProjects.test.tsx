@@ -200,7 +200,7 @@ describe("Admin Projects (BDD PROJECT-001..007)", () => {
     expect(screen.getByText(/Marketing Site/)).toBeInTheDocument();
   });
 
-  it("PROJECT-007: Non-admin visiting /admin/clients is redirected to /dashboard", async () => {
+  it("PROJECT-007: Non-admin visiting /admin/clients is redirected to /access-denied", async () => {
     mockUseAdmin.mockReturnValue({ isAdmin: false, loading: false });
     const { AdminRoute } = await import("@/components/AdminRoute");
     const ClientsPage = (await import("@/pages/ClientsPage")).default;
@@ -211,14 +211,14 @@ describe("Admin Projects (BDD PROJECT-001..007)", () => {
         <MemoryRouter initialEntries={["/admin/clients"]}>
           <Routes>
             <Route path="/admin/clients" element={<AdminRoute><ClientsPage /></AdminRoute>} />
-            <Route path="/dashboard" element={<div data-testid="dashboard-page">Dashboard</div>} />
+            <Route path="/access-denied" element={<div data-testid="access-denied-page">Access Denied</div>} />
             <Route path="/login" element={<div>Login</div>} />
           </Routes>
         </MemoryRouter>
       </QueryClientProvider>,
     );
 
-    expect(await screen.findByTestId("dashboard-page")).toBeInTheDocument();
+    expect(await screen.findByTestId("access-denied-page")).toBeInTheDocument();
     expect(screen.queryByText(/Clients & Projects/i)).not.toBeInTheDocument();
   });
 });
