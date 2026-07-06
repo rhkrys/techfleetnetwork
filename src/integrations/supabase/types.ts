@@ -7986,6 +7986,7 @@ export type Database = {
           message_id: string
         }[]
       }
+      email_queue_dispatch: { Args: never; Returns: undefined }
       email_send_log_latest_failed: {
         Args: { p_since: string; p_template_name: string }
         Returns: {
