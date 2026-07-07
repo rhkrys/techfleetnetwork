@@ -75,8 +75,6 @@ project_id = "pzvqxdgoztbfikfuifix"
     verify_jwt = false
   [functions.resolve-discord-id]
     verify_jwt = false
-  [functions.scrape-knowledge]
-    verify_jwt = false
   [functions.send-transactional-email]
     verify_jwt = true
   [functions.sync-airtable-roster]
@@ -215,8 +213,6 @@ project_id = "pzvqxdgoztbfikfuifix"
   [functions.fill-content-gaps]
     verify_jwt = false
   [functions.scrape-figma-workshops]
-    verify_jwt = false
-  [functions.fleety-bulk-draft-playbooks]
     verify_jwt = false
   [functions.send-community-agreement-trigger]
     verify_jwt = false

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-01T17:18:39.074Z",
+  "generated_at": "2026-07-07T00:49:21.085Z",
   "functions": [
     {
       "name": "admin-purge-auth-user",
@@ -178,13 +178,6 @@
     },
     {
       "name": "firecrawl-search",
-      "verify_jwt": false,
-      "kind": "cron",
-      "critical": false,
-      "declared": true
-    },
-    {
-      "name": "fleety-bulk-draft-playbooks",
       "verify_jwt": false,
       "kind": "cron",
       "critical": false,
@@ -633,13 +626,6 @@
     },
     {
       "name": "scrape-figma-workshops",
-      "verify_jwt": false,
-      "kind": "cron",
-      "critical": false,
-      "declared": true
-    },
-    {
-      "name": "scrape-knowledge",
       "verify_jwt": false,
       "kind": "cron",
       "critical": false,
