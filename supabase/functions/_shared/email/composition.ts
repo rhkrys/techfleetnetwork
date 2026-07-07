@@ -5,6 +5,7 @@ import { makePgSuppressionRepo } from './infrastructure/pg-suppression-repo.ts';
 import { makePgPolicyRepo } from './infrastructure/pg-policy-repo.ts';
 import { makeLovableEmailsProvider } from './infrastructure/lovable-emails-provider.ts';
 import { makeSesEmailsProvider } from './infrastructure/ses-provider.ts';
+import { makeResendEmailsProvider } from './infrastructure/resend-provider.ts';
 import { makeOpsEventSink } from './infrastructure/ops-event-sink.ts';
 import { makeEnqueueEmail } from './application/enqueue-email.ts';
 import { makeDispatchDue } from './application/dispatch-due.ts';
@@ -17,12 +18,16 @@ export function buildEmailContainer(client?: SupabaseClient) {
   const outbox = makePgOutboxRepo(supabase);
   const suppression = makePgSuppressionRepo(supabase);
   const policy = makePgPolicyRepo(supabase);
-  // Provider selection (reversible): EMAIL_PROVIDER=ses routes sends through
-  // Amazon SES SMTP; anything else (or unset) keeps the legacy Lovable adapter.
-  // Default stays Lovable so deploying this is a no-op until SES is configured.
-  const provider = (Deno.env.get('EMAIL_PROVIDER') ?? 'lovable').toLowerCase() === 'ses'
-    ? makeSesEmailsProvider()
-    : makeLovableEmailsProvider();
+  // Provider selection (reversible via EMAIL_PROVIDER):
+  //   'resend' -> Resend HTTP API (current transactional + auth sender)
+  //   'ses'    -> Amazon SES SMTP (kept as a fallback; AWS prod access denied)
+  //   anything else / unset -> legacy Lovable adapter
+  const providerName = (Deno.env.get('EMAIL_PROVIDER') ?? 'lovable').toLowerCase();
+  const provider = providerName === 'resend'
+    ? makeResendEmailsProvider()
+    : providerName === 'ses'
+      ? makeSesEmailsProvider()
+      : makeLovableEmailsProvider();
   const events = makeOpsEventSink(supabase);
   const logger = { info: console.log, warn: console.warn, error: console.error };
   const clock = { now: () => new Date() };

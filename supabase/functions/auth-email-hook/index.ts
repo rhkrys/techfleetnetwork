@@ -102,7 +102,10 @@ async function handlePreview(req: Request): Promise<Response> {
     return new Response(null, { headers: previewCorsHeaders })
   }
 
-  const apiKey = Deno.env.get('LOVABLE_API_KEY')
+  // Incoming Supabase Auth "Send Email" webhook is verified against this shared
+  // secret. Prefer the provider-neutral AUTH_EMAIL_HOOK_SECRET; fall back to the
+  // legacy LOVABLE_API_KEY so existing deployments keep working during cutover.
+  const apiKey = Deno.env.get('AUTH_EMAIL_HOOK_SECRET') ?? Deno.env.get('LOVABLE_API_KEY')
   const authHeader = req.headers.get('Authorization')
 
   if (!apiKey || authHeader !== `Bearer ${apiKey}`) {
@@ -143,10 +146,13 @@ async function handlePreview(req: Request): Promise<Response> {
 
 // Webhook handler - verifies signature and sends email
 async function handleWebhook(req: Request): Promise<Response> {
-  const apiKey = Deno.env.get('LOVABLE_API_KEY')
+  // Incoming Supabase Auth "Send Email" webhook is verified against this shared
+  // secret. Prefer the provider-neutral AUTH_EMAIL_HOOK_SECRET; fall back to the
+  // legacy LOVABLE_API_KEY so existing deployments keep working during cutover.
+  const apiKey = Deno.env.get('AUTH_EMAIL_HOOK_SECRET') ?? Deno.env.get('LOVABLE_API_KEY')
 
   if (!apiKey) {
-    console.error('LOVABLE_API_KEY not configured')
+    console.error('Auth email hook secret not configured (AUTH_EMAIL_HOOK_SECRET or LOVABLE_API_KEY)')
     return new Response(
       JSON.stringify({ error: 'Server configuration error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
