@@ -307,4 +307,8 @@ project_id = "pzvqxdgoztbfikfuifix"
     # `authorizeServiceRoleRequest` (accepts both legacy service_role
     # JWTs and opaque sb_secret_* tokens), so `verify_jwt = false`.
     verify_jwt = false
+  [functions.environment-readiness]
+    # Admin-only ops diagnostic (edge-secret presence). Authorizes in code via
+    # service-role bearer OR an admin JWT, so verify_jwt stays false.
+    verify_jwt = false
 
