@@ -1,0 +1,79 @@
+# Frontend deploy with VISIBILITY — the answer to "will the silent 11-day
+# deploy failure happen again?": no, because a failed build/deploy now shows as
+# a red check here (with logs) instead of the Cloudflare git integration failing
+# silently and serving the old bundle forever.
+#
+# Additive + safe: guarded to a green no-op until the repo secrets are set, so
+# merging this cannot break anything. Once CLOUDFLARE_API_TOKEN is present it
+# builds + deploys via wrangler on every push to main. It does NOT disable the
+# Cloudflare git-integration auto-build; once you've confirmed a green run here,
+# turn that off in the Cloudflare dashboard so there's a single, visible path.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_API_TOKEN            (Cloudflare → My Profile → API Tokens →
+#                                    "Edit Cloudflare Workers" template)
+#   CLOUDFLARE_ACCOUNT_ID          (Workers & Pages overview → right sidebar)
+#   VITE_SUPABASE_URL              (public — https://pzvqxdgoztbfikfuifix.supabase.co)
+#   VITE_SUPABASE_PUBLISHABLE_KEY  (public sb_publishable_… key)
+#   VITE_SUPABASE_PROJECT_ID       (public — pzvqxdgoztbfikfuifix)
+name: Deploy frontend (Cloudflare)
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'supabase/**'
+      - 'docs/**'
+      - '**/*.md'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-frontend
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check deploy is configured
+        id: cfg
+        run: |
+          if [ -n "${{ secrets.CLOUDFLARE_API_TOKEN }}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::CLOUDFLARE_API_TOKEN not set — skipping build/deploy. Add the repo secrets listed in this workflow to activate visible deploys."
+          fi
+
+      - name: Checkout
+        if: steps.cfg.outputs.configured == 'true'
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        if: steps.cfg.outputs.configured == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        if: steps.cfg.outputs.configured == 'true'
+        run: npm ci --no-audit --no-fund
+
+      - name: Build
+        if: steps.cfg.outputs.configured == 'true'
+        run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_SUPABASE_PROJECT_ID: ${{ secrets.VITE_SUPABASE_PROJECT_ID }}
+
+      - name: Deploy to Cloudflare (wrangler)
+        if: steps.cfg.outputs.configured == 'true'
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
