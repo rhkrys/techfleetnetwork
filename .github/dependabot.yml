@@ -1,8 +1,8 @@
-# Dependabot — automated supply-chain updates per OWASP A03:2025
+# Dependabot - automated supply-chain updates per OWASP A03:2025
 # - npm: weekly grouped PRs to keep churn manageable
 # - github-actions: weekly, ensures workflow action SHAs stay current
 # Security updates are handled out-of-band by Dependabot's daily security PRs
-# (no `schedule.interval` override needed — they always run when CVEs land).
+# (no `schedule.interval` override needed - they always run when CVEs land).
 version: 2
 updates:
   - package-ecosystem: "npm"
@@ -14,19 +14,12 @@ updates:
       timezone: "Etc/UTC"
     open-pull-requests-limit: 5
     ignore:
-      # Major-version bumps of the build/CSS toolchain are breaking rewrites
-      # that require a deliberate migration, not an auto-bump. Tailwind v4
-      # (v3→v4) froze the Cloudflare production build for 11 days — pinned back
-      # to v3 in #67, PR #83 (auto-bump to 4.x) closed. Keep majors out until we
-      # migrate on purpose.
-      - dependency-name: "tailwindcss"
-        update-types: ["version-update:semver-major"]
-      # react-router was auto-bumped to v8 (#85) while react-router-dom stayed
-      # v6 — an incompatible split that broke the Cloudflare build. The app uses
-      # the react-router-dom v6 API (105 imports). Realign happens on purpose.
-      - dependency-name: "react-router"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "react-router-dom"
+      # Ignore ALL major-version bumps. A major is a breaking rewrite that needs
+      # a deliberate migration, not an auto-bump. Two majors auto-merged and each
+      # froze the production build: tailwindcss v3->v4 (11-day freeze; pinned in
+      # #67, PR #83 closed) and react-router v6->v8 (#85; fixed in #95). Majors
+      # are opened by hand when we choose to migrate.
+      - dependency-name: "*"
         update-types: ["version-update:semver-major"]
     groups:
       production-minor-patch:

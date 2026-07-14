@@ -143,6 +143,11 @@ jobs:
       - name: Guard — no unguarded waitForLoadState("networkidle") in e2e
         run: node scripts/ci/check-no-unguarded-networkidle.mjs
 
+      # Lockfile guard — npm is canonical. A stray bun.lock made Cloudflare
+      # build with bun (can't parse nested overrides) and froze prod 11 days.
+      - name: Guard — no stray non-npm lockfiles
+        run: node scripts/ci/check-no-stray-lockfiles.mjs
+
       - name: Type-check
         run: npx tsc --noEmit
       - name: Lint (ESLint)
