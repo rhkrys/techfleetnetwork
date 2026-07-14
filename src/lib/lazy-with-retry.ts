@@ -34,6 +34,15 @@ export function isChunkLoadMessage(msg: string): boolean {
     msg.includes("Importing a module script failed") ||
     msg.includes("error loading dynamically imported module") ||
     msg.includes("Unable to preload CSS") ||
+    // Stale chunk 404 → the SPA server returns index.html (text/html) in place
+    // of the missing JS chunk. Browsers surface this as a MIME-type / module-
+    // script load failure, NOT a network error, so it must classify as a
+    // chunk-load failure here too — otherwise it crashes the route as a generic
+    // ui_render_error instead of triggering the one-shot reload. Observed on
+    // /login after deploys: "'text/html' is not a valid JavaScript MIME type".
+    msg.includes("is not a valid JavaScript MIME type") ||
+    msg.includes("Expected a JavaScript module script") ||
+    msg.includes("Failed to load module script") ||
     // Firefox / Safari wording variants — same root cause (stale chunk URL
     // 404s after a new deploy invalidated the previous hash). Matching by
     // structure (NetworkError + a JS asset URL) keeps us future-proof.
@@ -53,7 +62,7 @@ function sleep(ms: number) {
 }
 
 export function lazyWithRetry<T extends ComponentType<unknown>>(
-  factory: () => Promise<{ default: T }>,
+  factory: () => Promise<{ default: T }>
 ) {
   return lazy(async () => {
     let lastError: unknown = null;
@@ -67,7 +76,11 @@ export function lazyWithRetry<T extends ComponentType<unknown>>(
         // the entire tab lifetime, and the next failed chunk bubbles to
         // ErrorBoundary even though a reload would fix it.
         if (typeof window !== "undefined") {
-          try { window.sessionStorage.removeItem(RELOAD_FLAG); } catch { /* ignore */ }
+          try {
+            window.sessionStorage.removeItem(RELOAD_FLAG);
+          } catch {
+            /* ignore */
+          }
         }
         return mod;
       } catch (error) {
@@ -103,9 +116,7 @@ export function lazyWithRetry<T extends ComponentType<unknown>>(
       }
     }
 
-    throw lastError instanceof Error
-      ? lastError
-      : new Error("Failed to load module after retries");
+    throw lastError instanceof Error ? lastError : new Error("Failed to load module after retries");
   });
 }
 

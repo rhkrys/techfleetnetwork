@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import {
   CheckCircle2,
   Circle,
@@ -187,6 +188,12 @@ export default function GenericCoursePage({
       });
       queryClient.invalidateQueries({ queryKey: ["journey-completed", user.id, phase] });
       queryClient.invalidateQueries({ queryKey: ["journey-progress", user.id, phase] });
+    } catch (_err) {
+      // Surface the failure instead of throwing to the error boundary (which
+      // blanked the section) or silently doing nothing. The optimistic state
+      // update happens inside the try AFTER the await, so on failure the
+      // checkbox correctly stays as-is — we just prompt the member to retry.
+      toast.error("Couldn't save your progress — please try again.");
     } finally {
       setToggling(false);
     }
