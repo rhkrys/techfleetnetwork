@@ -4,7 +4,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { RefreshCw, Search, FileDown, MailQuestion, MessageSquarePlus, GraduationCap } from "lucide-react";
+import {
+  RefreshCw,
+  Search,
+  FileDown,
+  MailQuestion,
+  MessageSquarePlus,
+  GraduationCap,
+} from "lucide-react";
 import { toast } from "sonner";
 import { generateCertificatePdf } from "@/lib/generate-certificate-pdf";
 import { extractClassTitleFallback } from "@/lib/cert-title-utils";
@@ -19,8 +26,11 @@ function useProfileName(userId: string | undefined) {
         .from("profiles")
         .select("first_name, last_name, display_name")
         .eq("user_id", userId!)
-        .single();
+        // maybeSingle(): a missing profile must not throw "Row not found" —
+        // fall back to an empty label instead of crashing the tab.
+        .maybeSingle();
       if (error) throw error;
+      if (!data) return "";
       const full = [data.first_name, data.last_name].filter(Boolean).join(" ");
       return full || data.display_name || "";
     },
@@ -76,7 +86,7 @@ function CertCard({ row, profileName }: CertCardProps) {
   // Use pre-computed display_title from DB; fall back to client-side extraction for legacy rows
   const className = useMemo(
     () => row.display_title || extractClassTitleFallback(row.raw_data),
-    [row.display_title, row.raw_data],
+    [row.display_title, row.raw_data]
   );
   const monthYear = useMemo(() => extractMonthYear(row.raw_data), [row.raw_data]);
 
@@ -105,19 +115,12 @@ function CertCard({ row, profileName }: CertCardProps) {
             <CardTitle className="text-sm font-semibold leading-snug line-clamp-2">
               {className || "Masterclass"}
             </CardTitle>
-            {monthYear && (
-              <p className="text-xs text-muted-foreground mt-1">{monthYear}</p>
-            )}
+            {monthYear && <p className="text-xs text-muted-foreground mt-1">{monthYear}</p>}
           </div>
         </div>
       </CardHeader>
       <CardContent className="pt-2">
-        <Button
-          size="sm"
-          className="w-full gap-2"
-          onClick={handleGenerate}
-          disabled={generating}
-        >
+        <Button size="sm" className="w-full gap-2" onClick={handleGenerate} disabled={generating}>
           <FileDown className="h-4 w-4" />
           {generating ? "Generating…" : "Get Certificate"}
         </Button>
@@ -202,13 +205,11 @@ export function ClassCertificationsTab() {
             <MailQuestion className="h-8 w-8 text-muted-foreground" />
           </div>
           <div className="space-y-2">
-            <h3 className="text-base font-semibold text-foreground">
-              No Records Found
-            </h3>
+            <h3 className="text-base font-semibold text-foreground">No Records Found</h3>
             <p className="text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
-              We couldn't find any masterclass registrations linked to your email address.
-              This may happen if you registered with a different email, or if your records
-              haven't been added to the system yet.
+              We couldn't find any masterclass registrations linked to your email address. This may
+              happen if you registered with a different email, or if your records haven't been added
+              to the system yet.
             </p>
           </div>
           <div className="pt-2 space-y-3">
