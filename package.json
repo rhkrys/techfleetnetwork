@@ -166,7 +166,7 @@
     "typescript": "5.8.3",
     "typescript-eslint": "8.63.0",
     "vite": "5.4.21",
-    "vitest": "3.2.6"
+    "vitest": "4.1.10"
   },
   "overrides": {
     "flatted": "3.4.2",
