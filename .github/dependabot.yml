@@ -13,6 +13,14 @@ updates:
       time: "06:00"
       timezone: "Etc/UTC"
     open-pull-requests-limit: 5
+    ignore:
+      # Major-version bumps of the build/CSS toolchain are breaking rewrites
+      # that require a deliberate migration, not an auto-bump. Tailwind v4
+      # (v3→v4) froze the Cloudflare production build for 11 days — pinned back
+      # to v3 in #67, PR #83 (auto-bump to 4.x) closed. Keep majors out until we
+      # migrate on purpose.
+      - dependency-name: "tailwindcss"
+        update-types: ["version-update:semver-major"]
     groups:
       production-minor-patch:
         dependency-type: "production"
