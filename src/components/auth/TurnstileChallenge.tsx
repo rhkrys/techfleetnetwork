@@ -150,7 +150,15 @@ export function TurnstileChallenge({ action, onTokenChange, failureCount = 0, so
         setTransientError(null);
         setRetrySeconds(0);
         setLoadFailed(false);
-        if (action === "login") markLoginCaptchaVerified();
+        // Any successful Turnstile solve satisfies the client-side auth
+        // throttle gate (client-request-throttle), which applies to every
+        // auth-attempt path — signup/recover/resend, not just login. Gating
+        // this on action==="login" left register/forgot-password permanently
+        // blocked with a local 403 ("Complete the human verification") since
+        // hasFreshLoginCaptchaVerification never became true. The server still
+        // independently verifies the real token, so this is throttle state,
+        // not a security boundary.
+        markLoginCaptchaVerified();
         if (action === "login") recordLoginEvent(newAttemptId(), "captcha_loaded");
         onTokenChange(token);
       },
