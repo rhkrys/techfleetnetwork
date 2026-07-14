@@ -21,6 +21,13 @@ updates:
       # migrate on purpose.
       - dependency-name: "tailwindcss"
         update-types: ["version-update:semver-major"]
+      # react-router was auto-bumped to v8 (#85) while react-router-dom stayed
+      # v6 — an incompatible split that broke the Cloudflare build. The app uses
+      # the react-router-dom v6 API (105 imports). Realign happens on purpose.
+      - dependency-name: "react-router"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-router-dom"
+        update-types: ["version-update:semver-major"]
     groups:
       production-minor-patch:
         dependency-type: "production"
