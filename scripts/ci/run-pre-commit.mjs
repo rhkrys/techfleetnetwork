@@ -1,11 +1,11 @@
 /**
  * Node.js pre-commit runner.
  *
- * Called by .husky/pre-commit via `exec node scripts/ci/run-pre-commit.mjs`.
+ * Called by .githooks/pre-commit via `exec node scripts/ci/run-pre-commit.mjs`.
  * Runs as a native Windows process (no Cygwin fork), so it works even when
  * the MSYS2 DLL fork table is exhausted (STATUS_DLL_INIT_FAILED / 0xC0000142).
  *
- * Replicates the logic that was previously inlined in .husky/pre-commit:
+ * Replicates the logic that was previously inlined in the git pre-commit hook:
  *   1. npx lint-staged
  *   2. node scripts/ci/check-edge-function-coverage.mjs --fix
  *   3. git add supabase/config.toml supabase/functions.manifest.json

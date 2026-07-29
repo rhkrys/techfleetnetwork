@@ -14,30 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      accessibility_training_completions: {
-        Row: {
-          completed_at: string
-          id: string
-          locale: string
-          user_id: string
-          version: string
-        }
-        Insert: {
-          completed_at?: string
-          id?: string
-          locale?: string
-          user_id: string
-          version?: string
-        }
-        Update: {
-          completed_at?: string
-          id?: string
-          locale?: string
-          user_id?: string
-          version?: string
-        }
-        Relationships: []
-      }
       admin_banners: {
         Row: {
           body_html: string

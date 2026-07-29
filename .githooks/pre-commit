@@ -1,0 +1,16 @@
+#!/bin/sh
+# Fork-free git pre-commit hook (committed; git core.hooksPath -> .githooks).
+#
+# Why not husky: git ran husky's generated .husky/_/h loader, which forks
+# ($(basename), $(dirname), sh -e). MSYS2/Cygwin fork() dies with
+# STATUS_DLL_INIT_FAILED (0xC0000142) under DLL-rebase pressure, so commits
+# failed silently BEFORE any real check ran. This hook uses only the [ -f ]
+# builtin, then exec's node (native Windows CreateProcess) which handles all
+# further child spawning. No fork on the sh side.
+#
+# Merge commits skip lint-staged (files were linted on their source branch;
+# lint-staged's git-stash isolation breaks under MERGE_HEAD).
+if [ -f ".git/MERGE_HEAD" ]; then
+  exec node scripts/ci/run-pre-commit.mjs --merge
+fi
+exec node scripts/ci/run-pre-commit.mjs
