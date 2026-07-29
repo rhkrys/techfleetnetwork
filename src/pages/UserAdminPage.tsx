@@ -24,6 +24,32 @@ import { UserDetailDialog } from "@/components/admin/UserDetailDialog";
 import type { UserRow } from "@/components/admin/UserActionsDropdown";
 import { StepUpMfaDialog } from "@/components/StepUpMfaDialog";
 
+/** Row shape returned by the admin_list_users() RPC (auth.users ⟕ profiles). */
+type AdminUserRow = {
+  user_id: string;
+  email: string | null;
+  email_confirmed: boolean;
+  account_created_at: string;
+  last_sign_in_at: string | null;
+  phone: string | null;
+  is_banned: boolean;
+  auth_providers: string[] | null;
+  has_profile: boolean;
+  profile_completed: boolean;
+  first_name: string | null;
+  last_name: string | null;
+  display_name: string | null;
+  discord_username: string | null;
+  country: string | null;
+  timezone: string | null;
+  membership_tier: string | null;
+  is_founding_member: boolean | null;
+  is_test_account: boolean;
+  onboarded_at: string | null;
+  profile_created_at: string | null;
+  profile: Record<string, unknown> | null;
+};
+
 /**
  * Detect a "Fresh 2FA verification required" 403 from a privileged edge function.
  * Supabase functions.invoke surfaces non-2xx as FunctionsHttpError with the original
@@ -100,11 +126,14 @@ export default function UserAdminPage() {
 
   const fetchData = async () => {
     try {
-      const { data: profiles, error: profilesErr } = await supabase
-        .from("profiles")
-        .select("user_id, email, first_name, last_name, display_name, discord_username, created_at")
-        .order("created_at", { ascending: false });
-      if (profilesErr) throw profilesErr;
+      // Source of truth = every ACCOUNT (auth.users), left-joined to profiles by
+      // the admin_list_users() RPC. This surfaces members whose profile row is
+      // missing or incomplete (previously invisible when the grid read profiles
+      // directly). Admin-gated + secret-scrubbed server-side.
+      const { data: accounts, error: accountsErr } = await supabase.rpc(
+        "admin_list_users" as never
+      );
+      if (accountsErr) throw accountsErr;
 
       const { data: roles } = await supabase.from("user_roles").select("user_id, role");
       const adminIds = new Set(
@@ -128,27 +157,33 @@ export default function UserAdminPage() {
         ((teacherPromos as { user_id: string }[] | null) || []).map((p) => p.user_id)
       );
 
-      const { data: testFlags } = await supabase
-        .from("profiles")
-        .select("user_id, is_test_account")
-        .eq("is_test_account", true);
-      const testIds = new Set(
-        ((testFlags as { user_id: string }[] | null) || []).map((r) => r.user_id)
-      );
-
-      const rows: UserRow[] = (profiles || []).map((p) => ({
-        user_id: p.user_id,
-        email: p.email,
-        first_name: p.first_name,
-        last_name: p.last_name,
-        display_name: p.display_name,
-        discord_username: p.discord_username,
-        created_at: p.created_at,
-        isAdmin: adminIds.has(p.user_id),
-        isTeacher: teacherIds.has(p.user_id),
-        pendingPromotion: pendingIds.has(p.user_id),
-        pendingTeacher: pendingTeacherIds.has(p.user_id),
-        isTestAccount: testIds.has(p.user_id),
+      const rows: UserRow[] = ((accounts as AdminUserRow[] | null) || []).map((a) => ({
+        user_id: a.user_id,
+        email: a.email ?? "",
+        first_name: a.first_name ?? "",
+        last_name: a.last_name ?? "",
+        display_name: a.display_name ?? "",
+        discord_username: a.discord_username,
+        created_at: a.account_created_at,
+        isAdmin: adminIds.has(a.user_id),
+        isTeacher: teacherIds.has(a.user_id),
+        pendingPromotion: pendingIds.has(a.user_id),
+        pendingTeacher: pendingTeacherIds.has(a.user_id),
+        isTestAccount: a.is_test_account,
+        emailConfirmed: a.email_confirmed,
+        lastSignInAt: a.last_sign_in_at,
+        phone: a.phone,
+        isBanned: a.is_banned,
+        authProviders: a.auth_providers ?? [],
+        hasProfile: a.has_profile,
+        profileCompleted: a.profile_completed,
+        country: a.country,
+        timezone: a.timezone,
+        membershipTier: a.membership_tier,
+        isFoundingMember: a.is_founding_member,
+        onboardedAt: a.onboarded_at,
+        profileCreatedAt: a.profile_created_at,
+        profile: a.profile,
       }));
       setUsers(rows);
     } catch (err) {
@@ -341,13 +376,23 @@ export default function UserAdminPage() {
     const u = params.data;
     if (!u) return null;
     const name =
-      u.first_name || u.last_name ? `${u.first_name} ${u.last_name}`.trim() : u.display_name || "—";
+      u.first_name || u.last_name
+        ? `${u.first_name} ${u.last_name}`.trim()
+        : u.display_name || u.email || "—";
     return (
       <div className="flex items-center gap-2">
         <span className={u.isAdmin ? "text-primary" : "text-muted-foreground"}>
           {u.isAdmin ? "🛡" : "👤"}
         </span>
         <span className="font-medium">{name}</span>
+        {!u.hasProfile && (
+          <span
+            className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-warning/15 text-warning"
+            title="This account has no profile row yet"
+          >
+            no profile
+          </span>
+        )}
       </div>
     );
   }, []);
@@ -422,7 +467,7 @@ export default function UserAdminPage() {
           if (!u) return "";
           return u.first_name || u.last_name
             ? `${u.first_name} ${u.last_name}`.trim()
-            : u.display_name || "";
+            : u.display_name || u.email || "";
         },
       },
       {
@@ -462,6 +507,126 @@ export default function UserAdminPage() {
           if (u.pendingPromotion) return "Pending";
           return "Member";
         },
+      },
+      {
+        // Account-driven visibility: an account with no profile row (or an
+        // incomplete one) still shows here — it can never silently disappear
+        // from the roster again.
+        headerName: "Profile",
+        colId: "profileStatus",
+        flex: 1,
+        headerTooltip: "Whether the account has a profile row and finished onboarding.",
+        valueGetter: (params) => {
+          const u = params.data;
+          if (!u) return "";
+          if (!u.hasProfile) return "None";
+          return u.profileCompleted ? "Complete" : "Started";
+        },
+        cellRenderer: (params: ICellRendererParams<UserRow>) => {
+          const u = params.data;
+          if (!u) return null;
+          const label = !u.hasProfile ? "None" : u.profileCompleted ? "Complete" : "Started";
+          const cls = !u.hasProfile
+            ? "text-warning"
+            : u.profileCompleted
+              ? "text-emerald-500"
+              : "text-muted-foreground";
+          return <span className={`text-xs font-medium ${cls}`}>{label}</span>;
+        },
+      },
+      // Account + profile detail columns — hidden by default, all available via
+      // the "Columns" picker so every account/profile field is inspectable.
+      {
+        headerName: "Email confirmed",
+        colId: "emailConfirmed",
+        hide: true,
+        flex: 1,
+        valueGetter: (params) => (params.data?.emailConfirmed ? "Yes" : "No"),
+      },
+      {
+        headerName: "Last sign-in",
+        colId: "lastSignInAt",
+        hide: true,
+        flex: 1.2,
+        valueGetter: (params) => params.data?.lastSignInAt ?? "",
+        valueFormatter: (params) =>
+          params.value ? format(new Date(params.value), "MMM d, yyyy HH:mm") : "—",
+      },
+      {
+        headerName: "Account created",
+        colId: "accountCreatedAt",
+        hide: true,
+        flex: 1,
+        valueGetter: (params) => params.data?.created_at ?? "",
+        valueFormatter: (params) =>
+          params.value ? format(new Date(params.value), "MMM d, yyyy") : "—",
+      },
+      {
+        headerName: "Profile created",
+        colId: "profileCreatedAt",
+        hide: true,
+        flex: 1,
+        valueGetter: (params) => params.data?.profileCreatedAt ?? "",
+        valueFormatter: (params) =>
+          params.value ? format(new Date(params.value), "MMM d, yyyy") : "—",
+      },
+      {
+        headerName: "Onboarded",
+        colId: "onboardedAt",
+        hide: true,
+        flex: 1,
+        valueGetter: (params) => params.data?.onboardedAt ?? "",
+        valueFormatter: (params) =>
+          params.value ? format(new Date(params.value), "MMM d, yyyy") : "—",
+      },
+      {
+        headerName: "Country",
+        colId: "country",
+        hide: true,
+        flex: 1,
+        valueGetter: (params) => params.data?.country ?? "",
+      },
+      {
+        headerName: "Timezone",
+        colId: "timezone",
+        hide: true,
+        flex: 1,
+        valueGetter: (params) => params.data?.timezone ?? "",
+      },
+      {
+        headerName: "Membership",
+        colId: "membershipTier",
+        hide: true,
+        flex: 1,
+        valueGetter: (params) => params.data?.membershipTier ?? "",
+      },
+      {
+        headerName: "Founding member",
+        colId: "isFoundingMember",
+        hide: true,
+        flex: 1,
+        valueGetter: (params) => (params.data?.isFoundingMember ? "Yes" : "No"),
+      },
+      {
+        headerName: "Phone",
+        colId: "phone",
+        hide: true,
+        flex: 1,
+        valueGetter: (params) => params.data?.phone ?? "",
+      },
+      {
+        headerName: "Auth providers",
+        colId: "authProviders",
+        hide: true,
+        flex: 1,
+        valueGetter: (params) => (params.data?.authProviders ?? []).join(", "),
+      },
+      {
+        headerName: "Banned",
+        colId: "isBanned",
+        hide: true,
+        flex: 1,
+        valueGetter: (params) => (params.data?.isBanned ? "Yes" : "No"),
       },
       {
         headerName: "Test acct",

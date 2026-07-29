@@ -24,12 +24,33 @@ export interface UserRow {
   last_name: string;
   display_name: string;
   discord_username?: string | null;
+  // `created_at` is the ACCOUNT creation time (auth.users), so the "Joined"
+  // column reflects when the person got an account — not when a profile row
+  // happened to be written.
   created_at: string;
   isAdmin: boolean;
   isTeacher: boolean;
   pendingPromotion: boolean;
   pendingTeacher: boolean;
   isTestAccount?: boolean;
+  // Account (auth.users) fields — present for every account, profile or not.
+  emailConfirmed: boolean;
+  lastSignInAt?: string | null;
+  phone?: string | null;
+  isBanned: boolean;
+  authProviders: string[];
+  // Profile state + selected profile fields (null/blank when no profile yet).
+  hasProfile: boolean;
+  profileCompleted: boolean;
+  country?: string | null;
+  timezone?: string | null;
+  membershipTier?: string | null;
+  isFoundingMember?: boolean | null;
+  onboardedAt?: string | null;
+  profileCreatedAt?: string | null;
+  // The complete profiles row (all fields, sans security tokens) for the
+  // catch-all detail view — nothing is hidden.
+  profile?: Record<string, unknown> | null;
 }
 
 interface UserActionsDropdownProps {
