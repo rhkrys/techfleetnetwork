@@ -65,9 +65,6 @@ export default function UserAdminPage() {
     "promote" | "resend" | "delete" | "promote_teacher" | "revoke_teacher"
   >("promote");
   const [viewUser, setViewUser] = useState<UserRow | null>(null);
-  // Accessibility-policy §10 commits to onboarding + annual a11y refresher.
-  // We surface completion % so admins can see who still needs to take it.
-  const [a11yTrainedIds, setA11yTrainedIds] = useState<Set<string>>(new Set());
 
   // Step-up 2FA: privileged edge functions (promote-to-admin, admin-purge-auth-user)
   // require a fresh TOTP proof. When they 403, we open this dialog and retry on success.
@@ -154,18 +151,6 @@ export default function UserAdminPage() {
         isTestAccount: testIds.has(p.user_id),
       }));
       setUsers(rows);
-
-      // Pull a11y-training completions in a separate non-blocking call so a
-      // missing/locked-down table never blanks out the admin grid.
-      try {
-        const { data: trained } = await supabase
-          .from("accessibility_training_completions")
-          .select("user_id");
-        setA11yTrainedIds(new Set((trained || []).map((t: { user_id: string }) => t.user_id)));
-      } catch (e) {
-        // Soft-fail — surface a placeholder of 0% rather than crash.
-        console.warn("[a11y-training] read failed:", e);
-      }
     } catch (err) {
       console.error("Failed to fetch users:", err);
       toast.error("We couldn't load the member list. Refresh to try again.");
@@ -479,25 +464,6 @@ export default function UserAdminPage() {
         },
       },
       {
-        headerName: "A11y Training",
-        field: "user_id",
-        flex: 1,
-        valueGetter: (params) =>
-          params.data && a11yTrainedIds.has(params.data.user_id) ? "Completed" : "Not yet",
-        cellRenderer: (params: ICellRendererParams<UserRow>) => {
-          const done = !!params.data && a11yTrainedIds.has(params.data.user_id);
-          return (
-            <span
-              className={
-                done ? "text-emerald-500 font-medium text-xs" : "text-muted-foreground text-xs"
-              }
-            >
-              {done ? "✓ Completed" : "Not yet"}
-            </span>
-          );
-        },
-      },
-      {
         headerName: "Test acct",
         field: "isTestAccount",
         flex: 1,
@@ -555,7 +521,7 @@ export default function UserAdminPage() {
         cellRenderer: ActionsCellRenderer,
       },
     ],
-    [user?.id, NameCellRenderer, RoleCellRenderer, ActionsCellRenderer, a11yTrainedIds]
+    [user?.id, NameCellRenderer, RoleCellRenderer, ActionsCellRenderer]
   );
 
   // Admin access is enforced by AdminRoute wrapper
@@ -613,13 +579,6 @@ export default function UserAdminPage() {
         </div>
         <Badge variant="secondary" className="text-xs">
           {users.length} users
-        </Badge>
-        <Badge
-          variant="outline"
-          className="text-xs"
-          aria-label="Accessibility training completion percentage"
-        >
-          A11y trained: {users.length ? Math.round((a11yTrainedIds.size / users.length) * 100) : 0}%
         </Badge>
       </div>
 
