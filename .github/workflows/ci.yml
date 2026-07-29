@@ -1,14 +1,18 @@
 name: CI
 
 # Unified pipeline — single source of truth (replaces regression.yml).
-# See docs/epics/03-cicd-overhaul.md and CICD-PRD-v1.1.docx.
+# See CICD-PRD-v1.1.docx + the v1.2 critical-gaps addendum.
 #
-#   gate            REQUIRED  <8 min   typecheck + lint + unit tests + build (no prod, no e2e)
-#   lint-arch       informational      structural architecture checks, parallel matrix
-#   migration-smoke conditional        runs only when supabase/migrations/ changes
-#   e2e             conditional        Playwright vs staging, only when src/ or functions/ change
+#   gate               REQUIRED   aggregator over gate-verify / gate-test / gate-build
+#                                 / lint-arch-critical (auth-freeze invariants BLOCK)
+#   lint-arch          informational  remaining structural checks, parallel matrix
+#   deno-check         informational  edge-function typecheck (PRD v1.2 D-25)
+#   migration-smoke    conditional    runs only when supabase/migrations/ changes
+#   e2e                conditional    Playwright vs LOCAL Supabase (Docker on the
+#                                     runner — B-01/B-09), when src/ or functions/ change
 #
-# Branch protection requires ONLY "ci / gate". lint-arch never blocks merge.
+# Branch protection requires "ci / gate" (+ migration-smoke on migration PRs and
+# the Cloudflare "Workers Builds: techfleetnetwork" check).
 
 on:
   push:
@@ -37,6 +41,7 @@ jobs:
     outputs:
       migrations: ${{ steps.filter.outputs.migrations }}
       e2e: ${{ steps.filter.outputs.e2e }}
+      functions: ${{ steps.filter.outputs.functions }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -63,6 +68,11 @@ jobs:
             echo "e2e=true" >> "$GITHUB_OUTPUT"
           else
             echo "e2e=false" >> "$GITHUB_OUTPUT"
+          fi
+          if echo "$CHANGED" | grep -q '^supabase/functions/'; then
+            echo "functions=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "functions=false" >> "$GITHUB_OUTPUT"
           fi
 
   # ---------------------------------------------------------------------------
@@ -223,7 +233,7 @@ jobs:
   gate:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [gate-verify, gate-test, gate-build]
+    needs: [gate-verify, gate-test, gate-build, lint-arch-critical, migration-smoke]
     if: always()
     permissions:
       contents: read
@@ -233,15 +243,66 @@ jobs:
           verify='${{ needs.gate-verify.result }}'
           test='${{ needs.gate-test.result }}'
           build='${{ needs.gate-build.result }}'
-          echo "gate-verify=$verify  gate-test=$test  gate-build=$build"
-          if [ "$verify" != "success" ] || [ "$test" != "success" ] || [ "$build" != "success" ]; then
-            echo "::error::One or more gate jobs failed (verify=$verify test=$test build=$build)."
+          arch='${{ needs.lint-arch-critical.result }}'
+          migr='${{ needs.migration-smoke.result }}'
+          echo "gate-verify=$verify  gate-test=$test  gate-build=$build  lint-arch-critical=$arch  migration-smoke=$migr"
+          fail=0
+          [ "$verify" = "success" ] || fail=1
+          [ "$test" = "success" ] || fail=1
+          [ "$build" = "success" ] || fail=1
+          [ "$arch" = "success" ] || fail=1
+          # migration-smoke is conditional: skipped (no migration changes) passes.
+          if [ "$migr" != "success" ] && [ "$migr" != "skipped" ]; then fail=1; fi
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::Gate failed (verify=$verify test=$test build=$build arch=$arch migration-smoke=$migr)."
             exit 1
           fi
           echo "All gate jobs passed."
 
   # ---------------------------------------------------------------------------
-  # lint-arch — structural architecture checks, parallel + isolated. One failing
+  # lint-arch-critical — auth-freeze / security invariants (CLAUDE.md). These
+  # BLOCK merge: the gate aggregator requires this job (PRD v1.2 B-10 — an
+  # auth-layer violation must never merge silently).
+  # ---------------------------------------------------------------------------
+  lint-arch-critical:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: setup
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        check:
+          - check-auth-layer-graph.mjs
+          - check-auth-result-contract.mjs
+          - check-auth-counter-coverage.mjs
+          - check-auth-engine-swallow.mjs
+          - check-auth-screen-imports.mjs
+          - check-auth-warn-snapshot.mjs
+          - check-auth-direct-signin.mjs
+          - check-no-direct-google-oauth.mjs
+          - check-no-legacy-auth-service.mjs
+          - check-legacy-auth-importers.mjs
+          - check-email-architecture.mjs
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .nvmrc
+      - name: Restore node_modules
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: node-modules-${{ github.sha }}
+          path: /tmp
+      - run: tar --use-compress-program="zstd -d" -xf /tmp/node_modules.tar.zst
+      - name: ${{ matrix.check }}
+        run: node "scripts/ci/${{ matrix.check }}"
+
+  # ---------------------------------------------------------------------------
+  # lint-arch — remaining structural checks, parallel + isolated. One failing
   # script never skips the others. INFORMATIONAL: does not block merge.
   # ---------------------------------------------------------------------------
   lint-arch:
@@ -255,17 +316,6 @@ jobs:
       matrix:
         check:
           - check-edge-function-coverage.mjs
-          - check-auth-layer-graph.mjs
-          - check-auth-result-contract.mjs
-          - check-auth-counter-coverage.mjs
-          - check-auth-engine-swallow.mjs
-          - check-auth-screen-imports.mjs
-          - check-auth-warn-snapshot.mjs
-          - check-auth-direct-signin.mjs
-          - check-no-direct-google-oauth.mjs
-          - check-no-legacy-auth-service.mjs
-          - check-legacy-auth-importers.mjs
-          - check-email-architecture.mjs
           - check-plpgsql-variable-conflict.mjs
           - check-progress-read-identity.mjs
           - check-no-rpc-catch.mjs
@@ -309,7 +359,11 @@ jobs:
   # Required for PRs that touch supabase/migrations/ (see branch protection).
   # ---------------------------------------------------------------------------
   migration-smoke:
-    needs: [detect-changes, gate]
+    # Runs in parallel with the gate jobs (needs only detect-changes) so the
+    # `gate` aggregator can REQUIRE it: a conditional job can't be a standalone
+    # required check (it would leave non-migration PRs "Expected — waiting"
+    # forever), so the aggregator treats skipped-as-pass instead.
+    needs: [detect-changes]
     if: needs.detect-changes.outputs.migrations == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -333,13 +387,15 @@ jobs:
         run: supabase stop --no-backup
 
   # ---------------------------------------------------------------------------
-  # e2e — Playwright against STAGING (never production). Conditional + sharded.
+  # e2e — Playwright against a LOCAL Supabase (Docker on the runner). Decision
+  # B-01/B-09 (Morgan, 2026-07): ephemeral local instance per shard — zero cost,
+  # perfect isolation, zero drift, no hosted-staging secrets. Never production.
   # ---------------------------------------------------------------------------
   e2e:
     needs: [detect-changes, setup, gate]
     if: needs.detect-changes.outputs.e2e == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     permissions:
       contents: read
     strategy:
@@ -347,11 +403,8 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4, 5, 6]
     env:
-      # Staging only — set as repo vars. Turnstile test key prevents the
-      # challenge from hanging headless browsers (PRD D-18, auth stays frozen).
-      VITE_SUPABASE_URL: ${{ vars.STAGING_SUPABASE_URL }}
-      VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.STAGING_SUPABASE_PUBLISHABLE_KEY }}
-      VITE_SUPABASE_PROJECT_ID: ${{ vars.STAGING_SUPABASE_PROJECT_ID }}
+      # Turnstile CI test key prevents the challenge from hanging headless
+      # browsers (PRD D-18, auth stays frozen).
       VITE_TURNSTILE_SITE_KEY: ${{ vars.VITE_TURNSTILE_SITE_KEY }}
     steps:
       - name: Checkout
@@ -366,6 +419,26 @@ jobs:
           name: node-modules-${{ github.sha }}
           path: /tmp
       - run: tar --use-compress-program="zstd -d" -xf /tmp/node_modules.tar.zst
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v3
+        with:
+          version: 2.30.4
+      - name: Start local Supabase (Docker) + apply migrations
+        run: |
+          supabase start
+          supabase db reset --no-seed
+      - name: Export local Supabase env for the app build
+        run: |
+          eval "$(supabase status -o env | sed 's/^/export /')"
+          {
+            echo "VITE_SUPABASE_URL=$API_URL"
+            echo "VITE_SUPABASE_PUBLISHABLE_KEY=$ANON_KEY"
+            echo "VITE_SUPABASE_PROJECT_ID=local"
+            echo "SUPABASE_URL=$API_URL"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+          } >> "$GITHUB_ENV"
+      - name: Seed e2e fixture data (local instance only)
+        run: node scripts/ci/seed-e2e-fixtures.mjs
       - name: Resolve Playwright version
         id: pw-version
         run: echo "version=$(node -p "require('./node_modules/@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
@@ -387,6 +460,9 @@ jobs:
         run: npx playwright install-deps chromium
       - name: Run Playwright shard ${{ matrix.shard }}/6
         run: npx playwright test --shard=${{ matrix.shard }}/6
+      - name: Stop local Supabase
+        if: always()
+        run: supabase stop --no-backup
       - name: Upload blob report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -395,6 +471,45 @@ jobs:
           path: blob-report
           retention-days: 7
           if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # deno-check — typecheck edge functions at PR time (PRD v1.2 D-25/P-21).
+  # Previously a TS error in supabase/functions/** was only caught at deploy.
+  # INFORMATIONAL first (not in the gate aggregator) — promoted to blocking
+  # once a full green baseline is established.
+  # ---------------------------------------------------------------------------
+  deno-check:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.functions == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - name: Setup Deno
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.x
+      - name: Type-check edge functions
+        run: |
+          set -u
+          fails=0; checked=0
+          for d in supabase/functions/*/; do
+            name="$(basename "$d")"
+            [ "$name" = "_shared" ] && continue
+            [ -f "${d}index.ts" ] || continue
+            checked=$((checked + 1))
+            echo "::group::deno check $name"
+            if ! deno check --no-lock --allow-import "${d}index.ts"; then
+              echo "::error::deno check failed for $name"
+              fails=$((fails + 1))
+            fi
+            echo "::endgroup::"
+          done
+          echo "Checked $checked functions; $fails failed."
+          [ "$fails" -eq 0 ]
 
   dependency-review:
     runs-on: ubuntu-latest

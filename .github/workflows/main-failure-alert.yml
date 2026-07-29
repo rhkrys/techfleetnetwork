@@ -1,0 +1,45 @@
+name: Main failure alert
+
+# PRD v1.2 D-24/P-20: production deploy/build failures must be LOUD.
+# The react-router build break sat silently on main until manually discovered;
+# the bun.lock freeze lasted 11 days. This workflow fires whenever a critical
+# workflow completes with failure on main and posts to the platform Discord
+# alerts channel.
+#
+# Setup (one secret): DISCORD_ALERT_WEBHOOK — a Discord webhook URL for the
+# alerts channel (same value as the edge-function DISCORD_PLATFORM_UPDATES_WEBHOOK
+# is fine). Until it is set, the alert degrades to a loud red annotation on the
+# run — never a silent skip.
+
+on:
+  workflow_run:
+    workflows: ["CI", "Deploy edge functions", "Config preflight"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  alert:
+    if: github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Post Discord alert (or fail loudly if webhook unset)
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_ALERT_WEBHOOK }}
+          WF_NAME: ${{ github.event.workflow_run.name }}
+          WF_URL: ${{ github.event.workflow_run.html_url }}
+          WF_SHA: ${{ github.event.workflow_run.head_sha }}
+          WF_TITLE: ${{ github.event.workflow_run.display_title }}
+        run: |
+          msg="🚨 **${WF_NAME} FAILED on main** — ${WF_TITLE} (\`${WF_SHA:0:8}\`). Production may be stale or broken. ${WF_URL}"
+          echo "$msg"
+          if [ -z "$WEBHOOK" ]; then
+            echo "::error::DISCORD_ALERT_WEBHOOK secret is not set — alert could not be delivered. Add it in Settings → Secrets so main failures page a human (PRD D-24)."
+            exit 1
+          fi
+          payload=$(jq -n --arg content "$msg" '{content: $content}')
+          curl -sf -X POST -H "Content-Type: application/json" -d "$payload" "$WEBHOOK"
+          echo "Alert posted."

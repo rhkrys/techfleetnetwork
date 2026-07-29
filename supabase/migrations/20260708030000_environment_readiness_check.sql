@@ -22,11 +22,17 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_catalog
 AS $$
+#variable_conflict use_column
 DECLARE
   r record;
   v_role text;
 BEGIN
-  IF NOT public.has_role(auth.uid(), 'admin'::public.app_role) THEN
+  -- Admin users, or the service_role (used by the CI config-drift preflight,
+  -- PRD v1.2 D-22 — auth.uid() is NULL for service_role so has_role can't apply).
+  IF NOT (
+    public.has_role(auth.uid(), 'admin'::public.app_role)
+    OR COALESCE(current_setting('request.jwt.claims', true)::jsonb ->> 'role', '') = 'service_role'
+  ) THEN
     RAISE EXCEPTION 'admin role required' USING ERRCODE = '42501';
   END IF;
 
@@ -103,17 +109,19 @@ BEGIN
 
   -- 5) Any cron job whose MOST RECENT run failed — the loud signal that was
   --    missing all along (a job can exist + be active yet fail every tick).
+  --    Single bounded pass over the last 2 days (the original per-job LATERAL
+  --    scan hit statement_timeout once high-frequency self-healing crons grew
+  --    cron.job_run_details to tens of thousands of rows).
   BEGIN
     FOR r IN
       SELECT j.jobname, d.return_message
-      FROM cron.job j
-      JOIN LATERAL (
-        SELECT rd.status, rd.return_message
+      FROM (
+        SELECT DISTINCT ON (rd.jobid) rd.jobid, rd.status, rd.return_message
         FROM cron.job_run_details rd
-        WHERE rd.jobid = j.jobid
-        ORDER BY rd.start_time DESC
-        LIMIT 1
-      ) d ON TRUE
+        WHERE rd.start_time > now() - interval '2 days'
+        ORDER BY rd.jobid, rd.start_time DESC
+      ) d
+      JOIN cron.job j ON j.jobid = d.jobid
       WHERE d.status = 'failed'
     LOOP
       RETURN QUERY SELECT 'cron_run_failing'::text, r.jobname, 'error'::text, LEFT(r.return_message, 300);

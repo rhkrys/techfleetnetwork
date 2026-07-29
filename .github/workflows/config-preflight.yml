@@ -1,0 +1,72 @@
+name: Config preflight
+
+# PRD v1.2 D-22/P-18: config drift must be detected BEFORE an outage.
+# Every cutover-era incident was silent config drift: the Send Email hook
+# toggled off, cron jobs missing, Vault secrets absent, private-schema grants
+# dropped. This workflow asserts the required project configuration daily (and
+# on demand) and fails loudly — the Main failure alert workflow pages Discord.
+#
+# Secrets used (already configured): SUPABASE_ACCESS_TOKEN (Management API),
+# SUPABASE_SERVICE_ROLE_KEY (PostgREST call to environment_readiness()).
+
+on:
+  schedule:
+    - cron: "0 7 * * *" # daily 07:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SUPABASE_PROJECT_REF: pzvqxdgoztbfikfuifix
+  SUPABASE_URL: https://pzvqxdgoztbfikfuifix.supabase.co
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Guard — required secrets present
+        env:
+          MGMT: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SRK: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          [ -n "$MGMT" ] || { echo "::error::SUPABASE_ACCESS_TOKEN missing"; exit 1; }
+          [ -n "$SRK" ] || { echo "::error::SUPABASE_SERVICE_ROLE_KEY missing"; exit 1; }
+
+      - name: Auth config — Send Email hook enabled + pointed at auth-email-hook
+        env:
+          MGMT: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          cfg=$(curl -sf -H "Authorization: Bearer $MGMT" \
+            "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/config/auth")
+          enabled=$(echo "$cfg" | jq -r '.hook_send_email_enabled')
+          uri=$(echo "$cfg" | jq -r '.hook_send_email_uri')
+          expected="$SUPABASE_URL/functions/v1/auth-email-hook"
+          echo "hook_send_email_enabled=$enabled"
+          echo "hook_send_email_uri=$uri"
+          fail=0
+          if [ "$enabled" != "true" ]; then
+            echo "::error::Send Email hook is DISABLED — auth emails are falling back to the rate-limited built-in sender (this exact drift caused the July signup/reset outage)."
+            fail=1
+          fi
+          if [ "$uri" != "$expected" ]; then
+            echo "::error::Send Email hook URI drifted: '$uri' (expected '$expected')."
+            fail=1
+          fi
+          exit $fail
+
+      - name: Database readiness — environment_readiness() has no missing/error rows
+        env:
+          SRK: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          rows=$(curl -sf -X POST "$SUPABASE_URL/rest/v1/rpc/environment_readiness" \
+            -H "apikey: $SRK" -H "Authorization: Bearer $SRK" \
+            -H "Content-Type: application/json" -d '{}')
+          echo "$rows" | jq -r '.[] | "\(.status)\t\(.category)\t\(.item)\t\(.detail // "")"' | column -t -s $'\t'
+          bad=$(echo "$rows" | jq '[.[] | select(.status == "missing" or .status == "error")] | length')
+          if [ "$bad" -gt 0 ]; then
+            echo "::error::environment_readiness() reports $bad missing/error item(s) — see table above. Fix the drift before it becomes an outage."
+            exit 1
+          fi
+          echo "All readiness checks green."
