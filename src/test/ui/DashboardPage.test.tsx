@@ -12,7 +12,10 @@ vi.mock("@/contexts/AuthContext", () => ({
 
 vi.mock("@/hooks/use-dashboard-preferences", () => ({
   useDashboardPreferences: () => ({
-    visibleWidgets: { broken: true } as any,
+    // useDashboardPreferences always returns arrays (it sanitizes malformed
+    // persisted prefs internally — see its own tests); DashboardPage relies on
+    // that contract ("Hook guarantees arrays — no runtime guards needed").
+    visibleWidgets: ["core_courses"],
     widgetOrder: ["core_courses"],
     isVisible: () => true,
     toggleWidget: vi.fn(),
@@ -31,6 +34,10 @@ vi.mock("@/hooks/use-announcements", () => ({
 }));
 
 vi.mock("@/lib/react-query", () => ({
+  // renderWithRouter (test-utils) needs QueryClient + QueryClientProvider from
+  // this module; the component's data hooks below are mocked separately.
+  QueryClient: class {},
+  QueryClientProvider: ({ children }: { children?: unknown }) => children,
   useQueryClient: () => ({ invalidateQueries: vi.fn() }),
   useQuery: ({ queryFn, enabled = true }: { queryFn?: () => unknown; enabled?: boolean }) => {
     if (!enabled) return { data: undefined };
@@ -38,21 +45,31 @@ vi.mock("@/lib/react-query", () => ({
   },
 }));
 
-vi.mock("@/integrations/supabase/client", () => ({
-  supabase: {
-    channel: () => ({ on: () => ({ subscribe: () => ({}) }) }),
-    removeChannel: vi.fn(),
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: async () => ({ data: null, error: null }),
-          order: async () => ({ data: [], error: null }),
-        }),
-        in: async () => ({ data: [], error: null }),
-      }),
-    }),
-  },
-}));
+vi.mock("@/integrations/supabase/client", () => {
+  // Fully-chainable, thenable stub so any supabase.from(...).select().eq()...
+  // chain a dashboard widget issues resolves to empty data instead of throwing
+  // "…eq is not a function" for this render-without-crashing smoke test.
+  // cached-session.ts also subscribes to auth at module load.
+  const chain: any = new Proxy(
+    {
+      then: (resolve: (v: { data: never[]; error: null }) => void) =>
+        resolve({ data: [], error: null }),
+    },
+    {
+      get: (target, prop) =>
+        prop in target ? (target as Record<string, unknown>)[prop as string] : () => chain,
+    }
+  );
+  return {
+    supabase: {
+      auth: { onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }) },
+      channel: () => ({ on: () => ({ subscribe: () => ({}) }) }),
+      removeChannel: vi.fn(),
+      from: () => chain,
+      rpc: async () => ({ data: null, error: null }),
+    },
+  };
+});
 
 vi.mock("@/services/stats.service", () => ({
   StatsService: { getNetworkStats: vi.fn(async () => ({ badges_earned: 0 })) },
@@ -87,10 +104,12 @@ describe("DashboardPage", () => {
     vi.clearAllMocks();
   });
 
-  it("renders without crashing when visibleWidgets is malformed", async () => {
+  it("renders the dashboard for a returning member", async () => {
     renderWithRouter(<DashboardPage />);
 
+    // The dashboard renders its personalized header; the old "course completion"
+    // section was removed in the redesign (core_courses is now the Observer
+    // Course / onboarding section).
     expect(await screen.findByText(/welcome back, test/i)).toBeInTheDocument();
-    expect(screen.getByText(/course completion/i)).toBeInTheDocument();
   });
 });

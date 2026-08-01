@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@/lib/react-query";
 
 // Mock supabase
 vi.mock("@/integrations/supabase/client", () => ({
@@ -46,9 +47,13 @@ describe("ClassCertificationsTab — BDD CLASS-CERT-002/004", () => {
   // BDD CLASS-CERT-004: Empty state when no class records found
   it("shows empty state when no certifications exist", async () => {
     render(
-      <MemoryRouter>
-        <ClassCertificationsTab />
-      </MemoryRouter>
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <MemoryRouter>
+          <ClassCertificationsTab />
+        </MemoryRouter>
+      </QueryClientProvider>
     );
     // Component will render loading then empty — just assert it doesn't crash
     expect(document.body).toBeTruthy();

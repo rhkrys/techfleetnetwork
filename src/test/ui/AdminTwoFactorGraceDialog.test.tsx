@@ -16,7 +16,11 @@ vi.mock("@/services/mfa.service", () => ({
 }));
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
-    auth: { signOut: () => mockSignOut() },
+    auth: {
+      signOut: () => mockSignOut(),
+      // cached-session.ts subscribes at module load during import.
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+    },
     rpc: (...args: unknown[]) => mockRpc(...args),
   },
 }));
@@ -25,7 +29,7 @@ function renderWithRouter() {
   return render(
     <MemoryRouter initialEntries={["/dashboard"]}>
       <AdminTwoFactorGraceDialog />
-    </MemoryRouter>,
+    </MemoryRouter>
   );
 }
 
@@ -57,7 +61,7 @@ describe("AdminTwoFactorGraceDialog (BDD AUTH-2FA-PROMOTION-002/003/004)", () =>
     expect(screen.getByText(/Set up admin 2FA/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /set up 2fa now/i })).toHaveAttribute(
       "href",
-      "/profile/edit?tab=account",
+      "/profile/edit?tab=account"
     );
   });
 
@@ -66,7 +70,7 @@ describe("AdminTwoFactorGraceDialog (BDD AUTH-2FA-PROMOTION-002/003/004)", () =>
     mockRpc.mockImplementation((fn: string) =>
       fn === "admin_2fa_grace_active"
         ? Promise.resolve({ data: false, error: null })
-        : Promise.resolve({ data: null, error: null }),
+        : Promise.resolve({ data: null, error: null })
     );
     renderWithRouter();
     await waitFor(() => expect(mockRpc).toHaveBeenCalled());
@@ -94,6 +98,8 @@ describe("AdminTwoFactorGraceDialog (BDD AUTH-2FA-PROMOTION-002/003/004)", () =>
     const btn = await screen.findByRole("button", { name: /sign out/i });
     fireEvent.click(btn);
     await waitFor(() => expect(mockSignOut).toHaveBeenCalledTimes(1));
-    expect((window.location as unknown as { replace: ReturnType<typeof vi.fn> }).replace).toHaveBeenCalledWith("/login");
+    expect(
+      (window.location as unknown as { replace: ReturnType<typeof vi.fn> }).replace
+    ).toHaveBeenCalledWith("/login");
   });
 });
