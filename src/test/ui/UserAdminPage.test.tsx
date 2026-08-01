@@ -4,26 +4,28 @@ import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@/lib/react-query";
 
 /**
- * BDD Scenarios covered:
- * 13.2 — Non-admin cannot access User Admin page
- * 13.5 — Admin cannot promote self (UI check)
+ * BDD 13.2 — Non-admin cannot access the User Admin page.
+ *
+ * Access control is enforced by the <AdminRoute> route wrapper
+ * (UserAdminPage.tsx:84 "Admin check is handled by AdminRoute wrapper";
+ * App.tsx routes it as <AdminRoute><UserAdminPage/></AdminRoute>). The
+ * redirect/loading behavior for BDD 13.2 is verified in AdminRoute.test.tsx.
+ * This suite verifies the page itself renders its admin surface when reached.
  */
 
-// Mock useAuth
 const mockUseAuth = vi.fn();
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => mockUseAuth(),
 }));
 
-// Mock useAdmin
 const mockUseAdmin = vi.fn();
 vi.mock("@/hooks/use-admin", () => ({
   useAdmin: () => mockUseAdmin(),
 }));
 
-// Mock supabase
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
+    rpc: () => Promise.resolve({ data: [], error: null }),
     from: () => ({
       select: () => ({
         order: () => ({ data: [], error: null }),
@@ -39,6 +41,9 @@ vi.mock("@/integrations/supabase/client", () => ({
     }),
     auth: {
       getSession: () => Promise.resolve({ data: { session: null } }),
+      // cached-session.ts subscribes at module load; without this the dynamic
+      // import of UserAdminPage throws "onAuthStateChange is not a function".
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
     },
     functions: {
       invoke: vi.fn(),
@@ -46,22 +51,22 @@ vi.mock("@/integrations/supabase/client", () => ({
   },
 }));
 
-describe("UserAdminPage (BDD 13.2, 13.5)", () => {
+describe("UserAdminPage (BDD 13.2)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("redirects non-admin users to dashboard (BDD 13.2)", async () => {
+  it("renders the User Admin surface for an admin (access control enforced by AdminRoute)", async () => {
     mockUseAuth.mockReturnValue({
       user: { id: "user-1" },
       profile: { first_name: "Test" },
       loading: false,
       profileLoaded: true,
     });
-    mockUseAdmin.mockReturnValue({ isAdmin: false, loading: false });
+    mockUseAdmin.mockReturnValue({ isAdmin: true, loading: false });
 
     const { default: UserAdminPage } = await import("@/pages/UserAdminPage");
-    const qc = new QueryClient();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
     render(
       <QueryClientProvider client={qc}>
@@ -71,32 +76,6 @@ describe("UserAdminPage (BDD 13.2, 13.5)", () => {
       </QueryClientProvider>
     );
 
-    // Navigate component renders nothing visible, but redirect happens
-    // The component should not show the admin heading
-    expect(screen.queryByText("User Admin")).not.toBeInTheDocument();
-  });
-
-  it("shows loading spinner while checking admin status", async () => {
-    mockUseAuth.mockReturnValue({
-      user: { id: "user-1" },
-      profile: { first_name: "Test" },
-      loading: false,
-      profileLoaded: true,
-    });
-    mockUseAdmin.mockReturnValue({ isAdmin: false, loading: true });
-
-    const { default: UserAdminPage } = await import("@/pages/UserAdminPage");
-    const qc = new QueryClient();
-
-    render(
-      <QueryClientProvider client={qc}>
-        <MemoryRouter>
-          <UserAdminPage />
-        </MemoryRouter>
-      </QueryClientProvider>
-    );
-
-    // Should show loading, not the admin page
-    expect(screen.queryByText("User Admin")).not.toBeInTheDocument();
+    expect(await screen.findByText("User Admin")).toBeInTheDocument();
   });
 });

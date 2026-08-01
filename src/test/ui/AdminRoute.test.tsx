@@ -20,6 +20,19 @@ vi.mock("sonner", () => ({
   toast: { error: vi.fn() },
 }));
 
+// AdminRoute now enforces an admin-2FA gate after the auth+admin checks: it
+// resolves MFA state via MfaService + two grace RPCs before rendering children.
+// A fully-set-up admin (hasVerifiedTotp = true) skips the setup/grace screens.
+vi.mock("@/services/mfa.service", () => ({
+  MfaService: { hasVerifiedTotp: vi.fn().mockResolvedValue(true) },
+}));
+vi.mock("@/lib/db/rpc-with-timeout", () => ({
+  rpcWithTimeout: vi.fn().mockResolvedValue({ data: null, error: null }),
+}));
+vi.mock("@/services/error-reporter.service", () => ({
+  reportError: vi.fn(),
+}));
+
 function renderWithRouter(initialEntry: string = "/admin/test") {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
@@ -33,9 +46,12 @@ function renderWithRouter(initialEntry: string = "/admin/test") {
           }
         />
         <Route path="/login" element={<div data-testid="login-page">Login</div>} />
-        <Route path="/dashboard" element={<div data-testid="dashboard-page">Dashboard</div>} />
+        <Route
+          path="/access-denied"
+          element={<div data-testid="access-denied-page">Access Denied</div>}
+        />
       </Routes>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
 }
 
@@ -58,7 +74,7 @@ describe("AdminRoute", () => {
     expect(screen.getByTestId("login-page")).toBeInTheDocument();
   });
 
-  it("redirects to /dashboard when user is not admin", () => {
+  it("redirects to /access-denied when user is not admin", () => {
     mockUseAuth.mockReturnValue({
       user: { id: "user-1" },
       loading: false,
@@ -66,10 +82,10 @@ describe("AdminRoute", () => {
     });
     mockUseAdmin.mockReturnValue({ isAdmin: false, loading: false });
     renderWithRouter();
-    expect(screen.getByTestId("dashboard-page")).toBeInTheDocument();
+    expect(screen.getByTestId("access-denied-page")).toBeInTheDocument();
   });
 
-  it("renders children when user is admin", () => {
+  it("renders children when user is admin (2FA satisfied)", async () => {
     mockUseAuth.mockReturnValue({
       user: { id: "user-1" },
       loading: false,
@@ -77,6 +93,7 @@ describe("AdminRoute", () => {
     });
     mockUseAdmin.mockReturnValue({ isAdmin: true, loading: false });
     renderWithRouter();
-    expect(screen.getByTestId("admin-content")).toBeInTheDocument();
+    // mfaState resolves asynchronously (MfaService + grace RPCs) before children render.
+    expect(await screen.findByTestId("admin-content")).toBeInTheDocument();
   });
 });

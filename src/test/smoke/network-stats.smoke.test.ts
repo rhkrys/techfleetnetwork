@@ -4,8 +4,8 @@
  * unit tests), so these focus on:
  *
  *  - STATS-013  Legacy localStorage cache keys (v1/v2) are evicted on read.
- *  - STATS-007  When the live RPC fails and a v3 cache exists, the cached
- *               payload (including the `historical` block) is returned
+ *  - STATS-007  When the live RPC fails and a current-version cache exists, the
+ *               cached payload (including the `historical` block) is returned
  *               unchanged.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -17,7 +17,8 @@ vi.mock("@/integrations/supabase/client", () => ({
 import { StatsService, type NetworkStats } from "@/services/stats.service";
 import { supabase } from "@/integrations/supabase/client";
 
-const CACHE_KEY = "tfn:network-stats:last-known:v3";
+// Must track the service's current cache key (bumped to v5 on 2026-05-21).
+const CACHE_KEY = "tfn:network-stats:last-known:v5";
 
 const sampleStats: NetworkStats = {
   total_signups: 440,
@@ -59,7 +60,7 @@ describe("StatsService cache", () => {
     window.localStorage.setItem("tfn:network-stats:last-known:v2", "y");
     window.localStorage.setItem(
       CACHE_KEY,
-      JSON.stringify({ stats: sampleStats, cachedAt: Date.now() }),
+      JSON.stringify({ stats: sampleStats, cachedAt: Date.now() })
     );
 
     const cached = StatsService.getCachedNetworkStats();
@@ -71,7 +72,7 @@ describe("StatsService cache", () => {
   it("STATS-007: serves cached historical block when live RPC fails", async () => {
     window.localStorage.setItem(
       CACHE_KEY,
-      JSON.stringify({ stats: sampleStats, cachedAt: Date.now() }),
+      JSON.stringify({ stats: sampleStats, cachedAt: Date.now() })
     );
     (supabase.rpc as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: null,

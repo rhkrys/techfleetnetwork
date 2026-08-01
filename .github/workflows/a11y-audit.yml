@@ -20,23 +20,25 @@ name: WCAG 2.2 Accessibility Audit
 # scanning only public routes; authed routes are listed as "skipped".
 
 on:
+  # PARKED (baseline-restoration D-2, 2026-08-01): this scan requires the
+  # TF_ADMIN_EMAIL/PASSWORD secrets, which were never migrated to the new
+  # Supabase project — so it has never passed (0 green) and was bricking every
+  # PR. Run it manually from the Actions tab meanwhile. RESTORE the
+  # `pull_request` + `schedule` triggers below (uncomment) once TF_ADMIN_* are
+  # set under Settings → Secrets and variables → Actions.
   workflow_dispatch:
-  pull_request:
-    # PR-blocking gate: every PR runs the a11y suite. The Playwright spec
-    # writes a11y-report/a11y-report.json; the "Enforce a11y baseline"
-    # step compares total violations against the committed baseline at
-    # `e2e/a11y/baseline.json` and fails the job on any new regression.
-    branches: [main]
-    paths:
-      - "src/**"
-      - "public/**"
-      - "e2e/a11y/**"
-      - ".github/workflows/a11y-audit.yml"
-      - "package.json"
-      - "package-lock.json"
-  schedule:
-    # Mondays at 06:00 UTC — weekly drift check.
-    - cron: "0 6 * * 1"
+  # pull_request:
+  #   branches: [main]
+  #   paths:
+  #     - "src/**"
+  #     - "public/**"
+  #     - "e2e/a11y/**"
+  #     - ".github/workflows/a11y-audit.yml"
+  #     - "package.json"
+  #     - "package-lock.json"
+  # schedule:
+  #   # Mondays at 06:00 UTC — weekly drift check.
+  #   - cron: "0 6 * * 1"
 
 permissions:
   contents: read
@@ -89,7 +91,6 @@ jobs:
             exit 1
           fi
           echo "Preflight OK: all 5 required inputs present."
-
 
       - name: Setup Node
         # actions/setup-node@v5.0.0 — pinned SHA, runs on Node.js 24

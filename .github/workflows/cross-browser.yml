@@ -1,16 +1,19 @@
 name: Cross-browser QA
 
 on:
-  # Visual-regression suite still runs on PR (cheap, fast, blocks pixel drift).
-  # The full desktop+mobile+tablet matrix is nightly + manual only — the
-  # fast Chromium shard in regression.yml covers PRs.
-  pull_request:
-    paths:
-      - "e2e/visual/**"
-      - "src/**"
+  # PARKED (baseline-restoration D-2, 2026-08-01): the full matrix needs the
+  # TF_ADMIN_* secrets (not migrated to the new project) and the workflow has
+  # never passed (0 green), so it was bricking every PR touching src/**. Run it
+  # manually from the Actions tab meanwhile. RESTORE the `pull_request` +
+  # `schedule` triggers (uncomment) once TF_ADMIN_* are set — and if only the
+  # visual-regression job is wanted back on PR, split it into its own workflow.
   workflow_dispatch:
-  schedule:
-    - cron: "0 7 * * *"
+  # pull_request:
+  #   paths:
+  #     - "e2e/visual/**"
+  #     - "src/**"
+  # schedule:
+  #   - cron: "0 7 * * *"
 
 concurrency:
   group: cross-browser-${{ github.workflow }}-${{ github.ref }}

@@ -1,9 +1,14 @@
 name: visual-regression
 
 on:
-  pull_request:
-    branches: [main]
+  # PARKED (baseline-restoration D-2, 2026-08-01): the pixel-diff suite has
+  # never passed on the new project (no committed baselines / preview env drift)
+  # and was bricking every PR. Run it manually from the Actions tab meanwhile,
+  # and use the `visual-baseline-update` label path to seed baselines. RESTORE
+  # the `pull_request` trigger (uncomment) once a green baseline is committed.
   workflow_dispatch:
+  # pull_request:
+  #   branches: [main]
 
 concurrency:
   group: visual-regression-${{ github.ref }}

@@ -2,8 +2,15 @@ import { render, type RenderOptions } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactElement, ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@/lib/react-query";
+import { ThemeProvider } from "@/components/ThemeProvider";
+import { HelmetProvider } from "react-helmet-async";
 
-// Minimal wrapper for components that need Router + React Query context
+// Minimal wrapper for components that need Router + React Query context.
+// ThemeProvider is included because production always mounts one at the app
+// root (App.tsx); components that reach useTheme() — LandingPage, the Sonner
+// toaster, ThemeToggle in shared layout — otherwise throw "useTheme must be
+// used within ThemeProvider". A nested ThemeProvider (some tests add their own)
+// is harmless: useTheme resolves the nearest one.
 function RouterWrapper({ children }: { children: ReactNode }) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -14,7 +21,11 @@ function RouterWrapper({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>{children}</MemoryRouter>
+      <HelmetProvider>
+        <ThemeProvider defaultTheme="dark">
+          <MemoryRouter>{children}</MemoryRouter>
+        </ThemeProvider>
+      </HelmetProvider>
     </QueryClientProvider>
   );
 }
@@ -36,7 +47,11 @@ export const mockAuthLoggedOut = {
 };
 
 export const mockAuthLoggedIn = {
-  user: { id: "test-user-id", email: "test@example.com", user_metadata: { full_name: "Test User" } } as any,
+  user: {
+    id: "test-user-id",
+    email: "test@example.com",
+    user_metadata: { full_name: "Test User" },
+  } as any,
   session: {} as any,
   profile: {
     id: "profile-id",
