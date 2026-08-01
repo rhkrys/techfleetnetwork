@@ -190,8 +190,12 @@ describe("ConnectDiscordPage Discord member picker", () => {
     await user.click(screen.getByRole("button", { name: /verify/i }));
     await user.click(await screen.findByRole("button", { name: /select new member/i }));
 
-    expect(await screen.findByText(/@new\.member/)).toBeInTheDocument();
-    expect(screen.queryByText(/@old\.member/)).not.toBeInTheDocument();
+    // Optimistic update: @new.member shows immediately, then a profile refresh
+    // re-renders. Re-query on each retry (waitFor + getByText) rather than
+    // holding the element findByText returned — that reference gets detached by
+    // the re-render and raced in CI (passed locally).
+    await waitFor(() => expect(screen.getByText(/@new\.member/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText(/@old\.member/)).not.toBeInTheDocument());
     expect(mockRefreshProfile).toHaveBeenCalled();
   });
 });
