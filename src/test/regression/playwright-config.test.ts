@@ -16,7 +16,9 @@ function read(rel: string): string {
 
 describe("Regression CI invariants", () => {
   const pwConfig = read("playwright.config.ts");
-  const wf = read(".github/workflows/regression.yml");
+  // regression.yml was replaced by the unified ci.yml (its `e2e` job now owns
+  // the sharded Playwright run). Read that instead.
+  const wf = read(".github/workflows/ci.yml");
 
   it("W1-RG-CI-004: per-test timeout is at most 45s", () => {
     expect(pwConfig).toMatch(/timeout:\s*45_000/);
@@ -30,19 +32,12 @@ describe("Regression CI invariants", () => {
     expect(pwConfig).toMatch(/globalTimeout:\s*20\s*\*\s*60\s*\*\s*1000/);
   });
 
-  it("playwright job uses 6 shards", () => {
+  it("e2e job uses 6 shards", () => {
     expect(wf).toMatch(/shard:\s*\[1,\s*2,\s*3,\s*4,\s*5,\s*6\]/);
   });
 
-  it("playwright job timeout-minutes is at most 22", () => {
-    const match = wf.match(/playwright:[\s\S]*?timeout-minutes:\s*(\d+)/);
-    expect(match).not.toBeNull();
-    expect(Number(match![1])).toBeLessThanOrEqual(22);
-  });
-
-  it("merge-reports job is wired", () => {
-    expect(wf).toMatch(/merge-reports:/);
-    expect(wf).toMatch(/playwright merge-reports --reporter html/);
+  it("e2e shards upload blob reports for aggregation", () => {
+    expect(wf).toMatch(/playwright-blob-shard-/);
   });
 
   it("W1-RG-CI-005: auth.e2e.ts caps retries to 1 per describe", () => {

@@ -83,12 +83,19 @@ describe("session-health.ensureClientFingerprint", () => {
   });
 
   it("purges when stored fingerprint does not match current env", () => {
+    // ensureClientFingerprint no-ops without VITE_SUPABASE_* (gate-test runs
+    // with none); stub them so a fingerprint is computed and the mismatch fires.
+    vi.stubEnv("VITE_SUPABASE_URL", "https://test.supabase.co");
+    vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "test-anon-key-0123456789abcdef");
     localStorage.setItem("tfn_auth_client_fingerprint_v1", "stale::fingerprint::0");
     localStorage.setItem("sb-abc-auth-token", "x");
     ensureClientFingerprint();
     expect(localStorage.getItem("sb-abc-auth-token")).toBeNull();
     // Fresh fingerprint written.
-    expect(localStorage.getItem("tfn_auth_client_fingerprint_v1")).not.toBe("stale::fingerprint::0");
+    expect(localStorage.getItem("tfn_auth_client_fingerprint_v1")).not.toBe(
+      "stale::fingerprint::0"
+    );
+    vi.unstubAllEnvs();
   });
 
   it("is a no-op when fingerprint matches", () => {
