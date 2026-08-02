@@ -5,7 +5,7 @@ VALUES (
   99,
   'Frontend services use centralized safe error handling',
   'Feature: Service architecture\n  Scenario: A data service receives a backend error\n    Given a frontend service calls the backend\n    When the backend returns a structured error\n    Then the service logs normalized metadata\n    And the user-facing error message does not expose backend internals',
-  'built',
+  'implemented',
   'unit',
   'src/test/lib/service-result.test.ts',
   'Covers the shared service-result helper used to keep service error handling scalable and secure.'

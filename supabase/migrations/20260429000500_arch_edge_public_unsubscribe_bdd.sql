@@ -5,7 +5,7 @@ VALUES (
   99,
   'Public edge functions use shared HTTP helpers and redact sensitive logs',
   'Feature: Edge function architecture\n  Scenario: A recipient uses an email unsubscribe link\n    Given a public unsubscribe token is submitted by GET or POST\n    When the backend function validates and consumes the token\n    Then it uses shared CORS and JSON response helpers\n    And it keeps the existing one-click unsubscribe behavior\n    And it does not log unsubscribe tokens or recipient emails on failures',
-  'built',
+  'implemented',
   'smoke',
   'supabase/functions/handle-email-unsubscribe/index.ts',
   'Covers the shared HTTP/admin-client refactor and log redaction hardening for the public unsubscribe backend function.'
