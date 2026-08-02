@@ -42,6 +42,7 @@ STABLE
 SECURITY DEFINER
 SET search_path TO 'public', 'pg_temp'
 AS $$
+#variable_conflict use_column
 BEGIN
   IF NOT public.has_role(auth.uid(), 'admin'::app_role) THEN
     RAISE EXCEPTION 'admin_list_users: admin role required'

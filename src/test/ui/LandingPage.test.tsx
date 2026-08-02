@@ -14,8 +14,10 @@ describe("LandingPage UI (BDD 16.1–16.4)", () => {
   });
 
   it("16.1: renders hero heading with keyword", () => {
-    expect(screen.getByText(/develop the skills and mindset for/i)).toBeInTheDocument();
-    expect(screen.getByText("success")).toBeInTheDocument();
+    expect(screen.getByText("empowered")).toBeInTheDocument();
+    expect(document.getElementById("hero-heading")).toHaveTextContent(
+      /welcome to the network for empowered team spaces/i
+    );
   });
 
   it("16.1: renders Get Started CTA linking to /register", () => {
@@ -41,17 +43,22 @@ describe("LandingPage UI (BDD 16.1–16.4)", () => {
     expect(screen.getByText("Real Team Projects")).toBeInTheDocument();
     expect(screen.getByText("Growth Paths")).toBeInTheDocument();
     expect(screen.getByText("Track Accomplishments")).toBeInTheDocument();
-    expect(screen.getByText("Community Support")).toBeInTheDocument();
+    expect(screen.getByText("Community Involvement")).toBeInTheDocument();
   });
 
   it("16.3: features heading is left-aligned (no bottom CTA duplicate)", () => {
-    expect(screen.getByText("Your professional development journey")).toBeInTheDocument();
+    expect(
+      screen.getByText("Get ready for the future of work with Tech Fleet")
+    ).toBeInTheDocument();
     expect(screen.queryByText("Ready to start your journey?")).not.toBeInTheDocument();
   });
 
   it("16.4: hero image has descriptive alt text", () => {
-    const img = screen.getByRole("img", { name: /astronaut/i });
-    expect(img).toBeInTheDocument();
-    expect(img.getAttribute("alt")!.length).toBeGreaterThan(20);
+    // Two hero <img> render (mobile + desktop layouts), same alt; theme-driven
+    // copy ("stylized world map" in dark, "stylized sun" in light) — both start
+    // with "Illustration of a stylized …".
+    const imgs = screen.getAllByRole("img", { name: /illustration of a stylized/i });
+    expect(imgs.length).toBeGreaterThan(0);
+    expect(imgs[0].getAttribute("alt")!.length).toBeGreaterThan(20);
   });
 });

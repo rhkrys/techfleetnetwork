@@ -45,28 +45,53 @@ describe("profileSchema (BDD 2.6: Profile setup completion)", () => {
 
 describe("profileSchema (BDD 2.7: Missing mandatory fields)", () => {
   it("rejects empty first name", () => {
-    const result = profileSchema.safeParse({ firstName: "", lastName: "Doe", country: "US", timezone: "America/New_York" });
+    const result = profileSchema.safeParse({
+      firstName: "",
+      lastName: "Doe",
+      country: "US",
+      timezone: "America/New_York",
+    });
     expect(result.success).toBe(false);
     expect(result.error?.issues[0].message).toContain("required");
   });
 
   it("rejects empty last name", () => {
-    const result = profileSchema.safeParse({ firstName: "Jane", lastName: "", country: "US", timezone: "America/New_York" });
+    const result = profileSchema.safeParse({
+      firstName: "Jane",
+      lastName: "",
+      country: "US",
+      timezone: "America/New_York",
+    });
     expect(result.success).toBe(false);
   });
 
   it("rejects empty country", () => {
-    const result = profileSchema.safeParse({ firstName: "Jane", lastName: "Doe", country: "", timezone: "America/New_York" });
+    const result = profileSchema.safeParse({
+      firstName: "Jane",
+      lastName: "Doe",
+      country: "",
+      timezone: "America/New_York",
+    });
     expect(result.success).toBe(false);
   });
 
   it("rejects empty timezone", () => {
-    const result = profileSchema.safeParse({ firstName: "Jane", lastName: "Doe", country: "US", timezone: "" });
+    const result = profileSchema.safeParse({
+      firstName: "Jane",
+      lastName: "Doe",
+      country: "US",
+      timezone: "",
+    });
     expect(result.success).toBe(false);
   });
 
   it("rejects whitespace-only first name", () => {
-    const result = profileSchema.safeParse({ firstName: "   ", lastName: "Doe", country: "US", timezone: "America/New_York" });
+    const result = profileSchema.safeParse({
+      firstName: "   ",
+      lastName: "Doe",
+      country: "US",
+      timezone: "America/New_York",
+    });
     expect(result.success).toBe(false);
   });
 });
@@ -126,7 +151,10 @@ describe("profileSchema — XSS prevention (A03 security)", () => {
       timezone: "America/New_York",
     });
     expect(result.success).toBe(false);
-    expect(result.error?.issues.some((i) => i.message.includes("invalid content"))).toBe(true);
+    // Validator now returns an actionable classification instead of the generic
+    // "invalid content" (shared-input classifyUnsafe): "…looks like an
+    // HTML/script tag — remove angle brackets and try again".
+    expect(result.error?.issues.some((i) => i.message.includes("HTML/script tag"))).toBe(true);
   });
 
   it("rejects script tags in country", () => {

@@ -96,14 +96,26 @@ export default tseslint.config(
       security,
     },
     rules: {
-      ...reactHooks.configs.recommended.rules,
+      // react-hooks v6 bundles the React Compiler rules (set-state-in-effect,
+      // purity, refs, immutability, static-components, incompatible-library,
+      // preserve-manual-memoization, …) and the recommended config ships them
+      // at "error". That contradicts the baseline strategy below and bricked
+      // CI with ~161 pre-existing violations across ~250 files (the linter got
+      // stricter; the code did not regress). Apply the SAME downgrade pattern
+      // used for jsx-a11y just below: map the whole recommended set to "warn"
+      // so every finding still surfaces, then keep the one classic correctness
+      // rule (rules-of-hooks — currently clean) at "error". Promote the
+      // compiler rules back to "error" per-folder as the conformance sweep
+      // reaches zero. Tracked: phased react-compiler conformance (auth last).
+      ...Object.fromEntries(
+        Object.keys(reactHooks.configs.recommended.rules).map((k) => [k, "warn"])
+      ),
+      "react-hooks/rules-of-hooks": "error",
       // Baseline strategy: every project-wide rule starts at "warn" so a
       // legacy violation cannot brick CI. Promote individual rules to "error"
       // ONLY after the existing baseline is at zero. This keeps `npm run lint`
       // green while still surfacing every problem in the report output.
-      ...Object.fromEntries(
-        Object.keys(jsxA11y.configs.recommended.rules).map((k) => [k, "warn"])
-      ),
+      ...Object.fromEntries(Object.keys(jsxA11y.configs.recommended.rules).map((k) => [k, "warn"])),
       "jsx-a11y/no-autofocus": "warn",
       "jsx-a11y/no-redundant-roles": "warn",
       "jsx-a11y/no-noninteractive-element-interactions": "warn",
@@ -205,7 +217,6 @@ export default tseslint.config(
       // Legacy baseline — too many real dependency arrays to fix in one pass.
       "react-hooks/exhaustive-deps": "off",
 
-
       // Force a single canonical import path for context modules. Multiple
       // import paths (relative vs alias, with/without extension) cause Vite to
       // load the same context twice, breaking provider/consumer matching.
@@ -240,11 +251,13 @@ export default tseslint.config(
             },
             {
               name: "gtag",
-              message: "Analytics may only be loaded via src/lib/consent/loadAnalytics.ts after consent.",
+              message:
+                "Analytics may only be loaded via src/lib/consent/loadAnalytics.ts after consent.",
             },
             {
               name: "clarity",
-              message: "Microsoft Clarity may only be loaded via src/lib/consent/loadAnalytics.ts after consent.",
+              message:
+                "Microsoft Clarity may only be loaded via src/lib/consent/loadAnalytics.ts after consent.",
             },
           ],
         },
@@ -291,21 +304,42 @@ export default tseslint.config(
     // Catching screen-layer imports of auth.service / auth-lockout /
     // auth-captcha / TurnstileChallenge / sign-in-password.flow stops the
     // three-parallel-paths spaghetti from reappearing on the new surface.
-    files: ["src/features/auth/ui/SignInScreen.tsx", "src/features/auth/ui/SignUpScreen.tsx", "src/features/auth/ui/ForgotPasswordScreen.tsx", "src/features/auth/ui/ResetPasswordScreen.tsx", "src/features/auth/ui/RegisterScreen.tsx"],
+    files: [
+      "src/features/auth/ui/SignInScreen.tsx",
+      "src/features/auth/ui/SignUpScreen.tsx",
+      "src/features/auth/ui/ForgotPasswordScreen.tsx",
+      "src/features/auth/ui/ResetPasswordScreen.tsx",
+      "src/features/auth/ui/RegisterScreen.tsx",
+    ],
     rules: {
       "no-restricted-imports": [
         "error",
         {
           paths: [
-            { name: "@/services/auth.service", message: "Screens must consume the engine hook, not AuthService directly." },
+            {
+              name: "@/services/auth.service",
+              message: "Screens must consume the engine hook, not AuthService directly.",
+            },
             { name: "@/lib/auth-lockout", message: "Lockout is owned by the engine hook." },
             { name: "@/lib/auth-captcha", message: "Captcha state is owned by the engine hook." },
-            { name: "@/lib/auth-error-classifier", message: "Use AuthErrorMessage + AuthErr from the engine." },
-            { name: "@/features/auth/flows/sign-in-password.flow", message: "Call the engine hook, not the flow directly." },
-            { name: "@/features/auth/services/auth-failure-policy", message: "Failure-policy decisions belong inside the engine hook." },
+            {
+              name: "@/lib/auth-error-classifier",
+              message: "Use AuthErrorMessage + AuthErr from the engine.",
+            },
+            {
+              name: "@/features/auth/flows/sign-in-password.flow",
+              message: "Call the engine hook, not the flow directly.",
+            },
+            {
+              name: "@/features/auth/services/auth-failure-policy",
+              message: "Failure-policy decisions belong inside the engine hook.",
+            },
           ],
           patterns: [
-            { group: ["**/auth-lockout", "**/auth-captcha", "**/auth-error-classifier"], message: "Screens must consume the engine hook." },
+            {
+              group: ["**/auth-lockout", "**/auth-captcha", "**/auth-error-classifier"],
+              message: "Screens must consume the engine hook.",
+            },
           ],
         },
       ],
@@ -332,7 +366,8 @@ export default tseslint.config(
           paths: [
             {
               name: "@/services/auth.service",
-              message: "Import sessionPort from '@/features/auth/ports/session.port' instead. AuthService is deletion-pending — see Ship 5 in the auth rebuild plan.",
+              message:
+                "Import sessionPort from '@/features/auth/ports/session.port' instead. AuthService is deletion-pending — see Ship 5 in the auth rebuild plan.",
             },
           ],
         },
@@ -352,15 +387,40 @@ export default tseslint.config(
         "error",
         {
           paths: [
-            { name: "@/integrations/supabase/client", message: "Engines must call ports/adapters (supabaseSessionAdapter) — not the Supabase client directly." },
-            { name: "@/services/auth.service", message: "Engines must call sessionPort or the supabase-session adapter — not AuthService." },
-            { name: "@/lib/auth-lockout", message: "Lockout counters belong behind a port (rate-limit / device-lockout). Use the engine helper." },
-            { name: "@/lib/auth-captcha", message: "Captcha state belongs behind the captcha port + adapter." },
-            { name: "@/lib/auth-captcha-telemetry", message: "Telemetry must route through telemetryPort (audit-telemetry adapter)." },
-            { name: "@/lib/auth-error-classifier", message: "Use the typed AuthErr from features/auth/domain instead of string-match classification." },
+            {
+              name: "@/integrations/supabase/client",
+              message:
+                "Engines must call ports/adapters (supabaseSessionAdapter) — not the Supabase client directly.",
+            },
+            {
+              name: "@/services/auth.service",
+              message:
+                "Engines must call sessionPort or the supabase-session adapter — not AuthService.",
+            },
+            {
+              name: "@/lib/auth-lockout",
+              message:
+                "Lockout counters belong behind a port (rate-limit / device-lockout). Use the engine helper.",
+            },
+            {
+              name: "@/lib/auth-captcha",
+              message: "Captcha state belongs behind the captcha port + adapter.",
+            },
+            {
+              name: "@/lib/auth-captcha-telemetry",
+              message: "Telemetry must route through telemetryPort (audit-telemetry adapter).",
+            },
+            {
+              name: "@/lib/auth-error-classifier",
+              message:
+                "Use the typed AuthErr from features/auth/domain instead of string-match classification.",
+            },
           ],
           patterns: [
-            { group: ["**/auth-lockout", "**/auth-captcha", "**/auth-error-classifier"], message: "Engines must use ports/adapters, not legacy lib modules." },
+            {
+              group: ["**/auth-lockout", "**/auth-captcha", "**/auth-error-classifier"],
+              message: "Engines must use ports/adapters, not legacy lib modules.",
+            },
           ],
         },
       ],
@@ -380,5 +440,5 @@ export default tseslint.config(
     linterOptions: {
       reportUnusedDisableDirectives: "off",
     },
-  },
+  }
 );

@@ -4,8 +4,15 @@ import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 
 const signInWithOAuth = vi.fn().mockResolvedValue({ error: null, redirected: true });
 
-vi.mock("@/integrations/lovable/index", () => ({
-  lovable: { auth: { signInWithOAuth: (...a: unknown[]) => signInWithOAuth(...a) } },
+// GoogleSignInButton moved off the Lovable Cloud adapter to
+// supabase.auth.signInWithOAuth directly (see the component's own comment).
+vi.mock("@/integrations/supabase/client", () => ({
+  supabase: {
+    auth: {
+      signInWithOAuth: (...a: unknown[]) => signInWithOAuth(...a),
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+    },
+  },
 }));
 vi.mock("@/lib/oauth-ui-guard", () => ({ markOAuthUiInitiated: vi.fn() }));
 vi.mock("@/lib/auth/oauth-callback-pending", () => ({ markOAuthCallbackPending: vi.fn() }));
@@ -21,7 +28,13 @@ describe("GoogleSignInButton — no apex restart loop", () => {
     const replace = vi.fn();
     Object.defineProperty(window, "location", {
       configurable: true,
-      value: { host: "www.techfleet.network", origin: "https://www.techfleet.network", replace, assign: vi.fn(), href: "https://www.techfleet.network/login" },
+      value: {
+        host: "www.techfleet.network",
+        origin: "https://www.techfleet.network",
+        replace,
+        assign: vi.fn(),
+        href: "https://www.techfleet.network/login",
+      },
     });
 
     render(<GoogleSignInButton />);

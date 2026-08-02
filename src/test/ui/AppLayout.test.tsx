@@ -48,13 +48,16 @@ describe("AppLayout / Navigation UI (BDD 22.1–22.4)", () => {
     expect(screen.getByText(new RegExp(`© ${year}`))).toBeInTheDocument();
   });
 
-  it("22.3: footer has Website link", () => {
-    expect(screen.getByRole("link", { name: /website/i })).toHaveAttribute("href", "https://techfleet.org");
+  it("22.3: footer has techfleet.org link", () => {
+    expect(screen.getByRole("link", { name: "techfleet.org" })).toHaveAttribute(
+      "href",
+      "https://techfleet.org"
+    );
   });
 
-  it("22.3: footer has external Website link", () => {
-    const websiteLinks = screen.getAllByRole("link", { name: /website/i });
-    expect(websiteLinks.some(l => l.getAttribute("href") === "https://techfleet.org")).toBe(true);
+  it("22.3: footer has external techfleet.org link", () => {
+    const websiteLinks = screen.getAllByRole("link", { name: "techfleet.org" });
+    expect(websiteLinks.some((l) => l.getAttribute("href") === "https://techfleet.org")).toBe(true);
   });
 
   it("22.4: skip to main content link exists", () => {

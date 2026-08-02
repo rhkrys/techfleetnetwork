@@ -1,85 +1,80 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@/lib/react-query";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
+import {
+  fetchPublishedBanners,
+  fetchDismissedBannerIds,
+  dismissBanner,
+} from "@/services/banner.service";
 
-const {
-  maybeSingle,
-  upsert,
-  eqState,
-  eqGrid,
-  select,
-  from,
-  setQueryData,
-} = vi.hoisted(() => {
-  const maybeSingle = vi.fn();
-  const upsert = vi.fn();
-  const eqState = vi.fn(() => ({ maybeSingle }));
-  const eqGrid = vi.fn(() => ({ eq: eqState, maybeSingle }));
-  const select = vi.fn(() => ({ eq: eqGrid }));
-  const from = vi.fn(() => ({ select, upsert }));
-  const setQueryData = vi.fn();
-
-  return { maybeSingle, upsert, eqState, eqGrid, select, from, setQueryData };
-});
+// AnnouncementBanner was rewritten: it takes no props, fetches published
+// banners + the caller's dismissals via banner.service (banner_dismissals
+// table), and dismisses through dismissBanner(). The previous test asserted an
+// obsolete props-based API storing dismissals in grid_view_states.
 
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ user: { id: "user-1" } }),
 }));
 
-vi.mock("@/integrations/supabase/client", () => ({
-  supabase: { from },
+vi.mock("@/hooks/useUgcTranslation", () => ({
+  useUgcTranslation: ({ sourceText }: { sourceText: string }) => ({ text: sourceText }),
 }));
 
-vi.mock("@/lib/react-query", () => ({
-  useQueryClient: () => ({ setQueryData }),
-  useQuery: ({ queryFn }: { queryFn: () => Promise<unknown> }) => {
-    const React = require("react");
-    const [data, setData] = React.useState<string[] | undefined>(undefined);
-    const [isLoading, setIsLoading] = React.useState(true);
-
-    React.useEffect(() => {
-      let active = true;
-      queryFn().then((result) => {
-        if (active) {
-          setData(result as string[]);
-          setIsLoading(false);
-        }
-      });
-      return () => {
-        active = false;
-      };
-    }, [queryFn]);
-
-    return { data, isLoading };
-  },
+vi.mock("@/services/banner.service", () => ({
+  fetchPublishedBanners: vi.fn(),
+  fetchDismissedBannerIds: vi.fn(),
+  dismissBanner: vi.fn(),
 }));
+
+const mockFetchPublished = vi.mocked(fetchPublishedBanners);
+const mockFetchDismissed = vi.mocked(fetchDismissedBannerIds);
+const mockDismiss = vi.mocked(dismissBanner);
+
+function renderBanner() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={qc}>
+      <AnnouncementBanner />
+    </QueryClientProvider>
+  );
+}
 
 describe("AnnouncementBanner", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    maybeSingle.mockResolvedValue({ data: null });
-    upsert.mockResolvedValue({ error: null });
+    window.localStorage.clear();
+    mockFetchPublished.mockResolvedValue([
+      {
+        id: "banner-1",
+        title: "Important",
+        body_html: "<p>Message</p>",
+        reopen_after_dismiss: false,
+      } as never,
+    ]);
+    mockFetchDismissed.mockResolvedValue([]);
+    mockDismiss.mockResolvedValue(undefined as never);
   });
 
-  it("stores dismissals in grid_view_states instead of dashboard preferences", async () => {
-    render(<AnnouncementBanner id="banner-1" title="Important" message="Message" />);
+  it("renders a published banner and dismisses it via banner.service", async () => {
+    renderBanner();
 
-    const button = await screen.findByRole("button", { name: /dismiss announcement/i });
+    expect(await screen.findByText("Important")).toBeInTheDocument();
+
+    const button = await screen.findByRole("button", { name: /dismiss important/i });
     await userEvent.click(button);
 
     await waitFor(() => {
-      expect(from).toHaveBeenCalledWith("grid_view_states");
-      expect(upsert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          user_id: "user-1",
-          grid_id: "announcement_banner_dismissals",
-          state: { dismissed_banners: ["banner-1"] },
-        }),
-        { onConflict: "user_id,grid_id" },
-      );
+      expect(mockDismiss).toHaveBeenCalledWith("banner-1", "user-1");
     });
+  });
 
-    expect(from).not.toHaveBeenCalledWith("dashboard_preferences");
+  it("does not render banners the member has already dismissed", async () => {
+    mockFetchDismissed.mockResolvedValue(["banner-1"]);
+    renderBanner();
+
+    await waitFor(() => expect(mockFetchDismissed).toHaveBeenCalled());
+    expect(screen.queryByText("Important")).not.toBeInTheDocument();
   });
 });
