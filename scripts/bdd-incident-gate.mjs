@@ -55,8 +55,12 @@ async function fetchJson(path) {
   return r.json();
 }
 
+// Only fingerprint-type entries are "resolved incidents" that must be locked in
+// by a regression test — substring/regex rows are noise-silences, not incidents.
+// The header comment always specified fingerprint-only; the query was missing
+// the filter, so the browser-noise seed rows would false-positive the gate.
 const fingerprints = await fetchJson(
-  "/rest/v1/known_issue_catalog?select=pattern,reason,match_kind&is_active=eq.true"
+  "/rest/v1/known_issue_catalog?select=pattern,reason,match_kind&is_active=eq.true&match_kind=eq.fingerprint"
 );
 
 if (!fingerprints.length) {
