@@ -110,12 +110,19 @@ Deno.serve(
             }
           }
 
-          // Generate a fresh signup confirmation link
-          const { data: linkData, error: linkErr } = await supabase.auth.admin.generateLink({
+          // Generate a fresh signup confirmation link.
+          // supabase-js types `type: "signup"` as requiring `password` (it models
+          // NEW-user creation). Here we re-issue a confirmation link for an
+          // ALREADY-registered but unconfirmed user — GoTrue accepts no password,
+          // and passing one would be wrong. Cast to the param type; the runtime
+          // call is unchanged.
+          const linkParams = {
             type: "signup",
             email: c.email,
             options: { redirectTo: `${APP_URL}/` },
-          });
+          } as Parameters<typeof supabase.auth.admin.generateLink>[0];
+          const { data: linkData, error: linkErr } =
+            await supabase.auth.admin.generateLink(linkParams);
 
           if (linkErr || !linkData?.properties?.action_link) {
             errors.push({ email: c.email, error: linkErr?.message ?? "no link returned" });

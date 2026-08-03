@@ -16,7 +16,7 @@
 //
 // Invoked every 30 minutes by pg_cron (see same-day migration).
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { authorizeServiceRoleRequest } from "../_shared/service-role-auth.ts";
 
 const corsHeaders = {
@@ -28,9 +28,7 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON_KEY =
-  Deno.env.get("SUPABASE_ANON_KEY") ??
-  Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
-  "";
+  Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? "";
 
 const PROBE_EMAIL = "smoke-probe-never-exists@techfleet.invalid";
 
@@ -77,16 +75,22 @@ async function probeIdentity(): Promise<CheckResult> {
     // and returns a structured JSON response (not 5xx).
     const ok = res.status < 500;
     let body: unknown = null;
-    try { body = await res.json(); } catch { /* noop */ }
-    return { name: "check_account_identity", ok, detail: { status: res.status, hasBody: body !== null } };
+    try {
+      body = await res.json();
+    } catch {
+      /* noop */
+    }
+    return {
+      name: "check_account_identity",
+      ok,
+      detail: { status: res.status, hasBody: body !== null },
+    };
   } catch (e) {
     return { name: "check_account_identity", ok: false, detail: { error: String(e) } };
   }
 }
 
-async function probeRecoveryEmailHealth(
-  admin: ReturnType<typeof createClient>,
-): Promise<CheckResult> {
+async function probeRecoveryEmailHealth(admin: SupabaseClient): Promise<CheckResult> {
   try {
     const { data, error } = await admin.rpc("get_recovery_email_health", {
       p_window_minutes: 60,
@@ -142,8 +146,8 @@ Deno.serve(async (req) => {
     console.error("record_event failed in auth-reset-smoke", e);
   }
 
-  return new Response(
-    JSON.stringify({ ok: allOk, failed, checks }),
-    { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-  );
+  return new Response(JSON.stringify({ ok: allOk, failed, checks }), {
+    status: 200,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 });
