@@ -22,14 +22,21 @@ if (!FREESCOUT_API_KEY) {
 // -------- Errors --------
 
 export class FreescoutError extends Error {
-  constructor(public status: number, message: string, public body?: unknown) {
+  constructor(
+    public status: number,
+    message: string,
+    public body?: unknown
+  ) {
     super(message);
   }
 }
 
 // -------- Circuit breaker (existing semantics) --------
 
-interface BreakerState { failures: number; openedAt: number }
+interface BreakerState {
+  failures: number;
+  openedAt: number;
+}
 const breaker: BreakerState = { failures: 0, openedAt: 0 };
 const BREAKER_THRESHOLD = 5;
 const BREAKER_COOLDOWN_MS = 30_000;
@@ -64,23 +71,40 @@ function recordSuccess() {
 const MAX_CONCURRENT = 8;
 const MAX_WAIT_MS = 2_000;
 let inFlight = 0;
-const waiters: Array<{ resolve: () => void; reject: (e: Error) => void; timer: number }> = [];
+const waiters: Array<{
+  resolve: () => void;
+  reject: (e: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+}> = [];
 
 async function acquire(): Promise<void> {
-  if (inFlight < MAX_CONCURRENT) { inFlight++; return; }
+  if (inFlight < MAX_CONCURRENT) {
+    inFlight++;
+    return;
+  }
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {
       const idx = waiters.findIndex((w) => w.timer === timer);
       if (idx >= 0) waiters.splice(idx, 1);
       reject(new FreescoutError(503, "Concurrency limit; try again shortly"));
     }, MAX_WAIT_MS);
-    waiters.push({ resolve: () => { inFlight++; resolve(); }, reject, timer });
+    waiters.push({
+      resolve: () => {
+        inFlight++;
+        resolve();
+      },
+      reject,
+      timer,
+    });
   });
 }
 function release() {
   inFlight = Math.max(0, inFlight - 1);
   const next = waiters.shift();
-  if (next) { clearTimeout(next.timer); next.resolve(); }
+  if (next) {
+    clearTimeout(next.timer);
+    next.resolve();
+  }
 }
 
 // -------- fetch --------
@@ -119,7 +143,7 @@ export async function freescoutFetch<T = unknown>(opts: FreescoutFetchOpts): Pro
     method: opts.method ?? "GET",
     headers: {
       "X-FreeScout-API-Key": FREESCOUT_API_KEY,
-      "Accept": "application/json",
+      Accept: "application/json",
       ...(opts.body !== undefined ? { "Content-Type": "application/json" } : {}),
     },
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
@@ -134,11 +158,17 @@ export async function freescoutFetch<T = unknown>(opts: FreescoutFetchOpts): Pro
     clearTimeout(timer);
     release();
     recordFailure();
-    console.error(JSON.stringify({
-      level: "error", fn: "freescout-client", code: "upstream_unreachable",
-      method: init.method, path: opts.path, attempt,
-      err: e instanceof Error ? e.message : String(e),
-    }));
+    console.error(
+      JSON.stringify({
+        level: "error",
+        fn: "freescout-client",
+        code: "upstream_unreachable",
+        method: init.method,
+        path: opts.path,
+        attempt,
+        err: e instanceof Error ? e.message : String(e),
+      })
+    );
     if (attempt < maxAttempts) {
       await new Promise((r) => setTimeout(r, 250 * attempt));
       return freescoutFetch<T>({ ...opts, attempt: attempt + 1 });
@@ -151,12 +181,27 @@ export async function freescoutFetch<T = unknown>(opts: FreescoutFetchOpts): Pro
   if (res.status >= 500) {
     recordFailure();
     let body: unknown = undefined;
-    try { body = await res.clone().json(); } catch { try { body = await res.text(); } catch { /* ignore */ } }
-    console.error(JSON.stringify({
-      level: "error", fn: "freescout-client", code: "upstream_5xx",
-      method: init.method, path: opts.path, status: res.status, attempt,
-      body: typeof body === "string" ? body.slice(0, 1000) : body,
-    }));
+    try {
+      body = await res.clone().json();
+    } catch {
+      try {
+        body = await res.text();
+      } catch {
+        /* ignore */
+      }
+    }
+    console.error(
+      JSON.stringify({
+        level: "error",
+        fn: "freescout-client",
+        code: "upstream_5xx",
+        method: init.method,
+        path: opts.path,
+        status: res.status,
+        attempt,
+        body: typeof body === "string" ? body.slice(0, 1000) : body,
+      })
+    );
     if (attempt < maxAttempts) {
       await new Promise((r) => setTimeout(r, 400 * attempt));
       return freescoutFetch<T>({ ...opts, attempt: attempt + 1 });
@@ -166,19 +211,37 @@ export async function freescoutFetch<T = unknown>(opts: FreescoutFetchOpts): Pro
 
   if (!res.ok) {
     let body: unknown = undefined;
-    try { body = await res.clone().json(); } catch { try { body = await res.text(); } catch { /* ignore */ } }
-    console.error(JSON.stringify({
-      level: "error", fn: "freescout-client", code: "upstream_4xx",
-      method: init.method, path: opts.path, status: res.status,
-      statusText: res.statusText,
-      body: typeof body === "string" ? body.slice(0, 1000) : body,
-    }));
+    try {
+      body = await res.clone().json();
+    } catch {
+      try {
+        body = await res.text();
+      } catch {
+        /* ignore */
+      }
+    }
+    console.error(
+      JSON.stringify({
+        level: "error",
+        fn: "freescout-client",
+        code: "upstream_4xx",
+        method: init.method,
+        path: opts.path,
+        status: res.status,
+        statusText: res.statusText,
+        body: typeof body === "string" ? body.slice(0, 1000) : body,
+      })
+    );
     throw new FreescoutError(res.status, res.statusText || `HTTP ${res.status}`, body);
   }
 
   recordSuccess();
   if (res.status === 204) return undefined as unknown as T;
-  try { return await res.json() as T; } catch { return undefined as unknown as T; }
+  try {
+    return (await res.json()) as T;
+  } catch {
+    return undefined as unknown as T;
+  }
 }
 
 // -------- HMAC webhook verification (A02, constant-time) --------
@@ -201,7 +264,9 @@ function b64Decode(s: string): Uint8Array | null {
     const out = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
     return out;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 export async function verifyFreescoutWebhook(req: Request, rawBody: string): Promise<boolean> {
@@ -224,10 +289,10 @@ export async function verifyFreescoutWebhook(req: Request, rawBody: string): Pro
       new TextEncoder().encode(secret),
       { name: "HMAC", hash: "SHA-256" },
       false,
-      ["sign"],
+      ["sign"]
     );
     const macBuf = new Uint8Array(
-      await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(rawBody)),
+      await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(rawBody))
     );
     if (timingSafeEqual(macBuf, provided)) return true;
   }
@@ -236,22 +301,36 @@ export async function verifyFreescoutWebhook(req: Request, rawBody: string): Pro
 
 // -------- Typed helpers --------
 
-export interface FreescoutCustomer { id: number; emails?: { value: string }[]; firstName?: string; lastName?: string }
-export interface FreescoutUser { id: number; email?: string; firstName?: string; lastName?: string }
+export interface FreescoutCustomer {
+  id: number;
+  emails?: { value: string }[];
+  firstName?: string;
+  lastName?: string;
+}
+export interface FreescoutUser {
+  id: number;
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+}
 
 export async function findCustomerByEmail(email: string): Promise<FreescoutCustomer | null> {
   const res = await freescoutFetch<{ _embedded?: { customers?: FreescoutCustomer[] } }>({
-    path: "/api/customers", query: { email },
+    path: "/api/customers",
+    query: { email },
   });
   const list = res._embedded?.customers ?? [];
   return list[0] ?? null;
 }
 
 export async function createCustomer(
-  email: string, firstName?: string, lastName?: string,
+  email: string,
+  firstName?: string,
+  lastName?: string
 ): Promise<FreescoutCustomer> {
   return await freescoutFetch<FreescoutCustomer>({
-    method: "POST", path: "/api/customers",
+    method: "POST",
+    path: "/api/customers",
     body: {
       firstName: firstName || "Tech Fleet",
       lastName: lastName || "Member",
@@ -262,25 +341,31 @@ export async function createCustomer(
 
 export async function findUserByEmail(email: string): Promise<FreescoutUser | null> {
   const res = await freescoutFetch<{ _embedded?: { users?: FreescoutUser[] } }>({
-    path: "/api/users", query: { email },
+    path: "/api/users",
+    query: { email },
   });
   const list = res._embedded?.users ?? [];
   return list[0] ?? null;
 }
 
 export async function createUser(
-  email: string, firstName: string, lastName: string,
+  email: string,
+  firstName: string,
+  lastName: string
 ): Promise<FreescoutUser> {
   // sendInvite:false on purpose — the platform proxies every Freescout call
   // with the master API key, so admins never need a Freescout password or
   // login. Inviting them would just spam their inbox with a setup link they
   // don't need. See plan §1.A — silent provisioning.
   return await freescoutFetch<FreescoutUser>({
-    method: "POST", path: "/api/users",
+    method: "POST",
+    path: "/api/users",
     body: {
       firstName: firstName || "Admin",
       lastName: lastName || "User",
-      email, role: "user", sendInvite: false,
+      email,
+      role: "user",
+      sendInvite: false,
       mailboxes: DEFAULT_MAILBOX_ID > 0 ? [DEFAULT_MAILBOX_ID] : [],
     },
   });

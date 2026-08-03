@@ -652,7 +652,7 @@ serve(
       try {
         const { data: gs } = await supabase.rpc("fleety_cost_guard_step");
         if (typeof gs === "string" && ["none", "soft", "medium", "hard"].includes(gs)) {
-          costGuardStep = gs as typeof costGuardStep;
+          costGuardStep = gs as "none" | "soft" | "medium" | "hard";
         }
       } catch (_) {
         /* fail-open */
@@ -933,7 +933,7 @@ serve(
           const neighborResults = typedHits.map((hit) => ({
             hit,
             data: batchMap[`${hit.entity_type}:${hit.id}`] ?? { outgoing: [], incoming: [] },
-            error: null as null,
+            error: null as { message?: string } | null,
           }));
           // ── Bidirectional natural-language label map ──────────────────
           // Each rel_type is stored once (directed) in framework_edges, but
@@ -1082,8 +1082,7 @@ serve(
           p_limit: 1,
         });
         const top = (canned ?? [])[0] as
-          | { id: string; answer_md: string; similarity: number }
-          | undefined;
+          { id: string; answer_md: string; similarity: number } | undefined;
         if (top && top.similarity >= 0.45) {
           cannedAnswerId = top.id;
           cannedContext = `\n\nCURATED ANSWER (admin-approved — start from this exact content; you may lightly tailor wording but must preserve every fact and link):\n${top.answer_md}\n`;

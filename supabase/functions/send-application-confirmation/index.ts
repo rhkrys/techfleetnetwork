@@ -16,7 +16,7 @@
 // Idempotency: outbox UNIQUE(kind, application_id) + sent_at guard makes this
 // safe to call any number of times.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { queueTransactionalEmail } from "../_shared/transactional-email.ts";
 import { authorizeServiceRoleRequest } from "../_shared/service-role-auth.ts";
 
@@ -40,7 +40,7 @@ interface OutboxRow {
 }
 
 async function loadRecipientContext(
-  admin: ReturnType<typeof createClient>,
+  admin: SupabaseClient,
   row: OutboxRow
 ): Promise<{ email: string | null; firstName: string | null; projectName: string | null }> {
   let email = row.recipient_email;
@@ -81,7 +81,7 @@ async function loadRecipientContext(
 }
 
 async function processRow(
-  admin: ReturnType<typeof createClient>,
+  admin: SupabaseClient,
   row: OutboxRow
 ): Promise<{ ok: boolean; reason?: string }> {
   const ctx = await loadRecipientContext(admin, row);

@@ -25,17 +25,16 @@ const QuerySchema = z
     from: z.string().datetime().optional(),
     to: z.string().datetime().optional(),
   })
-  .refine(
-    (v) => (v.from && v.to) || (!v.from && !v.to),
-    { message: "from and to must be provided together" },
-  )
+  .refine((v) => (v.from && v.to) || (!v.from && !v.to), {
+    message: "from and to must be provided together",
+  })
   .refine(
     (v) => {
       if (!v.from || !v.to) return true;
       const ms = Date.parse(v.to) - Date.parse(v.from);
       return ms > 0 && ms <= 14 * 24 * 60 * 60 * 1000;
     },
-    { message: "from/to span must be 1-14 days" },
+    { message: "from/to span must be 1-14 days" }
   );
 
 const MEET_BOILERPLATE_RE =
@@ -43,7 +42,10 @@ const MEET_BOILERPLATE_RE =
 
 function cleanDescription(desc: string): string {
   if (!desc) return "";
-  return desc.replace(MEET_BOILERPLATE_RE, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  return desc
+    .replace(MEET_BOILERPLATE_RE, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 interface CachedEvent {
@@ -82,7 +84,7 @@ async function readCache(): Promise<CachedEvent[]> {
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
   const { data, error } = await supabase
     .from("community_events_cache")
@@ -90,7 +92,7 @@ async function readCache(): Promise<CachedEvent[]> {
     .eq("id", 1)
     .maybeSingle();
   if (error) throw error;
-  const events = ((data?.events ?? []) as CachedEvent[]) ?? [];
+  const events = (data?.events ?? []) as CachedEvent[];
   memo = { at: Date.now(), events };
   return events;
 }
