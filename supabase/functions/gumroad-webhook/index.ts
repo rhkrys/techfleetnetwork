@@ -1,39 +1,31 @@
 // @edge-public
-import { withAuditWrapper } from "../_shared/audit.ts";
 /**
- * Gumroad Ping webhook receiver.
+ * Gumroad webhook — LEDGER INGESTION ONLY.
  *
- * Gumroad's "Ping" feature POSTs application/x-www-form-urlencoded bodies
- * (https://help.gumroad.com/article/40-pings) on every successful sale.
- * Refunds, cancellations, and recurring charges are *not* covered here —
- * those need separate "Resource subscriptions" wired to additional events.
+ * Records facts into public.gumroad_sales (the source of truth). It NEVER writes
+ * a membership tier: a DB trigger runs public.compute_membership() to derive the
+ * profile from the ledger + the membership_products catalog. Handles both the
+ * sale Ping and Resource-Subscription lifecycle events (refund / dispute /
+ * cancellation / subscription_ended), which set lifecycle timestamps so the
+ * projector downgrades access automatically.
  *
- * Defense in depth:
- *   1. Shared secret via ?secret=… on the URL configured in Gumroad settings.
- *      Compared with timing-safe equality.
- *   2. Seller ID match — Gumroad includes seller_id in the payload; we
- *      verify it matches GUMROAD_SELLER_ID so somebody who learns the URL
- *      still can't replay another seller's webhook.
- *   3. Idempotency — every sale_id is recorded once in gumroad_sales.
- *      Repeat pings short-circuit with HTTP 200 (Gumroad keeps retrying
- *      on non-2xx, so we only return non-2xx for *security* failures).
- *
- * Mapping rules:
- *   - product_permalink "founding-membership" → community + is_founding_member=true
- *   - product_permalink containing "community"   → community
- *   - product_permalink containing "professional"→ professional
- *
- * Email match is case-insensitive against profiles.email. If there's no
- * profile yet (signed up after purchase), we still record the sale and the
- * frontend reconciliation hook will reapply on next login.
+ * Security (OWASP Cheat Sheets applied):
+ *  - Webhook auth: shared secret via ?secret= (constant-time compare) AND
+ *    seller_id match. Failures -> 403 + audit, fail-closed.
+ *  - Input Validation: zod schema + a hard body-size cap (DoS).
+ *  - Business logic / Abuse: idempotent (sale_id unique upsert); refund/dispute/
+ *    end set timestamps that DOWNGRADE via the projector -> no refund fraud.
+ *  - Least privilege: service-role only; members can never reach the ledger
+ *    (RLS denies authenticated writes regardless of this function).
+ *  - No secrets logged; errors never leak internals to the caller.
  */
-
+import { withAuditWrapper } from "../_shared/audit.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.74.0";
+import { z } from "npm:zod@3.23.8";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -42,324 +34,197 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GUMROAD_PING_SECRET = Deno.env.get("GUMROAD_PING_SECRET") ?? "";
 const GUMROAD_SELLER_ID = Deno.env.get("GUMROAD_SELLER_ID") ?? "";
 
-/** Constant-time string comparison to avoid leaking secret via timing. */
+/** 16 KB is comfortably above any Gumroad payload; caps DoS via huge bodies. */
+const MAX_BODY_BYTES = 16 * 1024;
+
+/** Constant-time string comparison — no early exit, no timing leak. */
 function safeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;
-  for (let i = 0; i < a.length; i++) {
-    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return diff === 0;
 }
 
-interface ParsedSale {
-  sale_id: string;
-  seller_id: string;
-  product_id: string;
-  product_permalink: string;
-  permalink: string;
-  email: string;
-  price_cents: number;
-  recurrence: string;
-  full: Record<string, string>;
+/** Gumroad encodes booleans inconsistently across event types. */
+function truthy(v: string | undefined | null): boolean {
+  return v === "true" || v === "1" || v === "yes";
 }
 
-function parsePayload(form: URLSearchParams): ParsedSale {
-  const get = (k: string) => form.get(k) ?? "";
-  // Gumroad sends some fields as e.g. price (in cents) and offer_code etc.
-  const priceRaw = get("price");
-  const price_cents = priceRaw ? parseInt(priceRaw, 10) || 0 : 0;
-  const full: Record<string, string> = {};
-  for (const [k, v] of form.entries()) full[k] = v;
-  return {
-    sale_id: get("sale_id"),
-    seller_id: get("seller_id"),
-    product_id: get("product_id"),
-    product_permalink: get("product_permalink"),
-    permalink: get("permalink"),
-    email: get("email"),
-    price_cents,
-    recurrence: get("recurrence"),
-    full,
-  };
+/** Neutralize LIKE/ILIKE wildcards (`%` `_` `\`) so an email with those legal
+ *  characters can't widen the match to other users' rows (IDOR). */
+function escapeLike(s: string): string {
+  return s.replace(/[\\%_]/g, (c) => `\\${c}`);
 }
 
-type Tier = "starter" | "community" | "professional";
-
-interface TierMapping {
-  tier: Tier;
-  isFoundingMember: boolean;
+function json(body: unknown, status: number): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 }
 
-function normalizeBillingPeriod(recurrence: string, sale: ParsedSale): "monthly" | "yearly" {
-  const haystack = `${recurrence} ${sale.permalink} ${sale.product_permalink}`.toLowerCase();
-  return haystack.includes("year") || haystack.includes("annual") || haystack.includes("founding")
-    ? "yearly"
-    : "monthly";
-}
+// Validate the fields we consume; `.passthrough()` keeps the rest for raw_payload.
+const PayloadSchema = z
+  .object({
+    sale_id: z.string().max(255).optional(),
+    seller_id: z.string().max(255).optional(),
+    subscription_id: z.string().max(255).optional(),
+    product_id: z.string().max(255).optional(),
+    product_permalink: z.string().max(1024).optional(),
+    permalink: z.string().max(255).optional(),
+    email: z.string().max(320).optional(),
+    price: z.string().max(32).optional(),
+    recurrence: z.string().max(64).optional(),
+    refunded: z.string().max(16).optional(),
+    disputed: z.string().max(16).optional(),
+    dispute_won: z.string().max(16).optional(),
+    cancelled: z.string().max(16).optional(),
+    ended: z.string().max(16).optional(),
+    resource_name: z.string().max(64).optional(),
+  })
+  .passthrough();
 
-function mapToTier(sale: ParsedSale): TierMapping {
-  // Gumroad sends both `permalink` (short slug) and `product_permalink` (full URL).
-  // Match on either, lowercased, to be resilient.
-  const slug =
-    (sale.permalink || sale.product_permalink || "").toLowerCase();
-  if (slug.includes("founding")) {
-    return { tier: "community", isFoundingMember: true };
-  }
-  if (slug.includes("professional")) {
-    return { tier: "professional", isFoundingMember: false };
-  }
-  // Default any other Gumroad SKU on this seller to community membership.
-  return { tier: "community", isFoundingMember: false };
-}
-
-async function logMembershipMetadataMismatch(
-  supabase: { rpc: (fn: string, args: Record<string, unknown>) => Promise<unknown> },
-  details: {
-    userId: string;
-    saleId: string;
-    storedTier?: string | null;
-    expectedTier: Tier;
-    storedBillingPeriod?: string | null;
-    expectedBillingPeriod: "monthly" | "yearly";
-    storedFoundingMember?: boolean | null;
-    expectedFoundingMember: boolean;
-  },
-): Promise<void> {
-  const hasMismatch =
-    details.storedTier !== details.expectedTier ||
-    details.storedBillingPeriod !== details.expectedBillingPeriod ||
-    details.storedFoundingMember !== details.expectedFoundingMember;
-
-  if (!hasMismatch) return;
-
-  try {
-    await supabase.rpc("write_audit_log", {
-      p_event_type: "membership_metadata_mismatch",
-      p_table_name: "profiles",
-      p_record_id: details.userId,
-      p_user_id: details.userId,
-      p_changed_fields: [
-        `source:gumroad-webhook`,
-        `sale_id:${details.saleId}`,
-        `stored_tier:${details.storedTier ?? "unknown"}`,
-        `expected_tier:${details.expectedTier}`,
-        `stored_billing_period:${details.storedBillingPeriod ?? "unknown"}`,
-        `expected_billing_period:${details.expectedBillingPeriod}`,
-        `stored_founding_member:${String(details.storedFoundingMember ?? false)}`,
-        `expected_founding_member:${String(details.expectedFoundingMember)}`,
-      ],
-      p_error_message:
-        "Stored membership metadata differed from the latest subscription metadata before sync.",
-    });
-  } catch (err) {
-    console.warn("gumroad-webhook: audit log mismatch write failed", err);
-  }
-}
-
-Deno.serve(withAuditWrapper("gumroad-webhook", async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
-
-  if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
-      status: 405,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  // 1. Shared-secret check
-  const url = new URL(req.url);
-  const providedSecret = url.searchParams.get("secret") ?? "";
-  if (
-    !GUMROAD_PING_SECRET ||
-    !providedSecret ||
-    !safeEqual(providedSecret, GUMROAD_PING_SECRET)
-  ) {
-    console.warn("gumroad-webhook: secret mismatch", {
-      hasConfigured: !!GUMROAD_PING_SECRET,
-      hasProvided: !!providedSecret,
-    });
-    void emitWebhookSignatureFailure({
-      reason: providedSecret ? "secret_mismatch" : "secret_missing",
-    });
-    return new Response(JSON.stringify({ error: "Forbidden" }), {
-      status: 403,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  // 2. Parse body (Gumroad sends application/x-www-form-urlencoded)
-  let sale: ParsedSale;
-  try {
-    const ct = req.headers.get("content-type") ?? "";
-    let form: URLSearchParams;
-    if (ct.includes("application/json")) {
-      const json = await req.json();
-      form = new URLSearchParams();
-      for (const [k, v] of Object.entries(json)) {
-        if (typeof v === "string") form.append(k, v);
-        else form.append(k, JSON.stringify(v));
-      }
-    } else {
-      const body = await req.text();
-      form = new URLSearchParams(body);
+async function readBody(req: Request): Promise<Record<string, string>> {
+  // Read the raw body first and enforce the cap on ACTUAL bytes read — the
+  // Content-Length header can be omitted or lie (chunked transfer).
+  const raw = await req.text();
+  if (raw.length > MAX_BODY_BYTES) throw new Error("too_large");
+  const ct = req.headers.get("content-type") ?? "";
+  const out: Record<string, string> = {};
+  if (ct.includes("application/json")) {
+    const j = JSON.parse(raw);
+    for (const [k, v] of Object.entries(j as Record<string, unknown>)) {
+      out[k] = typeof v === "string" ? v : JSON.stringify(v);
     }
-    sale = parsePayload(form);
-  } catch (err) {
-    console.error("gumroad-webhook: parse error", err);
-    return new Response(JSON.stringify({ error: "Bad request" }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+  } else {
+    const form = new URLSearchParams(raw);
+    for (const [k, v] of form.entries()) out[k] = v;
   }
+  return out;
+}
 
-  // 3. Seller ID check (defense in depth)
-  if (
-    !GUMROAD_SELLER_ID ||
-    !sale.seller_id ||
-    !safeEqual(sale.seller_id, GUMROAD_SELLER_ID)
-  ) {
-    console.warn("gumroad-webhook: seller_id mismatch", {
-      received: sale.seller_id,
-    });
-    void emitWebhookSignatureFailure({ reason: "seller_id_mismatch" });
-    return new Response(JSON.stringify({ error: "Forbidden" }), {
-      status: 403,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
+Deno.serve(
+  withAuditWrapper("gumroad-webhook", async (req) => {
+    if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+    if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
-  if (!sale.sale_id || !sale.email) {
-    console.warn("gumroad-webhook: missing required fields", {
-      hasSaleId: !!sale.sale_id,
-      hasEmail: !!sale.email,
-    });
-    return new Response(JSON.stringify({ error: "Missing fields" }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
+    // DoS guard — reject oversized bodies before reading them.
+    const declaredLen = parseInt(req.headers.get("content-length") ?? "0", 10);
+    if (Number.isFinite(declaredLen) && declaredLen > MAX_BODY_BYTES) {
+      return json({ error: "Payload too large" }, 413);
+    }
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-  // 4. Idempotency — try to insert; if conflict, ack 200 without re-applying
-  const mapping = mapToTier(sale);
-  const billingPeriod = normalizeBillingPeriod(sale.recurrence, sale);
-  const normalizedEmail = sale.email.trim().toLowerCase();
-
-  const { data: existing } = await supabase
-    .from("gumroad_sales")
-    .select("id, status")
-    .eq("sale_id", sale.sale_id)
-    .maybeSingle();
-
-  if (existing && existing.status === "applied") {
-    console.log("gumroad-webhook: duplicate sale ignored", sale.sale_id);
-    return new Response(JSON.stringify({ ok: true, duplicate: true }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  // 5. Resolve user by email (may be null if user hasn't signed up yet)
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("user_id, email, membership_tier, membership_billing_period, is_founding_member")
-    .ilike("email", normalizedEmail)
-    .maybeSingle();
-
-  // 6. Record the sale (upsert on sale_id)
-  const salePayload = {
-    sale_id: sale.sale_id,
-    seller_id: sale.seller_id,
-    product_id: sale.product_id,
-    product_permalink: sale.permalink || sale.product_permalink,
-    email: normalizedEmail,
-    price_cents: sale.price_cents,
-    recurrence: sale.recurrence,
-    resolved_tier: mapping.tier,
-    resolved_user_id: profile?.user_id ?? null,
-    is_founding_member: mapping.isFoundingMember,
-    raw_payload: sale.full,
-    status: profile ? "applied" : "pending_user",
-    received_at: new Date().toISOString(),
-    processed_at: profile ? new Date().toISOString() : null,
-  };
-
-  const { error: upsertErr } = await supabase
-    .from("gumroad_sales")
-    .upsert(salePayload, { onConflict: "sale_id" });
-
-  if (upsertErr) {
-    console.error("gumroad-webhook: failed to record sale", upsertErr);
-    // Return 500 so Gumroad retries
-    return new Response(JSON.stringify({ error: "Persist failed" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  // 7. Apply tier to profile if we have a user
-  if (profile) {
-    await logMembershipMetadataMismatch(supabase as unknown as { rpc: (fn: string, args: Record<string, unknown>) => Promise<unknown> }, {
-      userId: profile.user_id,
-      saleId: sale.sale_id,
-      storedTier: profile.membership_tier,
-      expectedTier: mapping.tier,
-      storedBillingPeriod: profile.membership_billing_period,
-      expectedBillingPeriod: billingPeriod,
-      storedFoundingMember: profile.is_founding_member,
-      expectedFoundingMember: mapping.isFoundingMember,
-    });
-
-    const { error: profileErr } = await supabase
-      .from("profiles")
-      .update({
-        membership_tier: mapping.tier,
-        is_founding_member: mapping.isFoundingMember,
-        membership_billing_period: billingPeriod,
-        membership_sku: sale.permalink || sale.product_permalink,
-        membership_gumroad_sale_id: sale.sale_id,
-        membership_updated_at: new Date().toISOString(),
-      })
-      .eq("user_id", profile.user_id);
-
-    if (profileErr) {
-      console.error(
-        "gumroad-webhook: failed to update profile",
-        profileErr,
-      );
-      await supabase
-        .from("gumroad_sales")
-        .update({ status: "error", error_message: profileErr.message })
-        .eq("sale_id", sale.sale_id);
-      return new Response(JSON.stringify({ error: "Profile update failed" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    // 1. Shared-secret (constant-time). Fail closed + audit.
+    const providedSecret = new URL(req.url).searchParams.get("secret") ?? "";
+    if (
+      !GUMROAD_PING_SECRET ||
+      !providedSecret ||
+      !safeEqual(providedSecret, GUMROAD_PING_SECRET)
+    ) {
+      void emitWebhookSignatureFailure({
+        reason: providedSecret ? "secret_mismatch" : "secret_missing",
       });
+      return json({ error: "Forbidden" }, 403);
     }
-  }
 
-  return new Response(
-    JSON.stringify({
-      ok: true,
-      applied: !!profile,
-      tier: mapping.tier,
-      founding: mapping.isFoundingMember,
-    }),
-    {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    },
-  );
-}));
+    // 2. Parse + validate.
+    let raw: Record<string, string>;
+    try {
+      raw = await readBody(req);
+    } catch (e) {
+      if ((e as Error).message === "too_large") return json({ error: "Payload too large" }, 413);
+      return json({ error: "Bad request" }, 400);
+    }
+    const parsedResult = PayloadSchema.safeParse(raw);
+    if (!parsedResult.success) return json({ error: "Invalid payload" }, 400);
+    const p = parsedResult.data;
 
-/**
- * Emit a `malicious_webhook_signature_invalid` audit row whenever the
- * shared-secret or seller-id check fails. Telemetry must never throw.
- */
+    // 3. Seller-id (constant-time). Fail closed + audit.
+    if (!GUMROAD_SELLER_ID || !p.seller_id || !safeEqual(p.seller_id, GUMROAD_SELLER_ID)) {
+      void emitWebhookSignatureFailure({ reason: "seller_id_mismatch" });
+      return json({ error: "Forbidden" }, 403);
+    }
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const now = new Date().toISOString();
+
+    const isRefund = truthy(p.refunded) || p.resource_name === "refund";
+    const isDispute =
+      (truthy(p.disputed) && !truthy(p.dispute_won)) || p.resource_name === "dispute";
+    const isCancelled = truthy(p.cancelled) || p.resource_name === "cancellation";
+    const isEnded = truthy(p.ended) || p.resource_name === "subscription_ended";
+    const isLifecycle = isRefund || isDispute || isCancelled || isEnded;
+
+    // 4a. Lifecycle event: patch timestamps on the existing ledger row(s). We do
+    // NOT upsert here — that would clobber the sale's resolution. Match by sale_id
+    // when present, else by subscription_id. The projector trigger downgrades.
+    if (isLifecycle) {
+      const patch: Record<string, string> = {};
+      if (isRefund) patch.refunded_at = now;
+      if (isDispute) patch.disputed_at = now;
+      if (isCancelled) patch.subscription_cancelled_at = now;
+      if (isEnded) patch.subscription_ended_at = now;
+
+      let q = supabase.from("gumroad_sales").update(patch);
+      if (p.sale_id) q = q.eq("sale_id", p.sale_id);
+      else if (p.subscription_id) q = q.eq("subscription_id", p.subscription_id);
+      else return json({ error: "Missing sale_id/subscription_id" }, 400);
+
+      const { error } = await q;
+      if (error) return json({ error: "Persist failed" }, 500); // 500 -> Gumroad retries
+      return json({ ok: true, lifecycle: true }, 200);
+    }
+
+    // 4b. Sale event: upsert the ledger row. Resolve the buyer by verified email.
+    if (!p.sale_id) return json({ error: "Missing sale_id" }, 400);
+    const normalizedEmail = (p.email ?? "").trim().toLowerCase();
+
+    // Idempotency fast-path: an already-recorded sale needs no re-work.
+    const { data: existing } = await supabase
+      .from("gumroad_sales")
+      .select("id")
+      .eq("sale_id", p.sale_id)
+      .maybeSingle();
+    if (existing) return json({ ok: true, duplicate: true }, 200);
+
+    let resolvedUserId: string | null = null;
+    if (normalizedEmail) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("user_id")
+        .ilike("email", escapeLike(normalizedEmail))
+        .maybeSingle();
+      resolvedUserId = profile?.user_id ?? null;
+    }
+
+    const priceCents = p.price ? parseInt(p.price, 10) || 0 : 0;
+    const { error: upsertErr } = await supabase.from("gumroad_sales").upsert(
+      {
+        sale_id: p.sale_id,
+        seller_id: p.seller_id,
+        subscription_id: p.subscription_id ?? null,
+        product_id: p.product_id ?? "",
+        product_permalink: p.permalink || p.product_permalink || "",
+        email: normalizedEmail,
+        price_cents: priceCents,
+        recurrence: p.recurrence ?? "",
+        resource_name: p.resource_name ?? "sale",
+        resolved_user_id: resolvedUserId,
+        status: resolvedUserId ? "applied" : "pending_user",
+        raw_payload: raw,
+        received_at: now,
+        processed_at: resolvedUserId ? now : null,
+      },
+      { onConflict: "sale_id" }
+    );
+    if (upsertErr) return json({ error: "Persist failed" }, 500); // 500 -> Gumroad retries
+
+    // No tier write here — the AFTER INSERT trigger runs compute_membership().
+    return json({ ok: true, recorded: true, resolved: !!resolvedUserId }, 200);
+  })
+);
+
+/** Emit a signature-failure audit row. Telemetry must never throw. */
 async function emitWebhookSignatureFailure(args: { reason: string }): Promise<void> {
   try {
     const [{ auditEdgeEvent }, { getAdminClient }] = await Promise.all([

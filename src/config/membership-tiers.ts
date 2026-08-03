@@ -86,18 +86,19 @@ export const MEMBERSHIP_TIERS: Record<TierId, MembershipTier> = {
   starter: {
     id: "starter",
     name: "Starter",
-    tagline:
-      "Shift your mindset to empowered teams and build a better future of work.",
+    tagline: "Shift your mindset to empowered teams and build a better future of work.",
     priceDisplay: "FREE",
     priceSubtitle: "forever",
     uniqueFeatures: STARTER_FEATURES,
     cta: { type: "current_or_signup" },
   },
   community: {
+    // NOTE: display name is "Early Career Membership" (owner rebrand, 2026-08).
+    // The `id`/enum token stays `community` internally to avoid a high-risk
+    // production enum rename; users only ever see `name`.
     id: "community",
-    name: "Community",
-    tagline:
-      "Commit to developing as a service leader and build empowered teams.",
+    name: "Early Career Membership",
+    tagline: "Commit to developing as a service leader and build empowered teams.",
     priceDisplay: "$10",
     priceSubtitle: "USD per month",
     priceFootnote: "Billed at $9.99 USD via Gumroad",
@@ -114,13 +115,12 @@ export const MEMBERSHIP_TIERS: Record<TierId, MembershipTier> = {
   professional: {
     id: "professional",
     name: "Professional",
-    tagline:
-      "Working professionals and executive leaders are a part of the future of work too.",
+    tagline: "Working professionals and executive leaders are a part of the future of work too.",
     priceDisplay: "$16",
     priceSubtitle: "USD per month",
     uniqueFeatures: PROFESSIONAL_UNIQUE,
     inheritedFeatures: {
-      fromTier: "Community",
+      fromTier: "Early Career Membership",
       features: [...COMMUNITY_UNIQUE, ...STARTER_FEATURES],
     },
     cta: { type: "waitlist" },

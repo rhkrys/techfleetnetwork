@@ -27,10 +27,16 @@ import { useDeferredMount } from "@/lib/defer-until-idle";
 const log = createLogger("MembershipRealtime");
 
 const TIER_LABEL: Record<string, string> = {
-  starter: "Starter",
-  community: "Community",
+  starter: "Free",
+  community: "Early Career Membership",
   professional: "Professional",
 };
+
+/** Session-scoped key so the (Gumroad-API) backfill runs at most once per
+ *  browser session per user, even if the hosting page remounts on navigation. */
+function backfillSessionKey(userId: string): string {
+  return `tfn.gumroad.backfill.v1.${userId}`;
+}
 
 export function useMembershipRealtime() {
   const { user, profile, refreshProfile } = useAuth();
@@ -47,14 +53,13 @@ export function useMembershipRealtime() {
   // Track current state so the realtime callback can detect transitions.
   useEffect(() => {
     if (profile) {
-      const tier = (profile as unknown as { membership_tier?: string })
-        .membership_tier ?? null;
+      const tier = (profile as unknown as { membership_tier?: string }).membership_tier ?? null;
       const founding = Boolean(
-        (profile as unknown as { is_founding_member?: boolean })
-          .is_founding_member,
+        (profile as unknown as { is_founding_member?: boolean }).is_founding_member
       );
-      const billing = (profile as unknown as { membership_billing_period?: string })
-        .membership_billing_period ?? null;
+      const billing =
+        (profile as unknown as { membership_billing_period?: string }).membership_billing_period ??
+        null;
       // Only seed on first sight — don't overwrite once realtime is live.
       if (lastTierRef.current === null) lastTierRef.current = tier;
       if (lastFoundingRef.current === null) lastFoundingRef.current = founding;
@@ -75,38 +80,47 @@ export function useMembershipRealtime() {
       let appliedFromReconcile = 0;
 
       try {
-        const { data, error } = await supabase.functions.invoke(
-          "gumroad-reconcile",
-          { body: {} },
-        );
+        const { data, error } = await supabase.functions.invoke("gumroad-reconcile", { body: {} });
         if (error) {
           log.warn("reconcile", `Reconcile failed: ${error.message}`, {
             userId: user.id,
           });
         } else if (data?.applied && data.applied > 0) {
           appliedFromReconcile = data.applied;
-          log.info(
-            "reconcile",
-            `Applied ${data.applied} pending sale(s) for user ${user.id}`,
-            { userId: user.id, tier: data.tier },
-          );
+          log.info("reconcile", `Applied ${data.applied} pending sale(s) for user ${user.id}`, {
+            userId: user.id,
+            tier: data.tier,
+          });
           await refreshProfile();
         }
       } catch (err) {
-        log.warn(
-          "reconcile",
-          `Unexpected reconcile error: ${(err as Error).message}`,
-          { userId: user.id },
-        );
+        log.warn("reconcile", `Unexpected reconcile error: ${(err as Error).message}`, {
+          userId: user.id,
+        });
       }
 
-      // Backfill from Gumroad API — picks up historical sales the webhook
-      // never saw (purchases made before the webhook was wired up).
+      // Backfill from Gumroad API — picks up historical sales the webhook never
+      // saw. Expensive + rate-limited, so run at most once per browser session
+      // (recognition otherwise flows server-side via webhook + triggers + the
+      // nightly sweep). A session flag survives page remounts.
+      const backfillKey = backfillSessionKey(user.id);
+      let backfillAlreadyRan = false;
       try {
-        const { data, error } = await supabase.functions.invoke(
-          "gumroad-backfill",
-          { body: {} },
-        );
+        backfillAlreadyRan = sessionStorage.getItem(backfillKey) === "1";
+      } catch {
+        /* sessionStorage unavailable (SSR/private mode) — fall through */
+      }
+      if (backfillAlreadyRan) {
+        setSyncing(false);
+        return;
+      }
+      try {
+        const { data, error } = await supabase.functions.invoke("gumroad-backfill", { body: {} });
+        try {
+          sessionStorage.setItem(backfillKey, "1");
+        } catch {
+          /* ignore */
+        }
         if (error) {
           log.warn("backfill", `Backfill failed: ${error.message}`, {
             userId: user.id,
@@ -114,19 +128,16 @@ export function useMembershipRealtime() {
           return;
         }
         if (data?.imported && data.imported > appliedFromReconcile) {
-          log.info(
-            "backfill",
-            `Imported ${data.imported} historical sale(s) for user ${user.id}`,
-            { userId: user.id, tier: data.tier, founding: data.founding },
-          );
+          log.info("backfill", `Imported ${data.imported} historical sale(s) for user ${user.id}`, {
+            userId: user.id,
+            tier: data.tier,
+          });
           await refreshProfile();
         }
       } catch (err) {
-        log.warn(
-          "backfill",
-          `Unexpected backfill error: ${(err as Error).message}`,
-          { userId: user.id },
-        );
+        log.warn("backfill", `Unexpected backfill error: ${(err as Error).message}`, {
+          userId: user.id,
+        });
       } finally {
         setSyncing(false);
       }
@@ -161,8 +172,7 @@ export function useMembershipRealtime() {
           const newBilling = next.membership_billing_period ?? null;
 
           const tierChanged = prevTier !== null && prevTier !== newTier;
-          const foundingFlipped =
-            prevFounding !== null && prevFounding !== newFounding;
+          const foundingFlipped = prevFounding !== null && prevFounding !== newFounding;
           const billingChanged = prevBilling !== null && prevBilling !== newBilling;
 
           if (tierChanged || foundingFlipped || billingChanged) {
@@ -175,10 +185,10 @@ export function useMembershipRealtime() {
                 to: newTier,
                 founding: newFounding,
                 billingPeriod: newBilling,
-              },
+              }
             );
 
-            const tierName = newTier ? TIER_LABEL[newTier] ?? newTier : "your tier";
+            const tierName = newTier ? (TIER_LABEL[newTier] ?? newTier) : "your tier";
             const message = newFounding
               ? `🎉 Welcome, Founding Member! Your ${tierName} access is live.`
               : `🎉 Your ${tierName} membership is now active.`;
@@ -193,7 +203,7 @@ export function useMembershipRealtime() {
             lastBillingRef.current = newBilling;
             void refreshProfile();
           }
-        },
+        }
       )
       .subscribe();
 
