@@ -41,7 +41,9 @@ describe("TRIAGE-FIX permanent root-cause fixes", () => {
     // Frequency cap emits the email_capped audit event.
     expect(src).toMatch(/p_event_type:\s*['"]email_capped['"]/);
     // moveToDlq defaults to email_dlq.
-    expect(src).toMatch(/eventType:\s*'email_dlq'\s*\|\s*'edge_invoke_failed'\s*=\s*'email_dlq'/);
+    expect(src).toMatch(
+      /eventType:\s*["']email_dlq["']\s*\|\s*["']edge_invoke_failed["']\s*=\s*["']email_dlq["']/
+    );
     expect(src).toMatch(/p_event_type:\s*eventType/);
   });
 
@@ -79,8 +81,9 @@ describe("TRIAGE-FIX permanent root-cause fixes", () => {
 
   it("TRIAGE-FIX-006: error-reporter SUPPRESSED_PATTERNS no longer contains the eight refactored strings", () => {
     const src = read("src/services/error-reporter.service.ts");
-    const suppressedArray = (src.match(/const SUPPRESSED_PATTERNS = \[([\s\S]*?)\] as const;/)?.[1] ?? "")
-      .replace(/\/\/.*$/gm, "");
+    const suppressedArray = (
+      src.match(/const SUPPRESSED_PATTERNS = \[([\s\S]*?)\] as const;/)?.[1] ?? ""
+    ).replace(/\/\/.*$/gm, "");
     expect(suppressedArray).toBeTruthy();
     const banned = [
       '"Not authorized for project"',
@@ -93,7 +96,10 @@ describe("TRIAGE-FIX permanent root-cause fixes", () => {
       '"Script error."',
     ];
     for (const needle of banned) {
-      expect(suppressedArray, `pattern ${needle} should not be a SUPPRESSED_PATTERNS entry`).not.toContain(needle);
+      expect(
+        suppressedArray,
+        `pattern ${needle} should not be a SUPPRESSED_PATTERNS entry`
+      ).not.toContain(needle);
     }
 
     // email_capped / email_dlq must be in the non-actionable allow-list.
@@ -164,4 +170,3 @@ describe("TRIAGE-FIX permanent root-cause fixes", () => {
     expect(output).toContain("queue_rows=0");
   });
 });
-
