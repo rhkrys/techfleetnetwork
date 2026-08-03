@@ -80,17 +80,19 @@ CREATE POLICY "admin writes membership_product_aliases" ON public.membership_pro
   USING (public.has_role(auth.uid(), 'admin'))
   WITH CHECK (public.has_role(auth.uid(), 'admin'));
 
--- Seed the founding SKU (owner-confirmed: community tier, permanent founding,
--- yearly, 50% off, pre-2027). Real Gumroad product_id TBD — keyed on the stable
--- custom slug for now; both known permalink forms alias to it.
+-- Seed the founding SKU. Real Gumroad identifiers confirmed from the live product
+-- page (techfleet.gumroad.com/l/founding-membership): product_id/retailer_item_id
+-- = 'ftpql'; custom permalink = 'founding-membership'. Community tier, permanent
+-- founding, yearly ($49.99, 50% off $99). Keyed on the STABLE product_id 'ftpql';
+-- both permalink forms alias to it (Gumroad payloads may carry either).
 INSERT INTO public.membership_products (product_id, tier, is_founding, billing_period, rank, notes)
-VALUES ('founding-membership', 'community', true, 'yearly', 100,
-        'Founding member SKU (pre-2027, 50% off). Permanent founding status. Replace product_id with the real Gumroad id when known.')
+VALUES ('ftpql', 'community', true, 'yearly', 100,
+        'Tech Fleet FOUNDING Membership (Gumroad product_id=ftpql, permalink founding-membership). Yearly $49.99, 50% off $99. Permanent founding status.')
 ON CONFLICT (product_id) DO NOTHING;
 
 INSERT INTO public.membership_product_aliases (permalink, product_id) VALUES
-  ('founding-membership', 'founding-membership'),
-  ('ftpql',              'founding-membership')
+  ('founding-membership', 'ftpql'),
+  ('ftpql',              'ftpql')
 ON CONFLICT (permalink) DO NOTHING;
 
 -- ── Part C — Catalog lookup helper ───────────────────────────────────────────
