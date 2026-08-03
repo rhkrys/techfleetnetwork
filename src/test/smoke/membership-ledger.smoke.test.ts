@@ -138,4 +138,12 @@ describe("Early Career Membership ledger→projection (smoke)", () => {
     expect(hook).toMatch(/sessionStorage/);
     expect(hook).toMatch(/backfillSessionKey/);
   });
+
+  it("MEM-LEDGER-013: billing period is derived from the sale's recurrence (ftpql sells monthly + yearly)", () => {
+    // The projector maps gs.recurrence -> yearly/monthly (one product, two options).
+    expect(ledgerMigration).toMatch(/lower\(gs\.recurrence\)[\s\S]*?yearly/i);
+    expect(ledgerMigration).toMatch(/lower\(gs\.recurrence\)[\s\S]*?monthly/i);
+    // The founding SKU is keyed on the real Gumroad product_id.
+    expect(ledgerMigration).toMatch(/values\s*\(\s*'ftpql'/i);
+  });
 });

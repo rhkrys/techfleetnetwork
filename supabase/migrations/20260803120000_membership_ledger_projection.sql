@@ -83,11 +83,13 @@ CREATE POLICY "admin writes membership_product_aliases" ON public.membership_pro
 -- Seed the founding SKU. Real Gumroad identifiers confirmed from the live product
 -- page (techfleet.gumroad.com/l/founding-membership): product_id/retailer_item_id
 -- = 'ftpql'; custom permalink = 'founding-membership'. Community tier, permanent
--- founding, yearly ($49.99, 50% off $99). Keyed on the STABLE product_id 'ftpql';
--- both permalink forms alias to it (Gumroad payloads may carry either).
+-- founding. Sells BOTH monthly ($9) and yearly ($49.99) — the projector derives
+-- the billing period from each sale's recurrence; `billing_period` here is only
+-- the fallback default. Keyed on the STABLE product_id 'ftpql'; both permalink
+-- forms alias to it (Gumroad payloads may carry either).
 INSERT INTO public.membership_products (product_id, tier, is_founding, billing_period, rank, notes)
 VALUES ('ftpql', 'community', true, 'yearly', 100,
-        'Tech Fleet FOUNDING Membership (Gumroad product_id=ftpql, permalink founding-membership). Yearly $49.99, 50% off $99. Permanent founding status.')
+        'Tech Fleet FOUNDING Membership (Gumroad product_id=ftpql, permalink founding-membership). Monthly $9 / yearly $49.99 (50% off $99); billing derived per-sale. Permanent founding status.')
 ON CONFLICT (product_id) DO NOTHING;
 
 INSERT INTO public.membership_product_aliases (permalink, product_id) VALUES
@@ -203,7 +205,16 @@ BEGIN
   -- Access tier: highest-rank ACTIVE entitlement. Active = not refunded, not
   -- disputed, and (for subscriptions) not ended. A cancelled-but-not-yet-ended
   -- subscription still grants access until subscription_ended_at is set.
-  SELECT c.tier, c.billing_period,
+  --
+  -- Billing period is derived from THE SALE's recurrence (a single product — e.g.
+  -- the founding SKU 'ftpql' — sells both monthly and yearly), falling back to the
+  -- catalog's default when the recurrence is absent/unrecognized.
+  SELECT c.tier,
+         CASE
+           WHEN lower(gs.recurrence) LIKE '%year%' OR lower(gs.recurrence) LIKE '%annual%' THEN 'yearly'
+           WHEN lower(gs.recurrence) LIKE '%month%' THEN 'monthly'
+           ELSE c.billing_period
+         END,
          COALESCE(NULLIF(gs.product_permalink, ''), gs.product_id), gs.sale_id
     INTO v_tier, v_billing, v_sku, v_sale_id
     FROM public.gumroad_sales gs

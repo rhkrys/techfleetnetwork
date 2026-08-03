@@ -76,7 +76,13 @@ VALUES
    'UX: Early Career Membership label, never-blank status, once-per-session backfill',
    'Feature: Membership UX\n  Scenario: member views their plan\n    Then the banner shows a definite status labelled "Early Career Membership" for paid\n    And the Gumroad-API backfill runs at most once per session',
    'implemented', 'unit', 'src/test/smoke/membership-ledger.smoke.test.ts',
-   'Config label + session guard + always-definite banner.')
+   'Config label + session guard + always-definite banner.'),
+
+  ('MEM-LEDGER-013', 'Membership', 60,
+   'Billing period is derived from the sale recurrence (monthly + yearly)',
+   'Feature: Billing recurrence\n  Scenario: the founding SKU sells both monthly and yearly\n    Given a founding sale (ftpql) with recurrence monthly or yearly\n    When compute_membership runs\n    Then membership_billing_period reflects that sale''s recurrence',
+   'implemented', 'both', 'supabase/tests/membership_ledger_test.sql',
+   'One product (ftpql) sells both; billing derived per-sale, not fixed per-product.')
 ON CONFLICT (scenario_id) DO UPDATE SET
   title = EXCLUDED.title, gherkin = EXCLUDED.gherkin, status = EXCLUDED.status,
   test_type = EXCLUDED.test_type, test_file = EXCLUDED.test_file,

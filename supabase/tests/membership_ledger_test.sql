@@ -4,7 +4,7 @@
 -- the projector's derivation logic. Everything runs in a rolled-back transaction.
 
 BEGIN;
-SELECT plan(14);
+SELECT plan(18);
 
 -- ── Fixtures ─────────────────────────────────────────────────────────────────
 -- Two auth users: an attacker (member) and a victim.
@@ -76,6 +76,21 @@ SELECT lives_ok($$ SELECT public.compute_membership('11111111-1111-1111-1111-111
 SELECT is(
   (SELECT is_founding_member FROM public.profiles WHERE user_id = '11111111-1111-1111-1111-111111111111'),
   false, 'a disputed founding sale clears the founding latch');
+
+-- 8. Billing period is derived from the SALE's recurrence — the founding SKU
+--    'ftpql' sells both monthly and yearly under one product_id.
+DELETE FROM public.gumroad_sales WHERE resolved_user_id = '11111111-1111-1111-1111-111111111111';
+INSERT INTO public.gumroad_sales (sale_id, email, product_id, recurrence, resolved_user_id, status)
+VALUES ('sale-monthly', 'member@example.com', 'ftpql', 'monthly', '11111111-1111-1111-1111-111111111111', 'applied');
+SELECT lives_ok($$ SELECT public.compute_membership('11111111-1111-1111-1111-111111111111') $$, 'project monthly founding sale');
+SELECT is(
+  (SELECT membership_billing_period FROM public.profiles WHERE user_id = '11111111-1111-1111-1111-111111111111'),
+  'monthly', 'monthly recurrence -> monthly billing');
+UPDATE public.gumroad_sales SET recurrence = 'yearly' WHERE sale_id = 'sale-monthly';
+SELECT lives_ok($$ SELECT public.compute_membership('11111111-1111-1111-1111-111111111111') $$, 'reproject after switch to yearly');
+SELECT is(
+  (SELECT membership_billing_period FROM public.profiles WHERE user_id = '11111111-1111-1111-1111-111111111111'),
+  'yearly', 'yearly recurrence -> yearly billing');
 
 -- ── RLS / authorization negatives (as an authenticated member) ───────────────
 SET LOCAL role authenticated;
