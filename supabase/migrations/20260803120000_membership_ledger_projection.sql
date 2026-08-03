@@ -135,6 +135,15 @@ BEGIN
     RETURN NEW;
   END IF;
 
+  -- The trusted backend (service_role) is allowed. This guard exists to stop a
+  -- MEMBER (authenticated JWT) from setting their own tier — not the backend,
+  -- which already has full DB access. It also keeps this expand migration
+  -- BACKWARD-COMPATIBLE: any old service-role edge code still running mid-rollout
+  -- keeps working until the new (ledger-only) functions finish deploying.
+  IF auth.role() = 'service_role' THEN
+    RETURN NEW;
+  END IF;
+
   IF TG_OP = 'INSERT' THEN
     -- New profiles must be born at the default Free status; only the projector
     -- may confer a paid tier (closes the INSERT escalation path).

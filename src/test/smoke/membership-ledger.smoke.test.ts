@@ -58,6 +58,8 @@ describe("Early Career Membership ledger→projection (smoke)", () => {
     expect(ledgerMigration).toMatch(
       /set_config\(\s*['"]app\.membership_writer['"]\s*,\s*['"]on['"]\s*,\s*true\s*\)/i
     );
+    // Backward-compat + trust boundary: service_role is exempt (members are not).
+    expect(ledgerMigration).toMatch(/auth\.role\(\)\s*=\s*['"]service_role['"]/i);
   });
 
   it("MEM-LEDGER-004: tier is catalog-gated — uncataloged products grant nothing (SETOF lookup)", () => {

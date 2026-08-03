@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-07T00:49:21.085Z",
+  "generated_at": "2026-07-14T15:43:34.275Z",
   "functions": [
     {
       "name": "admin-purge-auth-user",
@@ -146,6 +146,13 @@
       "verify_jwt": false,
       "kind": "cron",
       "critical": false,
+      "declared": true
+    },
+    {
+      "name": "environment-readiness",
+      "verify_jwt": false,
+      "kind": "auth",
+      "critical": true,
       "declared": true
     },
     {
