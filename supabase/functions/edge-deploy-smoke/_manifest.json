@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-14T15:43:34.275Z",
+  "generated_at": "2026-08-04T02:38:48.842Z",
   "functions": [
     {
       "name": "admin-purge-auth-user",
@@ -304,6 +304,13 @@
     },
     {
       "name": "gumroad-backfill",
+      "verify_jwt": false,
+      "kind": "cron",
+      "critical": false,
+      "declared": true
+    },
+    {
+      "name": "gumroad-backfill-all",
       "verify_jwt": false,
       "kind": "cron",
       "critical": false,

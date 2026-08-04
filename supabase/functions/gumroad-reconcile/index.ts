@@ -14,7 +14,8 @@
  * Security (OWASP): verify_jwt=true; identity from the verified token only
  * (never client-supplied email) -> no cross-account resolution (IDOR).
  */
-import { withAuditWrapper } from "../_shared/audit.ts";
+import { withAuditWrapper, auditEdgeEvent } from "../_shared/audit.ts";
+import { getAdminClient } from "../_shared/admin-client.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.74.0";
 
 const corsHeaders = {
@@ -70,13 +71,25 @@ Deno.serve(
       )
       .ilike("email", escapeLike(email))
       .is("resolved_user_id", null);
-    if (bindErr) return json({ error: "Reconcile failed" }, 500);
+    if (bindErr) {
+      void auditEdgeEvent(getAdminClient(), {
+        fn: "gumroad-reconcile", event: "gumroad_reconcile_failed", table: "gumroad_sales",
+        severity: "error", fields: [`user:${userId}`], errorMessage: bindErr.message,
+      });
+      return json({ error: "Reconcile failed" }, 500);
+    }
 
     // Project (idempotent; also covers the case where sales were already bound).
     const { data: tier, error: projErr } = await admin.rpc("compute_membership", {
       p_user_id: userId,
     });
-    if (projErr) return json({ error: "Projection failed" }, 500);
+    if (projErr) {
+      void auditEdgeEvent(getAdminClient(), {
+        fn: "gumroad-reconcile", event: "membership_projection_failed", table: "gumroad_sales",
+        severity: "error", fields: [`user:${userId}`], errorMessage: projErr.message,
+      });
+      return json({ error: "Projection failed" }, 500);
+    }
 
     return json({ ok: true, applied: count ?? 0, tier }, 200);
   })

@@ -228,6 +228,8 @@ project_id = "pzvqxdgoztbfikfuifix"
     verify_jwt = false
   [functions.gumroad-backfill]
     verify_jwt = false
+  [functions.gumroad-backfill-all]
+    verify_jwt = false
   [functions.translate-bundle]
     verify_jwt = false
   [functions.translate-strings]

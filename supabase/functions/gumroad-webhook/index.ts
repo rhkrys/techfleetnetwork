@@ -171,7 +171,10 @@ Deno.serve(
       else return json({ error: "Missing sale_id/subscription_id" }, 400);
 
       const { error } = await q;
-      if (error) return json({ error: "Persist failed" }, 500); // 500 -> Gumroad retries
+      if (error) {
+        void emitWebhookPersistFailure("lifecycle", error.message);
+        return json({ error: "Persist failed" }, 500); // 500 -> Gumroad retries
+      }
       return json({ ok: true, lifecycle: true }, 200);
     }
 
@@ -217,7 +220,10 @@ Deno.serve(
       },
       { onConflict: "sale_id" }
     );
-    if (upsertErr) return json({ error: "Persist failed" }, 500); // 500 -> Gumroad retries
+    if (upsertErr) {
+      void emitWebhookPersistFailure("sale", upsertErr.message);
+      return json({ error: "Persist failed" }, 500); // 500 -> Gumroad retries
+    }
 
     // No tier write here — the AFTER INSERT trigger runs compute_membership().
     return json({ ok: true, recorded: true, resolved: !!resolvedUserId }, 200);
@@ -237,6 +243,27 @@ async function emitWebhookSignatureFailure(args: { reason: string }): Promise<vo
       table: "edge_function",
       severity: "warn",
       fields: [`provider:gumroad`, `reason:${args.reason}`.slice(0, 100)],
+    });
+  } catch {
+    /* swallow */
+  }
+}
+
+/** Emit a persist-failure audit row (a webhook that can't be recorded is a real
+ *  outage — Gumroad retries, but we want it visible). Never throws. */
+async function emitWebhookPersistFailure(kind: string, msg: string): Promise<void> {
+  try {
+    const [{ auditEdgeEvent }, { getAdminClient }] = await Promise.all([
+      import("../_shared/audit.ts"),
+      import("../_shared/admin-client.ts"),
+    ]);
+    await auditEdgeEvent(getAdminClient(), {
+      fn: "gumroad-webhook",
+      event: "gumroad_sale_persist_failed",
+      table: "gumroad_sales",
+      severity: "error",
+      fields: [`kind:${kind}`],
+      errorMessage: msg,
     });
   } catch {
     /* swallow */

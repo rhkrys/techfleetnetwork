@@ -16,8 +16,9 @@
  *    event, so a silent outage is visible (Observability).
  *  - ignoreDuplicates: never clobbers webhook-managed lifecycle timestamps.
  */
-import { withAuditWrapper } from "../_shared/audit.ts";
-import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.74.0";
+import { withAuditWrapper, auditEdgeEvent, type AuditSeverity } from "../_shared/audit.ts";
+import { getAdminClient } from "../_shared/admin-client.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.74.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -115,25 +116,14 @@ function json(body: unknown, status: number): Response {
   });
 }
 
-/** Fire-and-forget observability event; never throws. */
-async function audit(
-  admin: SupabaseClient<any, any, any>,
-  event: string,
-  fields: string[],
-  msg: string
-) {
-  try {
-    await admin.rpc("write_audit_log", {
-      p_event_type: event,
-      p_table_name: "gumroad_sales",
-      p_record_id: "gumroad-backfill",
-      p_user_id: null,
-      p_changed_fields: fields,
-      p_error_message: msg,
-    });
-  } catch {
-    /* swallow */
-  }
+/** Fire-and-forget observability event; never throws. Routed through
+ *  auditEdgeEvent so it lands in the Activity Log tagged source:edge + severity
+ *  (misconfig / API errors = error; pagination truncation = warn). */
+async function audit(event: string, fields: string[], msg: string) {
+  const severity: AuditSeverity = /truncated/.test(event) ? "warn" : "error";
+  await auditEdgeEvent(getAdminClient(), {
+    fn: "gumroad-backfill", event, table: "gumroad_sales", severity, fields, errorMessage: msg,
+  });
 }
 
 Deno.serve(
@@ -147,7 +137,6 @@ Deno.serve(
 
     if (!GUMROAD_ACCESS_TOKEN) {
       await audit(
-        admin,
         "gumroad_ingestion_misconfigured",
         ["secret:GUMROAD_ACCESS_TOKEN", "state:missing"],
         "gumroad-backfill cannot run: GUMROAD_ACCESS_TOKEN is unset"
@@ -182,7 +171,6 @@ Deno.serve(
         });
         if (!resp.ok) {
           await audit(
-            admin,
             "gumroad_api_error",
             [`status:${resp.status}`],
             "gumroad-backfill: sales API non-2xx"
@@ -192,7 +180,6 @@ Deno.serve(
         const body = (await resp.json()) as GumroadSalesResponse;
         if (!body.success) {
           await audit(
-            admin,
             "gumroad_api_error",
             ["status:success_false"],
             body.message ?? "unsuccessful"
@@ -205,7 +192,6 @@ Deno.serve(
       } while (pageKey && pageCount < MAX_PAGES);
     } catch {
       await audit(
-        admin,
         "gumroad_api_error",
         ["status:fetch_failed"],
         "gumroad-backfill: fetch threw"
@@ -215,7 +201,6 @@ Deno.serve(
     if (pageKey) {
       // Pages remained after the cap — a sale/refund beyond the cap could be missed.
       await audit(
-        admin,
         "gumroad_backfill_truncated",
         [`max_pages:${MAX_PAGES}`],
         "gumroad-backfill: sales pages remained after the page cap"
@@ -288,7 +273,10 @@ Deno.serve(
       const { error: upsertErr } = await admin
         .from("gumroad_sales")
         .upsert(rows, { onConflict: "sale_id", ignoreDuplicates: true });
-      if (upsertErr) return json({ error: "Persist failed" }, 500);
+      if (upsertErr) {
+        await audit("gumroad_sale_persist_failed", [`rows:${rows.length}`], upsertErr.message);
+        return json({ error: "Persist failed" }, 500);
+      }
     }
 
     // Derive + persist the tier from the ledger (also fired by the insert trigger;
@@ -296,7 +284,10 @@ Deno.serve(
     const { data: tier, error: projErr } = await admin.rpc("compute_membership", {
       p_user_id: userId,
     });
-    if (projErr) return json({ error: "Projection failed" }, 500);
+    if (projErr) {
+      await audit("membership_projection_failed", [`user:${userId}`], projErr.message);
+      return json({ error: "Projection failed" }, 500);
+    }
 
     return json({ ok: true, imported: rows.length, tier }, 200);
   })

@@ -111,6 +111,18 @@ const EVENT_TYPE_CONFIG: Record<string, { label: string; variant: string }> = {
   malicious_webhook_signature_invalid: { label: "Webhook Signature Invalid", variant: "destructive" },
   session_idle_timeout: { label: "Session Idle Timeout", variant: "secondary" },
   service_error: { label: "Service Error", variant: "destructive" },
+  // Membership / Gumroad recognition events
+  gumroad_ingestion_misconfigured: { label: "Gumroad Not Configured", variant: "destructive" },
+  gumroad_api_error: { label: "Gumroad API Error", variant: "destructive" },
+  gumroad_backfill_truncated: { label: "Gumroad Backfill Truncated", variant: "secondary" },
+  gumroad_backfill_all_started: { label: "Membership Resync Started", variant: "secondary" },
+  gumroad_backfill_all_completed: { label: "Membership Resync Completed", variant: "default" },
+  gumroad_sale_attached: { label: "Gumroad Sale Attached", variant: "default" },
+  gumroad_sale_persist_failed: { label: "Gumroad Sale Persist Failed", variant: "destructive" },
+  gumroad_reconcile_failed: { label: "Gumroad Reconcile Failed", variant: "destructive" },
+  membership_projection_failed: { label: "Membership Projection Failed", variant: "destructive" },
+  membership_invariant_violation: { label: "Membership Invariant Violation", variant: "destructive" },
+  membership_metadata_mismatch: { label: "Membership Metadata Mismatch", variant: "secondary" },
 };
 
 /**
@@ -134,8 +146,8 @@ function inferSeverity(entry: { event_type: string; error_message: string | null
   const explicit = entry.changed_fields?.find((f) => f.startsWith("severity:"))?.slice("severity:".length);
   if (explicit === "info" || explicit === "warn" || explicit === "error") return explicit;
   if (entry.error_message) return "error";
-  if (/_failed$|_error$|_denied$|invalid|complained|bounced|dlq/i.test(entry.event_type)) return "error";
-  if (/timeout|rate_limited|suppressed|overflow/i.test(entry.event_type)) return "warn";
+  if (/_failed$|_error$|_denied$|invalid|complained|bounced|dlq|violation|misconfigured/i.test(entry.event_type)) return "error";
+  if (/timeout|rate_limited|suppressed|overflow|truncated/i.test(entry.event_type)) return "warn";
   return "info";
 }
 
