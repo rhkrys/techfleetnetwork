@@ -9068,6 +9068,14 @@ export type Database = {
         Args: { _action: string; _max_per_hour: number }
         Returns: undefined
       }
+      support_list_agents: {
+        Args: never
+        Returns: {
+          user_id: string
+          display_name: string
+          email: string
+        }[]
+      }
       support_pending_provisioning: {
         Args: { _limit?: number }
         Returns: {

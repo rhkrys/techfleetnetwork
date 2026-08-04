@@ -6,24 +6,21 @@ import { z } from "https://deno.land/x/zod@v3.23.8/mod.ts";
 import { getAdminClient } from "../_shared/admin-client.ts";
 import { handleCors, jsonResponse, parseJsonBody } from "../_shared/http.ts";
 import { freescoutFetch, FreescoutError } from "../_shared/freescout.ts";
+import { authorizeServiceRoleRequest } from "../_shared/service-role-auth.ts";
 
 const Body = z.object({
   userId: z.string().uuid(),
   action: z.enum(["sync", "anonymize"]).default("sync"),
 });
 
-function isServiceRole(req: Request): boolean {
-  const auth = req.headers.get("authorization") ?? "";
-  const token = auth.replace(/^Bearer\s+/i, "");
-  const secret = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-  return token.length > 0 && secret.length > 0 && token === secret;
-}
-
 Deno.serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
   if (req.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
-  if (!isServiceRole(req)) return jsonResponse({ error: "Unauthorized" }, 401);
+  // Shared authorizer (legacy JWT or opaque sb_secret_*): consistent with the
+  // queue drainers, survives a Supabase key-format rollover.
+  const authz = authorizeServiceRoleRequest(req);
+  if (!authz.ok) return jsonResponse({ error: authz.error }, authz.status);
 
   let parsed;
   try {

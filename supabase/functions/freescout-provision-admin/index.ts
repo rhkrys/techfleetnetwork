@@ -32,10 +32,24 @@ Deno.serve(async (req) => {
   const targetUserId = parsed.data.userId ?? auth.userId;
   const admin = getAdminClient();
 
+  // On-behalf-of provisioning: the target must itself be an admin — you cannot
+  // mint a Freescout staff user for a non-admin. (Self-provisioning is already
+  // gated by requireAdminRequest above.)
+  if (parsed.data.userId && parsed.data.userId !== auth.userId) {
+    const { data: targetIsAdmin } = await admin.rpc("has_role", {
+      _user_id: parsed.data.userId, _role: "admin",
+    });
+    if (targetIsAdmin !== true) return jsonResponse({ error: "Target must be an admin" }, 422);
+  }
+
+  // Look up by auth uid (user_id), NEVER the row PK (id): the PK never equals
+  // auth.uid() for any profile row, so `.eq("id", authUid)` 404'd every default
+  // self-provision (same root cause as the historical "Assign me" 404s fixed in
+  // _shared/freescout-admin.ts).
   const { data: prof } = await admin
     .from("profiles")
     .select("id, email, first_name, last_name, freescout_user_id")
-    .eq("id", targetUserId)
+    .eq("user_id", targetUserId)
     .maybeSingle();
 
   if (!prof?.email) return jsonResponse({ error: "Profile not found" }, 404);
@@ -50,11 +64,12 @@ Deno.serve(async (req) => {
         user = await createUser(prof.email, prof.first_name ?? "Admin", prof.last_name ?? "User");
       }
       const id = String(user.id);
-      await admin.from("profiles").update({ freescout_user_id: id }).eq("id", targetUserId);
+      await admin.from("profiles").update({ freescout_user_id: id }).eq("user_id", targetUserId);
+      // support_provisioning_log keys on the profile PK (trigger/retry convention).
       await admin.from("support_provisioning_log").insert({
-        user_id: targetUserId, kind: "admin_user", freescout_id: id, status: "success", attempts: 1,
+        user_id: prof.id, kind: "admin_user", freescout_id: id, status: "success", attempts: 1,
       });
-      // In-app notification
+      // In-app notification keys on auth uid.
       try {
         await admin.from("notifications").insert({
           user_id: targetUserId,
@@ -66,11 +81,20 @@ Deno.serve(async (req) => {
       } catch { /* best effort */ }
       return jsonResponse({ ok: true, freescoutUserId: id });
     }
-    return jsonResponse({ error: "Action not implemented" }, 501);
+    // resend_invite / deactivate: FreeScout's REST API exposes no user-status
+    // mutation, so there is nothing to call. This is NOT an offboarding gap:
+    // every Freescout action is brokered through freescout-proxy, which gates on
+    // has_role(admin) — so revoking the platform admin role fully removes support
+    // access. The lingering Freescout user is inert (admins are created with
+    // sendInvite:false and never hold a Freescout login).
+    return jsonResponse(
+      { error: "Not supported by the help desk API — manage admin access via platform roles", action: parsed.data.action },
+      501,
+    );
   } catch (e) {
     const msg = e instanceof FreescoutError ? e.message : "Provisioning failed";
     await admin.from("support_provisioning_log").insert({
-      user_id: targetUserId, kind: "admin_user", status: "failed", attempts: 1, last_error: msg,
+      user_id: prof.id, kind: "admin_user", status: "failed", attempts: 1, last_error: msg,
     });
     return jsonResponse({ error: msg }, 502);
   }

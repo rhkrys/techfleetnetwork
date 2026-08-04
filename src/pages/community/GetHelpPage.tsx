@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@/lib/react-query";
+import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@/lib/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdmin } from "@/hooks/use-admin";
@@ -11,29 +11,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { sanitizeHtml } from "@/lib/security";
 import { toast } from "sonner";
 import AdminAllTicketsGrid from "./AdminAllTicketsGrid";
 import MonthlyReportPanel from "./MonthlyReportPanel";
+import TicketDetail, { formatStatus, type Conversation } from "./TicketDetail";
 import { invokeFreescout } from "@/lib/support/freescoutInvoke";
-
-interface Conversation {
-  id: number;
-  number?: number;
-  subject?: string;
-  status?: string;
-  customer?: { id: number; email?: string; firstName?: string; lastName?: string };
-  threads?: Array<{ id: number; type?: string; body?: string; createdAt?: string; createdBy?: unknown }>;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-function formatStatus(s?: string): { label: string; tone: "default" | "secondary" | "outline" } {
-  if (s === "active" || s === "open") return { label: "Open", tone: "default" };
-  if (s === "closed") return { label: "Closed", tone: "secondary" };
-  if (s === "pending") return { label: "Pending", tone: "outline" };
-  return { label: s ?? "Unknown", tone: "outline" };
-}
 
 function useTickets(scope: "mine" | "all", status: "open" | "closed" | "all") {
   return useQuery<{ items: Conversation[] }>({
@@ -122,114 +104,6 @@ function NewTicketDialog({ onCreated }: { onCreated: () => void }) {
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)} disabled={submitting}>Cancel</Button>
           <Button onClick={submit} disabled={submitting}>{submitting ? "Sending…" : "Send ticket"}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function TicketDetail({ conversationId, onClose }: { conversationId: number; onClose: () => void }) {
-  const qc = useQueryClient();
-  const [reply, setReply] = useState("");
-  const [sending, setSending] = useState(false);
-
-  const { data: conv, isLoading } = useQuery({
-    queryKey: ["support", "ticket", conversationId] as const,
-    queryFn: async () => {
-      const { data, error } = await invokeFreescout({ action: "get", conversationId });
-      if (error) throw error;
-      return data?.conversation as Conversation;
-    },
-    staleTime: 15_000,
-  });
-
-  const closeMut = useMutation({
-    mutationFn: async (action: "close" | "reopen") => {
-      const { error } = await invokeFreescout({ action, conversationId });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      toast.success("Ticket updated.");
-      qc.invalidateQueries({ queryKey: ["support"] as const });
-    },
-    onError: () => toast.error("Could not update the ticket."),
-  });
-
-  const sendReply = async () => {
-    if (reply.trim().length < 1) return;
-    setSending(true);
-    try {
-      const { error } = await invokeFreescout({
-        action: "reply", conversationId, body: reply.trim().slice(0, 10000), idempotencyKey: `reply-${crypto.randomUUID()}`,
-      });
-      if (error) throw error;
-      setReply("");
-      toast.success("Reply sent.");
-      qc.invalidateQueries({ queryKey: ["support"] as const });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      toast.error(msg || "Could not send your reply.");
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const threads = useMemo(() => (conv?.threads ?? []).slice().reverse(), [conv]);
-  const status = formatStatus(conv?.status);
-
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[85dvh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{conv?.subject ?? `Ticket #${conversationId}`}</DialogTitle>
-          <DialogDescription>
-            <Badge variant={status.tone}>{status.label}</Badge>
-          </DialogDescription>
-        </DialogHeader>
-        {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
-        <div className="space-y-3">
-          {threads.map((t) => (
-            <Card key={t.id} data-no-card={false}>
-              <CardHeader className="py-3">
-                <CardTitle className="text-base font-normal">
-                  {t.type === "customer" ? "You" : "Tech Fleet"}
-                </CardTitle>
-                {t.createdAt && (
-                  <CardDescription>{new Date(t.createdAt).toLocaleString()}</CardDescription>
-                )}
-              </CardHeader>
-              <CardContent>
-                <div
-                  className="prose prose-sm max-w-none dark:prose-invert"
-                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(t.body ?? "") }}
-                />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-        {conv?.status !== "closed" && (
-          <div className="space-y-2 pt-2">
-            <Label htmlFor="ticket-reply">Reply</Label>
-            <Textarea
-              id="ticket-reply"
-              value={reply}
-              onChange={(e) => setReply(e.target.value)}
-              maxLength={10000}
-              rows={4}
-            />
-          </div>
-        )}
-        <DialogFooter className="gap-2">
-          {conv?.status === "closed" ? (
-            <Button variant="outline" onClick={() => closeMut.mutate("reopen")}>Reopen ticket</Button>
-          ) : (
-            <Button variant="outline" onClick={() => closeMut.mutate("close")}>Close ticket</Button>
-          )}
-          {conv?.status !== "closed" && (
-            <Button onClick={sendReply} disabled={sending || reply.trim().length < 1}>
-              {sending ? "Sending…" : "Send reply"}
-            </Button>
-          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

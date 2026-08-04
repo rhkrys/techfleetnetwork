@@ -32,6 +32,13 @@ Deno.serve(async (req) => {
   const verified = await verifyFreescoutWebhook(req, raw);
   if (!verified) return jsonResponse({ error: "Unauthorized" }, 401);
 
+  // Replay model: FreeScout's HMAC signs the request BODY only — its scheme has
+  // no timestamp, so we cannot bind freshness into the verified material. The
+  // durable replay guard is therefore the support_webhook_events dedupe below
+  // (unique event_id): a replayed request is recorded once and every repeat
+  // returns {deduped:true} without re-processing. The `date` check here is NOT a
+  // security control (the header is unsigned and attacker-mutable) — it only
+  // drops accidental/late redeliveries early. Do not rely on it for anti-replay.
   const dateHdr = req.headers.get("date");
   if (dateHdr) {
     const t = Date.parse(dateHdr);

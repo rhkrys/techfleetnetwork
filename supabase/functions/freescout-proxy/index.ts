@@ -54,7 +54,11 @@ const Action = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("assign"),
     conversationId: z.number().int().positive(),
-    assigneeUserId: z.union([z.literal("self"), z.number().int().positive()]),
+    // "self" = the calling admin; a UUID = another admin. The target is verified
+    // to be an admin and resolved+provisioned to a Freescout user id server-side.
+    // Raw numeric Freescout ids are no longer accepted from the client (that let
+    // an admin target ANY upstream Freescout user, including non-admins).
+    assigneeUserId: z.union([z.literal("self"), z.string().uuid()]),
   }),
   z.object({ action: z.literal("setPrivate"), conversationId: z.number().int().positive(), isPrivate: z.boolean() }),
 ]);
@@ -139,12 +143,19 @@ async function ownsConversation(userId: string, conversationId: number): Promise
 
 async function upsertPointer(conversationId: number, customerUserId: string | null, fields: Record<string, unknown>) {
   const admin = getAdminClient();
-  await admin.from("support_ticket_pointers").upsert({
+  const row: Record<string, unknown> = {
     conversation_id: conversationId,
-    customer_user_id: customerUserId,
     last_synced_at: new Date().toISOString(),
     ...fields,
-  });
+  };
+  // Only write customer_user_id when the caller is asserting ownership (create).
+  // Passing null means "don't touch the owner" — otherwise an admin close/reopen/
+  // assign/setPrivate would upsert customer_user_id=null onto the PK and wipe the
+  // member's ownership, and since RLS "members see own pointers" is
+  // customer_user_id = auth.uid(), the member would lose visibility of their own
+  // ticket the moment an admin acts on it.
+  if (customerUserId !== null) row.customer_user_id = customerUserId;
+  await admin.from("support_ticket_pointers").upsert(row, { onConflict: "conversation_id" });
 }
 
 function cacheableResponse(body: unknown, ttlSec: number): Response {
@@ -341,15 +352,28 @@ Deno.serve(async (req) => {
         return jsonResponse({ ok: true });
       }
       case "assign": {
-        const assigneeId = input.assigneeUserId === "self"
-          ? await resolveAdminFreescoutUserId(auth.userId, { traceId: req.headers.get("x-trace-id") })
-          : input.assigneeUserId;
+        const traceId = req.headers.get("x-trace-id");
+        // Resolve the assignee's Freescout user id, provisioning on demand.
+        // A UUID target must itself be an admin — you cannot assign a ticket to a
+        // non-admin member.
+        let assigneeId: number;
+        if (input.assigneeUserId === "self") {
+          assigneeId = await resolveAdminFreescoutUserId(auth.userId, { traceId });
+        } else {
+          if (!(await isAdmin(input.assigneeUserId))) {
+            return jsonResponse({ error: "Assignee must be an admin" }, 422);
+          }
+          assigneeId = await resolveAdminFreescoutUserId(input.assigneeUserId, { traceId });
+        }
         await freescoutFetch({
           method: "PUT",
           path: `/api/conversations/${encodeURIComponent(String(input.conversationId))}`,
           body: { assignTo: assigneeId },
         });
-        await upsertPointer(input.conversationId, null, { assignee_user_id: String(assigneeId) });
+        // Store the assignee's PLATFORM uuid (meaningful in our system; the grid
+        // shows the name from Freescout). null owner arg preserves customer_user_id.
+        const assigneePlatformId = input.assigneeUserId === "self" ? auth.userId : input.assigneeUserId;
+        await upsertPointer(input.conversationId, null, { assignee_user_id: assigneePlatformId });
         invalidateAll();
         return jsonResponse({ ok: true });
       }

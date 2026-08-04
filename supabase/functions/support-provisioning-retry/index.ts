@@ -10,17 +10,15 @@ import {
   createCustomer,
   FreescoutError,
 } from "../_shared/freescout.ts";
-
-function isServiceRole(req: Request): boolean {
-  const token = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
-  const secret = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-  return token.length > 0 && secret.length > 0 && token === secret;
-}
+import { authorizeServiceRoleRequest } from "../_shared/service-role-auth.ts";
 
 Deno.serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
-  if (!isServiceRole(req)) return jsonResponse({ error: "Unauthorized" }, 401);
+  // Shared authorizer (legacy JWT or opaque sb_secret_*): consistent with the
+  // other cron workers, survives a Supabase key-format rollover.
+  const authz = authorizeServiceRoleRequest(req);
+  if (!authz.ok) return jsonResponse({ error: authz.error }, authz.status);
 
   const admin = getAdminClient();
   const { data: pending, error: pErr } = await admin.rpc("support_pending_provisioning", {
