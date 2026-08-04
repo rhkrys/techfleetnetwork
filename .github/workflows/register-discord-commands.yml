@@ -1,0 +1,60 @@
+name: Register Discord commands
+
+# Idempotently reconciles Discord's slash commands to the declarative manifest
+# (src/lib/discord/command-plan.ts). Replaces the manual, unauditable
+# "paste functions.invoke() in a browser console" step with a versioned CI
+# action. Runs automatically when the manifest changes on main, or manually.
+#
+# One-time setup: add repo secrets DISCORD_BOT_TOKEN + DISCORD_APPLICATION_ID
+# (and optionally DISCORD_GUILD_ID for instant, guild-scoped registration). If
+# they're absent the job skips cleanly (registers nothing) — it never blocks.
+#
+# SAFETY: the registrar refuses to delete a command that's registered but not in
+# the manifest unless you run this manually with allow_delete = true.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/lib/discord/command-plan.ts"
+      - "scripts/register-discord-commands.ts"
+      - ".github/workflows/register-discord-commands.yml"
+  workflow_dispatch:
+    inputs:
+      allow_delete:
+        description: "Allow removing commands registered on Discord but not in the manifest"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: register-discord-commands
+  cancel-in-progress: false
+
+jobs:
+  register:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Register slash commands (idempotent, deletion-guarded)
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_APPLICATION_ID: ${{ secrets.DISCORD_APPLICATION_ID }}
+          DISCORD_GUILD_ID: ${{ secrets.DISCORD_GUILD_ID }}
+        run: >-
+          npx tsx scripts/register-discord-commands.ts
+          ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.allow_delete == 'true') && '--allow-delete' || '' }}
