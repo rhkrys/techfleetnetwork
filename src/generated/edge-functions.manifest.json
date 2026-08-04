@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-04T02:38:48.842Z",
+  "generated_at": "2026-08-04T05:23:10.586Z",
   "functions": [
     {
       "name": "admin-purge-auth-user",
@@ -563,6 +563,13 @@
     },
     {
       "name": "register-fleety-command",
+      "verify_jwt": false,
+      "kind": "cron",
+      "critical": false,
+      "declared": true
+    },
+    {
+      "name": "register-support-command",
       "verify_jwt": false,
       "kind": "cron",
       "critical": false,

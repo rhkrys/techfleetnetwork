@@ -123,6 +123,9 @@ const EVENT_TYPE_CONFIG: Record<string, { label: string; variant: string }> = {
   membership_projection_failed: { label: "Membership Projection Failed", variant: "destructive" },
   membership_invariant_violation: { label: "Membership Invariant Violation", variant: "destructive" },
   membership_metadata_mismatch: { label: "Membership Metadata Mismatch", variant: "secondary" },
+  support_ticket_created: { label: "Support Ticket Created (Discord)", variant: "default" },
+  support_ticket_create_failed: { label: "Support Ticket Create Failed", variant: "destructive" },
+  support_rate_limited: { label: "Support Rate Limited", variant: "secondary" },
 };
 
 /**

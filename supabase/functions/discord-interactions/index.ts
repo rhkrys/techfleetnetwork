@@ -282,56 +282,118 @@ Deno.serve(withAuditWrapper("discord-interactions", async (req) => {
     const data = interaction.data as Record<string, unknown> | undefined;
     const commandName = data?.name as string | undefined;
 
-    if (commandName !== "fleety") {
-      return new Response(JSON.stringify({ type: RESPONSE_PONG }), {
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
     const options = data?.options as Array<{ name: string; value: string }> | undefined;
-    const question = options?.find((o) => o.name === "question")?.value ?? "";
     const applicationId = Deno.env.get("DISCORD_APPLICATION_ID") ?? "";
     const interactionToken = interaction.token as string;
+    const discordUser = (interaction.member as Record<string, unknown> | undefined)?.user as
+      | Record<string, unknown>
+      | undefined;
+    const discordUserId = discordUser?.id as string | undefined;
+    const userName = discordUser?.username as string | undefined;
 
-    const userName = (
-      (interaction.member as Record<string, unknown>)?.user as Record<string, unknown>
-    )?.username as string | undefined;
-
-    log.info("command", `Fleety command from ${userName ?? "unknown"}: ${question.substring(0, 100)}`);
-
-    // ── Background processing ──
-    const work = (async () => {
+    // Keep the edge function alive after returning the deferred response.
+    const keepAlive = (work: Promise<void>) => {
       try {
-        const knowledgeCtx = await loadKnowledgeBase();
-        const answer = await getAIResponse(question, knowledgeCtx);
-        await postFollowup(applicationId, interactionToken, answer);
-        log.info("done", `Answered question from ${userName ?? "unknown"}`);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        log.error("process", `Error: ${msg}`);
-        await postFollowup(
-          applicationId,
-          interactionToken,
-          "⚠️ Sorry, I encountered an error processing your question. Please try again later.",
-        );
+        const edgeRuntime = (globalThis as Record<string, unknown>).EdgeRuntime as
+          | { waitUntil?: (p: Promise<void>) => void }
+          | undefined;
+        edgeRuntime?.waitUntil?.(work);
+      } catch {
+        // fallback: the promise still runs
       }
-    })();
+    };
 
-    // Keep the edge function alive after returning the response
-    try {
-      const edgeRuntime = (globalThis as Record<string, unknown>).EdgeRuntime as
-        | { waitUntil?: (p: Promise<void>) => void }
-        | undefined;
-      edgeRuntime?.waitUntil?.(work);
-    } catch {
-      // fallback: if waitUntil is unavailable, the promise still runs
+    // ── /support → open a Freescout ticket for the linked member ──
+    if (commandName === "support") {
+      // Input validation parity with the web create's zod: drop control chars
+      // from the subject (single-line) and null bytes from the body. Codepoint
+      // filter (not a regex literal) keeps this source ASCII-clean.
+      const dropControls = (s: string) =>
+        Array.from(s).filter((ch) => {
+          const c = ch.charCodeAt(0);
+          return c >= 0x20 && c !== 0x7f;
+        }).join("");
+      const dropNulls = (s: string) => Array.from(s).filter((ch) => ch.charCodeAt(0) !== 0).join("");
+      const subject = dropControls(options?.find((o) => o.name === "subject")?.value ?? "").trim().slice(0, 200);
+      const details = dropNulls(options?.find((o) => o.name === "details")?.value ?? "").trim().slice(0, 10000);
+
+      const work = (async () => {
+        try {
+          if (!discordUserId) {
+            await postFollowup(applicationId, interactionToken, "⚠️ Could not read your Discord identity — please try again.");
+            return;
+          }
+          if (subject.length < 3 || details.length < 1) {
+            await postFollowup(applicationId, interactionToken, "⚠️ Please include a subject (at least 3 characters) and a short message.");
+            return;
+          }
+          // Lazy import: keeps the FREESCOUT_API_KEY boot tripwire on the /support
+          // path only, so it can never break /fleety or the PING handshake.
+          const { createSupportTicketFromDiscord } = await import("../_shared/support-ticket.ts");
+          const result = await createSupportTicketFromDiscord(discordUserId, subject, details);
+          if (result.status === "unlinked") {
+            await postFollowup(applicationId, interactionToken,
+              "🔗 Your Discord isn't linked to a Tech Fleet account yet. Link it at <https://techfleet.network/community/connect-discord>, then run `/support` again.");
+          } else if (result.status === "no_email") {
+            await postFollowup(applicationId, interactionToken,
+              "⚠️ Your Tech Fleet account has no email on file. Add one in your profile, then try again.");
+          } else if (result.status === "rate_limited") {
+            await postFollowup(applicationId, interactionToken,
+              "🚦 You've opened several tickets recently. Please wait a bit before creating another, or reply to an existing ticket.");
+          } else if (result.status === "ok") {
+            await postFollowup(applicationId, interactionToken,
+              "✅ Support ticket created! A Support Agent will reply by email, and you can track it at <https://techfleet.network/community/get-help>.");
+            log.info("support", `Ticket created from Discord for ${userName ?? "unknown"}`);
+          } else {
+            await postFollowup(applicationId, interactionToken,
+              "⚠️ Sorry, we couldn't create your ticket right now. Please try again shortly.");
+            log.error("support", `Ticket creation failed: ${result.message}`);
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          log.error("support", `Error: ${msg}`);
+          await postFollowup(applicationId, interactionToken,
+            "⚠️ Sorry, we couldn't create your ticket right now. Please try again shortly.");
+        }
+      })();
+      keepAlive(work);
+      // Ephemeral defer (flags 64) — a member's support request + confirmation
+      // stay private to them, not posted in the channel.
+      return new Response(
+        JSON.stringify({ type: RESPONSE_DEFERRED_CHANNEL_MESSAGE, data: { flags: 64 } }),
+        { headers: { "Content-Type": "application/json" } },
+      );
     }
 
-    // Return deferred response to Discord immediately
-    return new Response(
-      JSON.stringify({ type: RESPONSE_DEFERRED_CHANNEL_MESSAGE }),
-      { headers: { "Content-Type": "application/json" } },
-    );
+    // ── /fleety → AI answer ──
+    if (commandName === "fleety") {
+      const question = options?.find((o) => o.name === "question")?.value ?? "";
+      log.info("command", `Fleety command from ${userName ?? "unknown"}: ${question.substring(0, 100)}`);
+
+      const work = (async () => {
+        try {
+          const knowledgeCtx = await loadKnowledgeBase();
+          const answer = await getAIResponse(question, knowledgeCtx);
+          await postFollowup(applicationId, interactionToken, answer);
+          log.info("done", `Answered question from ${userName ?? "unknown"}`);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          log.error("process", `Error: ${msg}`);
+          await postFollowup(applicationId, interactionToken,
+            "⚠️ Sorry, I encountered an error processing your question. Please try again later.");
+        }
+      })();
+      keepAlive(work);
+      return new Response(
+        JSON.stringify({ type: RESPONSE_DEFERRED_CHANNEL_MESSAGE }),
+        { headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    // Unknown command → no-op PONG
+    return new Response(JSON.stringify({ type: RESPONSE_PONG }), {
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   // Unknown interaction type

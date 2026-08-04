@@ -73,6 +73,9 @@ project_id = "pzvqxdgoztbfikfuifix"
     verify_jwt = false
   [functions.register-fleety-command]
     verify_jwt = false
+  [functions.register-support-command]
+    # Admin-only Discord /support command registrar (JWT + admin checked in code).
+    verify_jwt = false
   [functions.resolve-discord-id]
     verify_jwt = false
   [functions.send-transactional-email]
