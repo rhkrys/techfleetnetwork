@@ -54,6 +54,31 @@ async function ensureCustomer(prof: TicketProfile, email: string): Promise<strin
 }
 
 /**
+ * Idempotency guard: returns the conversation id of a ticket the same member
+ * opened with the same subject within `windowSeconds`, else null. Prevents a
+ * double-tap / client retry from creating duplicate tickets on either the web
+ * or Discord create path. Cheap (one indexed lookup); no extra table.
+ */
+export async function recentDuplicateTicketId(
+  userId: string,
+  subject: string,
+  windowSeconds = 120,
+): Promise<number | null> {
+  const admin = getAdminClient();
+  const since = new Date(Date.now() - windowSeconds * 1000).toISOString();
+  const { data } = await admin
+    .from("support_ticket_pointers")
+    .select("conversation_id")
+    .eq("customer_user_id", userId)
+    .eq("subject", subject)
+    .gte("created_at", since)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (data?.conversation_id as number | undefined) ?? null;
+}
+
+/**
  * Open a Freescout ticket for the member linked to `discordUserId`.
  * Returns a discriminated result so the caller can give the Discord user
  * actionable feedback (link your account / no email / created / failed).
@@ -100,6 +125,10 @@ export async function createSupportTicketFromDiscord(
     { subject_user_id: prof.user_id, action: "discord:support", window_start: windowStart, count: (rl?.count ?? 0) + 1 },
     { onConflict: "subject_user_id,action,window_start" },
   );
+
+  // Idempotency: a double-tap / retry returns the existing ticket, not a dup.
+  const dupId = await recentDuplicateTicketId(prof.user_id, subject);
+  if (dupId) return { status: "ok", conversationId: dupId };
 
   try {
     const customerId = await ensureCustomer(prof as TicketProfile, email);

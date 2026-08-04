@@ -302,6 +302,23 @@ Deno.serve(async (req) => {
         return cacheableResponse(body, 10);
       }
       case "create": {
+        // Idempotency: a double-submit / retry returns the existing ticket
+        // instead of creating a duplicate (same 2-min subject+owner window the
+        // Discord create path uses via _shared/support-ticket.recentDuplicateTicketId;
+        // inlined here to avoid mixing supabase-js versions in this module).
+        {
+          const since = new Date(Date.now() - 120_000).toISOString();
+          const { data: dup } = await getAdminClient()
+            .from("support_ticket_pointers")
+            .select("conversation_id")
+            .eq("customer_user_id", auth.userId)
+            .eq("subject", input.subject)
+            .gte("created_at", since)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (dup?.conversation_id) return jsonResponse({ conversationId: dup.conversation_id, deduped: true });
+        }
         const cust = await ensureCustomerForUser(auth.userId);
         const created = await freescoutFetch<{ id?: number; conversation?: { id?: number } }>({
           method: "POST", path: "/api/conversations",
