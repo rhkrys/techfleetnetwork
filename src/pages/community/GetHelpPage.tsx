@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import AdminAllTicketsGrid from "./AdminAllTicketsGrid";
 import MonthlyReportPanel from "./MonthlyReportPanel";
+import CategoryReportPanel from "./CategoryReportPanel";
 import TicketDetail, { formatStatus, type Conversation } from "./TicketDetail";
 import { invokeFreescout } from "@/lib/support/freescoutInvoke";
 
@@ -224,7 +225,10 @@ export default function GetHelpPage() {
           <TabsContent value="open-unassigned" className="mt-6"><AdminAllTicketsGrid scope="open-unassigned" /></TabsContent>
           <TabsContent value="open-assigned" className="mt-6"><AdminAllTicketsGrid scope="open-assigned" /></TabsContent>
           <TabsContent value="all" className="mt-6"><AdminAllTicketsGrid scope="all" /></TabsContent>
-          <TabsContent value="reports" className="mt-6"><MonthlyReportPanel /></TabsContent>
+          <TabsContent value="reports" className="mt-6 space-y-6">
+            <MonthlyReportPanel />
+            <CategoryReportPanel />
+          </TabsContent>
         </Tabs>
       ) : (
         <TicketList scope="mine" />

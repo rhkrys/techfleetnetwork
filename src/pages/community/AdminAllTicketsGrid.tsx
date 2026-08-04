@@ -14,7 +14,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, UserPlus, Users, EyeOff, XCircle, RotateCcw } from "lucide-react";
+import { MoreHorizontal, UserPlus, Users, Tags, EyeOff, XCircle, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import type { ColDef, CellClickedEvent } from "ag-grid-community";
 import { invokeFreescout } from "@/lib/support/freescoutInvoke";
@@ -26,6 +26,11 @@ interface Agent {
   email: string | null;
 }
 
+interface Category {
+  id: string;
+  label: string;
+}
+
 /** Admin roster for the "Assign to …" picker (admin-gated RPC). */
 function useAgents() {
   return useQuery({
@@ -34,6 +39,25 @@ function useAgents() {
       const { data, error } = await supabase.rpc("support_list_agents");
       if (error) throw error;
       return (data ?? []) as Agent[];
+    },
+    staleTime: 300_000,
+    gcTime: 600_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+/** Active support categories, admin taxonomy order. */
+function useCategories() {
+  return useQuery({
+    queryKey: ["support", "categories"] as const,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("support_categories")
+        .select("id, label")
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as Category[];
     },
     staleTime: 300_000,
     gcTime: 600_000,
@@ -52,6 +76,9 @@ interface Row {
   status?: string;
   customer?: { id: number; email?: string };
   assignee?: { id: number; firstName?: string; lastName?: string } | null;
+  category?: string | null;
+  categoryId?: string | null;
+  isPrivate?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -87,6 +114,7 @@ export default function AdminAllTicketsGrid({ scope: fixedScope }: { scope?: Sco
   const qc = useQueryClient();
   const { data: rows = [], isLoading } = useScopedTickets(scope);
   const { data: agents = [] } = useAgents();
+  const { data: categories = [] } = useCategories();
   const [openId, setOpenId] = useState<number | null>(null);
 
   const runAction = async (conversationId: number, body: Record<string, unknown>, success: string) => {
@@ -100,6 +128,11 @@ export default function AdminAllTicketsGrid({ scope: fixedScope }: { scope?: Sco
     { headerName: "#", field: "number", width: 90, sortable: true, filter: true },
     { headerName: "Subject", field: "subject", flex: 2, minWidth: 240, sortable: true, filter: true },
     { headerName: "Status", field: "status", width: 120, sortable: true, filter: true },
+    {
+      headerName: "Category", width: 150,
+      valueGetter: (p) => p.data?.category ?? "—",
+      sortable: true, filter: true,
+    },
     {
       headerName: "Customer", width: 220,
       valueGetter: (p) => p.data?.customer?.email ?? "—",
@@ -163,6 +196,38 @@ export default function AdminAllTicketsGrid({ scope: fixedScope }: { scope?: Sco
                     </DropdownMenuSubContent>
                   </DropdownMenuSub>
                 )}
+                {categories.length > 0 && (
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger>
+                      <Tags className="h-4 w-4 mr-2" />
+                      Set category…
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent className="max-h-72 overflow-y-auto">
+                      {categories.map((c) => (
+                        <DropdownMenuItem
+                          key={c.id}
+                          onClick={() =>
+                            runAction(id, { action: "setCategory", categoryId: c.id }, `Category set to ${c.label}.`)
+                          }
+                        >
+                          {c.label}
+                        </DropdownMenuItem>
+                      ))}
+                      {p.data.categoryId && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() =>
+                              runAction(id, { action: "setCategory", categoryId: null }, "Category cleared.")
+                            }
+                          >
+                            Clear category
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                )}
                 <DropdownMenuItem onClick={() => runAction(id, { action: "setPrivate", isPrivate: true }, "Marked private.")}>
                   <EyeOff className="h-4 w-4 mr-2" />
                   Mark private
@@ -186,7 +251,7 @@ export default function AdminAllTicketsGrid({ scope: fixedScope }: { scope?: Sco
       },
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [agents]);
+  ], [agents, categories]);
 
   return (
     <div className="space-y-4">

@@ -6741,9 +6741,46 @@ export type Database = {
         }
         Relationships: []
       }
+      support_categories: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          is_internal: boolean
+          key: string
+          label: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          is_internal?: boolean
+          key: string
+          label: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          is_internal?: boolean
+          key?: string
+          label?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       support_ticket_pointers: {
         Row: {
           assignee_user_id: string | null
+          category_id: string | null
           conversation_id: number
           created_at: string
           customer_user_id: string | null
@@ -6756,6 +6793,7 @@ export type Database = {
         }
         Insert: {
           assignee_user_id?: string | null
+          category_id?: string | null
           conversation_id: number
           created_at?: string
           customer_user_id?: string | null
@@ -6768,6 +6806,7 @@ export type Database = {
         }
         Update: {
           assignee_user_id?: string | null
+          category_id?: string | null
           conversation_id?: number
           created_at?: string
           customer_user_id?: string | null
@@ -9067,6 +9106,14 @@ export type Database = {
       support_check_rate_limit: {
         Args: { _action: string; _max_per_hour: number }
         Returns: undefined
+      }
+      get_support_category_report: {
+        Args: { _from?: string }
+        Returns: {
+          month: string
+          category: string
+          ticket_count: number
+        }[]
       }
       support_list_agents: {
         Args: never

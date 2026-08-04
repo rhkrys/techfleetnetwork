@@ -61,9 +61,10 @@ const Action = z.discriminatedUnion("action", [
     assigneeUserId: z.union([z.literal("self"), z.string().uuid()]),
   }),
   z.object({ action: z.literal("setPrivate"), conversationId: z.number().int().positive(), isPrivate: z.boolean() }),
+  z.object({ action: z.literal("setCategory"), conversationId: z.number().int().positive(), categoryId: z.string().uuid().nullable() }),
 ]);
 
-const ADMIN_ACTIONS = new Set(["listAll", "assign", "setPrivate"]);
+const ADMIN_ACTIONS = new Set(["listAll", "assign", "setPrivate", "setCategory"]);
 
 const READ_CACHE_TTL_MS: Record<string, number> = {
   listMine: 30_000,
@@ -191,6 +192,7 @@ Deno.serve(async (req) => {
       reply: ["support:reply", 60],
       assign: ["support:assign", 600],
       setPrivate: ["support:setPrivate", 600],
+      setCategory: ["support:setCategory", 600],
       close: ["support:close", 60],
       reopen: ["support:reopen", 60],
     };
@@ -252,11 +254,33 @@ Deno.serve(async (req) => {
             status, page: input.page,
           },
         });
-        let items = (data?._embedded?.conversations ?? []) as Array<{ assignee?: unknown }>;
+        let items = (data?._embedded?.conversations ?? []) as Array<{ id?: number; assignee?: unknown }>;
         if (input.assigned === "unassigned") {
           items = items.filter((c) => c.assignee == null);
         } else if (input.assigned === "assigned") {
           items = items.filter((c) => c.assignee != null);
+        }
+        // Enrich with platform-side pointer data (category + private flag) that
+        // Freescout doesn't hold — one pointer query + one category lookup per page.
+        const ids = items.map((c) => c.id).filter((n): n is number => typeof n === "number");
+        if (ids.length > 0) {
+          const client = getAdminClient();
+          const [{ data: ptrs }, { data: cats }] = await Promise.all([
+            client.from("support_ticket_pointers").select("conversation_id, is_private, category_id").in("conversation_id", ids),
+            client.from("support_categories").select("id, label"),
+          ]);
+          const catById = new Map<string, string>((cats ?? []).map((c) => [c.id, c.label]));
+          const ptrById = new Map((ptrs ?? []).map((p) => [p.conversation_id, p]));
+          items = items.map((c) => {
+            const p = c.id != null ? ptrById.get(c.id) : undefined;
+            const categoryId = p?.category_id ?? null;
+            return {
+              ...c,
+              isPrivate: p?.is_private ?? false,
+              categoryId,
+              category: categoryId ? (catById.get(categoryId) ?? null) : null,
+            };
+          });
         }
         const body = { items };
         const k = (input as { _cacheKey?: string })._cacheKey;
@@ -379,6 +403,19 @@ Deno.serve(async (req) => {
       }
       case "setPrivate": {
         await upsertPointer(input.conversationId, null, { is_private: input.isPrivate });
+        invalidateAll();
+        return jsonResponse({ ok: true });
+      }
+      case "setCategory": {
+        // Validate the category exists + is active (reject a stale/forged id).
+        // null clears the category. Platform-side only — no Freescout call.
+        if (input.categoryId) {
+          const { data: cat } = await getAdminClient()
+            .from("support_categories").select("id")
+            .eq("id", input.categoryId).eq("is_active", true).maybeSingle();
+          if (!cat) return jsonResponse({ error: "Unknown category" }, 422);
+        }
+        await upsertPointer(input.conversationId, null, { category_id: input.categoryId });
         invalidateAll();
         return jsonResponse({ ok: true });
       }
