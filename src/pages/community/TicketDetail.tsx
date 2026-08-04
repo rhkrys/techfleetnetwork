@@ -111,7 +111,7 @@ export default function TicketDetail({
             <Card key={t.id}>
               <CardHeader className="py-3">
                 <CardTitle className="text-base font-normal">
-                  {t.type === "customer" ? customerLabel : "Tech Fleet"}
+                  {t.type === "customer" ? customerLabel : "Support Agent"}
                 </CardTitle>
                 {t.createdAt && (
                   <CardDescription>{new Date(t.createdAt).toLocaleString()}</CardDescription>

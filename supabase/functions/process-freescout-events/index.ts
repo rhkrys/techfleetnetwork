@@ -125,10 +125,10 @@ async function processOne(admin: ReturnType<typeof getAdminClient>, ev: Freescou
           .trim()
           .slice(0, 280);
         const subject = (conv as { subject?: string })?.subject ?? "your support ticket";
-        const actor = (payload as { user?: { firstName?: string; lastName?: string } })?.user;
-        const replierName = actor
-          ? `${actor.firstName ?? ""} ${actor.lastName ?? ""}`.trim() || "The Tech Fleet team"
-          : "The Tech Fleet team";
+        // Members see staff generically as "Support Agent" — admins ARE the
+        // support agents; this is member-facing language only, and it avoids
+        // exposing individual admin names in reply notifications.
+        const replierName = "Support Agent";
 
         const { data: prof } = await admin
           .from("profiles")
