@@ -6,7 +6,7 @@ import { createEdgeLogger } from "../_shared/logger.ts";
 import { applyWaf } from "../_shared/waf.ts";
 import { scrub as dlpScrub } from "../_shared/dlp.ts";
 import { withAuditWrapper } from "../_shared/audit.ts";
-import { buildSystemPrompt } from "./prompt.ts";
+import { buildSystemPrompt, extractSourceUrls, NO_KNOWLEDGE_DIRECTIVE } from "./prompt.ts";
 
 const ChatBodySchema = z
   .object({
@@ -754,10 +754,10 @@ serve(
           if (knowledgeContext.length + block.length > MAX_KB_CONTEXT_CHARS) break;
           knowledgeContext += block;
         }
-      } else {
-        knowledgeContext =
-          "\nNo knowledge base content available yet. Let the user know the knowledge base is being set up.\n";
       }
+      // UC-04: no fake "knowledge base is being set up" text. When retrieval
+      // genuinely returned nothing, knowledgeContext stays "" and the honesty
+      // directive is injected below once all context sources are known.
 
       // ── Framework graph injection ─────────────────────────────────────
       // Pull top-N framework nodes matching the user's query and append
@@ -1332,6 +1332,20 @@ serve(
       // source of truth, CI token-budget gated). This reproduces the exact
       // concatenation the handler used inline before — a no-behaviour-change
       // extraction.
+      // UC-04 honesty hard-gate: if NOTHING grounded this turn (no KB, framework,
+      // canned, playbook, example or few-shot context), swap the empty KB slot for
+      // an explicit do-not-fabricate directive so the model answers honestly
+      // instead of inventing playbooks/processes.
+      const hasGrounding = !!(
+        knowledgeContext ||
+        frameworkContext ||
+        cannedContext ||
+        playbookContext ||
+        exampleContext ||
+        fewShotContext
+      );
+      const groundedKnowledge = hasGrounding ? knowledgeContext : NO_KNOWLEDGE_DIRECTIVE;
+
       const fullSystemPrompt = buildSystemPrompt({
         audience,
         canaryPhrase: CANARY_PHRASE,
@@ -1340,7 +1354,7 @@ serve(
         userContext,
         playbookContext,
         exampleContext,
-        knowledgeContext,
+        knowledgeContext: groundedKnowledge,
         frameworkContext,
         fewShotContext,
         webContext: webResult.context,
@@ -1656,10 +1670,14 @@ serve(
           ? btoa(unescape(encodeURIComponent(JSON.stringify(actionChips))))
           : "";
 
+      // D-08: structural citations — navigable source URLs from the KB hits,
+      // guaranteed by code (not the LLM). http(s) only, deduped, capped.
+      const sourceUrls = extractSourceUrls(kbHits);
+
       const exposeHeaders: Record<string, string> = {
         ...corsHeaders,
         "Access-Control-Expose-Headers":
-          "X-Fleety-Turn-Id, X-Fleety-Intent, X-Fleety-Chips, X-Fleety-Practical, X-Fleety-Cache, X-Fleety-Guard",
+          "X-Fleety-Turn-Id, X-Fleety-Intent, X-Fleety-Chips, X-Fleety-Practical, X-Fleety-Cache, X-Fleety-Guard, X-Fleety-Sources",
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-store",
         "X-Content-Type-Options": "nosniff",
@@ -1670,6 +1688,7 @@ serve(
       };
       if (signalTurnId) exposeHeaders["X-Fleety-Turn-Id"] = signalTurnId;
       if (chipsB64) exposeHeaders["X-Fleety-Chips"] = chipsB64;
+      if (sourceUrls.length) exposeHeaders["X-Fleety-Sources"] = JSON.stringify(sourceUrls);
 
       return new Response(sanitizedBody, { headers: exposeHeaders });
     } catch (err) {

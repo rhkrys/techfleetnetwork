@@ -125,6 +125,46 @@ export function tonePresetFor(audience: string): string {
 }
 
 /**
+ * UC-04 honesty hard-gate. Injected into the KNOWLEDGE slot when retrieval found
+ * NO grounding at all (no KB, framework, canned, playbook, example or few-shot
+ * content). It forces an honest "I don't have that" answer instead of letting
+ * the model invent playbooks/processes/resources. Replaces the old passive
+ * "the knowledge base is being set up" text, which misled users into thinking
+ * the KB was empty when retrieval had simply returned nothing (e.g. a failed
+ * query embedding).
+ */
+export const NO_KNOWLEDGE_DIRECTIVE = `
+[NO KNOWLEDGE MATCH — retrieval returned nothing for this question]
+You have NO Tech Fleet knowledge to answer this specific question right now.
+Do NOT invent, guess, or describe any playbook, process, deliverable, resource,
+or fact that is not explicitly provided above — inventing one is a serious error.
+Tell the user plainly and briefly that you don't have information on this yet, and
+point them to guide.techfleet.org or the Tech Fleet Discord. Keep it short, warm,
+and honest.
+`;
+
+/**
+ * D-08 structural citations. Extract the navigable source URLs from retrieved KB
+ * hits — pure and testable, so the citation set is guaranteed by code rather than
+ * left to the LLM. Deduped, http(s) only (internal framework:// / csv:// refs are
+ * never surfaced, UC-19 AC-3), capped at `limit`.
+ */
+export function extractSourceUrls(hits: Array<{ url?: string | null }>, limit = 8): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const h of hits) {
+    const u = h?.url;
+    if (typeof u !== "string") continue;
+    if (!/^https?:\/\//i.test(u)) continue;
+    if (seen.has(u)) continue;
+    seen.add(u);
+    out.push(u);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/**
  * The dynamic content injected into the prompt for a single turn. Every field
  * is produced by index.ts from that turn's retrieval; the pure builder below
  * only concatenates them in the fixed order the handler used before.

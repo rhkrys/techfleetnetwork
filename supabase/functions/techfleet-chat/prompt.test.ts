@@ -12,6 +12,8 @@ import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.t
 import {
   ALIAS_MAP,
   buildSystemPrompt,
+  extractSourceUrls,
+  NO_KNOWLEDGE_DIRECTIVE,
   PRACTICAL_CONTRACT,
   type PromptContext,
   SYSTEM_PROMPT_BASE,
@@ -117,4 +119,32 @@ Deno.test("assembly order is byte-for-byte faithful to the original inline promp
     ctx.fewShotContext +
     ctx.webContext;
   assertEquals(buildSystemPrompt(ctx), expected);
+});
+
+// ── D-08 structural citations ────────────────────────────────────────────────
+
+Deno.test("extractSourceUrls: http(s) only, deduped, order-preserving", () => {
+  const hits = [
+    { url: "https://guide.techfleet.org/a" },
+    { url: "https://guide.techfleet.org/a" }, // duplicate — dropped
+    { url: "framework://Team-Practices" }, // internal — excluded (UC-19 AC-3)
+    { url: "csv://skills" }, // internal — excluded
+    { url: null }, // no url
+    { url: "http://example.com/b" },
+    {}, // missing url field
+  ];
+  assertEquals(extractSourceUrls(hits), ["https://guide.techfleet.org/a", "http://example.com/b"]);
+});
+
+Deno.test("extractSourceUrls respects the cap", () => {
+  const hits = Array.from({ length: 20 }, (_, i) => ({ url: `https://x/${i}` }));
+  assertEquals(extractSourceUrls(hits, 8).length, 8);
+});
+
+// ── UC-04 honesty hard-gate ──────────────────────────────────────────────────
+
+Deno.test("NO_KNOWLEDGE_DIRECTIVE forbids fabrication and gives a real fallback", () => {
+  assert(NO_KNOWLEDGE_DIRECTIVE.includes("NO KNOWLEDGE MATCH"));
+  assert(/do not invent/i.test(NO_KNOWLEDGE_DIRECTIVE));
+  assert(NO_KNOWLEDGE_DIRECTIVE.includes("guide.techfleet.org"));
 });
