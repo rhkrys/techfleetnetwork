@@ -519,6 +519,11 @@ jobs:
           done
           echo "Checked $checked functions; $fails failed."
           [ "$fails" -eq 0 ]
+      # D-17b/c: gate the Fleety system prompt — base-prompt token ceiling +
+      # structural/faithfulness assertions. Fails the build if a prompt change
+      # bloats the base (silently stealing runtime KB budget) or reorders slots.
+      - name: Fleety prompt gate (token budget + structure)
+        run: deno test --no-lock --allow-import supabase/functions/techfleet-chat/prompt.test.ts
 
   dependency-review:
     runs-on: ubuntu-latest

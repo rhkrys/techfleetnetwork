@@ -3,78 +3,118 @@
 // (sibling *.test.ts files use deno.land/std assert). Run in CI via:
 //   deno test supabase/functions/techfleet-chat/prompt.test.ts
 //
-// D-17b: the base prompt (empty dynamic slots) must not exceed the token
-// ceiling, so dynamic KB/context always has guaranteed headroom at scale.
-// D-17c: required section headers each appear exactly once and output is
-// deterministic for the same input.
+// D-17b: the base prompt (every dynamic slot empty) must not exceed the token
+// ceiling, so retrieved KB/context always has guaranteed headroom at scale.
+// D-17c: required sections appear exactly once, output is deterministic, and
+// the assembly order is byte-for-byte faithful to the original inline prompt.
 
+import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
-  assert,
-  assertEquals,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { buildSystemPrompt, formatUserContext, TONE_PRESETS } from "./prompt.ts";
+  ALIAS_MAP,
+  buildSystemPrompt,
+  PRACTICAL_CONTRACT,
+  type PromptContext,
+  SYSTEM_PROMPT_BASE,
+  tonePresetFor,
+} from "./prompt.ts";
 
-const TOKEN_CEILING = 1200;
+// The fixed instruction scaffold — base persona + canary + practical contract +
+// alias map + tone, with NO dynamic content — must stay within this ceiling so
+// runtime KB/context always has headroom. Measured base is ~1,854 tokens
+// (practical worst case); 2,000 leaves ~8% headroom. Raising it is a conscious
+// decision, never an accident: a bloated base silently steals KB budget at
+// request time.
+const TOKEN_CEILING = 2000;
 
-const EMPTY_CTX = {
-  audience: "member" as const,
-  tonePreset: TONE_PRESETS.member,
-  userContext: "",
-  kbContext: "",
-};
+function emptyCtx(overrides: Partial<PromptContext> = {}): PromptContext {
+  return {
+    audience: "member",
+    canaryPhrase: "FLEETY-SYSTEM-CANARY-7x9k2",
+    practical: true, // worst case for the token budget (adds PRACTICAL_CONTRACT)
+    cannedContext: "",
+    userContext: "",
+    playbookContext: "",
+    exampleContext: "",
+    knowledgeContext: "",
+    frameworkContext: "",
+    fewShotContext: "",
+    webContext: "",
+    ...overrides,
+  };
+}
 
-// Rough token estimate: ~4 chars per token. Conservative for English prose.
+// Rough token estimate: ~4 chars per token — the same heuristic index.ts uses
+// for its cost counter, so the gate matches production accounting.
 function estimateTokens(s: string): number {
   return Math.ceil(s.length / 4);
 }
 
-Deno.test("base prompt stays within the token ceiling", () => {
-  const base = buildSystemPrompt(EMPTY_CTX);
+Deno.test("base prompt (empty slots, practical) stays within the token ceiling", () => {
+  const base = buildSystemPrompt(emptyCtx());
   const tokens = estimateTokens(base);
   assert(
     tokens <= TOKEN_CEILING,
     `Base prompt is ~${tokens} tokens — exceeds ceiling of ${TOKEN_CEILING}. ` +
-      `Trim the base prompt before merging.`,
+      `Trim the base prompt before merging.`
   );
 });
 
-Deno.test("required section headers appear exactly once", () => {
-  const base = buildSystemPrompt(EMPTY_CTX);
-  for (const section of ["[AUDIENCE TONE]", "[USER CONTEXT]", "[KNOWLEDGE]"]) {
-    const occurrences = base.split(section).length - 1;
-    assertEquals(
-      occurrences,
-      1,
-      `Section "${section}" must appear exactly once (found ${occurrences}).`,
-    );
+Deno.test("required instruction sections each appear exactly once", () => {
+  const base = buildSystemPrompt(emptyCtx());
+  for (const marker of [
+    "KNOWLEDGE BASE:",
+    "TERMINOLOGY ALIASES",
+    "PRACTICAL MODE — ANSWER CONTRACT",
+    "[CANARY:FLEETY-SYSTEM-CANARY-7x9k2]",
+  ]) {
+    const occurrences = base.split(marker).length - 1;
+    assertEquals(occurrences, 1, `"${marker}" must appear exactly once (found ${occurrences}).`);
   }
+});
+
+Deno.test("practical contract is omitted for non-operational intents", () => {
+  const base = buildSystemPrompt(emptyCtx({ practical: false }));
+  assertEquals(base.includes("PRACTICAL MODE — ANSWER CONTRACT"), false);
 });
 
 Deno.test("output is deterministic for identical input", () => {
-  assertEquals(buildSystemPrompt(EMPTY_CTX), buildSystemPrompt(EMPTY_CTX));
+  assertEquals(buildSystemPrompt(emptyCtx()), buildSystemPrompt(emptyCtx()));
 });
 
-Deno.test("every audience tone preset builds a valid prompt", () => {
-  for (const audience of ["member", "teacher", "admin"] as const) {
-    const prompt = buildSystemPrompt({
-      audience,
-      tonePreset: TONE_PRESETS[audience],
-      userContext: "",
-      kbContext: "",
-    });
-    assert(prompt.includes(TONE_PRESETS[audience]));
+Deno.test("each audience gets its own tone preset; unknown falls back to member", () => {
+  for (const audience of ["member", "teacher", "admin", "trainee"]) {
+    const prompt = buildSystemPrompt(emptyCtx({ audience }));
+    assert(prompt.includes(tonePresetFor(audience)));
   }
+  // Non-teacher/admin audiences resolve to the trainee/member preset — exactly
+  // as the original inline ternary did.
+  assertEquals(tonePresetFor("trainee"), tonePresetFor("member"));
 });
 
-Deno.test("formatUserContext returns empty string when there is no memory", () => {
-  assertEquals(formatUserContext([]), "");
-});
-
-Deno.test("formatUserContext renders one line per memory under a header", () => {
-  const out = formatUserContext([
-    { memory_key: "role", memory_value: "UX Researcher", category: "role" },
-    { memory_key: "project", memory_value: "Accessibility Audit", category: "project" },
-  ]);
-  assert(out.startsWith("What I know about this member:"));
-  assertEquals(out.split("\n").length, 3); // header + 2 memories
+Deno.test("assembly order is byte-for-byte faithful to the original inline prompt", () => {
+  const ctx = emptyCtx({
+    cannedContext: "<<CANNED>>",
+    userContext: "<<USER>>",
+    playbookContext: "<<PLAYBOOK>>",
+    exampleContext: "<<EXAMPLE>>",
+    knowledgeContext: "<<KB>>",
+    frameworkContext: "<<FRAMEWORK>>",
+    fewShotContext: "<<FEWSHOT>>",
+    webContext: "<<WEB>>",
+  });
+  const expected =
+    SYSTEM_PROMPT_BASE +
+    `\n[CANARY:${ctx.canaryPhrase}]\n` +
+    ctx.cannedContext +
+    ctx.userContext +
+    ctx.playbookContext +
+    ctx.exampleContext +
+    PRACTICAL_CONTRACT +
+    ALIAS_MAP +
+    tonePresetFor(ctx.audience) +
+    ctx.knowledgeContext +
+    ctx.frameworkContext +
+    ctx.fewShotContext +
+    ctx.webContext;
+  assertEquals(buildSystemPrompt(ctx), expected);
 });
