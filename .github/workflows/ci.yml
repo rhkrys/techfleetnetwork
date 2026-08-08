@@ -397,6 +397,39 @@ jobs:
         run: supabase stop --no-backup
 
   # ---------------------------------------------------------------------------
+  # db-test — run the pgTAP suites in supabase/tests/ against a fresh local DB.
+  # INFORMATIONAL first (not in the gate aggregator), matching how deno-check was
+  # introduced: it surfaces DB-level security/RLS/RPC proofs on migration PRs
+  # without blocking merge until a full green baseline is established, at which
+  # point it should be promoted into the `gate` aggregator.
+  # ---------------------------------------------------------------------------
+  db-test:
+    needs: [detect-changes]
+    if: needs.detect-changes.outputs.migrations == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v3
+        with:
+          version: 2.30.4
+      - name: Start local Supabase (Postgres + pgTAP)
+        run: supabase start
+      - name: Apply migrations
+        run: supabase db reset --no-seed
+      - name: Run pgTAP suites
+        run: supabase test db
+      - name: Stop local Supabase
+        if: always()
+        run: supabase stop --no-backup
+
+  # ---------------------------------------------------------------------------
   # e2e — Playwright against a LOCAL Supabase (Docker on the runner). Decision
   # B-01/B-09 (Morgan, 2026-07): ephemeral local instance per shard — zero cost,
   # perfect isolation, zero drift, no hosted-staging secrets. Never production.
