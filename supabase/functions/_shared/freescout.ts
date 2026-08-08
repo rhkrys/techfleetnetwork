@@ -1,14 +1,31 @@
-// Freescout API client — constants + circuit breaker + concurrency semaphore.
-// Design contract: base URL and mailbox ID are CODE CONSTANTS. The only runtime
-// input is FREESCOUT_API_KEY, which is live-validated at secret entry by the
-// freescout-validate-secret edge fn. There is no runtime config resolution and
-// no defensive "degraded" branch — if the key is missing the deploy is broken
-// and we throw loudly at module load (tripwire).
-//
-// To change mailbox: edit DEFAULT_MAILBOX_ID below and open a PR.
+// Freescout API client — config + circuit breaker + concurrency semaphore.
+// Base URL and mailbox id are env-OVERRIDABLE with sane defaults. They used to be
+// hardcoded constants, but that silently broke the whole integration when
+// PikaPods reassigned the pod host (meteoric-hare -> bulky-kagu) — a config
+// problem masquerading as a code outage. Now: set FREESCOUT_BASE_URL /
+// FREESCOUT_MAILBOX_ID to move servers without a code change; the defaults track
+// the current pod so the fn still boots if the secret is absent.
+// FREESCOUT_API_KEY remains required (live-validated at secret entry by the
+// freescout-validate-secret edge fn); missing key throws loudly at module load.
 
-export const FREESCOUT_BASE_URL = "https://meteoric-hare.pikapod.net";
-export const DEFAULT_MAILBOX_ID = 1;
+/**
+ * Resolve + validate the Freescout base URL. Pure/exported so the env-override
+ * and the https guard are unit-tested (a hardcoded host broke this integration
+ * twice). Enforcing https keeps the API/webhook channel from being downgraded
+ * and keeps the SSRF host allowlist below meaningful.
+ */
+export function resolveFreescoutBaseUrl(envValue?: string | null): string {
+  const url = envValue && envValue.length > 0 ? envValue : "https://bulky-kagu.pikapod.net";
+  if (!url.startsWith("https://")) {
+    throw new Error("FREESCOUT_BASE_URL must be an https:// URL");
+  }
+  return url;
+}
+
+export const FREESCOUT_BASE_URL = resolveFreescoutBaseUrl(Deno.env.get("FREESCOUT_BASE_URL"));
+export const DEFAULT_MAILBOX_ID = Number(Deno.env.get("FREESCOUT_MAILBOX_ID") ?? "1");
+// Derived from the configured base URL — this is the SSRF allowlist: outbound
+// calls to any other host are refused (see request() below).
 const FREESCOUT_HOST = new URL(FREESCOUT_BASE_URL).host;
 
 const FREESCOUT_API_KEY = Deno.env.get("FREESCOUT_API_KEY") ?? "";

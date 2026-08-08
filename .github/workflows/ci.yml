@@ -519,11 +519,14 @@ jobs:
           done
           echo "Checked $checked functions; $fails failed."
           [ "$fails" -eq 0 ]
-      # D-17b/c: gate the Fleety system prompt — base-prompt token ceiling +
-      # structural/faithfulness assertions. Fails the build if a prompt change
-      # bloats the base (silently stealing runtime KB budget) or reorders slots.
-      - name: Fleety prompt gate (token budget + structure)
-        run: deno test --no-lock --allow-import supabase/functions/techfleet-chat/prompt.test.ts
+      # Edge unit gates: Fleety prompt (D-17b/c token ceiling + structure/order)
+      # and the Freescout base-URL config (env-override + https guard). Fails the
+      # build on prompt bloat/reorder or a bad Freescout host resolution.
+      - name: Edge unit gates (Fleety prompt + Freescout config)
+        run: |
+          deno test --no-lock --allow-import --allow-env \
+            supabase/functions/techfleet-chat/prompt.test.ts \
+            supabase/functions/_shared/freescout.test.ts
 
   dependency-review:
     runs-on: ubuntu-latest
