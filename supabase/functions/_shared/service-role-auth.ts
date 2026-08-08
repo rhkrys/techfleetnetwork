@@ -1,29 +1,30 @@
-// Shared service-role bearer validator for cron-poked workers.
+// Shared service-role bearer validator for cron-poked / internal-only workers.
 //
-// Accepts BOTH formats Supabase can send on cron wake:
-//   1. Legacy service-role JWT (claims.role === 'service_role')
-//   2. Opaque signing-keys token (sb_secret_*), compared to SUPABASE_SERVICE_ROLE_KEY env
+// Security (audit C1, 2026-08): service-role is granted ONLY by a constant-time
+// exact match against SUPABASE_SERVICE_ROLE_KEY. The previous version also
+// accepted ANY JWT whose base64 payload said role="service_role" WITHOUT
+// verifying the signature — an unauthenticated attacker could forge
+// `x.<base64 {"role":"service_role"}>.x` and run every verify_jwt=false worker.
+// That fallback is removed. This is safe: cron jobs are invoked with the
+// service-role key from Vault (see 20260707200000_recreate_cron_jobs_on_live_project.sql),
+// and the correct callers (e.g. send-transactional-email) already exact-match only.
 //
-// Used by every `verify_jwt = false` cron worker (process-email-queue,
-// process-freescout-events, etc.) so a key-format change cannot silently
-// 401-storm one worker while another keeps working.
+// If a *signed*-JWT path is ever genuinely required, verify the signature against
+// the GoTrue JWKS / SUPABASE_JWT_SECRET — never trust an unverified `role` claim.
 
 export type ServiceRoleAuthResult =
-  | { ok: true; mode: "legacy_jwt" | "opaque" }
-  | { ok: false; status: 401 | 403; error: string };
+  { ok: true; mode: "opaque" } | { ok: false; status: 401 | 403; error: string };
 
-function parseJwtClaims(token: string): Record<string, unknown> | null {
-  const parts = token.split(".");
-  if (parts.length < 2) return null;
-  try {
-    const payload = parts[1]
-      .replaceAll("-", "+")
-      .replaceAll("_", "/")
-      .padEnd(Math.ceil(parts[1].length / 4) * 4, "=");
-    return JSON.parse(atob(payload)) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
+/** Constant-time string comparison (avoids leaking the key via timing). Length
+ *  mismatch short-circuits — acceptable, as key length is not secret. */
+export function timingSafeEqualStr(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const ab = enc.encode(a);
+  const bb = enc.encode(b);
+  if (ab.length !== bb.length) return false;
+  let diff = 0;
+  for (let i = 0; i < ab.length; i++) diff |= ab[i] ^ bb[i];
+  return diff === 0;
 }
 
 export function authorizeServiceRoleRequest(req: Request): ServiceRoleAuthResult {
@@ -36,21 +37,16 @@ export function authorizeServiceRoleRequest(req: Request): ServiceRoleAuthResult
 
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   if (!serviceKey) {
-    // Server misconfig — treat as 401 so caller does not retry-storm.
+    // Server misconfig — fail closed (401 so callers don't retry-storm).
     return { ok: false, status: 401, error: "Server configuration error" };
   }
 
-  if (token === serviceKey) {
+  // ONLY a constant-time exact match is accepted. No JWT-claim decoding.
+  if (timingSafeEqualStr(token, serviceKey)) {
     return { ok: true, mode: "opaque" };
   }
-
-  const claims = parseJwtClaims(token);
-  if (claims?.role === "service_role") {
-    return { ok: true, mode: "legacy_jwt" };
-  }
-
   return { ok: false, status: 403, error: "Forbidden" };
 }
 
-// Test seam: exported for unit tests, not for production callers.
-export const __test = { parseJwtClaims };
+// Test seam.
+export const __test = { timingSafeEqualStr };

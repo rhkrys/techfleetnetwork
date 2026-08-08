@@ -20,6 +20,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2.45.0";
 import { fromZonedTime } from "npm:date-fns-tz@3.2.0";
+import { authorizeServiceRoleRequest } from "../_shared/service-role-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -338,36 +339,19 @@ function expandOccurrences(
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  // Service-role only. Validate by decoding the JWT and checking the role
-  // claim — this tolerates signing-key rotation where the vault-stored key
-  // and the Deno SUPABASE_SERVICE_ROLE_KEY env var are different valid JWTs.
-  const auth = req.headers.get("Authorization") ?? "";
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-  let authorized = false;
-  if (auth.startsWith("Bearer ")) {
-    const token = auth.slice("Bearer ".length).trim();
-    if (serviceRoleKey && token === serviceRoleKey) {
-      authorized = true;
-    } else {
-      try {
-        const payload = token.split(".")[1];
-        if (payload) {
-          const json = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
-          if (json?.role === "service_role") authorized = true;
-        }
-      } catch {
-        /* ignore */
-      }
-    }
-  }
-  if (!authorized) {
+  // Service-role only. Constant-time exact key match; NO unverified JWT decode.
+  const svcAuth = authorizeServiceRoleRequest(req);
+  if (!svcAuth.ok) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
+      status: svcAuth.status,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
-  const supabase = createClient(Deno.env.get("SUPABASE_URL")!, serviceRoleKey);
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+  );
 
   const t0 = Date.now();
   try {

@@ -285,6 +285,7 @@ jobs:
           - check-no-legacy-auth-service.mjs
           - check-legacy-auth-importers.mjs
           - check-email-architecture.mjs
+          - check-no-unsigned-jwt-auth.mjs
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
@@ -588,7 +589,8 @@ jobs:
           deno_retry deno test --no-lock --allow-import --allow-env \
             supabase/functions/techfleet-chat/prompt.test.ts \
             supabase/functions/_shared/freescout.test.ts \
-            supabase/functions/_shared/gemini-embed.test.ts
+            supabase/functions/_shared/gemini-embed.test.ts \
+            supabase/functions/process-freescout-events/auth.test.ts
 
   dependency-review:
     runs-on: ubuntu-latest

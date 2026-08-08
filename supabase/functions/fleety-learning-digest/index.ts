@@ -15,6 +15,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 import { withAuditWrapper } from "../_shared/audit.ts";
+import { authorizeServiceRoleRequest } from "../_shared/service-role-auth.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, content-type",
@@ -92,10 +93,9 @@ serve(
     const auth = req.headers.get("authorization") ?? "";
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    if (
-      !auth.includes(SERVICE_KEY) &&
-      !auth.includes(Deno.env.get("SUPABASE_ANON_KEY") ?? "__none__")
-    ) {
+    // Service-role (constant-time exact key match) OR a verified admin JWT.
+    // NEVER the public anon key (it ships in the frontend bundle) — audit C2.
+    if (!authorizeServiceRoleRequest(req).ok) {
       // Allow only if caller can authenticate as admin
       const SUPABASE_ANON_KEY =
         Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY")!;

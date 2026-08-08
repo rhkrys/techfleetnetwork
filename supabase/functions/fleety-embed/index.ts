@@ -16,6 +16,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { z } from "npm:zod@3.23.8";
 
 import { withAuditWrapper } from "../_shared/audit.ts";
+import { authorizeServiceRoleRequest } from "../_shared/service-role-auth.ts";
 import {
   GEMINI_EMBED_DIM,
   GEMINI_EMBED_MODEL_TAG,
@@ -92,22 +93,9 @@ serve(
       // Cron / service-role path: bearer token == service role key OR
       // x-cron-secret matches CRON_SECRET. No user check; backfill only.
       const CRON_SECRET = Deno.env.get("CRON_SECRET") || "";
-      // Service-role match: either current SUPABASE_SERVICE_ROLE_KEY (sb_secret_… or JWT)
-      // OR a legacy JWT whose decoded `role` claim is "service_role" (covers rotation
-      // periods where cron jobs still hold the previous JWT).
-      let isService = !!auth && auth === `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`;
-      if (!isService && auth.startsWith("Bearer ")) {
-        const token = auth.slice(7);
-        const parts = token.split(".");
-        if (parts.length === 3) {
-          try {
-            const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
-            if (payload?.role === "service_role") isService = true;
-          } catch (_e) {
-            /* not a JWT — ignore */
-          }
-        }
-      }
+      // Service-role: constant-time exact key match ONLY (no unverified JWT
+      // decode — see _shared/service-role-auth.ts, audit C1).
+      const isService = authorizeServiceRoleRequest(req).ok;
       const isCron = CRON_SECRET && req.headers.get("x-cron-secret") === CRON_SECRET;
       const isBackfill = body?.mode === "backfill";
 

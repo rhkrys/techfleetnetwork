@@ -65,6 +65,17 @@ jobs:
               fi
             fi
 
+            # Edge functions are covered by Deno tests (co-located or shared
+            # *.test.ts under supabase/functions) which the src/test|e2e greps
+            # above cannot see. Count those too — but ONLY test files (--include),
+            # so a function's own source referencing its name doesn't self-satisfy.
+            if grep -rl --include='*.test.ts' "$mod" supabase/functions 2>/dev/null | head -1 | grep -q .; then
+              continue
+            fi
+            if [ "${#name}" -ge 6 ] && grep -rl --include='*.test.ts' "$name" supabase/functions 2>/dev/null | head -1 | grep -q .; then
+              continue
+            fi
+
             missing+=("$mod")
           done <<< "${{ steps.diff.outputs.modules }}"
 
