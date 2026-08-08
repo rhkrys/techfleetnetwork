@@ -1549,7 +1549,13 @@ serve(
       // Only sanitize the actual text content inside delta.content, not the raw SSE/JSON framing.
       // Also: capture the full assistant response so we can write it to L3 cache on completion.
       let assistantBuffer = "";
+      // Only cache GROUNDED answers. The response cache is permanent (it grows
+      // and never time-expires), so an ungrounded/fabricated reply would be
+      // served for the life of the kb_version. `hasGrounding` is false when no
+      // KB / framework / canned / playbook / example / few-shot context backed
+      // the turn (e.g. while retrieval is degraded) — never persist those.
       const isCacheable =
+        hasGrounding &&
         haveEmbeddings &&
         !cannedAnswerId &&
         webResult.sources.length === 0 &&
