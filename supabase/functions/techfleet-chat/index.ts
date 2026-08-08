@@ -6,6 +6,7 @@ import { createEdgeLogger } from "../_shared/logger.ts";
 import { applyWaf } from "../_shared/waf.ts";
 import { scrub as dlpScrub } from "../_shared/dlp.ts";
 import { withAuditWrapper } from "../_shared/audit.ts";
+import { geminiEmbedBody, geminiEmbedUrl, parseGeminiEmbedding } from "../_shared/gemini-embed.ts";
 import { buildSystemPrompt, extractSourceUrls, NO_KNOWLEDGE_DIRECTIVE } from "./prompt.ts";
 
 const ChatBodySchema = z
@@ -118,31 +119,34 @@ function sanitizeAIOutput(text: string): string {
  * external-gateway fallback (D-04). Returns null on failure so callers can
  * degrade to trigram retrieval (UC-22).
  */
-const EMBED_DIM = 768;
+// EMBED_DIM lives in _shared/gemini-embed.ts (GEMINI_EMBED_DIM) now — one source
+// of truth for the model + dimension across the query and ingest paths.
 async function embedQuery(text: string, requestId: string): Promise<number[] | null> {
   const trimmed = (text || "").slice(0, 4000);
   if (!trimmed.trim()) return null;
   const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") || "";
   if (!GEMINI_API_KEY) return null;
   try {
-    const r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "models/text-embedding-004",
-          content: { parts: [{ text: trimmed }] },
-        }),
-      }
-    );
+    const r = await fetch(geminiEmbedUrl(GEMINI_API_KEY), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(geminiEmbedBody(trimmed, "RETRIEVAL_QUERY")),
+    });
     if (!r.ok) {
-      log.warn("embed", `Gemini embed HTTP ${r.status} [${requestId}]`, { requestId });
+      // Log a snippet of the error body — a bare status code hid a retired-model
+      // HTTP 404 (text-embedding-004) for weeks. The body names the real cause.
+      let detail = "";
+      try {
+        detail = (await r.text()).slice(0, 200);
+      } catch {
+        /* ignore */
+      }
+      log.warn("embed", `Gemini embed HTTP ${r.status} [${requestId}]: ${detail}`, {
+        requestId,
+      });
       return null;
     }
-    const j = await r.json();
-    const v = j?.embedding?.values;
-    return Array.isArray(v) && v.length === EMBED_DIM ? v : null;
+    return parseGeminiEmbedding(await r.json());
   } catch (e) {
     log.warn(
       "embed",

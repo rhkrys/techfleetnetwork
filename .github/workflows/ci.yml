@@ -519,14 +519,16 @@ jobs:
           done
           echo "Checked $checked functions; $fails failed."
           [ "$fails" -eq 0 ]
-      # Edge unit gates: Fleety prompt (D-17b/c token ceiling + structure/order)
-      # and the Freescout base-URL config (env-override + https guard). Fails the
-      # build on prompt bloat/reorder or a bad Freescout host resolution.
-      - name: Edge unit gates (Fleety prompt + Freescout config)
+      # Edge unit gates: Fleety prompt (D-17b/c token ceiling + structure/order),
+      # the Freescout base-URL config (env-override + https guard), and the shared
+      # Gemini embedding contract (current model + query/doc symmetry). Fails on
+      # prompt bloat/reorder, a bad Freescout host, or an embedding-model drift.
+      - name: Edge unit gates (prompt + Freescout + embedding contract)
         run: |
           deno test --no-lock --allow-import --allow-env \
             supabase/functions/techfleet-chat/prompt.test.ts \
-            supabase/functions/_shared/freescout.test.ts
+            supabase/functions/_shared/freescout.test.ts \
+            supabase/functions/_shared/gemini-embed.test.ts
 
   dependency-review:
     runs-on: ubuntu-latest
