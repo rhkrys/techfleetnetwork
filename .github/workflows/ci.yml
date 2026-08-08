@@ -494,6 +494,11 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+    env:
+      # Pin Deno's module/download cache to a workspace path we can persist
+      # between runs (see the cache step). Steady-state = zero network fetches,
+      # so an esm.sh / deno.land CDN blip can't fail the job.
+      DENO_DIR: ${{ github.workspace }}/.deno-cache
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
@@ -501,9 +506,42 @@ jobs:
         uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version: v2.x
+      # Persist downloaded remote deps across runs. Key on the hash of every .ts
+      # under supabase/functions, so the cache only rebuilds when imports could
+      # have changed; restore-keys lets an unchanged-deps PR reuse a prior cache.
+      - name: Cache Deno dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ${{ env.DENO_DIR }}
+          key: deno-${{ runner.os }}-${{ hashFiles('supabase/functions/**/*.ts') }}
+          restore-keys: |
+            deno-${{ runner.os }}-
       - name: Type-check edge functions
         run: |
           set -u
+          # deno_retry: retry ONLY transient remote-fetch failures (esm.sh /
+          # deno.land CDN blips — e.g. HTTP 522 Cloudflare origin timeout), up to
+          # 3x with exponential backoff. A genuine type error fails immediately
+          # (no retry, no masking). Output is captured, printed, then classified.
+          deno_retry() {
+            local n=0 max=3 delay=5 out rc
+            while :; do
+              out="$("$@" 2>&1)"; rc=$?
+              printf '%s\n' "$out"
+              [ "$rc" -eq 0 ] && return 0
+              if printf '%s' "$out" | grep -qiE 'failed: [0-9]{3}|<unknown status code>|error sending request|connection (closed|reset|refused)|(connection|operation) timed out|tcp connect error|dns error|502 bad gateway|503 service|504 gateway|429 too many'; then
+                n=$((n + 1))
+                if [ "$n" -ge "$max" ]; then
+                  echo "::warning::transient remote-fetch failure persisted after ${max} attempts"
+                  return "$rc"
+                fi
+                echo "::warning::transient remote-fetch failure (attempt ${n}/${max}); retrying in ${delay}s"
+                sleep "$delay"; delay=$((delay * 2))
+                continue
+              fi
+              return "$rc"
+            done
+          }
           fails=0; checked=0
           for d in supabase/functions/*/; do
             name="$(basename "$d")"
@@ -511,7 +549,7 @@ jobs:
             [ -f "${d}index.ts" ] || continue
             checked=$((checked + 1))
             echo "::group::deno check $name"
-            if ! deno check --no-lock --allow-import "${d}index.ts"; then
+            if ! deno_retry deno check --no-lock --allow-import "${d}index.ts"; then
               echo "::error::deno check failed for $name"
               fails=$((fails + 1))
             fi
@@ -525,7 +563,29 @@ jobs:
       # prompt bloat/reorder, a bad Freescout host, or an embedding-model drift.
       - name: Edge unit gates (prompt + Freescout + embedding contract)
         run: |
-          deno test --no-lock --allow-import --allow-env \
+          set -u
+          # Same transient-fetch resilience as the type-check step: retry CDN
+          # blips, fail fast on a real test failure.
+          deno_retry() {
+            local n=0 max=3 delay=5 out rc
+            while :; do
+              out="$("$@" 2>&1)"; rc=$?
+              printf '%s\n' "$out"
+              [ "$rc" -eq 0 ] && return 0
+              if printf '%s' "$out" | grep -qiE 'failed: [0-9]{3}|<unknown status code>|error sending request|connection (closed|reset|refused)|(connection|operation) timed out|tcp connect error|dns error|502 bad gateway|503 service|504 gateway|429 too many'; then
+                n=$((n + 1))
+                if [ "$n" -ge "$max" ]; then
+                  echo "::warning::transient remote-fetch failure persisted after ${max} attempts"
+                  return "$rc"
+                fi
+                echo "::warning::transient remote-fetch failure (attempt ${n}/${max}); retrying in ${delay}s"
+                sleep "$delay"; delay=$((delay * 2))
+                continue
+              fi
+              return "$rc"
+            done
+          }
+          deno_retry deno test --no-lock --allow-import --allow-env \
             supabase/functions/techfleet-chat/prompt.test.ts \
             supabase/functions/_shared/freescout.test.ts \
             supabase/functions/_shared/gemini-embed.test.ts
