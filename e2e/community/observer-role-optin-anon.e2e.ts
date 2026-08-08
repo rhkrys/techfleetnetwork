@@ -13,17 +13,29 @@ import { test, expect } from "@playwright/test";
 test.describe("Observer opt-in — anon gate (OBS-EDGE-ANON-001) @critical", () => {
   test.describe.configure({ retries: 1, mode: "parallel" });
 
-  for (const path of ["/community/observer", "/learn/obs-8"]) {
+  // Real protected route is /courses/observer (ObserverCoursePage, wrapped in
+  // <ProtectedRoute>). The former /community/observer and /learn/obs-8 aliases
+  // no longer exist — they hit the catch-all 404, which is neither a login
+  // redirect nor an auth gate, so this @critical anon-gate test was green-blind.
+  for (const path of ["/courses/observer"]) {
     test(`anonymous ${path} visit is gated`, async ({ page }) => {
       await page.goto(path, { waitUntil: "domcontentloaded" }).catch(() => null);
       // Either redirected or inline-gated; both are acceptable.
       const url = page.url();
       const onLogin = /\/login(\/|\?|$)/.test(url);
-      const inlineGate = await page
-        .getByRole("heading", { name: /sign in|log in/i })
-        .first()
-        .isVisible()
-        .catch(() => false);
+      // Gate renders the LoginPage inline ("Welcome back" heading + "Sign in"
+      // submit button), URL unchanged — detect the form, not just a heading.
+      const inlineGate =
+        (await page
+          .getByRole("button", { name: /^sign in$/i })
+          .first()
+          .isVisible()
+          .catch(() => false)) ||
+        (await page
+          .getByRole("heading", { name: /welcome back|sign in|log in|not authorized|forbidden/i })
+          .first()
+          .isVisible()
+          .catch(() => false));
       expect(onLogin || inlineGate).toBe(true);
     });
   }

@@ -449,6 +449,21 @@ jobs:
           } >> "$GITHUB_ENV"
       - name: Seed e2e fixture data (local instance only)
         run: node scripts/ci/seed-e2e-fixtures.mjs
+      # Permanent diagnostic (sre-operational-readiness: no silent failures).
+      # On ANY e2e failure, dump the local Supabase DB + auth container logs so
+      # the real Postgres error (trigger/constraint/RLS) is always visible —
+      # turns an opaque "HTTP 500 / test failed" into the exact cause.
+      - name: Dump Supabase DB + auth logs on failure
+        if: failure()
+        run: |
+          echo "::group::Postgres (db) container logs — last 300 lines"
+          db=$(docker ps -a --filter name=supabase_db --format '{{.Names}}' | head -1)
+          if [ -n "$db" ]; then docker logs "$db" 2>&1 | tail -300; else echo "no supabase_db container found"; fi
+          echo "::endgroup::"
+          echo "::group::Auth (gotrue) container logs — last 200 lines"
+          au=$(docker ps -a --filter name=supabase_auth --format '{{.Names}}' | head -1)
+          if [ -n "$au" ]; then docker logs "$au" 2>&1 | tail -200; else echo "no supabase_auth container found"; fi
+          echo "::endgroup::"
       - name: Resolve Playwright version
         id: pw-version
         run: echo "version=$(node -p "require('./node_modules/@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"

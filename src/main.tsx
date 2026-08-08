@@ -28,9 +28,11 @@ import { installDomTranslator } from "@/lib/i18n/dom-translator";
 // no auto-refresh storm.
 installAuthFetchGuard();
 
-
-// Unregister any existing service workers and clear caches so users always get fresh content
-if ("serviceWorker" in navigator) {
+// Unregister any existing service workers and clear caches so users always get fresh content.
+// Guard on the VALUE, not `"serviceWorker" in navigator`: a browser (or a test
+// stubbing graceful degradation) can expose the property while its value is
+// undefined, which made `navigator.serviceWorker.getRegistrations()` throw at boot.
+if (navigator.serviceWorker && typeof navigator.serviceWorker.getRegistrations === "function") {
   navigator.serviceWorker.getRegistrations().then((registrations) => {
     registrations.forEach((r) => r.unregister());
   });
@@ -69,4 +71,6 @@ createRoot(document.getElementById("root")!).render(
 try {
   (window as unknown as { __tfnAppMounted?: boolean }).__tfnAppMounted = true;
   document.documentElement.setAttribute("data-tfn-mounted", "1");
-} catch { /* non-fatal */ }
+} catch {
+  /* non-fatal */
+}

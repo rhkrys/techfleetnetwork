@@ -11,6 +11,18 @@ const BATCH = 25;
 const VT_SECONDS = 60;
 const MAX_ATTEMPTS = 3;
 
+/** Escape text before it lands in an HTML column (notifications.body_html).
+ *  A ticket subject is attacker/customer-influenced; the notification render
+ *  path trusts stored HTML, so an unescaped subject would be stored XSS. */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 interface FreescoutEvent {
   msg_id: number;
   read_ct: number;
@@ -40,11 +52,16 @@ async function processOne(admin: ReturnType<typeof getAdminClient>, ev: Freescou
   if (customerEmail) {
     const { data: prof } = await admin
       .from("profiles")
-      .select("id, freescout_customer_id")
+      .select("id, user_id, freescout_customer_id")
       .eq("email", customerEmail)
       .maybeSingle();
-    if (prof?.id) {
-      customerUserId = prof.id;
+    if (prof?.user_id) {
+      // customer_user_id must be the AUTH uid (profiles.user_id) to match RLS
+      // (`customer_user_id = auth.uid()`) and the FK to profiles(user_id).
+      // Writing profiles.id (the random PK) here made drain-created tickets
+      // invisible to the owner (audit C3). Profile row updates below still key
+      // on the PK (prof.id).
+      customerUserId = prof.user_id;
       if (freescoutCustomerId && !prof.freescout_customer_id) {
         await admin
           .from("profiles")
@@ -89,18 +106,35 @@ async function processOne(admin: ReturnType<typeof getAdminClient>, ev: Freescou
     const isAssigned = eventType === "convo.assigned";
 
     if (customerUserId && (isUserReply || isStatusChange || isAssigned)) {
-      try {
-        await admin.from("notifications").insert({
-          user_id: customerUserId,
-          title: isStatusChange ? "Ticket status updated" : "New reply on your ticket",
-          body: (conv as { subject?: string })?.subject
-            ? `Re: ${(conv as { subject?: string }).subject}`
-            : "View your support ticket for details.",
-          link: `/community/get-help?ticket=${conversationId}`,
-          category: "support",
-        });
-      } catch {
-        /* best effort */
+      // audit FS2/T-B: the previous raw insert used columns that do not exist
+      // (body/link/category vs the real body_html/link_url/notification_type),
+      // so PostgREST 400'd and the error was SWALLOWED — members never received
+      // the "new reply"/"status updated" notification (HELP-DESK-028 dead in
+      // prod). Route through safe_create_notification (correct columns + its own
+      // outbox/retry/DLQ). The subject is HTML-escaped before it lands in
+      // body_html to prevent stored XSS via a crafted ticket subject (audit T-D).
+      const rawSubject = (conv as { subject?: string })?.subject ?? "";
+      const bodyHtml = rawSubject
+        ? `Re: ${escapeHtml(rawSubject)}`
+        : "View your support ticket for details.";
+      const { error: notifErr } = await admin.rpc("safe_create_notification", {
+        p_user_id: customerUserId,
+        p_title: isStatusChange ? "Ticket status updated" : "New reply on your ticket",
+        p_body_html: bodyHtml,
+        p_notification_type: "support",
+        p_link_url: `/community/get-help?ticket=${conversationId}`,
+        p_source: "process-freescout-events",
+      });
+      if (notifErr) {
+        console.error(
+          JSON.stringify({
+            level: "warn",
+            fn: "process-freescout-events",
+            code: "notification_failed",
+            conversationId,
+            msg: notifErr.message,
+          })
+        );
       }
     }
 

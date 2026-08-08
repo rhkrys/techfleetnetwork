@@ -8,10 +8,7 @@ const required = [
   "https://pzvqxdgoztbfikfuifix.supabase.co",
   "sb_publishable_yKbfQNAnhEEW-9TPII5_Og_8G7gOzm2",
 ];
-const forbidden = [
-  "VITE_SUPABASE_URL}/functions",
-  "undefined/functions/v1",
-];
+const forbidden = ["VITE_SUPABASE_URL}/functions", "undefined/functions/v1"];
 
 function fail(message) {
   console.error(`Post-build smoke failed: ${message}`);
@@ -30,8 +27,19 @@ const jsBundle = readdirSync(assetsDir)
   .map((file) => readFileSync(join(assetsDir, file), "utf8"))
   .join("\n");
 
-for (const value of required) {
-  if (!jsBundle.includes(value)) fail(`required production config is missing: ${value.slice(0, 24)}…`);
+// A local/e2e build legitimately bakes the LOCAL Supabase URL, not the prod one,
+// so the prod-config assertion below must NOT run for it (it would false-fail the
+// e2e webServer build). Detect a local build from the bundle itself (no env
+// needed) and skip ONLY the prod-config check — every structural / forbidden /
+// preload check still runs. Prod + preview builds still assert prod config.
+const isLocalBuild = /127\.0\.0\.1:54321|localhost:54321/.test(jsBundle);
+if (isLocalBuild) {
+  console.log("Post-build smoke: local/e2e build detected — skipping prod-config assertion.");
+} else {
+  for (const value of required) {
+    if (!jsBundle.includes(value))
+      fail(`required production config is missing: ${value.slice(0, 24)}…`);
+  }
 }
 
 for (const value of forbidden) {
@@ -65,5 +73,5 @@ for (const tag of preloadTags) {
 }
 
 console.log(
-  `Post-build smoke passed: production config, app entry, and ${preloadTags.length} preload tag(s) verified.`,
+  `Post-build smoke passed: production config, app entry, and ${preloadTags.length} preload tag(s) verified.`
 );

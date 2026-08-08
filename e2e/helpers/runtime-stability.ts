@@ -90,7 +90,9 @@ export async function expectNoHorizontalOverflow(page: Page) {
           width: Math.round(rect.width),
         };
       })
-      .filter((item) => item.width > 0 && (item.right > width + tolerance || item.left < -tolerance))
+      .filter(
+        (item) => item.width > 0 && (item.right > width + tolerance || item.left < -tolerance)
+      )
       .slice(0, 8);
 
     return {
@@ -103,7 +105,7 @@ export async function expectNoHorizontalOverflow(page: Page) {
 
   expect(
     overflow.scrollWidth,
-    `Horizontal page overflow at ${page.url()}: ${JSON.stringify(overflow, null, 2)}`,
+    `Horizontal page overflow at ${page.url()}: ${JSON.stringify(overflow, null, 2)}`
   ).toBeLessThanOrEqual(overflow.viewportWidth + 2);
 }
 
@@ -112,7 +114,10 @@ export async function expectFocusableControlsAreVisible(page: Page) {
     const selector = [
       "a[href]",
       "button",
-      "input",
+      // type=hidden inputs are never rendered or keyboard-focusable. Cloudflare
+      // Turnstile injects one (id="cf-chl-widget-*_response") on every auth
+      // page; counting it produced a false "hidden focusable control" failure.
+      "input:not([type='hidden'])",
       "select",
       "textarea",
       "[tabindex]:not([tabindex='-1'])",
@@ -122,7 +127,8 @@ export async function expectFocusableControlsAreVisible(page: Page) {
 
     return Array.from(document.querySelectorAll<HTMLElement>(selector))
       .filter((element) => {
-        if (element.hasAttribute("disabled") || element.getAttribute("aria-hidden") === "true") return false;
+        if (element.hasAttribute("disabled") || element.getAttribute("aria-hidden") === "true")
+          return false;
         const rect = element.getBoundingClientRect();
         const style = window.getComputedStyle(element);
         return (
@@ -143,7 +149,7 @@ export async function expectFocusableControlsAreVisible(page: Page) {
 
   expect(
     hiddenFocusable,
-    `Focusable controls must remain visible and reachable at ${page.url()}: ${JSON.stringify(hiddenFocusable, null, 2)}`,
+    `Focusable controls must remain visible and reachable at ${page.url()}: ${JSON.stringify(hiddenFocusable, null, 2)}`
   ).toHaveLength(0);
 }
 
@@ -165,10 +171,19 @@ export async function expectKeyboardFocusVisible(page: Page) {
   });
 
   if (!active) return;
-  expect(active.width, `Focused element has no width at ${page.url()}: ${JSON.stringify(active)}`).toBeGreaterThan(0);
-  expect(active.height, `Focused element has no height at ${page.url()}: ${JSON.stringify(active)}`).toBeGreaterThan(0);
+  expect(
+    active.width,
+    `Focused element has no width at ${page.url()}: ${JSON.stringify(active)}`
+  ).toBeGreaterThan(0);
+  expect(
+    active.height,
+    `Focused element has no height at ${page.url()}: ${JSON.stringify(active)}`
+  ).toBeGreaterThan(0);
 }
 
 export async function expectNoRuntimeIssues(collector: RuntimeIssueCollector, context: string) {
-  expect(collector.errors, `Runtime stability issues in ${context}:\n${collector.errors.join("\n")}`).toHaveLength(0);
+  expect(
+    collector.errors,
+    `Runtime stability issues in ${context}:\n${collector.errors.join("\n")}`
+  ).toHaveLength(0);
 }

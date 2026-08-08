@@ -46,13 +46,16 @@ test.describe("No third-party trackers before consent", () => {
         }
       });
 
-      await page.goto(route, { waitUntil: "networkidle" });
-      // Give deferred / setTimeout-loaded scripts a chance to fire.
+      // NOTE: use "load", not "networkidle". On /login and /register the
+      // Cloudflare Turnstile widget holds a long-lived connection, so the
+      // network never goes idle and goto times out at 20s. "load" + a fixed
+      // settle window still gives deferred/consent-gated trackers time to fire.
+      await page.goto(route, { waitUntil: "load" });
       await page.waitForTimeout(2000);
 
       expect(
         offenders,
-        `Unexpected tracker requests on ${route}:\n${offenders.join("\n")}`,
+        `Unexpected tracker requests on ${route}:\n${offenders.join("\n")}`
       ).toEqual([]);
     });
   }

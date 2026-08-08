@@ -1,4 +1,57 @@
 import { test, expect } from "@playwright/test";
+import { createClient } from "@supabase/supabase-js";
+
+// /profile-setup is a ProtectedRoute — an anonymous visit renders the login
+// gate, so the two tests that assert the form is present need a real member
+// session. Sign in the seeded e2e-member (scripts/ci/seed-e2e-fixtures.mjs)
+// through a capturing storage so we replay the EXACT localStorage payload (and
+// key) supabase-js writes into the browser before the app boots. API sign-in
+// avoids the Turnstile widget (a client-only gate); GoTrue accepts the password
+// grant directly. Gated on backend env; skips cleanly when unavailable.
+const SB_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
+const SB_ANON = process.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || "";
+const MEMBER = { email: "e2e-member@techfleet.test", password: "E2e-member-pass-1!" };
+let memberStorage: Record<string, string> | null = null;
+let memberAuthError: string | null = null;
+
+async function bootstrapMemberSession() {
+  if (!SB_URL || !SB_ANON) {
+    memberAuthError = "VITE_SUPABASE_URL / anon key not provided.";
+    return;
+  }
+  const store: Record<string, string> = {};
+  const client = createClient(SB_URL, SB_ANON, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      storage: {
+        getItem: (k: string) => store[k] ?? null,
+        setItem: (k: string, v: string) => {
+          store[k] = v;
+        },
+        removeItem: (k: string) => {
+          delete store[k];
+        },
+      },
+    },
+  });
+  const { error } = await client.auth.signInWithPassword(MEMBER);
+  if (error) {
+    memberAuthError = `member sign-in failed: ${error.message}`;
+    return;
+  }
+  memberStorage = { ...store };
+}
+
+async function seedMemberSession(page: import("@playwright/test").Page) {
+  if (!memberStorage) test.skip(true, memberAuthError || "member session unavailable");
+  await page.addInitScript((snapshot) => {
+    for (const [key, value] of Object.entries(snapshot as Record<string, string>)) {
+      window.localStorage.setItem(key, value);
+    }
+  }, memberStorage);
+}
 
 /**
  * BDD Scenarios covered:
@@ -11,15 +64,21 @@ import { test, expect } from "@playwright/test";
  * 45.1 — Password reset button visible for email/password users
  */
 
+test.beforeAll(bootstrapMemberSession);
+
 test.describe("Profile Setup Dialog (BDD 43.1–43.5)", () => {
   test("43.3: Step 1 shows required fields on the profile setup page", async ({ page }) => {
+    await seedMemberSession(page);
     await page.goto("/profile-setup");
     await page.waitForLoadState("networkidle").catch(() => {});
 
-    // The profile setup page should have first name, last name, email fields
+    // The profile setup page should have first name, last name, email fields.
+    // Target the form's #setup-email specifically: once authenticated, the
+    // sidebar also surfaces the member's email, so getByLabel(/email/i) matched
+    // two elements and tripped strict mode.
     await expect(page.getByLabel(/first name/i)).toBeVisible();
     await expect(page.getByLabel(/last name/i)).toBeVisible();
-    await expect(page.getByLabel(/email/i)).toBeVisible();
+    await expect(page.locator("#setup-email")).toBeVisible();
   });
 
   test("43.3: Step 1 validation shows errors when submitting empty fields", async ({ page }) => {
@@ -50,7 +109,10 @@ test.describe("Profile Setup Dialog (BDD 43.1–43.5)", () => {
       if (await countryButton.isVisible()) {
         await countryButton.click();
         await page.getByPlaceholder(/search countries/i).fill("United States");
-        await page.getByRole("option", { name: /United States/i }).first().click();
+        await page
+          .getByRole("option", { name: /United States/i })
+          .first()
+          .click();
       }
 
       // Advance to step 2
@@ -79,7 +141,10 @@ test.describe("Profile Setup Dialog (BDD 43.1–43.5)", () => {
       if (await countryButton.isVisible()) {
         await countryButton.click();
         await page.getByPlaceholder(/search countries/i).fill("Canada");
-        await page.getByRole("option", { name: /Canada/i }).first().click();
+        await page
+          .getByRole("option", { name: /Canada/i })
+          .first()
+          .click();
       }
 
       // Step 1 -> Step 2
@@ -102,6 +167,7 @@ test.describe("Profile Setup Dialog (BDD 43.1–43.5)", () => {
 
 test.describe("Profile Setup Page (BDD 43.2, 44.1)", () => {
   test("43.2: Skip button is present on profile setup page", async ({ page }) => {
+    await seedMemberSession(page);
     await page.goto("/profile-setup");
     await page.waitForLoadState("networkidle").catch(() => {});
 
@@ -134,9 +200,7 @@ test.describe("Forgot Password Page (BDD 45.1, 45.3)", () => {
       // Should show a success/info message
       await page.waitForTimeout(1000);
       const pageContent = await page.textContent("body");
-      expect(
-        pageContent?.match(/sent|check your|reset link|email/i)
-      ).toBeTruthy();
+      expect(pageContent?.match(/sent|check your|reset link|email/i)).toBeTruthy();
     }
   });
 });

@@ -33,7 +33,7 @@ function emitVersionManifest(): Plugin {
         writeFileSync(
           path.join(dir, "version.json"),
           JSON.stringify({ buildId: BUILD_ID, builtAt: new Date().toISOString() }),
-          "utf8",
+          "utf8"
         );
       } catch {
         // Non-fatal: version.json is an enhancement, not a hard requirement.
@@ -51,7 +51,42 @@ function allowPreviewEvalInDev(): Plugin {
     name: "allow-preview-eval-in-dev-csp",
     apply: "serve",
     transformIndexHtml(html) {
-      return html.replace(/script-src 'self' 'unsafe-inline'/g, "script-src 'self' 'unsafe-inline' 'unsafe-eval'");
+      return html.replace(
+        /script-src 'self' 'unsafe-inline'/g,
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+      );
+    },
+  };
+}
+
+/**
+ * Env-aware CSP for LOCAL Supabase targets (e2e / local dev).
+ *
+ * The CSP lives as a static <meta http-equiv> in index.html and hard-codes the
+ * PRODUCTION Supabase origin. When the build targets a LOCAL Supabase — the CI
+ * e2e job bakes VITE_SUPABASE_URL=http://127.0.0.1:54321, and local dev can too
+ * — every app→Supabase call (auth, PostgREST, realtime WS, edge functions) is
+ * against 127.0.0.1:54321, which the prod-only connect-src BLOCKS. That silently
+ * broke the entire e2e run: blocked+retried requests kept the network non-idle
+ * (20s navigation timeouts) and threw CSP violations on the landing page.
+ *
+ * This plugin injects ONLY the local Supabase origin (http + ws) into
+ * connect-src / img-src / media-src, and ONLY when the target is local. Prod and
+ * preview builds (https Supabase) are byte-identical — the prod CSP is never
+ * widened. "Fix config problems in config" (CLAUDE.md), not a client guard.
+ */
+function localSupabaseCsp(): Plugin {
+  const isLocal = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?/i.test(SUPABASE_URL);
+  return {
+    name: "local-supabase-csp",
+    transformIndexHtml(html) {
+      if (!isLocal) return html;
+      const origin = SUPABASE_URL.replace(/\/+$/, "");
+      const wsOrigin = origin.replace(/^http/i, "ws");
+      return html
+        .replace(/connect-src ([^;]*);/, (_m, v) => `connect-src ${v} ${origin} ${wsOrigin};`)
+        .replace(/img-src ([^;]*);/, (_m, v) => `img-src ${v} ${origin};`)
+        .replace(/media-src ([^;]*);/, (_m, v) => `media-src ${v} ${origin};`);
     },
   };
 }
@@ -78,12 +113,11 @@ function supportWidgetBuildGuard(): Plugin {
       if (importRe.test(code)) {
         this.error(
           `[support-widget-build-guard] '${id}' imports the removed SupportWidget module. ` +
-            `Delete the import — the chunk URL must not be shipped. (see plan PART B-14)`,
+            `Delete the import — the chunk URL must not be shipped. (see plan PART B-14)`
         );
       }
       return null;
     },
-
   };
 }
 
@@ -105,6 +139,7 @@ export default defineConfig(() => ({
   plugins: [
     react(),
     allowPreviewEvalInDev(),
+    localSupabaseCsp(),
     emitVersionManifest(),
     supportWidgetBuildGuard(),
   ].filter(Boolean),

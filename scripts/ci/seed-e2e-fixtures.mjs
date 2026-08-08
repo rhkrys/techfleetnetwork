@@ -66,8 +66,18 @@ for (const f of FIXTURES) {
   }
 
   if (!userId) {
+    // Surface the REAL error, not an opaque status. A GoTrue 500 on createUser
+    // is almost always a DB trigger/constraint failure (e.g. handle_new_user or
+    // a profiles trigger) — the body carries the message. Permanent diagnostic:
+    // never let a fixture-seed failure be a mystery again.
+    let detail = "";
+    try {
+      detail = await create.text();
+    } catch {
+      /* body already consumed */
+    }
     console.error(
-      `::error::could not create or find fixture user ${f.email} (HTTP ${create.status})`
+      `::error::could not create or find fixture user ${f.email} (HTTP ${create.status}) — ${detail || "no response body"}`
     );
     failures += 1;
     continue;

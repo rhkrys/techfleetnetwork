@@ -65,7 +65,10 @@ test.describe("404 Page", () => {
   test("shows not found for invalid routes", async ({ page }) => {
     await page.goto("/this-page-does-not-exist");
     await page.waitForLoadState("networkidle").catch(() => {});
-    await expect(page.getByText(/not found|404/i)).toBeVisible();
+    // The NotFound page renders BOTH a "404" heading and an "Oops! Page not
+    // found" paragraph, so getByText(/not found|404/i) matched 2 elements and
+    // tripped strict mode. Anchor on the heading — the unambiguous 404 marker.
+    await expect(page.getByRole("heading", { name: "404" })).toBeVisible();
   });
 });
 

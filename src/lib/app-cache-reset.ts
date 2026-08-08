@@ -5,16 +5,24 @@ export const APP_CACHE_RESET_VERSION = "2026-05-11-events-tz-and-stale-guard-v1"
 const CACHE_RESET_VERSION_KEY = "techfleet.cacheResetVersion";
 const CACHE_RESET_RELOAD_KEY = "techfleet.cacheResetReloadedVersion";
 const QUERY_CACHE_RESET_PENDING_KEY = "techfleet.queryCacheResetPending";
-const SAFE_CACHE_KEY_PATTERNS = [/^techfleet\.(?!cacheResetVersion|cacheResetReloadedVersion|queryCacheResetPending)/, /^tf-cache:/, /^app-cache:/, /^workbox-/];
+const SAFE_CACHE_KEY_PATTERNS = [
+  /^techfleet\.(?!cacheResetVersion|cacheResetReloadedVersion|queryCacheResetPending)/,
+  /^tf-cache:/,
+  /^app-cache:/,
+  /^workbox-/,
+];
 
 function clearSafeStorage(storage: Storage) {
   for (let index = storage.length - 1; index >= 0; index -= 1) {
     const key = storage.key(index);
-    if (key && SAFE_CACHE_KEY_PATTERNS.some((pattern) => pattern.test(key))) storage.removeItem(key);
+    if (key && SAFE_CACHE_KEY_PATTERNS.some((pattern) => pattern.test(key)))
+      storage.removeItem(key);
   }
 }
 
-export async function clearAppCachesForVersion({ reloadAfterClear = false }: { reloadAfterClear?: boolean } = {}) {
+export async function clearAppCachesForVersion({
+  reloadAfterClear = false,
+}: { reloadAfterClear?: boolean } = {}) {
   if (typeof window === "undefined") return;
   if (localStorage.getItem(CACHE_RESET_VERSION_KEY) === APP_CACHE_RESET_VERSION) return;
 
@@ -27,7 +35,10 @@ export async function clearAppCachesForVersion({ reloadAfterClear = false }: { r
     await Promise.all(names.map((name) => caches.delete(name)));
   }
 
-  if ("serviceWorker" in navigator) {
+  // Guard on the VALUE (not `"serviceWorker" in navigator`): the property can be
+  // present while undefined (some browsers / graceful-degradation stubs), which
+  // made getRegistrations() throw at boot.
+  if (navigator.serviceWorker && typeof navigator.serviceWorker.getRegistrations === "function") {
     const registrations = await navigator.serviceWorker.getRegistrations();
     await Promise.all(registrations.map((registration) => registration.unregister()));
   }
@@ -35,7 +46,10 @@ export async function clearAppCachesForVersion({ reloadAfterClear = false }: { r
   localStorage.setItem(QUERY_CACHE_RESET_PENDING_KEY, "1");
   localStorage.setItem(CACHE_RESET_VERSION_KEY, APP_CACHE_RESET_VERSION);
 
-  if (reloadAfterClear && sessionStorage.getItem(CACHE_RESET_RELOAD_KEY) !== APP_CACHE_RESET_VERSION) {
+  if (
+    reloadAfterClear &&
+    sessionStorage.getItem(CACHE_RESET_RELOAD_KEY) !== APP_CACHE_RESET_VERSION
+  ) {
     sessionStorage.setItem(CACHE_RESET_RELOAD_KEY, APP_CACHE_RESET_VERSION);
     window.location.reload();
   }

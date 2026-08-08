@@ -106,7 +106,7 @@
     <script>
       (function () {
         try {
-          if ('serviceWorker' in navigator) {
+          if (navigator.serviceWorker && typeof navigator.serviceWorker.getRegistrations === 'function') {
             navigator.serviceWorker.getRegistrations().then(function (regs) {
               regs.forEach(function (r) { try { r.unregister(); } catch (e) {} });
             }).catch(function () {});

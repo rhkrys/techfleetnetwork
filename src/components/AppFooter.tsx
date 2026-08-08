@@ -22,7 +22,8 @@ export function AppFooter() {
               aria-hidden="true"
             />
             <span className="text-xs text-muted-foreground">
-              <span data-no-translate>Tech Fleet&trade;</span> · © {new Date().getFullYear()} All Rights Reserved
+              <span data-no-translate>Tech Fleet&trade;</span> · © {new Date().getFullYear()} All
+              Rights Reserved
             </span>
           </div>
           <nav
@@ -47,7 +48,7 @@ export function AppFooter() {
             </Link>
           </nav>
         </div>
-        <p className="text-center text-[11px] text-muted-foreground leading-relaxed">
+        <p className="text-center text-xs text-muted-foreground leading-relaxed">
           <a
             href="https://techfleet.org"
             target="_blank"
@@ -57,10 +58,7 @@ export function AppFooter() {
             techfleet.org
           </a>
           {" · "}
-          <a
-            href="mailto:onboarding@techfleet.org"
-            className="hover:text-foreground underline"
-          >
+          <a href="mailto:onboarding@techfleet.org" className="hover:text-foreground underline">
             onboarding@techfleet.org
           </a>
         </p>

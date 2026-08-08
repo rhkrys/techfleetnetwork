@@ -13,17 +13,31 @@ test.describe("General application — anon gate (GA-EDGE-ANON-001) @critical", 
   test.describe.configure({ retries: 1, mode: "parallel" });
 
   test("anonymous /apply visit is gated to login", async ({ page }) => {
-    const resp = await page.goto("/apply", { waitUntil: "domcontentloaded" });
+    // Route is /applications/general (the general application form). The former
+    // /apply alias no longer exists in the router, so it fell through to the
+    // catch-all 404 — which is neither a login redirect nor an auth gate, making
+    // this @critical security test silently green-blind. Point it at the real
+    // protected route so the anon-gate contract is actually exercised.
+    const resp = await page.goto("/applications/general", { waitUntil: "domcontentloaded" });
     expect(resp?.status() ?? 200).toBeLessThan(500);
 
     // Either redirected to /login or rendered the inline auth-required state.
     const url = page.url();
     const onLogin = /\/login(\/|\?|$)/.test(url);
-    const inlineGate = await page
-      .getByRole("heading", { name: /sign in|log in/i })
-      .first()
-      .isVisible()
-      .catch(() => false);
+    // The auth gate renders the LoginPage INLINE (URL unchanged) whose heading is
+    // "Welcome back" with a "Sign in" submit button — so a heading-only /sign in/
+    // check missed it. Detect the login form (submit button) or a gate heading.
+    const inlineGate =
+      (await page
+        .getByRole("button", { name: /^sign in$/i })
+        .first()
+        .isVisible()
+        .catch(() => false)) ||
+      (await page
+        .getByRole("heading", { name: /welcome back|sign in|log in|not authorized|forbidden/i })
+        .first()
+        .isVisible()
+        .catch(() => false));
 
     expect(onLogin || inlineGate).toBe(true);
 

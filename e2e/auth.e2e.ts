@@ -20,7 +20,6 @@ test.describe("Registration Page (BDD 2.1, 2.3, 2.5)", () => {
     await page.getByLabel(/first name/i).waitFor({ state: "visible", timeout: 10_000 });
   });
 
-
   test("displays registration form with required fields", async ({ page }) => {
     await expect(page.getByLabel(/first name/i)).toBeVisible();
     await expect(page.getByLabel(/last name/i)).toBeVisible();
@@ -31,7 +30,8 @@ test.describe("Registration Page (BDD 2.1, 2.3, 2.5)", () => {
 
   test("shows password requirements checklist", async ({ page }) => {
     await page.getByLabel(/^password\*?$/i).fill("a");
-    await expect(page.getByText(/at least 8 characters/i)).toBeVisible();
+    // Minimum was raised 8 → 12 chars; the checklist reads "At least 12 characters".
+    await expect(page.getByText(/at least 12 characters/i)).toBeVisible();
     await expect(page.getByText(/one uppercase letter/i)).toBeVisible();
     await expect(page.getByText(/one number/i)).toBeVisible();
     await expect(page.getByText(/one special character/i)).toBeVisible();
@@ -42,10 +42,13 @@ test.describe("Registration Page (BDD 2.1, 2.3, 2.5)", () => {
     await page.getByLabel(/last name/i).fill("User");
     await page.getByRole("textbox", { name: /email/i }).fill("test@example.com");
     await page.getByLabel(/^password\*?$/i).fill("weak");
-    // Try to submit
-    await page.getByRole("button", { name: /sign up|create account|register/i }).click();
-    // Should show password-related errors
-    await expect(page.getByText(/8 characters/i)).toBeVisible();
+    // Submit — the register CTA is exactly "Create account" ("Sign up with
+    // Google" also matches a loose /sign up/i, so anchor to avoid strict-mode).
+    await page.getByRole("button", { name: /^create account$/i }).click();
+    // Should show password-related errors (min length is 12 chars). The phrase
+    // appears in both the requirements checklist and the submit toast, so anchor
+    // to the first match to avoid a strict-mode violation.
+    await expect(page.getByText(/at least 12 characters/i).first()).toBeVisible();
   });
 
   test("BDD 2.5: shows error for invalid email format", async ({ page }) => {
@@ -53,12 +56,15 @@ test.describe("Registration Page (BDD 2.1, 2.3, 2.5)", () => {
     await page.getByLabel(/last name/i).fill("User");
     await page.getByRole("textbox", { name: /email/i }).fill("not-an-email");
     await page.getByLabel(/^password\*?$/i).fill("Str0ng!Pass");
-    await page.getByRole("button", { name: /sign up|create account|register/i }).click();
-    await expect(page.getByText(/invalid email/i)).toBeVisible();
+    await page.getByRole("button", { name: /^create account$/i }).click();
+    // The Zod message reads "Enter a valid email address" (appears inline + toast).
+    await expect(page.getByText(/enter a valid email address/i).first()).toBeVisible();
   });
 
   test("shows Google sign-in button (BDD 2.2)", async ({ page }) => {
-    await expect(page.getByText(/google/i)).toBeVisible();
+    // "google" also appears in the consent paragraph ("continuing with Google"),
+    // so getByText matched 2 nodes. Assert the actual button by its role/name.
+    await expect(page.getByRole("button", { name: /google/i })).toBeVisible();
   });
 
   test("has link to login page", async ({ page }) => {
@@ -74,16 +80,20 @@ test.describe("Login Page (BDD 2.4, 15.3)", () => {
     await page.getByLabel(/email/i).first().waitFor({ state: "visible", timeout: 10_000 });
   });
 
-
   test("displays login form", async ({ page }) => {
-    await expect(page.getByLabel(/email/i)).toBeVisible();
-    await expect(page.getByLabel(/password/i)).toBeVisible();
+    await expect(page.getByLabel(/email/i).first()).toBeVisible();
+    // /password/i also matches the "Show password" toggle button — anchor to
+    // the labelled field only.
+    await expect(page.getByLabel(/^password\*?$/i)).toBeVisible();
   });
 
   test("shows error for empty email submission", async ({ page }) => {
-    await page.getByRole("button", { name: /sign in|log in|connect/i }).click();
-    // Should show validation error
-    await expect(page.getByText(/email|required/i)).toBeVisible();
+    // /sign in|log in|connect/i matched 3 buttons (submit, "Sign in with
+    // Google", and the header "Connect"). The submit CTA is exactly "Sign in".
+    await page.getByRole("button", { name: /^sign in$/i }).click();
+    // Should show the inline required-field error (the field label + section
+    // divider also match /email/i, so assert the specific error text).
+    await expect(page.getByText(/email address is required/i)).toBeVisible();
   });
 
   test("has forgot password link", async ({ page }) => {
@@ -104,12 +114,14 @@ test.describe("Login Page (BDD 2.4, 15.3)", () => {
 
   // BDD LCL-002 — validation errors render inline, never as the red auth banner.
   test("LCL-002: invalid email shows inline field error, not the auth banner", async ({ page }) => {
-    await page.getByLabel(/email/i).fill("not-an-email");
-    await page.getByLabel(/password/i).fill("whatever");
+    await page.getByLabel(/email/i).first().fill("not-an-email");
+    await page.getByLabel(/^password\*?$/i).fill("whatever");
     await page.getByRole("button", { name: /^sign in$/i }).click();
-    // Inline error appears
-    await expect(page.getByText(/invalid email/i)).toBeVisible();
-    // The destructive banner (role=alert) must NOT appear for a Zod error
-    await expect(page.locator('[role="alert"]')).toHaveCount(0);
+    // Inline error appears (Zod copy is "Enter a valid email address").
+    await expect(page.getByText(/enter a valid email address/i).first()).toBeVisible();
+    // The destructive AUTH banner must NOT appear for a Zod error. Target the
+    // banner by its testid — inline field errors legitimately use role="alert",
+    // so a bare [role="alert"] count would also catch those.
+    await expect(page.locator('[data-testid="auth-error-message"]')).toHaveCount(0);
   });
 });
