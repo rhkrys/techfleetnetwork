@@ -8,8 +8,13 @@ BEGIN
   WHERE name = 'email_queue_service_role_key'
   LIMIT 1;
 
+  -- REPAIR (audit H3/H4, 2026-08-08): was `RAISE EXCEPTION` which aborted a fresh
+  -- `supabase db reset` (empty Vault) — one of the reasons the DB was not
+  -- rebuildable from source. This is an obsolete one-time cron rewire (note the
+  -- OLD project URL below); on any env without the secret it must skip, not fail.
   IF v_key IS NULL THEN
-    RAISE EXCEPTION 'vault secret email_queue_service_role_key not found';
+    RAISE NOTICE 'vault secret email_queue_service_role_key not present; skipping cron rewire (expected on fresh/CI/new-project env)';
+    RETURN;
   END IF;
 
   PERFORM cron.alter_job(

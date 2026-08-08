@@ -16,6 +16,11 @@
 -- =============================================================================
 -- 0. Recruiting-center fix — restore private-schema access for RLS evaluation.
 -- =============================================================================
+-- REPAIR (audit H3/H4, 2026-08-08): the `private` schema exists on the live
+-- project (Lovable-era) but was never created in a migration, so a fresh
+-- `supabase db reset` failed here ("schema private does not exist"). Idempotent
+-- create — no-op on any DB where it already exists.
+CREATE SCHEMA IF NOT EXISTS private;
 GRANT USAGE ON SCHEMA private TO authenticated, anon, service_role;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA private TO authenticated, anon, service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA private

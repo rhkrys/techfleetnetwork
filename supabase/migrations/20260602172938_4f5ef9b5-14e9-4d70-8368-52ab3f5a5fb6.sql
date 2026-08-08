@@ -1,6 +1,9 @@
 -- Remove both broken cron jobs (uppercase vault name lookup that returns NULL).
-SELECT cron.unschedule('process-freescout-events-15s');
-SELECT cron.unschedule('process-freescout-events-every-15s');
+-- REPAIR (audit H3/H4, 2026-08-08): cron.unschedule('name') errors ("could not
+-- find valid entry for job") when the job is absent, aborting a fresh
+-- `supabase db reset`. Wrap so a missing job is a no-op (fresh/CI/new-project).
+DO $$ BEGIN PERFORM cron.unschedule('process-freescout-events-15s'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN PERFORM cron.unschedule('process-freescout-events-every-15s'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- Recreate a single canonical job using the same vault-lookup pattern as
 -- prewarm-ugc-worker (verified working in production). The COALESCE chain

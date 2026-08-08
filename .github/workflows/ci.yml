@@ -365,16 +365,16 @@ jobs:
     # required check (it would leave non-migration PRs "Expected — waiting"
     # forever), so the aggregator treats skipped-as-pass instead.
     #
-    # PARKED (baseline-restoration, 2026-08-02): a strict fresh `supabase db reset`
-    # fails on pre-existing Lovable-era migration-history bugs — out-of-order
-    # object references (e.g. try_write_audit_log referenced at 20260430 but
-    # defined at 20260505) plus invalid enum seeds. This check has never passed.
-    # Disabled so it can't block the gate (the aggregator treats the skip as
-    # pass). Partial repairs already landed in this branch (bdd_status /
-    # bdd_test_type seed fixes). RESTORE by deleting `&& false` once
-    # `supabase db reset` applies the full history cleanly end-to-end.
+    # RE-ENABLED (audit H3/H4, 2026-08-08): now BLOCKING. A fresh
+    # `supabase db reset` must apply the full migration history cleanly on every
+    # migration-touching PR — this is the regression net that keeps RLS / RPC /
+    # schema changes honest and is the DR/cutover prerequisite. Repairs landed to
+    # get here: create try_write_audit_log (20260430021349, was referenced-before-
+    # created), and stub+drop the `your_audit_function_name` placeholder REVOKE.
+    # If this job fails, a migration does not apply from scratch — fix the SQL,
+    # do NOT re-park it.
     needs: [detect-changes]
-    if: needs.detect-changes.outputs.migrations == 'true' && false
+    if: needs.detect-changes.outputs.migrations == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
