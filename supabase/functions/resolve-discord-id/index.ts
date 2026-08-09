@@ -167,150 +167,40 @@ serve(
       const body: any = _parsed.data;
       const discord_username = body.discord_username;
       const confirm_user_id = body.confirm_user_id; // Optional: user picked a candidate
-      if (
-        confirm_user_id &&
-        typeof confirm_user_id === "string" &&
-        /^\d{15,25}$/.test(confirm_user_id)
-      ) {
-        const memberUrl = `https://discord.com/api/v10/guilds/${GUILD_ID}/members/${confirm_user_id}`;
-        const { response: confirmRes } = await discordFetch(memberUrl, {
-          headers: { Authorization: `Bot ${BOT_TOKEN}` },
-          maxRetries: 2,
-        });
-
-        if (!confirmRes.ok) {
-          log.warn(
-            "resolve",
-            `Rejected confirmation for non-member Discord ID ${confirm_user_id} [${requestId}]`,
-            { requestId, confirm_user_id, httpStatus: confirmRes.status }
-          );
-          return new Response(
-            JSON.stringify({
-              discord_user_id: null,
-              error: "Selected Discord account is not in the Tech Fleet server",
-            }),
-            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        const member = (await confirmRes.json()) as DiscordMember;
-        const confirmedUsername = member.user?.username ?? "";
-        const confirmedDisplayName = discordDisplayName(member);
-
-        // Layer 3: refuse to persist empty / dot-only usernames. Without this guard
-        // the profile would render as "@" or "@." in every UI surface.
-        const usernameCore = confirmedUsername.trim().replace(/^\.+/, "").trim();
-        if (!confirmedUsername || confirmedUsername === "." || usernameCore.length === 0) {
-          log.error(
-            "resolve",
-            `Discord returned unusable username for ${confirm_user_id} [${requestId}]`,
-            { requestId, confirm_user_id, raw: confirmedUsername }
-          );
-          try {
-            await adminClient.rpc("write_audit_log", {
-              p_event_type: "discord_link_rejected_empty_username",
-              p_table_name: "profiles",
-              p_record_id: userId,
-              p_user_id: userId,
-              p_error_message: `Discord returned empty/dot-only username for discord_user_id=${confirm_user_id}`,
-              p_changed_fields: [`raw:${confirmedUsername}`],
-            });
-          } catch {
-            /* swallow */
-          }
-          return new Response(
-            JSON.stringify({
-              discord_user_id: null,
-              error: "Discord did not return a usable username — please retry in a moment.",
-            }),
-            { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-        const { data: claimedProfiles, error: claimedError } = await adminClient
-          .from("profiles")
-          .select("user_id, display_name, discord_user_id, discord_username")
-          .neq("user_id", userId)
-          .or(`discord_user_id.eq.${confirm_user_id},discord_username.ilike.${confirmedUsername}`)
-          .limit(1);
-
-        if (claimedError) {
-          log.error(
-            "resolve",
-            `Failed claimed Discord lookup [${requestId}]`,
-            { requestId, confirm_user_id },
-            claimedError
-          );
-          return new Response(
-            JSON.stringify({
-              discord_user_id: null,
-              error: "Could not safely verify Discord ownership. Please try again.",
-            }),
-            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        if (claimedProfiles && claimedProfiles.length > 0) {
-          log.warn(
-            "resolve",
-            `Rejected already-claimed Discord account ${confirm_user_id} [${requestId}]`,
-            { requestId, confirm_user_id }
-          );
-          return new Response(
-            JSON.stringify({
-              discord_user_id: null,
-              error:
-                "This Discord account is already linked to another Tech Fleet profile. Each Discord account can only be connected to one profile.",
-            }),
-            { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        const { error: linkError } = await adminClient
-          .from("profiles")
-          .update({
-            discord_username: confirmedUsername,
-            discord_user_id: confirm_user_id,
-            has_discord_account: true,
-          })
-          .eq("user_id", userId);
-
-        if (linkError) {
-          log.error(
-            "resolve",
-            `Failed to persist confirmed Discord link [${requestId}]`,
-            { requestId, confirm_user_id },
-            linkError
-          );
-          const isUniqueConflict =
-            linkError.message?.toLowerCase().includes("unique") || linkError.code === "23505";
-          return new Response(
-            JSON.stringify({
-              discord_user_id: null,
-              error: isUniqueConflict
-                ? "This Discord account is already linked to another Tech Fleet profile. Each Discord account can only be connected to one profile."
-                : "Could not safely save the verified Discord account. Please try again.",
-            }),
-            {
-              status: isUniqueConflict ? 409 : 500,
-              headers: { ...corsHeaders, "Content-Type": "application/json" },
-            }
-          );
-        }
-
-        log.info(
+      if (confirm_user_id !== undefined && confirm_user_id !== null && confirm_user_id !== "") {
+        // AUDIT H11 (interim lockdown, 2026-08-09): this branch bound a
+        // CALLER-SUPPLIED Discord snowflake to the caller's OWN profile with NO
+        // proof that the caller controls that account. Any signed-in user could
+        // claim — and, via idx_profiles_discord_user_id_unique, permanently lock
+        // out — an unlinked mentor/admin's Discord identity. Until a real
+        // ownership-proof flow ships (bot-DM one-time code, or OAuth
+        // authorization_code -> /users/@me snowflake match; tracked follow-up),
+        // the identity-binding write is DISABLED. The read-only username search
+        // path below is unaffected.
+        log.warn(
           "resolve",
-          `Confirmed selected Discord user ID ${confirm_user_id} [${requestId}]`,
+          `Blocked unproven self-service Discord bind for ${confirm_user_id} [${requestId}]`,
           { requestId, confirm_user_id }
         );
+        try {
+          await adminClient.rpc("write_audit_log", {
+            p_event_type: "discord_link_blocked_no_ownership_proof",
+            p_table_name: "profiles",
+            p_record_id: userId,
+            p_user_id: userId,
+            p_changed_fields: [`attempted_discord_user_id:${String(confirm_user_id)}`],
+          });
+        } catch {
+          /* swallow */
+        }
         return new Response(
           JSON.stringify({
-            discord_user_id: confirm_user_id,
-            discord_username: confirmedUsername || null,
-            discord_display_name: confirmedDisplayName,
-            global_name: member.user?.global_name || null,
-            nick: member.nick || null,
+            discord_user_id: null,
+            error:
+              "Linking a Discord account is temporarily unavailable while we add ownership verification. Please check back soon.",
+            code: "ownership_proof_required",
           }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
       if (
