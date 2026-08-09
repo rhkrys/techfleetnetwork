@@ -25,7 +25,16 @@ describe("EMAIL-RECONCILE stuck pending safeguards", () => {
     expect(shared).toMatch(/hasTerminal\s*\|\|\s*hasRecentPending/);
     expect(shared).toMatch(/deduped:\s*true/);
     expect(shared.indexOf("deduped: true")).toBeLessThan(shared.indexOf("const emailPayload ="));
-    expect(shared).toMatch(/queue_payload:\s*emailPayload/);
+    // H9: the full rendered payload goes to the TRANSIENT pgmq queue only...
+    expect(shared).toMatch(/payload:\s*emailPayload/);
+  });
+
+  it("H9-EMAIL-LOG-PII-001: durable email_send_log never persists rendered content or raw templateData", () => {
+    // ...and NOT into the long-lived, GDPR-surviving email_send_log. The log
+    // keeps only non-PII operational refs plus a content hash for correlation.
+    expect(shared).not.toMatch(/queue_payload/);
+    expect(shared).not.toMatch(/metadata:\s*\{\s*templateData/);
+    expect(shared).toMatch(/payload_sha256/);
   });
 
   it("EMAIL-RECONCILE-002: worker duplicate-skip appends a terminal sent row", () => {

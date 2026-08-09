@@ -13,24 +13,27 @@ const shared = fs.readFileSync(
 const footer = fs.readFileSync(path.join(process.cwd(), "src/components/AppFooter.tsx"), "utf8");
 
 describe("Email deliverability (smoke)", () => {
+  // NOTE: quote-agnostic (['"]) — the pre-commit prettier normalizes this
+  // legacy single-quoted edge file to double quotes on any touch; asserting a
+  // hardcoded quote style makes these source-greps spuriously brittle.
   it("DELIV-001: From identity uses Tech Fleet <onboarding@techfleet.org>", () => {
-    expect(shared).toMatch(/FROM_DOMAIN\s*=\s*'techfleet\.org'/);
-    expect(shared).toMatch(/FROM_MAILBOX\s*=\s*'onboarding'/);
-    expect(shared).toMatch(/SITE_NAME\s*=\s*'Tech Fleet'/);
+    expect(shared).toMatch(/FROM_DOMAIN\s*=\s*['"]techfleet\.org['"]/);
+    expect(shared).toMatch(/FROM_MAILBOX\s*=\s*['"]onboarding['"]/);
+    expect(shared).toMatch(/SITE_NAME\s*=\s*['"]Tech Fleet['"]/);
   });
 
   it("DELIV-002: Reply-To routes to onboarding@techfleet.org", () => {
-    expect(shared).toMatch(/REPLY_TO\s*=\s*'onboarding@techfleet\.org'/);
+    expect(shared).toMatch(/REPLY_TO\s*=\s*['"]onboarding@techfleet\.org['"]/);
   });
 
   it("DELIV-003: DKIM signing subdomain unchanged (notify.techfleet.org)", () => {
-    expect(shared).toMatch(/SENDER_DOMAIN\s*=\s*'notify\.techfleet\.org'/);
+    expect(shared).toMatch(/SENDER_DOMAIN\s*=\s*['"]notify\.techfleet\.org['"]/);
   });
 
   it("DELIV-026: List-Unsubscribe + One-Click headers present", () => {
-    expect(shared).toMatch(/'List-Unsubscribe'/);
+    expect(shared).toMatch(/['"]List-Unsubscribe['"]/);
     expect(shared).toMatch(/List-Unsubscribe=One-Click/);
-    expect(shared).toMatch(/'X-Entity-Ref-ID'/);
+    expect(shared).toMatch(/['"]X-Entity-Ref-ID['"]/);
   });
 
   it("DELIV-027: Precedence: bulk only on bulk templates; non-bulk get Auto-Submitted", () => {
