@@ -164,10 +164,14 @@ async function processOne(admin: ReturnType<typeof getAdminClient>, ev: Freescou
         // exposing individual admin names in reply notifications.
         const replierName = "Support Agent";
 
+        // customerUserId is the AUTH uid (profiles.user_id), set above — look up
+        // the profile by user_id, NOT the random PK `id`. Keying on `id` here
+        // matched no row, so the reply-notification email silently lost its
+        // first-name personalization (audit T-A, sibling of C3).
         const { data: prof } = await admin
           .from("profiles")
           .select("first_name")
-          .eq("id", customerUserId)
+          .eq("user_id", customerUserId)
           .maybeSingle();
 
         await admin.functions.invoke("send-transactional-email", {

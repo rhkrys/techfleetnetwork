@@ -46,7 +46,10 @@ async function fetchProfileByAuthUid(userId: string): Promise<ProfileSlim | null
  * Returns null only when auth.users itself can't supply an email (rare;
  * implies a corrupted auth user that needs manual intervention).
  */
-async function selfHealProfile(userId: string, traceId?: string | null): Promise<ProfileSlim | null> {
+async function selfHealProfile(
+  userId: string,
+  traceId?: string | null
+): Promise<ProfileSlim | null> {
   const admin = getAdminClient();
   const { data: authUser, error: authErr } = await admin.auth.admin.getUserById(userId);
   if (authErr || !authUser?.user) return null;
@@ -67,17 +70,15 @@ async function selfHealProfile(userId: string, traceId?: string | null): Promise
   // Idempotent insert; if a row already exists for user_id we keep it.
   // We use upsert on the unique user_id index — NOT touching freescout_*
   // columns so existing provisioning state is preserved.
-  await admin
-    .from("profiles")
-    .upsert(
-      {
-        user_id: userId,
-        email,
-        first_name: String(firstName),
-        last_name: String(lastName),
-      },
-      { onConflict: "user_id", ignoreDuplicates: false },
-    );
+  await admin.from("profiles").upsert(
+    {
+      user_id: userId,
+      email,
+      first_name: String(firstName),
+      last_name: String(lastName),
+    },
+    { onConflict: "user_id", ignoreDuplicates: false }
+  );
 
   void auditEdgeEvent(admin, {
     fn: "freescout-admin",
@@ -95,7 +96,7 @@ async function selfHealProfile(userId: string, traceId?: string | null): Promise
 
 export async function resolveAdminFreescoutUserId(
   userId: string,
-  opts: { traceId?: string | null } = {},
+  opts: { traceId?: string | null } = {}
 ): Promise<number> {
   const admin = getAdminClient();
 
@@ -108,7 +109,7 @@ export async function resolveAdminFreescoutUserId(
     if (!prof) {
       throw new FreescoutError(
         412,
-        "Admin account is missing required profile metadata — contact support.",
+        "Admin account is missing required profile metadata — contact support."
       );
     }
   }
@@ -135,10 +136,7 @@ export async function resolveAdminFreescoutUserId(
     }
   }
   if (!email) {
-    throw new FreescoutError(
-      412,
-      "Admin email missing — cannot provision helpdesk account.",
-    );
+    throw new FreescoutError(412, "Admin email missing — cannot provision helpdesk account.");
   }
 
   // 5. Provision inline (idempotent — Freescout findUserByEmail wins on collision).
@@ -152,11 +150,14 @@ export async function resolveAdminFreescoutUserId(
   }
 
   // Persist by auth uid (matches other proxy writes after the freescout-proxy
-  // column-mismatch fix). support_provisioning_log keys on profile PK to match
-  // the trigger/retry-worker convention.
-  await admin.from("profiles").update({ freescout_user_id: String(id) }).eq("user_id", userId);
+  // column-mismatch fix). support_provisioning_log.user_id is the AUTH uid too,
+  // after the identity standardization (audit T-A).
+  await admin
+    .from("profiles")
+    .update({ freescout_user_id: String(id) })
+    .eq("user_id", userId);
   await admin.from("support_provisioning_log").insert({
-    user_id: prof.id,
+    user_id: userId,
     kind: "admin_user",
     freescout_id: String(id),
     status: "success",

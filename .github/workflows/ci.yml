@@ -319,6 +319,7 @@ jobs:
           - check-edge-function-coverage.mjs
           - check-plpgsql-variable-conflict.mjs
           - check-progress-read-identity.mjs
+          - check-support-identity.mjs
           - check-no-rpc-catch.mjs
           - check-audit-sink-coverage.mjs
           - check-translator-volatile-regions.mjs

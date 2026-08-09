@@ -32,10 +32,12 @@ Deno.serve(async (req) => {
   if (!parsed.success) return jsonResponse({ error: "Invalid input" }, 400);
 
   const admin = getAdminClient();
+  // `userId` is the AUTH uid (profiles.user_id) — the platform-standard identity.
+  // Look up by user_id, NOT the random profiles PK `id` (audit T-A).
   const { data: prof } = await admin
     .from("profiles")
-    .select("id, email, first_name, last_name, freescout_customer_id")
-    .eq("id", parsed.data.userId)
+    .select("id, user_id, email, first_name, last_name, freescout_customer_id")
+    .eq("user_id", parsed.data.userId)
     .maybeSingle();
 
   if (!prof) return jsonResponse({ error: "Profile not found" }, 404);
@@ -54,8 +56,12 @@ Deno.serve(async (req) => {
         },
       });
       await admin.from("support_provisioning_log").insert({
-        user_id: prof.id, kind: "customer", freescout_id: prof.freescout_customer_id,
-        status: "success", attempts: 1, last_error: "anonymized",
+        user_id: prof.user_id,
+        kind: "customer",
+        freescout_id: prof.freescout_customer_id,
+        status: "success",
+        attempts: 1,
+        last_error: "anonymized",
       });
       return jsonResponse({ ok: true });
     }
@@ -74,8 +80,12 @@ Deno.serve(async (req) => {
   } catch (e) {
     const msg = e instanceof FreescoutError ? e.message : "Sync failed";
     await admin.from("support_provisioning_log").insert({
-      user_id: prof.id, kind: "customer", freescout_id: prof.freescout_customer_id,
-      status: "retry", attempts: 1, last_error: msg,
+      user_id: prof.user_id,
+      kind: "customer",
+      freescout_id: prof.freescout_customer_id,
+      status: "retry",
+      attempts: 1,
+      last_error: msg,
     });
     return jsonResponse({ error: msg }, 502);
   }

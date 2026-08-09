@@ -43,12 +43,21 @@ async function ensureCustomer(prof: TicketProfile, email: string): Promise<strin
   const admin = getAdminClient();
   let customer = await findCustomerByEmail(email);
   if (!customer) {
-    customer = await createCustomer(email, prof.first_name ?? undefined, prof.last_name ?? undefined);
+    customer = await createCustomer(
+      email,
+      prof.first_name ?? undefined,
+      prof.last_name ?? undefined
+    );
   }
   const id = String(customer.id);
   await admin.from("profiles").update({ freescout_customer_id: id }).eq("user_id", prof.user_id);
+  // support_provisioning_log.user_id is the AUTH uid (audit T-A), not the PK.
   await admin.from("support_provisioning_log").insert({
-    user_id: prof.id, kind: "customer", freescout_id: id, status: "success", attempts: 1,
+    user_id: prof.user_id,
+    kind: "customer",
+    freescout_id: id,
+    status: "success",
+    attempts: 1,
   });
   return id;
 }
@@ -62,7 +71,7 @@ async function ensureCustomer(prof: TicketProfile, email: string): Promise<strin
 export async function recentDuplicateTicketId(
   userId: string,
   subject: string,
-  windowSeconds = 120,
+  windowSeconds = 120
 ): Promise<number | null> {
   const admin = getAdminClient();
   const since = new Date(Date.now() - windowSeconds * 1000).toISOString();
@@ -86,7 +95,7 @@ export async function recentDuplicateTicketId(
 export async function createSupportTicketFromDiscord(
   discordUserId: string,
   subject: string,
-  body: string,
+  body: string
 ): Promise<CreateTicketResult> {
   const admin = getAdminClient();
 
@@ -116,15 +125,26 @@ export async function createSupportTicketFromDiscord(
     .maybeSingle();
   if ((rl?.count ?? 0) >= RATE_LIMIT_PER_HOUR) {
     void auditEdgeEvent(admin, {
-      fn: "discord-interactions", event: "support_rate_limited", table: "support_rate_limits",
-      severity: "warn", userId: prof.user_id, fields: ["source:discord", "action:discord:support"],
+      fn: "discord-interactions",
+      event: "support_rate_limited",
+      table: "support_rate_limits",
+      severity: "warn",
+      userId: prof.user_id,
+      fields: ["source:discord", "action:discord:support"],
     });
     return { status: "rate_limited" };
   }
-  await admin.from("support_rate_limits").upsert(
-    { subject_user_id: prof.user_id, action: "discord:support", window_start: windowStart, count: (rl?.count ?? 0) + 1 },
-    { onConflict: "subject_user_id,action,window_start" },
-  );
+  await admin
+    .from("support_rate_limits")
+    .upsert(
+      {
+        subject_user_id: prof.user_id,
+        action: "discord:support",
+        window_start: windowStart,
+        count: (rl?.count ?? 0) + 1,
+      },
+      { onConflict: "subject_user_id,action,window_start" }
+    );
 
   // Idempotency: a double-tap / retry returns the existing ticket, not a dup.
   const dupId = await recentDuplicateTicketId(prof.user_id, subject);
@@ -157,20 +177,28 @@ export async function createSupportTicketFromDiscord(
           mailbox_id: DEFAULT_MAILBOX_ID,
           last_synced_at: new Date().toISOString(),
         },
-        { onConflict: "conversation_id" },
+        { onConflict: "conversation_id" }
       );
     }
     void auditEdgeEvent(admin, {
-      fn: "discord-interactions", event: "support_ticket_created", table: "support_ticket_pointers",
-      severity: "info", userId: prof.user_id,
+      fn: "discord-interactions",
+      event: "support_ticket_created",
+      table: "support_ticket_pointers",
+      severity: "info",
+      userId: prof.user_id,
       fields: ["source:discord", convId ? `conversation:${convId}` : "conversation:none"],
     });
     return { status: "ok", conversationId: convId ? Number(convId) : null };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     void auditEdgeEvent(admin, {
-      fn: "discord-interactions", event: "support_ticket_create_failed", table: "support_ticket_pointers",
-      severity: "error", userId: prof.user_id, fields: ["source:discord"], errorMessage: message,
+      fn: "discord-interactions",
+      event: "support_ticket_create_failed",
+      table: "support_ticket_pointers",
+      severity: "error",
+      userId: prof.user_id,
+      fields: ["source:discord"],
+      errorMessage: message,
     });
     return { status: "error", message };
   }

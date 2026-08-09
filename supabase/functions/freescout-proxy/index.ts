@@ -6,7 +6,13 @@
 import { z } from "https://deno.land/x/zod@v3.23.8/mod.ts";
 import { getAdminClient } from "../_shared/admin-client.ts";
 import { requireAuthenticatedRequest } from "../_shared/request-auth.ts";
-import { handleCors, jsonResponse, errorResponse, parseJsonBody, jsonHeaders } from "../_shared/http.ts";
+import {
+  handleCors,
+  jsonResponse,
+  errorResponse,
+  parseJsonBody,
+  jsonHeaders,
+} from "../_shared/http.ts";
 import {
   freescoutFetch,
   findCustomerByEmail,
@@ -28,7 +34,11 @@ const SUBJECT_MAX = 200;
 const BODY_MAX = 10_000;
 
 const Action = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("listMine"), status: z.enum(["open", "closed", "all"]).default("all"), page: z.number().int().min(1).max(50).default(1) }),
+  z.object({
+    action: z.literal("listMine"),
+    status: z.enum(["open", "closed", "all"]).default("all"),
+    page: z.number().int().min(1).max(50).default(1),
+  }),
   z.object({
     action: z.literal("listAll"),
     status: z.enum(["open", "closed", "all"]).default("open"),
@@ -39,7 +49,12 @@ const Action = z.discriminatedUnion("action", [
   z.object({ action: z.literal("get"), conversationId: z.number().int().positive() }),
   z.object({
     action: z.literal("create"),
-    subject: z.string().trim().min(3).max(SUBJECT_MAX).regex(/^[^\u0000-\u001F\u007F]+$/, "Invalid characters"),
+    subject: z
+      .string()
+      .trim()
+      .min(3)
+      .max(SUBJECT_MAX)
+      .regex(/^[^\u0000-\u001F\u007F]+$/, "Invalid characters"),
     body: z.string().trim().min(1).max(BODY_MAX),
     idempotencyKey: z.string().min(8).max(128).optional(),
   }),
@@ -60,8 +75,16 @@ const Action = z.discriminatedUnion("action", [
     // an admin target ANY upstream Freescout user, including non-admins).
     assigneeUserId: z.union([z.literal("self"), z.string().uuid()]),
   }),
-  z.object({ action: z.literal("setPrivate"), conversationId: z.number().int().positive(), isPrivate: z.boolean() }),
-  z.object({ action: z.literal("setCategory"), conversationId: z.number().int().positive(), categoryId: z.string().uuid().nullable() }),
+  z.object({
+    action: z.literal("setPrivate"),
+    conversationId: z.number().int().positive(),
+    isPrivate: z.boolean(),
+  }),
+  z.object({
+    action: z.literal("setCategory"),
+    conversationId: z.number().int().positive(),
+    categoryId: z.string().uuid().nullable(),
+  }),
 ]);
 
 const ADMIN_ACTIONS = new Set(["listAll", "assign", "setPrivate", "setCategory"]);
@@ -73,11 +96,16 @@ const READ_CACHE_TTL_MS: Record<string, number> = {
 };
 
 async function isAdmin(userId: string): Promise<boolean> {
-  const { data, error } = await getAdminClient().rpc("has_role", { _user_id: userId, _role: "admin" });
+  const { data, error } = await getAdminClient().rpc("has_role", {
+    _user_id: userId,
+    _role: "admin",
+  });
   return !error && data === true;
 }
 
-async function ensureCustomerForUser(userId: string): Promise<{ customerId: string; email: string; firstName?: string; lastName?: string }> {
+async function ensureCustomerForUser(
+  userId: string
+): Promise<{ customerId: string; email: string; firstName?: string; lastName?: string }> {
   const admin = getAdminClient();
   const { data: prof, error } = await admin
     .from("profiles")
@@ -85,7 +113,15 @@ async function ensureCustomerForUser(userId: string): Promise<{ customerId: stri
     .eq("user_id", userId)
     .maybeSingle();
   if (error) {
-    console.error(JSON.stringify({ level: "error", fn: "freescout-proxy", code: "profile_lookup_failed", userId, msg: error.message }));
+    console.error(
+      JSON.stringify({
+        level: "error",
+        fn: "freescout-proxy",
+        code: "profile_lookup_failed",
+        userId,
+        msg: error.message,
+      })
+    );
     throw new FreescoutError(500, `Profile lookup failed: ${error.message}`);
   }
 
@@ -95,7 +131,10 @@ async function ensureCustomerForUser(userId: string): Promise<{ customerId: stri
   if (!email) {
     const { data: authUser, error: authErr } = await admin.auth.admin.getUserById(userId);
     if (authErr || !authUser?.user?.email) {
-      throw new FreescoutError(400, "No email on file for this account. Please add one in your profile.");
+      throw new FreescoutError(
+        400,
+        "No email on file for this account. Please add one in your profile."
+      );
     }
     email = authUser.user.email;
     const meta = (authUser.user.user_metadata ?? {}) as Record<string, unknown>;
@@ -113,8 +152,14 @@ async function ensureCustomerForUser(userId: string): Promise<{ customerId: stri
   if (prof) {
     await admin.from("profiles").update({ freescout_customer_id: id }).eq("user_id", userId);
   }
+  // support_provisioning_log.user_id is the AUTH uid (audit T-A) — `userId` here
+  // is already the auth uid; never fall back to the random profiles PK.
   await admin.from("support_provisioning_log").insert({
-    user_id: prof?.id ?? userId, kind: "customer", freescout_id: id, status: "success", attempts: 1,
+    user_id: userId,
+    kind: "customer",
+    freescout_id: id,
+    status: "success",
+    attempts: 1,
   });
   return { customerId: id, email, firstName, lastName };
 }
@@ -135,14 +180,22 @@ async function ownsConversation(userId: string, conversationId: number): Promise
     });
     const custId = conv?.customer?.id ? String(conv.customer.id) : null;
     if (!custId) return false;
-    const { data: prof } = await admin.from("profiles").select("freescout_customer_id").eq("user_id", userId).maybeSingle();
+    const { data: prof } = await admin
+      .from("profiles")
+      .select("freescout_customer_id")
+      .eq("user_id", userId)
+      .maybeSingle();
     return prof?.freescout_customer_id === custId;
   } catch {
     return false;
   }
 }
 
-async function upsertPointer(conversationId: number, customerUserId: string | null, fields: Record<string, unknown>) {
+async function upsertPointer(
+  conversationId: number,
+  customerUserId: string | null,
+  fields: Record<string, unknown>
+) {
   const admin = getAdminClient();
   const row: Record<string, unknown> = {
     conversation_id: conversationId,
@@ -199,7 +252,8 @@ Deno.serve(async (req) => {
     if (input.action in rlMap) {
       const [name, max] = rlMap[input.action];
       const { error: rlErr } = await auth.userClient.rpc("support_check_rate_limit", {
-        _action: name, _max_per_hour: max,
+        _action: name,
+        _max_per_hour: max,
       });
       if (rlErr) return jsonResponse({ error: "Too many requests" }, 429);
     }
@@ -220,24 +274,33 @@ Deno.serve(async (req) => {
     switch (input.action) {
       case "listMine": {
         const { data: prof } = await getAdminClient()
-          .from("profiles").select("freescout_customer_id").eq("user_id", auth.userId).maybeSingle();
+          .from("profiles")
+          .select("freescout_customer_id")
+          .eq("user_id", auth.userId)
+          .maybeSingle();
         if (!prof?.freescout_customer_id) {
           const body = { items: [] };
           const k = (input as { _cacheKey?: string })._cacheKey;
           if (k) setCached(k, body, READ_CACHE_TTL_MS.listMine);
           return cacheableResponse(body, 30);
         }
-        const status = input.status === "all" ? undefined : input.status === "open" ? "active" : "closed";
+        const status =
+          input.status === "all" ? undefined : input.status === "open" ? "active" : "closed";
         // Fetch profile email so we can also filter by customerEmail — covers legacy
         // conversations that Freescout linked by email to a different customer id.
         const { data: profEmail } = await getAdminClient()
-          .from("profiles").select("email").eq("user_id", auth.userId).maybeSingle();
+          .from("profiles")
+          .select("email")
+          .eq("user_id", auth.userId)
+          .maybeSingle();
         const data = await freescoutFetch<{ _embedded?: { conversations?: unknown[] } }>({
           path: "/api/conversations",
           query: {
             customerId: prof.freescout_customer_id,
             customerEmail: profEmail?.email ?? undefined,
-            status, page: input.page, embed: "threads",
+            status,
+            page: input.page,
+            embed: "threads",
           },
         });
         const body = { items: data?._embedded?.conversations ?? [] };
@@ -246,15 +309,20 @@ Deno.serve(async (req) => {
         return cacheableResponse(body, 30);
       }
       case "listAll": {
-        const status = input.status === "all" ? undefined : input.status === "open" ? "active" : "closed";
+        const status =
+          input.status === "all" ? undefined : input.status === "open" ? "active" : "closed";
         const data = await freescoutFetch<{ _embedded?: { conversations?: unknown[] } }>({
           path: "/api/conversations",
           query: {
             mailboxId: input.mailboxId ?? DEFAULT_MAILBOX_ID,
-            status, page: input.page,
+            status,
+            page: input.page,
           },
         });
-        let items = (data?._embedded?.conversations ?? []) as Array<{ id?: number; assignee?: unknown }>;
+        let items = (data?._embedded?.conversations ?? []) as Array<{
+          id?: number;
+          assignee?: unknown;
+        }>;
         if (input.assigned === "unassigned") {
           items = items.filter((c) => c.assignee == null);
         } else if (input.assigned === "assigned") {
@@ -266,7 +334,10 @@ Deno.serve(async (req) => {
         if (ids.length > 0) {
           const client = getAdminClient();
           const [{ data: ptrs }, { data: cats }] = await Promise.all([
-            client.from("support_ticket_pointers").select("conversation_id, is_private, category_id").in("conversation_id", ids),
+            client
+              .from("support_ticket_pointers")
+              .select("conversation_id, is_private, category_id")
+              .in("conversation_id", ids),
             client.from("support_categories").select("id, label"),
           ]);
           const catById = new Map<string, string>((cats ?? []).map((c) => [c.id, c.label]));
@@ -317,26 +388,26 @@ Deno.serve(async (req) => {
             .order("created_at", { ascending: false })
             .limit(1)
             .maybeSingle();
-          if (dup?.conversation_id) return jsonResponse({ conversationId: dup.conversation_id, deduped: true });
+          if (dup?.conversation_id)
+            return jsonResponse({ conversationId: dup.conversation_id, deduped: true });
         }
         const cust = await ensureCustomerForUser(auth.userId);
         const created = await freescoutFetch<{ id?: number; conversation?: { id?: number } }>({
-          method: "POST", path: "/api/conversations",
+          method: "POST",
+          path: "/api/conversations",
           body: {
             type: "email",
             subject: input.subject,
             mailboxId: DEFAULT_MAILBOX_ID,
             status: "active",
-            customer: cust.customerId
-              ? { id: Number(cust.customerId) }
-              : { email: cust.email },
-            threads: [{
-              type: "customer",
-              text: input.body,
-              customer: cust.customerId
-                ? { id: Number(cust.customerId) }
-                : { email: cust.email },
-            }],
+            customer: cust.customerId ? { id: Number(cust.customerId) } : { email: cust.email },
+            threads: [
+              {
+                type: "customer",
+                text: input.body,
+                customer: cust.customerId ? { id: Number(cust.customerId) } : { email: cust.email },
+              },
+            ],
           },
         });
         const convId = created?.id ?? created?.conversation?.id;
@@ -358,7 +429,9 @@ Deno.serve(async (req) => {
           return jsonResponse({ error: "Forbidden" }, 403);
         }
         const adminUserId = admin
-          ? await resolveAdminFreescoutUserId(auth.userId, { traceId: req.headers.get("x-trace-id") })
+          ? await resolveAdminFreescoutUserId(auth.userId, {
+              traceId: req.headers.get("x-trace-id"),
+            })
           : null;
         const cust = admin ? null : await ensureCustomerForUser(auth.userId);
         await freescoutFetch({
@@ -413,7 +486,8 @@ Deno.serve(async (req) => {
         });
         // Store the assignee's PLATFORM uuid (meaningful in our system; the grid
         // shows the name from Freescout). null owner arg preserves customer_user_id.
-        const assigneePlatformId = input.assigneeUserId === "self" ? auth.userId : input.assigneeUserId;
+        const assigneePlatformId =
+          input.assigneeUserId === "self" ? auth.userId : input.assigneeUserId;
         await upsertPointer(input.conversationId, null, { assignee_user_id: assigneePlatformId });
         invalidateAll();
         return jsonResponse({ ok: true });
@@ -428,8 +502,11 @@ Deno.serve(async (req) => {
         // null clears the category. Platform-side only — no Freescout call.
         if (input.categoryId) {
           const { data: cat } = await getAdminClient()
-            .from("support_categories").select("id")
-            .eq("id", input.categoryId).eq("is_active", true).maybeSingle();
+            .from("support_categories")
+            .select("id")
+            .eq("id", input.categoryId)
+            .eq("is_active", true)
+            .maybeSingle();
           if (!cat) return jsonResponse({ error: "Unknown category" }, 422);
         }
         await upsertPointer(input.conversationId, null, { category_id: input.categoryId });
@@ -438,24 +515,34 @@ Deno.serve(async (req) => {
       }
     }
   } catch (e) {
-    const action = (raw && typeof raw === "object" ? (raw as { action?: string }).action : undefined);
+    const action = raw && typeof raw === "object" ? (raw as { action?: string }).action : undefined;
     if (e instanceof FreescoutError) {
-      console.error(JSON.stringify({
-        level: "error", fn: "freescout-proxy", action,
-        status: e.status, code: "upstream_error",
-        msg: e.message, body: e.body,
-      }));
+      console.error(
+        JSON.stringify({
+          level: "error",
+          fn: "freescout-proxy",
+          action,
+          status: e.status,
+          code: "upstream_error",
+          msg: e.message,
+          body: e.body,
+        })
+      );
       return jsonResponse(
         { error: e.message, upstream: e.body ?? undefined },
-        e.status >= 400 && e.status < 600 ? e.status : 500,
+        e.status >= 400 && e.status < 600 ? e.status : 500
       );
     }
-    console.error(JSON.stringify({
-      level: "error", fn: "freescout-proxy", action,
-      code: "unhandled_exception",
-      msg: e instanceof Error ? e.message : String(e),
-      stack: e instanceof Error ? e.stack : undefined,
-    }));
+    console.error(
+      JSON.stringify({
+        level: "error",
+        fn: "freescout-proxy",
+        action,
+        code: "unhandled_exception",
+        msg: e instanceof Error ? e.message : String(e),
+        stack: e instanceof Error ? e.stack : undefined,
+      })
+    );
     return errorResponse(e);
   }
 });

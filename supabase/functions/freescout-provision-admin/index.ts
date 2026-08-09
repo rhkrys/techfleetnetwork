@@ -37,7 +37,8 @@ Deno.serve(async (req) => {
   // gated by requireAdminRequest above.)
   if (parsed.data.userId && parsed.data.userId !== auth.userId) {
     const { data: targetIsAdmin } = await admin.rpc("has_role", {
-      _user_id: parsed.data.userId, _role: "admin",
+      _user_id: parsed.data.userId,
+      _role: "admin",
     });
     if (targetIsAdmin !== true) return jsonResponse({ error: "Target must be an admin" }, 422);
   }
@@ -57,7 +58,11 @@ Deno.serve(async (req) => {
   try {
     if (parsed.data.action === "provision") {
       if (prof.freescout_user_id) {
-        return jsonResponse({ ok: true, freescoutUserId: prof.freescout_user_id, alreadyProvisioned: true });
+        return jsonResponse({
+          ok: true,
+          freescoutUserId: prof.freescout_user_id,
+          alreadyProvisioned: true,
+        });
       }
       let user = await findUserByEmail(prof.email);
       if (!user) {
@@ -65,9 +70,14 @@ Deno.serve(async (req) => {
       }
       const id = String(user.id);
       await admin.from("profiles").update({ freescout_user_id: id }).eq("user_id", targetUserId);
-      // support_provisioning_log keys on the profile PK (trigger/retry convention).
+      // support_provisioning_log.user_id is the AUTH uid (audit T-A) — matches the
+      // trigger/backfill/retry convention after the identity standardization.
       await admin.from("support_provisioning_log").insert({
-        user_id: prof.id, kind: "admin_user", freescout_id: id, status: "success", attempts: 1,
+        user_id: targetUserId,
+        kind: "admin_user",
+        freescout_id: id,
+        status: "success",
+        attempts: 1,
       });
       // In-app notification keys on auth uid.
       try {
@@ -78,7 +88,9 @@ Deno.serve(async (req) => {
           link: "/community/get-help",
           category: "support",
         });
-      } catch { /* best effort */ }
+      } catch {
+        /* best effort */
+      }
       return jsonResponse({ ok: true, freescoutUserId: id });
     }
     // resend_invite / deactivate: FreeScout's REST API exposes no user-status
@@ -88,13 +100,20 @@ Deno.serve(async (req) => {
     // access. The lingering Freescout user is inert (admins are created with
     // sendInvite:false and never hold a Freescout login).
     return jsonResponse(
-      { error: "Not supported by the help desk API — manage admin access via platform roles", action: parsed.data.action },
-      501,
+      {
+        error: "Not supported by the help desk API — manage admin access via platform roles",
+        action: parsed.data.action,
+      },
+      501
     );
   } catch (e) {
     const msg = e instanceof FreescoutError ? e.message : "Provisioning failed";
     await admin.from("support_provisioning_log").insert({
-      user_id: prof.id, kind: "admin_user", status: "failed", attempts: 1, last_error: msg,
+      user_id: targetUserId,
+      kind: "admin_user",
+      status: "failed",
+      attempts: 1,
+      last_error: msg,
     });
     return jsonResponse({ error: msg }, 502);
   }
