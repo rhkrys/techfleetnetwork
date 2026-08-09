@@ -15,8 +15,14 @@ import { ArchiveDialog } from "@/components/classes/ArchiveDialog";
 import { toast } from "sonner";
 import { useQueryClient } from "@/lib/react-query";
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
 const STATUS_FILTERS = [
@@ -39,14 +45,20 @@ export default function AdminClassesPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [q, setQ] = useState("");
-  const [status, setStatus] = useState<typeof STATUS_FILTERS[number]["value"]>("pending_review");
+  const [status, setStatus] = useState<(typeof STATUS_FILTERS)[number]["value"]>("pending_review");
   const [denyTarget, setDenyTarget] = useState<ClassRow | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<ClassRow | null>(null);
   const [approveTarget, setApproveTarget] = useState<ClassRow | null>(null);
   const [busy, setBusy] = useState(false);
 
   const counts = useMemo(() => {
-    const c: Record<string, number> = { all: classes.length, pending_review: 0, draft: 0, published: 0, archived: 0 };
+    const c: Record<string, number> = {
+      all: classes.length,
+      pending_review: 0,
+      draft: 0,
+      published: 0,
+      archived: 0,
+    };
     for (const cls of classes) c[cls.status] = (c[cls.status] ?? 0) + 1;
     return c;
   }, [classes]);
@@ -75,99 +87,134 @@ export default function AdminClassesPage() {
     }
   };
 
-  const columnDefs = useMemo<ColDef<ClassRow>[]>(() => [
-    {
-      headerName: "Title",
-      field: "title",
-      flex: 2,
-      minWidth: 200,
-      cellRenderer: (p: ICellRendererParams<ClassRow>) => {
-        if (!p.data) return null;
-        return (
-          <a
-            href={`/teach/classes/${p.data.id}`}
-            onClick={(e) => { e.preventDefault(); navigate(`/teach/classes/${p.data!.id}`); }}
-            className="text-primary hover:underline font-medium"
-          >
-            {p.data.title}
-          </a>
-        );
+  const columnDefs = useMemo<ColDef<ClassRow>[]>(
+    () => [
+      {
+        headerName: "Title",
+        field: "title",
+        flex: 2,
+        minWidth: 200,
+        cellRenderer: (p: ICellRendererParams<ClassRow>) => {
+          if (!p.data) return null;
+          return (
+            <a
+              href={`/teach/classes/${p.data.id}`}
+              onClick={(e) => {
+                e.preventDefault();
+                navigate(`/teach/classes/${p.data!.id}`);
+              }}
+              className="text-primary hover:underline font-medium"
+            >
+              {p.data.title}
+            </a>
+          );
+        },
       },
-    },
-    {
-      headerName: "Track",
-      field: "track",
-      minWidth: 130,
-      valueFormatter: (p) => (p.value === "basic_training" ? "Basic" : "Advanced"),
-    },
-    {
-      headerName: "Status",
-      field: "status",
-      minWidth: 140,
-      cellRenderer: (p: ICellRendererParams<ClassRow>) => {
-        const s = p.value as string;
-        return (
-          <Badge variant="outline" className={STATUS_PILL[s] ?? ""}>
-            {s.replace("_", " ")}
-          </Badge>
-        );
+      {
+        headerName: "Track",
+        field: "track",
+        minWidth: 130,
+        valueFormatter: (p) => (p.value === "basic_training" ? "Basic" : "Advanced"),
       },
-    },
-    {
-      headerName: "Submitted",
-      field: "submitted_at",
-      minWidth: 140,
-      sort: "desc",
-      valueFormatter: (p) => (p.value ? format(new Date(p.value), "MMM d, yyyy") : "—"),
-    },
-    {
-      headerName: "Updated",
-      field: "updated_at",
-      minWidth: 130,
-      valueFormatter: (p) => format(new Date(p.value), "MMM d, yyyy"),
-    },
-    {
-      headerName: "Actions",
-      colId: "actions",
-      sortable: false,
-      filter: false,
-      resizable: false,
-      minWidth: 280,
-      cellRenderer: (p: ICellRendererParams<ClassRow>) => {
-        if (!p.data) return null;
-        const c = p.data;
-        return (
-          <div className="flex items-center gap-1.5">
-            <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); navigate(`/teach/classes/${c.id}`); }}>
-              Review
-            </Button>
-            {c.status === "pending_review" && (
-              <>
-                <Button size="sm" onClick={(e) => { e.stopPropagation(); setApproveTarget(c); }}>
-                  Approve
-                </Button>
-                <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setDenyTarget(c); }}>
-                  Changes
-                </Button>
-              </>
-            )}
-            {c.status !== "archived" && (
-              <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setArchiveTarget(c); }}>
-                Archive
+      {
+        headerName: "Status",
+        field: "status",
+        minWidth: 140,
+        cellRenderer: (p: ICellRendererParams<ClassRow>) => {
+          const s = p.value as string;
+          return (
+            <Badge variant="outline" className={STATUS_PILL[s] ?? ""}>
+              {s.replace("_", " ")}
+            </Badge>
+          );
+        },
+      },
+      {
+        headerName: "Submitted",
+        field: "submitted_at",
+        minWidth: 140,
+        sort: "desc",
+        valueFormatter: (p) => (p.value ? format(new Date(p.value), "MMM d, yyyy") : "—"),
+      },
+      {
+        headerName: "Updated",
+        field: "updated_at",
+        minWidth: 130,
+        valueFormatter: (p) => format(new Date(p.value), "MMM d, yyyy"),
+      },
+      {
+        headerName: "Actions",
+        colId: "actions",
+        sortable: false,
+        filter: false,
+        resizable: false,
+        minWidth: 280,
+        cellRenderer: (p: ICellRendererParams<ClassRow>) => {
+          if (!p.data) return null;
+          const c = p.data;
+          return (
+            <div className="flex items-center gap-1.5">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/teach/classes/${c.id}`);
+                }}
+              >
+                Review
               </Button>
-            )}
-          </div>
-        );
+              {c.status === "pending_review" && (
+                <>
+                  <Button
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setApproveTarget(c);
+                    }}
+                  >
+                    Approve
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDenyTarget(c);
+                    }}
+                  >
+                    Changes
+                  </Button>
+                </>
+              )}
+              {c.status !== "archived" && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setArchiveTarget(c);
+                  }}
+                >
+                  Archive
+                </Button>
+              )}
+            </div>
+          );
+        },
       },
-    },
-  ], [navigate]);
+    ],
+    [navigate]
+  );
 
   return (
     <div className="container-app py-8 sm:py-12 space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Classes (Admin)</h1>
-          <p className="text-muted-foreground mt-1">Review submissions, approve, request changes, and manage published classes.</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">All Classes</h1>
+          <p className="text-muted-foreground mt-1">
+            Review submissions, approve, request changes, and manage published classes.
+          </p>
         </div>
         <Button asChild className="self-start sm:self-auto">
           <Link to="/teach/classes/new" aria-label="Create a new class">
@@ -177,7 +224,11 @@ export default function AdminClassesPage() {
         </Button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Filter classes by status">
+      <div
+        className="flex flex-wrap items-center gap-2"
+        role="tablist"
+        aria-label="Filter classes by status"
+      >
         {STATUS_FILTERS.map((f) => {
           const active = status === f.value;
           const n = counts[f.value] ?? 0;
@@ -194,7 +245,9 @@ export default function AdminClassesPage() {
               }`}
             >
               {f.label}
-              <span className={`ml-1.5 text-xs ${active ? "opacity-90" : "text-muted-foreground"}`}>({n})</span>
+              <span className={`ml-1.5 text-xs ${active ? "opacity-90" : "text-muted-foreground"}`}>
+                ({n})
+              </span>
             </button>
           );
         })}
@@ -208,7 +261,9 @@ export default function AdminClassesPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+        <div className="flex justify-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        </div>
       ) : (
         <ThemedAgGrid<ClassRow>
           gridId="admin-classes"
@@ -234,17 +289,28 @@ export default function AdminClassesPage() {
         open={!!archiveTarget}
         onOpenChange={(o) => !o && setArchiveTarget(null)}
       />
-      <AlertDialog open={!!approveTarget} onOpenChange={(o) => !busy && !o && setApproveTarget(null)}>
+      <AlertDialog
+        open={!!approveTarget}
+        onOpenChange={(o) => !busy && !o && setApproveTarget(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Approve & publish "{approveTarget?.title}"?</AlertDialogTitle>
             <AlertDialogDescription>
-              The class becomes visible in {approveTarget?.track === "basic_training" ? "Basic" : "Advanced"} Training, and any cohorts pending review will go live too.
+              The class becomes visible in{" "}
+              {approveTarget?.track === "basic_training" ? "Basic" : "Advanced"} Training, and any
+              cohorts pending review will go live too.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={(e) => { e.preventDefault(); approve(); }} disabled={busy}>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                approve();
+              }}
+              disabled={busy}
+            >
               {busy && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
               Approve & publish
             </AlertDialogAction>

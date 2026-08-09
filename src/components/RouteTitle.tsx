@@ -56,7 +56,6 @@ const ROUTE_TITLES: Array<{ pattern: string; title: string }> = [
   { pattern: "/project-openings", title: "Project openings" },
 
   { pattern: "/admin/ingest", title: "Admin · Data ingest" },
-  { pattern: "/admin/curriculum", title: "Admin · Curriculum" },
   { pattern: "/admin/policies", title: "Admin · Policies" },
   { pattern: "/admin/users", title: "Admin · Users" },
   { pattern: "/admin/activity-log", title: "Admin · Activity log" },
@@ -66,14 +65,17 @@ const ROUTE_TITLES: Array<{ pattern: string; title: string }> = [
   { pattern: "/admin/clients/projects/:id/edit", title: "Admin · Edit project" },
   { pattern: "/admin/clients", title: "Admin · Clients" },
   { pattern: "/admin/feedback", title: "Admin · Feedback" },
-  { pattern: "/admin/roster/project/:projectId/applicant/:applicationId", title: "Admin · Applicant detail" },
+  {
+    pattern: "/admin/roster/project/:projectId/applicant/:applicationId",
+    title: "Admin · Applicant detail",
+  },
   { pattern: "/admin/roster/project/:projectId", title: "Admin · Roster project" },
   { pattern: "/admin/roster", title: "Admin · Roster" },
   { pattern: "/admin/banners", title: "Admin · Banners" },
   { pattern: "/admin/system-health", title: "Admin · System health" },
   { pattern: "/admin/email-deliverability-test", title: "Admin · Email deliverability" },
   { pattern: "/admin/brand-tokens", title: "Admin · Brand tokens" },
-  { pattern: "/admin/classes", title: "Admin · Classes" },
+  { pattern: "/admin/classes", title: "Teaching · All classes" },
 
   { pattern: "/updates", title: "Updates" },
   { pattern: "/profile/edit", title: "Edit profile" },

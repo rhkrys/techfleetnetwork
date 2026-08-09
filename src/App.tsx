@@ -24,10 +24,18 @@ import { installSessionActivityTracker } from "@/lib/session-activity";
 
 // Non-critical side-effect mounts — deferred to idle so they don't compete
 // with LCP/FCP on cold load. Lazy-imported so their JS isn't in the entry chunk.
-const OfflineBanner = lazy(() => import("@/components/OfflineBanner").then(m => ({ default: m.OfflineBanner })));
-const SelfHealingRunner = lazy(() => import("@/components/SelfHealingRunner").then(m => ({ default: m.SelfHealingRunner })));
-const AnalyticsTracker = lazy(() => import("@/components/AnalyticsTracker").then(m => ({ default: m.AnalyticsTracker })));
-const RouteChangeReloader = lazy(() => import("@/components/RouteChangeReloader").then(m => ({ default: m.RouteChangeReloader })));
+const OfflineBanner = lazy(() =>
+  import("@/components/OfflineBanner").then((m) => ({ default: m.OfflineBanner }))
+);
+const SelfHealingRunner = lazy(() =>
+  import("@/components/SelfHealingRunner").then((m) => ({ default: m.SelfHealingRunner }))
+);
+const AnalyticsTracker = lazy(() =>
+  import("@/components/AnalyticsTracker").then((m) => ({ default: m.AnalyticsTracker }))
+);
+const RouteChangeReloader = lazy(() =>
+  import("@/components/RouteChangeReloader").then((m) => ({ default: m.RouteChangeReloader }))
+);
 
 // Source-of-truth tracker for "user did something recently". Drives the
 // session-idle policy in AuthService.getSession so that active users — even
@@ -35,7 +43,8 @@ const RouteChangeReloader = lazy(() => import("@/components/RouteChangeReloader"
 // Idempotent; safe under React StrictMode. Deferred to idle so it never blocks
 // first paint on slow devices (the tracker itself is cheap but adds listeners).
 if (typeof window !== "undefined") {
-  const ric = (window as unknown as { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback;
+  const ric = (window as unknown as { requestIdleCallback?: (cb: () => void) => number })
+    .requestIdleCallback;
   if (typeof ric === "function") ric(() => installSessionActivityTracker());
   else window.setTimeout(() => installSessionActivityTracker(), 0);
 } else {
@@ -58,7 +67,9 @@ const GetHelpPage = lazy(() => import("./pages/community/GetHelpPage"));
 
 // Heavy non-critical widgets — defer until after first paint to free up the
 // initial JS budget on slow networks.
-const PWAInstallPrompt = lazy(() => import("./components/PWAInstallPrompt").then(m => ({ default: m.PWAInstallPrompt })));
+const PWAInstallPrompt = lazy(() =>
+  import("./components/PWAInstallPrompt").then((m) => ({ default: m.PWAInstallPrompt }))
+);
 
 // Lazily loaded routes (reduce initial JS bundle)
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
@@ -94,7 +105,9 @@ const ProjectOpeningsPage = lazy(() => import("./pages/ProjectOpeningsPage"));
 const UserAdminPage = lazy(() => import("./pages/UserAdminPage"));
 const ConfirmAdminPage = lazy(() => import("./pages/ConfirmAdminPage"));
 const ActivityLogPage = lazy(() => import("./pages/ActivityLogPage"));
-const ApplicationSubmissionDetailPage = lazy(() => import("./pages/ApplicationSubmissionDetailPage"));
+const ApplicationSubmissionDetailPage = lazy(
+  () => import("./pages/ApplicationSubmissionDetailPage")
+);
 const UpdatesPage = lazy(() => import("./pages/UpdatesPage"));
 const ClientsPage = lazy(() => import("./pages/ClientsPage"));
 const ProjectFormPage = lazy(() => import("./pages/ProjectFormPage"));
@@ -123,7 +136,9 @@ const UnsubscribePage = lazy(() => import("./pages/UnsubscribePage"));
 const NotificationsPage = lazy(() => import("./pages/NotificationsPage"));
 const AccessDeniedPage = lazy(() => import("./pages/AccessDeniedPage"));
 const SystemHealthPage = lazy(() => import("./pages/SystemHealthPage"));
-const AdminEmailDeliverabilityTestPage = lazy(() => import("./pages/AdminEmailDeliverabilityTestPage"));
+const AdminEmailDeliverabilityTestPage = lazy(
+  () => import("./pages/AdminEmailDeliverabilityTestPage")
+);
 const BrandTokensPage = lazy(() => import("./pages/BrandTokensPage"));
 const MyClassesPage = lazy(() => import("./pages/MyClassesPage"));
 const ClassFormPage = lazy(() => import("./pages/ClassFormPage"));
@@ -131,7 +146,6 @@ const ClassDetailPage = lazy(() => import("./pages/ClassDetailPage"));
 const CohortFormPage = lazy(() => import("./pages/CohortFormPage"));
 const AdminClassesPage = lazy(() => import("./pages/AdminClassesPage"));
 const ConfirmTeacherPage = lazy(() => import("./pages/ConfirmTeacherPage"));
-const CurriculumAdminPage = lazy(() => import("./pages/admin/CurriculumAdminPage"));
 
 function RouteFallback() {
   return (
@@ -207,47 +221,317 @@ const App = () => (
                         with the original query/hash preserved so the token still
                         verifies instead of 404'ing. */}
                     <Route path="/reset-password/*" element={<ResetPasswordPage />} />
-                    <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
-                    <Route path="/profile-setup" element={<ProtectedRoute><ProfileSetupPage /></ProtectedRoute>} />
-                    <Route path="/welcome" element={<ProtectedRoute><WelcomeWizard /></ProtectedRoute>} />
-                    <Route path="/my-journey" element={<ProtectedRoute><MyJourneyPage /></ProtectedRoute>} />
-                    <Route path="/my-journey/quest/:pathId" element={<ProtectedRoute><QuestDetailPage /></ProtectedRoute>} />
-                    
-                    <Route path="/courses" element={<ProtectedRoute><TrainingPage /></ProtectedRoute>} />
-                    <Route path="/curriculum" element={<ProtectedRoute><TrainingPage /></ProtectedRoute>} />
-                    <Route path="/courses/connect-discord" element={<ProtectedRoute><ConnectDiscordPage /></ProtectedRoute>} />
-                    <Route path="/courses/onboarding" element={<ProtectedRoute><FirstStepsPage /></ProtectedRoute>} />
-                    <Route path="/courses/agile-mindset" element={<ProtectedRoute><SecondStepsPage /></ProtectedRoute>} />
-                    <Route path="/courses/discord-learning" element={<ProtectedRoute><DiscordCoursePage /></ProtectedRoute>} />
-                    <Route path="/courses/agile-teamwork" element={<ProtectedRoute><ThirdStepsPage /></ProtectedRoute>} />
-                    <Route path="/courses/project-training" element={<ProtectedRoute><ProjectTrainingPage /></ProtectedRoute>} />
-                    <Route path="/courses/volunteer-teams" element={<ProtectedRoute><VolunteerTeamsPage /></ProtectedRoute>} />
-                    <Route path="/courses/observer" element={<ProtectedRoute><ObserverCoursePage /></ProtectedRoute>} />
-                    <Route path="/events" element={<ProtectedRoute><EventsPage /></ProtectedRoute>} />
-                    <Route path="/resources" element={<ProtectedRoute><ResourcesPage /></ProtectedRoute>} />
-                    <Route path="/community/get-help" element={<ProtectedRoute><ScopedErrorBoundary label="Get Help"><GetHelpPage /></ScopedErrorBoundary></ProtectedRoute>} />
-                    <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
-                    <Route path="/applications" element={<ProtectedRoute><ApplicationsPage /></ProtectedRoute>} />
-                    <Route path="/applications/general" element={<ProtectedRoute><GeneralApplicationPage /></ProtectedRoute>} />
-                    <Route path="/applications/projects" element={<ProtectedRoute><MyProjectApplicationsPage /></ProtectedRoute>} />
-                    <Route path="/applications/projects/:applicationId/status" element={<ProtectedRoute><ProjectApplicationStatusPage /></ProtectedRoute>} />
-                    <Route path="/project-openings" element={<ProtectedRoute><ProjectOpeningsPage /></ProtectedRoute>} />
-                    <Route path="/project-openings/:projectId" element={<ProjectOpeningDetailPage />} />
-                    <Route path="/project-openings/:projectId/apply" element={<ProtectedRoute><ProjectApplicationPage /></ProtectedRoute>} />
-                    <Route path="/admin/ingest" element={<AdminRoute><AdminIngestPage /></AdminRoute>} />
-                    <Route path="/admin/curriculum" element={<AdminRoute><CurriculumAdminPage /></AdminRoute>} />
-                    <Route path="/admin/policies" element={<AdminRoute><AdminPoliciesPage /></AdminRoute>} />
-                    <Route path="/admin/users" element={<AdminRoute><UserAdminPage /></AdminRoute>} />
-                    <Route path="/admin/activity-log" element={<AdminRoute><ActivityLogPage /></AdminRoute>} />
-                    <Route path="/admin/applications/analysis/:projectId" element={<AdminRoute><ProjectAnalysisDetailPage /></AdminRoute>} />
-                    <Route path="/admin/applications/:applicationId" element={<AdminRoute><ApplicationSubmissionDetailPage /></AdminRoute>} />
-                    <Route path="/admin/clients" element={<AdminRoute><ClientsPage /></AdminRoute>} />
-                    <Route path="/admin/clients/projects/new" element={<AdminRoute><ProjectFormPage /></AdminRoute>} />
-                    <Route path="/admin/clients/projects/:id/edit" element={<AdminRoute><ProjectFormPage /></AdminRoute>} />
-                    <Route path="/updates" element={<ProtectedRoute><UpdatesPage /></ProtectedRoute>} />
-                    <Route path="/profile/edit" element={<ProtectedRoute><EditProfilePage /></ProtectedRoute>} />
-                    <Route path="/feedback" element={<ProtectedRoute><FeedbackPage /></ProtectedRoute>} />
-                    <Route path="/settings/notifications" element={<ProtectedRoute><NotificationSettingsPage /></ProtectedRoute>} />
+                    <Route
+                      path="/dashboard"
+                      element={
+                        <ProtectedRoute>
+                          <DashboardPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/profile-setup"
+                      element={
+                        <ProtectedRoute>
+                          <ProfileSetupPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/welcome"
+                      element={
+                        <ProtectedRoute>
+                          <WelcomeWizard />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/my-journey"
+                      element={
+                        <ProtectedRoute>
+                          <MyJourneyPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/my-journey/quest/:pathId"
+                      element={
+                        <ProtectedRoute>
+                          <QuestDetailPage />
+                        </ProtectedRoute>
+                      }
+                    />
+
+                    <Route
+                      path="/courses"
+                      element={
+                        <ProtectedRoute>
+                          <TrainingPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/curriculum"
+                      element={
+                        <ProtectedRoute>
+                          <TrainingPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/courses/connect-discord"
+                      element={
+                        <ProtectedRoute>
+                          <ConnectDiscordPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/courses/onboarding"
+                      element={
+                        <ProtectedRoute>
+                          <FirstStepsPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/courses/agile-mindset"
+                      element={
+                        <ProtectedRoute>
+                          <SecondStepsPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/courses/discord-learning"
+                      element={
+                        <ProtectedRoute>
+                          <DiscordCoursePage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/courses/agile-teamwork"
+                      element={
+                        <ProtectedRoute>
+                          <ThirdStepsPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/courses/project-training"
+                      element={
+                        <ProtectedRoute>
+                          <ProjectTrainingPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/courses/volunteer-teams"
+                      element={
+                        <ProtectedRoute>
+                          <VolunteerTeamsPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/courses/observer"
+                      element={
+                        <ProtectedRoute>
+                          <ObserverCoursePage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/events"
+                      element={
+                        <ProtectedRoute>
+                          <EventsPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/resources"
+                      element={
+                        <ProtectedRoute>
+                          <ResourcesPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/community/get-help"
+                      element={
+                        <ProtectedRoute>
+                          <ScopedErrorBoundary label="Get Help">
+                            <GetHelpPage />
+                          </ScopedErrorBoundary>
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/chat"
+                      element={
+                        <ProtectedRoute>
+                          <ChatPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/applications"
+                      element={
+                        <ProtectedRoute>
+                          <ApplicationsPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/applications/general"
+                      element={
+                        <ProtectedRoute>
+                          <GeneralApplicationPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/applications/projects"
+                      element={
+                        <ProtectedRoute>
+                          <MyProjectApplicationsPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/applications/projects/:applicationId/status"
+                      element={
+                        <ProtectedRoute>
+                          <ProjectApplicationStatusPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/project-openings"
+                      element={
+                        <ProtectedRoute>
+                          <ProjectOpeningsPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/project-openings/:projectId"
+                      element={<ProjectOpeningDetailPage />}
+                    />
+                    <Route
+                      path="/project-openings/:projectId/apply"
+                      element={
+                        <ProtectedRoute>
+                          <ProjectApplicationPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/ingest"
+                      element={
+                        <AdminRoute>
+                          <AdminIngestPage />
+                        </AdminRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/policies"
+                      element={
+                        <AdminRoute>
+                          <AdminPoliciesPage />
+                        </AdminRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/users"
+                      element={
+                        <AdminRoute>
+                          <UserAdminPage />
+                        </AdminRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/activity-log"
+                      element={
+                        <AdminRoute>
+                          <ActivityLogPage />
+                        </AdminRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/applications/analysis/:projectId"
+                      element={
+                        <AdminRoute>
+                          <ProjectAnalysisDetailPage />
+                        </AdminRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/applications/:applicationId"
+                      element={
+                        <AdminRoute>
+                          <ApplicationSubmissionDetailPage />
+                        </AdminRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/clients"
+                      element={
+                        <AdminRoute>
+                          <ClientsPage />
+                        </AdminRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/clients/projects/new"
+                      element={
+                        <AdminRoute>
+                          <ProjectFormPage />
+                        </AdminRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/clients/projects/:id/edit"
+                      element={
+                        <AdminRoute>
+                          <ProjectFormPage />
+                        </AdminRoute>
+                      }
+                    />
+                    <Route
+                      path="/updates"
+                      element={
+                        <ProtectedRoute>
+                          <UpdatesPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/profile/edit"
+                      element={
+                        <ProtectedRoute>
+                          <EditProfilePage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/feedback"
+                      element={
+                        <ProtectedRoute>
+                          <FeedbackPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/settings/notifications"
+                      element={
+                        <ProtectedRoute>
+                          <NotificationSettingsPage />
+                        </ProtectedRoute>
+                      }
+                    />
                     <Route path="/accessibility" element={<AccessibilityPage />} />
                     <Route path="/privacy" element={<PrivacyPage />} />
                     <Route path="/cookies" element={<CookiesPage />} />
@@ -255,26 +539,145 @@ const App = () => (
                     <Route path="/terms-of-use" element={<TermsOfUsePage />} />
                     <Route path="/code-of-conduct" element={<CodeOfConductPage />} />
                     <Route path="/privacy/dsar" element={<DsarSubmitPage />} />
-                    <Route path="/admin/feedback" element={<AdminRoute><FeedbackPage /></AdminRoute>} />
-                    <Route path="/admin/roster" element={<AdminRoute><AdminRosterPage /></AdminRoute>} />
-                    <Route path="/admin/banners" element={<AdminRoute><BannerManagementPage /></AdminRoute>} />
-                    <Route path="/admin/system-health" element={<AdminRoute><SystemHealthPage /></AdminRoute>} />
-                    <Route path="/admin/email-deliverability-test" element={<AdminRoute><AdminEmailDeliverabilityTestPage /></AdminRoute>} />
-                    <Route path="/admin/brand-tokens" element={<AdminRoute><BrandTokensPage /></AdminRoute>} />
-                    <Route path="/admin/roster/project/:projectId" element={<AdminRoute><RosterProjectDetailPage /></AdminRoute>} />
-                    <Route path="/admin/roster/project/:projectId/applicant/:applicationId" element={<AdminRoute><RosterApplicantDetailPage /></AdminRoute>} />
+                    <Route
+                      path="/admin/feedback"
+                      element={
+                        <AdminRoute>
+                          <FeedbackPage />
+                        </AdminRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/roster"
+                      element={
+                        <AdminRoute>
+                          <AdminRosterPage />
+                        </AdminRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/banners"
+                      element={
+                        <AdminRoute>
+                          <BannerManagementPage />
+                        </AdminRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/system-health"
+                      element={
+                        <AdminRoute>
+                          <SystemHealthPage />
+                        </AdminRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/email-deliverability-test"
+                      element={
+                        <AdminRoute>
+                          <AdminEmailDeliverabilityTestPage />
+                        </AdminRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/brand-tokens"
+                      element={
+                        <AdminRoute>
+                          <BrandTokensPage />
+                        </AdminRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/roster/project/:projectId"
+                      element={
+                        <AdminRoute>
+                          <RosterProjectDetailPage />
+                        </AdminRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/roster/project/:projectId/applicant/:applicationId"
+                      element={
+                        <AdminRoute>
+                          <RosterApplicantDetailPage />
+                        </AdminRoute>
+                      }
+                    />
                     <Route path="/confirm-admin" element={<ConfirmAdminPage />} />
                     <Route path="/confirm-teacher" element={<ConfirmTeacherPage />} />
-                    <Route path="/teach/classes" element={<TeacherRoute><MyClassesPage /></TeacherRoute>} />
-                    <Route path="/teach/classes/new" element={<TeacherRoute><ClassFormPage /></TeacherRoute>} />
-                    <Route path="/teach/classes/:id" element={<TeacherRoute><ClassDetailPage /></TeacherRoute>} />
-                    <Route path="/teach/classes/:id/edit" element={<TeacherRoute><ClassFormPage /></TeacherRoute>} />
-                    <Route path="/teach/classes/:id/cohorts/new" element={<TeacherRoute><CohortFormPage /></TeacherRoute>} />
-                    <Route path="/teach/classes/:id/cohorts/:cohortId/edit" element={<TeacherRoute><CohortFormPage /></TeacherRoute>} />
-                    <Route path="/admin/classes" element={<AdminRoute><AdminClassesPage /></AdminRoute>} />
-                    <Route path="/profile/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
+                    <Route
+                      path="/teach/classes"
+                      element={
+                        <TeacherRoute>
+                          <MyClassesPage />
+                        </TeacherRoute>
+                      }
+                    />
+                    <Route
+                      path="/teach/classes/new"
+                      element={
+                        <TeacherRoute>
+                          <ClassFormPage />
+                        </TeacherRoute>
+                      }
+                    />
+                    <Route
+                      path="/teach/classes/:id"
+                      element={
+                        <TeacherRoute>
+                          <ClassDetailPage />
+                        </TeacherRoute>
+                      }
+                    />
+                    <Route
+                      path="/teach/classes/:id/edit"
+                      element={
+                        <TeacherRoute>
+                          <ClassFormPage />
+                        </TeacherRoute>
+                      }
+                    />
+                    <Route
+                      path="/teach/classes/:id/cohorts/new"
+                      element={
+                        <TeacherRoute>
+                          <CohortFormPage />
+                        </TeacherRoute>
+                      }
+                    />
+                    <Route
+                      path="/teach/classes/:id/cohorts/:cohortId/edit"
+                      element={
+                        <TeacherRoute>
+                          <CohortFormPage />
+                        </TeacherRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/classes"
+                      element={
+                        <AdminRoute>
+                          <AdminClassesPage />
+                        </AdminRoute>
+                      }
+                    />
+                    <Route
+                      path="/profile/notifications"
+                      element={
+                        <ProtectedRoute>
+                          <NotificationsPage />
+                        </ProtectedRoute>
+                      }
+                    />
                     <Route path="/unsubscribe" element={<UnsubscribePage />} />
-                    <Route path="/access-denied" element={<ProtectedRoute><AccessDeniedPage /></ProtectedRoute>} />
+                    <Route
+                      path="/access-denied"
+                      element={
+                        <ProtectedRoute>
+                          <AccessDeniedPage />
+                        </ProtectedRoute>
+                      }
+                    />
                     {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                     <Route path="*" element={<NotFound />} />
                   </Routes>

@@ -14,7 +14,6 @@ import {
   MessageSquarePlus,
   Users,
   Map,
-  
   Flag,
   HeartPulse,
   LifeBuoy,
@@ -53,9 +52,7 @@ function usePendingClassesCount(enabled: boolean) {
   });
 }
 
-const homeNav = [
-  { label: "Home", href: "/dashboard", icon: LayoutDashboard },
-];
+const homeNav = [{ label: "Home", href: "/dashboard", icon: LayoutDashboard }];
 
 const communityNav = [
   { label: "Announcements", href: "/updates", icon: Megaphone },
@@ -67,7 +64,7 @@ const communityNav = [
 
 const trainingNav = [
   { label: "Applications", href: "/applications", icon: ClipboardList },
-  
+
   { label: "Courses", href: "/courses", icon: GraduationCap },
   { label: "My Journey", href: "/my-journey", icon: Map },
   { label: "Project Openings", href: "/project-openings", icon: Handshake },
@@ -88,8 +85,10 @@ export const AppSidebar = memo(function AppSidebar() {
   const { isTeacher } = useTeacher();
   const { data: pendingCount = 0 } = usePendingClassesCount(isAdmin);
 
-  const isActive = useCallback((href: string) =>
-    location.pathname === href || location.pathname.startsWith(href + "/"), [location.pathname]);
+  const isActive = useCallback(
+    (href: string) => location.pathname === href || location.pathname.startsWith(href + "/"),
+    [location.pathname]
+  );
 
   if (!user) return null;
 
@@ -125,11 +124,7 @@ export const AppSidebar = memo(function AppSidebar() {
               <SidebarMenu>
                 {section.items.map(({ label, href, icon: Icon }) => (
                   <SidebarMenuItem key={href}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={isActive(href)}
-                      tooltip={label}
-                    >
+                    <SidebarMenuButton asChild isActive={isActive(href)} tooltip={label}>
                       <Link to={href}>
                         <Icon className="h-4 w-4" />
                         <span>{label}</span>
@@ -159,6 +154,32 @@ export const AppSidebar = memo(function AppSidebar() {
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
+                {/* Admin-only class-approval queue. Lives under Teaching for
+                    discoverability, but the route itself is <AdminRoute>-guarded
+                    (defense in depth), so gating the link on isAdmin only hides
+                    it from non-admin teachers — it never grants access. */}
+                {isAdmin && (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive("/admin/classes")}
+                      tooltip="All Classes"
+                    >
+                      <Link to="/admin/classes" className="flex items-center gap-2 w-full">
+                        <School className="h-4 w-4" />
+                        <span className="flex-1">All Classes</span>
+                        {pendingCount > 0 && (
+                          <span
+                            className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-semibold bg-warning text-warning-foreground"
+                            aria-label={`${pendingCount} classes pending review`}
+                          >
+                            {pendingCount > 99 ? "99+" : pendingCount}
+                          </span>
+                        )}
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
@@ -208,26 +229,6 @@ export const AppSidebar = memo(function AppSidebar() {
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     asChild
-                    isActive={isActive("/admin/classes")}
-                    tooltip="Classes"
-                  >
-                    <Link to="/admin/classes" className="flex items-center gap-2 w-full">
-                      <School className="h-4 w-4" />
-                      <span className="flex-1">Classes</span>
-                      {pendingCount > 0 && (
-                        <span
-                          className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-semibold bg-warning text-warning-foreground"
-                          aria-label={`${pendingCount} classes pending review`}
-                        >
-                          {pendingCount > 99 ? "99+" : pendingCount}
-                        </span>
-                      )}
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    asChild
                     isActive={isActive("/admin/roster")}
                     tooltip="Recruiting Center"
                   >
@@ -246,18 +247,6 @@ export const AppSidebar = memo(function AppSidebar() {
                     <Link to="/admin/users">
                       <ShieldCheck className="h-4 w-4" />
                       <span>User Admin</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={isActive("/admin/curriculum")}
-                    tooltip="Curriculum"
-                  >
-                    <Link to="/admin/curriculum">
-                      <BookOpen className="h-4 w-4" />
-                      <span>Curriculum</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

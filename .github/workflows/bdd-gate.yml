@@ -29,7 +29,10 @@ jobs:
         id: diff
         run: |
           git fetch origin "${{ github.base_ref }}" --depth=1
-          mapfile -t files < <(git diff --name-only "origin/${{ github.base_ref }}"...HEAD \
+          # --diff-filter=d excludes deletions: a module a PR REMOVES cannot (and
+          # must not) require test coverage. Without this, deleting a page/service/
+          # function falsely trips the gate on the now-gone module.
+          mapfile -t files < <(git diff --name-only --diff-filter=d "origin/${{ github.base_ref }}"...HEAD \
             | grep -E '^(src/services/|src/pages/|supabase/functions/)' \
             | grep -v '_manifest\.json$' \
             || true)
