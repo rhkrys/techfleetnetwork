@@ -3,8 +3,9 @@
 //
 // Runs the reset→sign-out→sign-in path against the deployed `auth-broker`
 // every 5 minutes against a sealed test account. Persists one row per
-// stage into `auth_prober_results` and emits a Triage Critical Push on
-// two consecutive same-stage failures.
+// stage into `auth_prober_results` and, on two consecutive same-stage
+// failures, enqueues a critical alert into `agent_fix_queue` — which the
+// `notify-critical-fix` cron scans to push to admins.
 //
 // Authentication: this is a cron-poked worker — accepts either a legacy
 // service_role JWT or an opaque sb_secret_* via the shared
@@ -12,6 +13,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2.45.0";
 import { authorizeServiceRoleRequest } from "../_shared/service-role-auth.ts";
+import { buildAuthProberAlert } from "./alert.ts";
 
 const PROBER_USER_AGENT = "TFN-AuthProber/1.0";
 
@@ -195,15 +197,19 @@ Deno.serve(async (req: Request) => {
 
   if (shouldPage) {
     try {
-      await admin.functions.invoke("triage-critical-push", {
-        body: {
-          source: "auth-prober",
-          message: `Auth prober failed on: ${errStages.join(", ")}`,
-          severity: "error",
-        },
-      });
+      // Enqueue into agent_fix_queue — the table notify-critical-fix scans to
+      // fan a critical web-push to admins. Previously this invoked a
+      // non-existent "triage-critical-push" edge function (only the cron job and
+      // the notify-critical-fix function exist by that intent), so the invoke
+      // always threw and was swallowed — auth-prober failures paged no one.
+      // Stable per-failure-set fingerprint => notify-critical-fix pushes each
+      // distinct failure once (respecting its hourly cap).
+      const { error: enqueueError } = await admin
+        .from("agent_fix_queue")
+        .upsert(buildAuthProberAlert(errStages), { onConflict: "fingerprint" });
+      if (enqueueError) console.warn("auth-prober: enqueue critical alert failed", enqueueError);
     } catch (e) {
-      console.warn("auth-prober: triage push failed", e);
+      console.warn("auth-prober: enqueue critical alert threw", e);
     }
   }
 

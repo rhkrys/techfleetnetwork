@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-09T00:30:37.450Z",
+  "generated_at": "2026-08-09T02:44:34.009Z",
   "functions": [
     {
       "name": "admin-purge-auth-user",
@@ -608,6 +608,13 @@
       "verify_jwt": false,
       "kind": "auth",
       "critical": true,
+      "declared": true
+    },
+    {
+      "name": "resend-webhook",
+      "verify_jwt": false,
+      "kind": "public",
+      "critical": false,
       "declared": true
     },
     {

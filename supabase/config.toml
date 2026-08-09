@@ -51,6 +51,10 @@ project_id = "pzvqxdgoztbfikfuifix"
   [functions.reconcile-stuck-emails]
     # Cron-poked email reconciler. Validates service-role bearer in code.
     verify_jwt = false
+  [functions.resend-webhook]
+    # Resend delivery-event webhook. Public route; authenticated in code via the
+    # Svix signature (RESEND_WEBHOOK_SECRET), so verify_jwt stays false.
+    verify_jwt = false
   [functions.replay-email-dlq]
     # Cron-poked DLQ replay worker. Uses authorizeServiceRoleRequest in code
     # (same pattern as process-email-queue) so verify_jwt stays false.
