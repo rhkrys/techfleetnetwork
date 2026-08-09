@@ -5,6 +5,7 @@ import { z } from "npm:zod@3.23.8";
 // --- linkify helpers (kept in-sync with src/lib/linkify.ts) ---
 import { withAuditWrapper } from "../_shared/audit.ts";
 import { announcementMessageId } from "./message-id.ts";
+import { fetchWithTimeout } from "../_shared/fetch-timeout.ts";
 
 const BodySchema = z.object({ announcement_id: z.string().optional() }).passthrough();
 const URL_RE = /\b((?:https?:\/\/|www\.)[^\s<>"'()]+[^\s<>"'(),.;:!?])/gi;
@@ -399,7 +400,7 @@ Deno.serve(
             `🔗 [View on Tech Fleet Network](${announcementUrl})`,
           ].join("\n");
 
-          const discordRes = await fetch(platformWebhook, {
+          const discordRes = await fetchWithTimeout(platformWebhook, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
