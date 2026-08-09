@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-09T02:44:34.009Z",
+  "generated_at": "2026-08-09T13:24:53.639Z",
   "functions": [
     {
       "name": "admin-purge-auth-user",
@@ -111,6 +111,20 @@
       "verify_jwt": false,
       "kind": "cron",
       "critical": false,
+      "declared": true
+    },
+    {
+      "name": "discord-oauth-callback",
+      "verify_jwt": false,
+      "kind": "auth",
+      "critical": true,
+      "declared": true
+    },
+    {
+      "name": "discord-oauth-start",
+      "verify_jwt": false,
+      "kind": "auth",
+      "critical": true,
       "declared": true
     },
     {

@@ -31,6 +31,7 @@ const ROUTE_TITLES: Array<{ pattern: string; title: string }> = [
   { pattern: "/my-journey/quest/:pathId", title: "Quest detail" },
   { pattern: "/my-journey", title: "My journey" },
 
+  { pattern: "/courses/connect-discord/callback", title: "Connecting Discord" },
   { pattern: "/courses/connect-discord", title: "Connect Discord" },
   { pattern: "/courses/onboarding", title: "Onboarding course" },
   { pattern: "/courses/agile-mindset", title: "Agile mindset course" },

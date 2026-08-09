@@ -1,75 +1,46 @@
 /**
  * ProfileDiscordConnector — single source of truth for the Discord connect
- * experience across the entire app. Mirrors the Discord course (ConnectDiscordPage)
- * step-for-step so every surface (General Application, Profile Setup, Edit Profile,
- * etc.) gets the identical verified-link flow:
+ * experience across the entire app. Used by General Application, Profile Setup,
+ * Edit Profile, the Discord course, etc. so every surface ships the identical
+ * verified-link flow:
  *
  *   1. Ask  → "Are you in the Tech Fleet Discord?"
  *   2. Invite path (no/has account) → generate personal invite + tutorial
- *   3. Verify path → search by username/display name → pick from candidates
- *   4. Finalize → assign Community role, save Discord avatar (if profile has none),
- *      mark journey task complete, refresh profile, optional onLinked callback.
+ *   3. Verify path → "Continue with Discord" → Discord OAuth (audit H11):
+ *      the user authorizes Tech Fleet, Discord returns to
+ *      /courses/connect-discord/callback, and discord-oauth-callback binds the
+ *      account only after proving ownership via /users/@me. Finalize (Community
+ *      role, avatar, journey task) runs on the callback page.
  *
- * Props let host pages tune presentation (heading, intro, completion behavior)
- * without ever forking the verification logic. Never reintroduce a raw
- * <Input id="discord_username"> elsewhere — guarded by ESLint rule.
+ * Why OAuth: the previous "search a username → pick a candidate → confirm" bind
+ * had NO proof the caller controlled the Discord account (audit H11). OAuth makes
+ * the snowflake come authoritatively from Discord for the account that authorized,
+ * so a member can never claim someone else's identity.
  *
- * Nielsen heuristics covered: status visibility (aria-live + spinners + Verified
- * badge), error recovery (stale-candidate cleanup + plain-language messages),
- * user control (re-link), consistency across surfaces, recognition (candidate
- * picker + tutorial), error prevention (server-side resolve before write).
+ * Props let host pages tune presentation without forking the verification logic.
  */
-import { useEffect, useRef, useState } from "react";
-import { getSessionSafe } from "@/lib/auth/session-port";
+import { useState } from "react";
 import {
   AlertTriangle,
   Check,
   CheckCircle2,
-  ChevronRight,
   Copy,
   ExternalLink,
   Loader2,
   MessageSquare,
   RefreshCw,
 } from "lucide-react";
-import DiscordUsernameTutorial from "@/components/DiscordUsernameTutorial";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import {
-  DISCORD_MEMBER_NOT_VISIBLE_MESSAGE,
-  DiscordNotifyService,
-} from "@/services/discord-notify.service";
-import { JourneyService } from "@/services/journey.service";
-import { useQueryClient } from "@/lib/react-query";
+import { getSessionSafe } from "@/lib/auth/session-port";
+import { beginDiscordOAuth } from "@/lib/discord/oauth-link";
+import { isUsableDiscordUsername } from "@/lib/discord/username";
 import { toast } from "sonner";
-import {
-  isUsableDiscordUsername,
-  normalizeDiscordSearchInput,
-} from "@/lib/discord/username";
-
-const TASK_ID = "connect-discord";
-const PHASE = "first_steps" as const;
-const COMMUNITY_ROLE_ID = "1083439364975112293";
-
-type Candidate = {
-  id: string;
-  username: string;
-  display_name?: string | null;
-  global_name: string | null;
-  nick?: string | null;
-  avatar?: string | null;
-};
 
 type Step =
-  | "ask"
-  | "no-discord-choose"
-  | "no-discord-no-account"
-  | "no-discord-has-account"
-  | "yes-discord";
+  "ask" | "no-discord-choose" | "no-discord-no-account" | "no-discord-has-account" | "yes-discord";
 
 export interface ProfileDiscordConnectorProps {
   /** Optional heading override (defaults to "Discord account"). */
@@ -78,7 +49,13 @@ export interface ProfileDiscordConnectorProps {
   intro?: string;
   /** Hide the header chrome entirely (host renders its own). */
   hideHeader?: boolean;
-  /** Fires once after a successful verified link (e.g. open a completion dialog). */
+  /**
+   * Fires once after a successful verified link. NOTE: with the OAuth flow the
+   * link completes on the callback page (/courses/connect-discord/callback), so
+   * this connector redirects away before linking finishes — `onLinked` is
+   * retained for API compatibility and only fires if a link somehow completes
+   * without navigation. The callback page owns the post-link celebration.
+   */
   onLinked?: () => void;
   /** Where to start the flow when not yet linked. Defaults to "ask". */
   initialStep?: Step;
@@ -86,32 +63,15 @@ export interface ProfileDiscordConnectorProps {
   variant?: "card" | "bare";
 }
 
-function formatDiscordAccountLabel(account: {
-  username?: string | null;
-  display_name?: string | null;
-  global_name?: string | null;
-  nick?: string | null;
-}) {
-  const accountName =
-    account.display_name ||
-    account.nick ||
-    account.global_name ||
-    account.username ||
-    "Discord member";
-  const accountUsername = account.username ? `@${account.username}` : "@unknown";
-  return `${accountName} - ${accountUsername}`;
-}
-
 export function ProfileDiscordConnector({
   heading = "Discord account",
   intro = "Connect your account through the verified Tech Fleet Discord flow.",
   hideHeader = false,
-  onLinked,
+  onLinked: _onLinked,
   initialStep = "ask",
   variant = "card",
 }: ProfileDiscordConnectorProps = {}) {
-  const { user, profile, refreshProfile } = useAuth();
-  const queryClient = useQueryClient();
+  const { profile } = useAuth();
 
   // Linked state — source of truth is profile.discord_user_id
   const isLinked = Boolean(profile?.discord_user_id);
@@ -126,35 +86,10 @@ export function ProfileDiscordConnector({
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Verify flow
-  const [username, setUsername] = useState(profile?.discord_username || "");
-  const [verifying, setVerifying] = useState(false);
-  const [verifyError, setVerifyError] = useState("");
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [confirmingId, setConfirmingId] = useState<string | null>(null);
-  const [linkedDiscordUsername, setLinkedDiscordUsername] = useState(
-    profile?.discord_username || "",
-  );
+  // Verify (OAuth) flow
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState("");
   const [status, setStatus] = useState(""); // aria-live announcement
-  const onLinkedFiredRef = useRef(false);
-
-  useEffect(() => {
-    if (!relinking) {
-      setUsername(profile?.discord_username || "");
-      setLinkedDiscordUsername(profile?.discord_username || "");
-    }
-  }, [profile?.discord_username, relinking]);
-
-  const displayName =
-    profile?.display_name ||
-    profile?.first_name ||
-    user?.user_metadata?.full_name ||
-    "A member";
-
-  const clearStaleCandidate = (candidateId: string) => {
-    setCandidates((current) => current.filter((c) => c.id !== candidateId));
-    setConfirmingId(null);
-  };
 
   const generateInvite = async () => {
     setGenerating(true);
@@ -196,152 +131,19 @@ export function ProfileDiscordConnector({
     }
   };
 
-  const assignCommunityRole = async (discordUserId: string) => {
-    const session = await getSessionSafe();
-    if (!session) throw new Error("Not authenticated");
-    const res = await supabase.functions.invoke("manage-discord-roles", {
-      headers: { Authorization: `Bearer ${session.access_token}` },
-      body: { action: "assign", discord_user_id: discordUserId, role_id: COMMUNITY_ROLE_ID },
-    });
-    if (res.error) throw new Error(res.error.message || "Failed to assign the Community role");
-  };
-
-  /** Download Discord avatar → upload to avatars bucket (only when profile has none). */
-  const saveDiscordAvatar = async (discordAvatarUrl: string, userId: string) => {
+  const connectWithDiscord = async () => {
+    setStarting(true);
+    setStartError("");
+    setStatus("Redirecting you to Discord to verify ownership…");
     try {
-      const { data: currentProfile } = await supabase
-        .from("profiles")
-        .select("avatar_url")
-        .eq("user_id", userId)
-        .single();
-      if (currentProfile?.avatar_url) return;
-
-      const response = await fetch(discordAvatarUrl);
-      if (!response.ok) return;
-      const blob = await response.blob();
-      const path = `${userId}/avatar.png`;
-      const { error: uploadError } = await supabase.storage
-        .from("avatars")
-        .upload(path, blob, { upsert: true, contentType: "image/png" });
-      if (uploadError) return;
-      const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path);
-      const publicUrl = `${urlData.publicUrl}?t=${Date.now()}`;
-      await supabase
-        .from("profiles")
-        .update({ avatar_url: publicUrl } as any)
-        .eq("user_id", userId);
-    } catch {
-      /* avatar save is best-effort, never blocks linking */
-    }
-  };
-
-  const finalizeLinking = async (
-    discordUserId: string,
-    discordUsername: string,
-    avatarUrl?: string | null,
-    selectedLabel?: string,
-  ) => {
-    if (!user) throw new Error("Not authenticated");
-
-    // Avatar save is fire-and-forget — never blocks the link
-    if (avatarUrl) saveDiscordAvatar(avatarUrl, user.id);
-
-    await JourneyService.upsertTask(user.id, PHASE, TASK_ID, true);
-
-    let communityRoleAssigned = false;
-    try {
-      await assignCommunityRole(discordUserId);
-      communityRoleAssigned = true;
-    } catch {
-      /* role sync retry queue + admin permissions are non-blocking */
-    }
-
-    DiscordNotifyService.discordVerified(displayName, discordUsername, discordUserId);
-
-    queryClient.invalidateQueries({ queryKey: ["journey-completed", user.id, PHASE] });
-    queryClient.invalidateQueries({ queryKey: ["journey-progress", user.id, PHASE] });
-
-    setLinkedDiscordUsername(discordUsername);
-    await refreshProfile();
-    setRelinking(false);
-    setCandidates([]);
-    setVerifyError("");
-    setStatus("Discord account verified and linked.");
-
-    const successMsg = communityRoleAssigned
-      ? selectedLabel
-        ? `Selected ${selectedLabel}. Discord account verified, linked, and added to Community!`
-        : "Discord account verified, linked, and added to Community!"
-      : selectedLabel
-        ? `Selected ${selectedLabel}. Discord account verified and linked!`
-        : "Discord account verified and linked!";
-    toast.success(successMsg, { duration: 30000, position: "top-center" });
-
-    if (!onLinkedFiredRef.current && onLinked) {
-      onLinkedFiredRef.current = true;
-      onLinked();
-    }
-  };
-
-  const verifyUsername = async () => {
-    const trimmed = username.trim();
-    if (!trimmed) {
-      setVerifyError("Please enter your Discord username or display name.");
-      return;
-    }
-    const normalized = normalizeDiscordSearchInput(trimmed);
-    setVerifying(true);
-    setVerifyError("");
-    setCandidates([]);
-    setStatus("Searching the Tech Fleet Discord server…");
-
-    try {
-      const result = await DiscordNotifyService.resolveDiscordId(normalized);
-      if (result.candidates?.length) {
-        setCandidates(result.candidates);
-        setStatus(`Found ${result.candidates.length} matching member${result.candidates.length === 1 ? "" : "s"}. Select yours to link.`);
-      } else if (result.discord_user_id) {
-        setVerifyError("Please select your Discord account from the search results before linking.");
-        setStatus("");
-      } else {
-        const msg = result.message ||
-          "We couldn't find that name in the Tech Fleet Discord server. Please make sure you've joined and that the username or display name is correct.";
-        setVerifyError(msg);
-        setStatus("");
-      }
+      // On success the browser navigates to Discord and never returns here.
+      await beginDiscordOAuth();
     } catch (err: any) {
-      setVerifyError(err.message || "Discord verification is temporarily unavailable. Please try again in a minute.");
+      setStarting(false);
       setStatus("");
-    } finally {
-      setVerifying(false);
-    }
-  };
-
-  const selectCandidate = async (candidate: Candidate) => {
-    setConfirmingId(candidate.id);
-    setVerifyError("");
-    try {
-      const confirmed = await DiscordNotifyService.confirmDiscordId(candidate.id);
-      if (!confirmed?.discord_user_id) throw new Error(DISCORD_MEMBER_NOT_VISIBLE_MESSAGE);
-      const selectedUsername = confirmed.discord_username || candidate.username;
-      const selectedLabel = formatDiscordAccountLabel({
-        username: selectedUsername,
-        display_name: confirmed.discord_display_name || candidate.display_name,
-        global_name: confirmed.global_name || candidate.global_name,
-        nick: confirmed.nick || candidate.nick,
-      });
-      setUsername(selectedUsername);
-      await finalizeLinking(confirmed.discord_user_id, selectedUsername, candidate.avatar, selectedLabel);
-    } catch (err: any) {
-      const message = err.message || "Verification failed. Please try again.";
-      if (message === DISCORD_MEMBER_NOT_VISIBLE_MESSAGE) {
-        clearStaleCandidate(candidate.id);
-        setVerifyError(`${message} I removed that stale result so you can search again now.`);
-        return;
-      }
-      setVerifyError(message);
-    } finally {
-      setConfirmingId(null);
+      setStartError(
+        err?.message || "Could not start Discord linking. Please try again in a minute."
+      );
     }
   };
 
@@ -364,7 +166,9 @@ export function ProfileDiscordConnector({
               <MessageSquare className="h-5 w-5 text-primary" aria-hidden="true" />
             </div>
             <div>
-              <h3 id="profile-discord-heading" className="font-semibold text-foreground">{heading}</h3>
+              <h3 id="profile-discord-heading" className="font-semibold text-foreground">
+                {heading}
+              </h3>
               <p className="text-sm text-muted-foreground">{intro}</p>
             </div>
           </div>
@@ -382,13 +186,30 @@ export function ProfileDiscordConnector({
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
             {(() => {
-              const candidate = linkedDiscordUsername || profile?.discord_username;
-              return isUsableDiscordUsername(candidate)
-                ? <>Connected as <strong className="text-foreground">@{candidate}</strong>.</>
-                : <>Connected to Discord. <span className="text-foreground/70">Your username will refresh automatically.</span></>;
+              const candidate = profile?.discord_username;
+              return isUsableDiscordUsername(candidate) ? (
+                <>
+                  Connected as <strong className="text-foreground">@{candidate}</strong>.
+                </>
+              ) : (
+                <>
+                  Connected to Discord.{" "}
+                  <span className="text-foreground/70">
+                    Your username will refresh automatically.
+                  </span>
+                </>
+              );
             })()}
           </p>
-          <Button type="button" variant="outline" size="sm" onClick={() => { setRelinking(true); setStep("yes-discord"); }}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setRelinking(true);
+              setStep("yes-discord");
+            }}
+          >
             Re-link a different account
           </Button>
         </div>
@@ -398,14 +219,25 @@ export function ProfileDiscordConnector({
           {step === "ask" && (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
-                Tech Fleet's community lives on Discord. We'll verify your membership before linking your accounts.
+                Tech Fleet's community lives on Discord. We'll verify your membership before linking
+                your accounts.
               </p>
               <div className="flex flex-wrap gap-2">
-                <Button type="button" size="sm" onClick={() => setStep("yes-discord")} className="gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => setStep("yes-discord")}
+                  className="gap-2"
+                >
                   <Check className="h-4 w-4" aria-hidden="true" />
                   Yes, I'm in Discord
                 </Button>
-                <Button type="button" variant="outline" size="sm" onClick={() => setStep("no-discord-choose")}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setStep("no-discord-choose")}
+                >
                   No, I need an invite
                 </Button>
               </div>
@@ -416,14 +248,25 @@ export function ProfileDiscordConnector({
           {step === "no-discord-choose" && (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
-                Discord is a free communication platform. If you don't have an account yet, we'll help you get set up.
+                Discord is a free communication platform. If you don't have an account yet, we'll
+                help you get set up.
               </p>
               <div className="flex flex-wrap gap-2">
-                <Button type="button" size="sm" onClick={() => setStep("no-discord-has-account")} className="gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => setStep("no-discord-has-account")}
+                  className="gap-2"
+                >
                   <Check className="h-4 w-4" aria-hidden="true" />
                   Yes, I have Discord
                 </Button>
-                <Button type="button" variant="outline" size="sm" onClick={() => setStep("no-discord-no-account")}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setStep("no-discord-no-account")}
+                >
                   No, I need to create one
                 </Button>
                 <Button type="button" variant="ghost" size="sm" onClick={() => setStep("ask")}>
@@ -437,27 +280,41 @@ export function ProfileDiscordConnector({
           {step === "no-discord-no-account" && (
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                Discord is a free platform for text, voice, and video. Follow these steps to get started:
+                Discord is a free platform for text, voice, and video. Follow these steps to get
+                started:
               </p>
               <ol className="list-decimal list-inside space-y-3 text-sm text-muted-foreground">
                 <li>
-                  <strong className="text-foreground">Download Discord</strong> — Get the app for your device or use the web version.
+                  <strong className="text-foreground">Download Discord</strong> — Get the app for
+                  your device or use the web version.
                   <div className="mt-2 flex flex-wrap gap-2">
-                    <a href="https://discord.com/download" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+                    <a
+                      href="https://discord.com/download"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                    >
                       <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
                       Download Discord
                     </a>
-                    <a href="https://discord.com/app" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors">
+                    <a
+                      href="https://discord.com/app"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors"
+                    >
                       <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
                       Use in Browser
                     </a>
                   </div>
                 </li>
                 <li>
-                  <strong className="text-foreground">Create your account</strong> — Pick a username and verify your email address.
+                  <strong className="text-foreground">Create your account</strong> — Pick a username
+                  and verify your email address.
                 </li>
                 <li>
-                  <strong className="text-foreground">Come back here</strong> — Once your Discord account is ready, generate your personal invite link below.
+                  <strong className="text-foreground">Come back here</strong> — Once your Discord
+                  account is ready, generate your personal invite link below.
                 </li>
               </ol>
               <InviteBlock
@@ -468,7 +325,14 @@ export function ProfileDiscordConnector({
                 onCopy={copyInvite}
                 onJoined={() => setStep("yes-discord")}
               />
-              <Button type="button" variant="ghost" size="sm" onClick={() => setStep("no-discord-choose")}>Back</Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setStep("no-discord-choose")}
+              >
+                Back
+              </Button>
             </div>
           )}
 
@@ -476,7 +340,8 @@ export function ProfileDiscordConnector({
           {step === "no-discord-has-account" && (
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                Get your personal invite link to join the Tech Fleet Discord server. Once you've joined, come back here and verify your username.
+                Get your personal invite link to join the Tech Fleet Discord server. Once you've
+                joined, come back here and verify your account.
               </p>
               <InviteBlock
                 inviteUrl={inviteUrl}
@@ -486,89 +351,69 @@ export function ProfileDiscordConnector({
                 onCopy={copyInvite}
                 onJoined={() => setStep("yes-discord")}
               />
-              <Button type="button" variant="ghost" size="sm" onClick={() => setStep("no-discord-choose")}>Back</Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setStep("no-discord-choose")}
+              >
+                Back
+              </Button>
             </div>
           )}
 
-          {/* Step 2b: Verify */}
+          {/* Step 2b: Verify via Discord OAuth */}
           {step === "yes-discord" && (
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                Enter your Discord username or display name and we'll find you in the Tech Fleet server.
+                We'll send you to Discord to authorize Tech Fleet, then bring you right back. This
+                proves you own the account before we link it — no one else can claim your Discord
+                identity.
               </p>
 
-              <DiscordUsernameTutorial />
-
-              <div className="space-y-2">
-                <Label htmlFor="profile-discord-username">Discord username or display name</Label>
-                <Input
-                  id="profile-discord-username"
-                  value={username}
-                  onChange={(e) => { setUsername(e.target.value); setVerifyError(""); setCandidates([]); }}
-                  placeholder="e.g. johndoe or John D."
-                  disabled={verifying || !!confirmingId}
-                  autoComplete="off"
-                  aria-invalid={!!verifyError}
-                  aria-describedby={verifyError ? "profile-discord-error" : undefined}
-                />
-              </div>
-
-              {verifyError && (
-                <div id="profile-discord-error" className="flex items-start gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
+              {startError && (
+                <div
+                  id="profile-discord-error"
+                  className="flex items-start gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+                  role="alert"
+                >
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                  <span>{verifyError}</span>
-                </div>
-              )}
-
-              {candidates.length > 0 && (
-                <div className="space-y-3">
-                  <p className="text-sm font-medium text-foreground">We found similar members — is one of these you?</p>
-                  <div className="space-y-2" role="list" aria-label="Matching Discord members">
-                    {candidates.map((c) => (
-                      <div key={c.id} role="listitem">
-                        <button
-                          type="button"
-                          onClick={() => selectCandidate(c)}
-                          disabled={!!confirmingId}
-                          className="flex w-full items-center gap-3 rounded-lg border bg-background p-3 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-                          aria-label={`Select ${c.global_name || c.nick || c.username}`}
-                        >
-                          {c.avatar ? (
-                            <img src={c.avatar} alt="" className="h-10 w-10 rounded-full object-cover" loading="lazy" />
-                          ) : (
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-muted-foreground">
-                              {(c.global_name || c.username || "?").charAt(0).toUpperCase()}
-                            </div>
-                          )}
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium text-foreground">{formatDiscordAccountLabel(c)}</p>
-                            {c.nick && c.nick !== c.global_name && (
-                              <p className="truncate text-xs text-muted-foreground">{c.nick}</p>
-                            )}
-                          </div>
-                          {confirmingId === c.id
-                            ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden="true" />
-                            : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    None of these? Try searching with your exact Discord username (Settings → My Account).
-                  </p>
+                  <span>{startError}</span>
                 </div>
               )}
 
               <div className="flex flex-wrap gap-2">
-                <Button type="button" onClick={verifyUsername} disabled={verifying || !!confirmingId || !username.trim()} className="gap-2">
-                  {verifying ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
-                  {candidates.length > 0 ? "Search again" : "Verify Discord account"}
+                <Button
+                  type="button"
+                  onClick={connectWithDiscord}
+                  disabled={starting}
+                  className="gap-2"
+                >
+                  {starting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <MessageSquare className="h-4 w-4" aria-hidden="true" />
+                  )}
+                  {starting ? "Redirecting to Discord…" : "Continue with Discord"}
                 </Button>
-                <Button type="button" variant="ghost" onClick={() => setStep("no-discord-choose")} disabled={verifying || !!confirmingId}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setStep("no-discord-choose")}
+                  disabled={starting}
+                >
                   I need an invite instead
                 </Button>
                 {relinking && (
-                  <Button type="button" variant="ghost" onClick={() => { setRelinking(false); setVerifyError(""); setCandidates([]); }}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      setRelinking(false);
+                      setStartError("");
+                    }}
+                    disabled={starting}
+                  >
                     Cancel
                   </Button>
                 )}
@@ -583,7 +428,12 @@ export function ProfileDiscordConnector({
 
 // ── Shared invite block ──────────────────────────────────────────────
 function InviteBlock({
-  inviteUrl, copied, generating, onGenerate, onCopy, onJoined,
+  inviteUrl,
+  copied,
+  generating,
+  onGenerate,
+  onCopy,
+  onJoined,
 }: {
   inviteUrl: string;
   copied: boolean;
@@ -595,7 +445,11 @@ function InviteBlock({
   if (!inviteUrl) {
     return (
       <Button type="button" onClick={onGenerate} disabled={generating} className="gap-2">
-        {generating ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <MessageSquare className="h-4 w-4" aria-hidden="true" />}
+        {generating ? (
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+        ) : (
+          <MessageSquare className="h-4 w-4" aria-hidden="true" />
+        )}
         {generating ? "Generating…" : "Get my Discord invite"}
       </Button>
     );
@@ -603,16 +457,42 @@ function InviteBlock({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2">
-        <a href={inviteUrl} target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
+        <a
+          href={inviteUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex shrink-0 items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+        >
           <ExternalLink className="h-4 w-4" aria-hidden="true" />
           Open Discord invite
         </a>
-        <Button type="button" variant="outline" size="sm" onClick={onCopy} className="shrink-0 gap-2">
-          {copied ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onCopy}
+          className="shrink-0 gap-2"
+        >
+          {copied ? (
+            <Check className="h-3.5 w-3.5" aria-hidden="true" />
+          ) : (
+            <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+          )}
           {copied ? "Copied" : "Copy link"}
         </Button>
-        <Button type="button" variant="ghost" size="sm" onClick={onGenerate} disabled={generating} className="shrink-0 gap-2">
-          {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />}
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={onGenerate}
+          disabled={generating}
+          className="shrink-0 gap-2"
+        >
+          {generating ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+          ) : (
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+          )}
           I need another link
         </Button>
       </div>
@@ -620,7 +500,7 @@ function InviteBlock({
         This is a single-use invite link valid for 7 days.
       </p>
       <Button type="button" variant="secondary" size="sm" onClick={onJoined} className="gap-2">
-        I've joined — verify my username
+        I've joined — verify my account
       </Button>
     </div>
   );

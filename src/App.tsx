@@ -132,6 +132,7 @@ const MyJourneyPage = lazy(() => import("./pages/MyJourneyPage"));
 const QuestDetailPage = lazy(() => import("./pages/QuestDetailPage"));
 const ObserverCoursePage = lazy(() => import("./pages/ObserverCoursePage"));
 const ConnectDiscordPage = lazy(() => import("./pages/ConnectDiscordPage"));
+const DiscordOAuthCallbackPage = lazy(() => import("./pages/DiscordOAuthCallbackPage"));
 const UnsubscribePage = lazy(() => import("./pages/UnsubscribePage"));
 const NotificationsPage = lazy(() => import("./pages/NotificationsPage"));
 const AccessDeniedPage = lazy(() => import("./pages/AccessDeniedPage"));
@@ -283,6 +284,14 @@ const App = () => (
                       element={
                         <ProtectedRoute>
                           <ConnectDiscordPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/courses/connect-discord/callback"
+                      element={
+                        <ProtectedRoute>
+                          <DiscordOAuthCallbackPage />
                         </ProtectedRoute>
                       }
                     />
