@@ -168,13 +168,10 @@ Deno.serve(async (req: Request) => {
     details: {},
   }));
 
-  const { error: insertErr } = await admin.from("auth_prober_results").insert(rows);
-  if (insertErr) {
-    console.warn("auth-prober: insert failed", insertErr);
-  }
-
-  // Two-strike: page admins via Triage Critical Push when the latest run
-  // AND the prior run failed on the same stage.
+  // Two-strike: page admins via Triage Critical Push only when the latest run
+  // AND a prior run failed on the same stage. T-F: query the prior rows BEFORE
+  // inserting this run's — otherwise the just-inserted failure counts as its own
+  // "prior" and the debounce never fires (pages on the first transient blip).
   const errStages = results.filter((r) => r.outcome === "err").map((r) => r.stage);
   let shouldPage = false;
   if (errStages.length > 0) {
@@ -193,6 +190,12 @@ Deno.serve(async (req: Request) => {
       );
       shouldPage = errStages.some((s) => priorErrStages.has(s));
     }
+  }
+
+  // Persist this run's results AFTER the prior-run lookup above.
+  const { error: insertErr } = await admin.from("auth_prober_results").insert(rows);
+  if (insertErr) {
+    console.warn("auth-prober: insert failed", insertErr);
   }
 
   if (shouldPage) {

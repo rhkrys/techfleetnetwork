@@ -81,15 +81,16 @@ export function scrubJson(body: unknown, allow: DlpAllowList = {}): string {
   return scrub(raw, allow);
 }
 
-/** Returns true if the input contains any pattern that would be redacted. */
+/** Returns true if the input contains any pattern that would be redacted.
+ *
+ * T-F: the module-level regexes carry the `g` flag, so calling `.test()` on them
+ * advances (and persists) `lastIndex` — making this check STATEFUL across calls.
+ * A payload containing a JWT/key would stochastically return `false` on a later
+ * call, silently letting a secret past the DLP gate. Test against fresh,
+ * NON-global clones so there is no shared cursor.
+ */
 export function containsSensitive(text: string): boolean {
   if (!text) return false;
-  return (
-    JWT_RE.test(text) ||
-    SB_KEY_RE.test(text) ||
-    SK_KEY_RE.test(text) ||
-    PK_KEY_RE.test(text) ||
-    BEARER_RE.test(text) ||
-    HEX_TOKEN_RE.test(text)
-  );
+  const patterns = [JWT_RE, SB_KEY_RE, SK_KEY_RE, PK_KEY_RE, BEARER_RE, HEX_TOKEN_RE];
+  return patterns.some((re) => new RegExp(re.source, re.flags.replace("g", "")).test(text));
 }

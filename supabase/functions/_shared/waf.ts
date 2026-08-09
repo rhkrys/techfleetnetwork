@@ -137,7 +137,17 @@ export async function applyWaf(req: Request, source: string): Promise<Response |
     await logEvent(source, "waf_path_traversal", "error", ip, { url });
     return deny(400, "Bad request");
   }
-  if (SQLI_RE.test(decodeURIComponent(url))) {
+  // T-F: decodeURIComponent throws URIError on malformed encoding (`%`, `%zz`).
+  // Unguarded, that crash bubbles out of applyWaf as an unhandled 500 AND skips
+  // the SQLi check entirely. Fail closed: malformed encoding is itself abusive.
+  let decodedUrl: string;
+  try {
+    decodedUrl = decodeURIComponent(url);
+  } catch {
+    await logEvent(source, "waf_bad_encoding", "warn", ip, { url });
+    return deny(400, "Bad request");
+  }
+  if (SQLI_RE.test(decodedUrl)) {
     await logEvent(source, "waf_sqli_url", "error", ip, { url });
     return deny(400, "Bad request");
   }
