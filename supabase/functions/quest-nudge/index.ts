@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 import { withAuditWrapper } from "../_shared/audit.ts";
 import { escapeHtml } from "../_shared/escape-html.ts";
+import { wasDelivered } from "../_shared/nudge-delivery.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -84,25 +85,46 @@ Deno.serve(
         });
         if (notifErr) console.error(`notif insert failed for ${c.user_id}:`, notifErr);
 
-        if (c.notify_announcements) {
+        // T-F: functions.invoke resolves with { error } on non-2xx (does NOT
+        // throw), so detect a failed email via the returned error, not only the
+        // catch.
+        const emailAttempted = !!c.notify_announcements;
+        let emailOk = false;
+        if (emailAttempted) {
           try {
-            await supabase.functions.invoke("send-transactional-email", {
-              body: {
-                templateName: "quest-nudge",
-                recipientEmail: c.email,
-                idempotencyKey: `quest-nudge-${c.selection_id}-${now.toISOString().slice(0, 10)}`,
-                templateData: {
-                  firstName,
-                  questTitle: c.path_title,
-                  completedSteps: c.completed_count,
-                  totalSteps: c.total_steps,
-                  questUrl,
+            const { error: emailErr } = await supabase.functions.invoke(
+              "send-transactional-email",
+              {
+                body: {
+                  templateName: "quest-nudge",
+                  recipientEmail: c.email,
+                  idempotencyKey: `quest-nudge-${c.selection_id}-${now.toISOString().slice(0, 10)}`,
+                  templateData: {
+                    firstName,
+                    questTitle: c.path_title,
+                    completedSteps: c.completed_count,
+                    totalSteps: c.total_steps,
+                    questUrl,
+                  },
                 },
-              },
-            });
+              }
+            );
+            if (emailErr) {
+              console.error(`nudge email failed for ${c.email}:`, emailErr);
+            } else {
+              emailOk = true;
+            }
           } catch (emailErr) {
-            console.error(`nudge email failed for ${c.email}:`, emailErr);
+            console.error(`nudge email threw for ${c.email}:`, emailErr);
           }
+        }
+
+        // T-F: last_nudged_at suppresses re-nudging for NUDGE_INTERVAL_DAYS. Only
+        // advance it when the nudge actually reached the user on some channel —
+        // otherwise a failed insert + failed email silently suppresses the user
+        // for the whole window despite never being nudged.
+        if (!wasDelivered({ inAppOk: !notifErr, emailAttempted, emailOk })) {
+          continue;
         }
 
         await supabase
