@@ -25,6 +25,9 @@ const ledgerMigration =
     .map((f) => read(`supabase/migrations/${f}`))[0] ?? "";
 
 const webhook = read("supabase/functions/gumroad-webhook/index.ts");
+// H10 extracted lifecycle classification + timestamp patching into a sibling
+// module (unit-tested in lifecycle.test.ts); the columns live here now.
+const webhookLifecycle = read("supabase/functions/gumroad-webhook/lifecycle.ts");
 const backfill = read("supabase/functions/gumroad-backfill/index.ts");
 const reconcile = read("supabase/functions/gumroad-reconcile/index.ts");
 const tiers = read("src/config/membership-tiers.ts");
@@ -117,8 +120,11 @@ describe("Early Career Membership ledger→projection (smoke)", () => {
     // It records the ledger but must NOT update the profiles membership columns.
     expect(webhook).not.toMatch(/\.from\(\s*["']profiles["']\s*\)\s*\.update/);
     expect(webhook).not.toMatch(/membership_tier:/);
-    // Lifecycle handling present.
-    expect(webhook).toMatch(/refunded_at|subscription_ended_at/);
+    // Lifecycle handling present. H10 extracted the refund/dispute/cancel/ended
+    // classification + timestamp patch into ./lifecycle.ts; index.ts must wire it
+    // in, and that module must set the lifecycle timestamps the projector reads.
+    expect(webhook).toMatch(/from ["']\.\/lifecycle\.ts["']/);
+    expect(webhookLifecycle).toMatch(/refunded_at|subscription_ended_at/);
   });
 
   it("MEM-LEDGER-011: backfill uses the verified token email + no keyword tier mapping", () => {

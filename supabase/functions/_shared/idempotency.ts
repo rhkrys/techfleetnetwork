@@ -17,8 +17,10 @@
  *   - If present, calls `claim_idempotency_key`; on a cache hit returns the
  *     stored response immediately. On first-call, executes the handler then
  *     records the response via `complete_idempotency`.
- *   - The request hash is `method:path:body-sha256` so accidental key reuse
- *     with a different payload throws instead of silently returning the old
+ *   - The stored key is `sha256(userId:key)` and the request hash is
+ *     `sha256(method:path:userId:body)` — so the cache is isolated per user
+ *     (one caller can never read another's response, audit H5) and accidental
+ *     key reuse with a different payload throws instead of returning the old
  *     response.
  */
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
@@ -61,12 +63,10 @@ export async function withIdempotency(
   req: Request,
   supabase: SupabaseClient,
   handler: () => Promise<Response>,
-  opts: WithIdempotencyOptions = {},
+  opts: WithIdempotencyOptions = {}
 ): Promise<Response> {
   const key =
-    opts.explicitKey ??
-    req.headers.get(KEY_HEADER_PRIMARY) ??
-    req.headers.get(KEY_HEADER_FALLBACK);
+    opts.explicitKey ?? req.headers.get(KEY_HEADER_PRIMARY) ?? req.headers.get(KEY_HEADER_FALLBACK);
 
   // No key: behave transparently.
   if (!key || key.length < 8) {
@@ -75,7 +75,18 @@ export async function withIdempotency(
 
   const userId = opts.userId !== undefined ? opts.userId : readUserIdFromJwt(req);
 
-  // Hash the request shape so reuse with a different payload throws.
+  // SECURITY (audit H5): the storage row is keyed by `key` alone (PRIMARY KEY),
+  // and claim_idempotency_key filters on `WHERE key = p_key` with no user
+  // predicate. Two callers reusing the same X-Request-Id + body would therefore
+  // read each OTHER's cached (private) response. Namespace the stored key by the
+  // caller's identity so each user has an isolated key-space; hash it to a fixed
+  // 64-char value that satisfies the RPC's 8..200 length guard. The original
+  // caller-supplied `key` is still echoed back in the response header.
+  const scope = userId ?? "anon";
+  const storageKey = await sha256Hex(`${scope}:${key}`);
+
+  // Hash the request shape INCLUDING the user, so key reuse with a different
+  // payload — or by a different user — never returns a stale/foreign response.
   let body = "";
   try {
     body = await req.clone().text();
@@ -83,10 +94,10 @@ export async function withIdempotency(
     body = "";
   }
   const url = new URL(req.url);
-  const requestHash = await sha256Hex(`${req.method}:${url.pathname}:${body}`);
+  const requestHash = await sha256Hex(`${req.method}:${url.pathname}:${scope}:${body}`);
 
   const { data: claim, error: claimErr } = await supabase.rpc("claim_idempotency_key", {
-    p_key: key,
+    p_key: storageKey,
     p_user_id: userId,
     p_request_hash: requestHash,
     p_ttl_minutes: opts.ttlMinutes ?? 1440,
@@ -119,7 +130,7 @@ export async function withIdempotency(
     response = await handler();
   } catch (err) {
     await supabase.rpc("complete_idempotency", {
-      p_key: key,
+      p_key: storageKey,
       p_response: { error: String(err) },
       p_status: "failed",
     });
@@ -132,7 +143,7 @@ export async function withIdempotency(
       const clone = response.clone();
       const json = await clone.json();
       await supabase.rpc("complete_idempotency", {
-        p_key: key,
+        p_key: storageKey,
         p_response: json,
         p_status: "complete",
       });

@@ -4,6 +4,7 @@ import { z } from "npm:zod@3.23.8";
 
 // --- linkify helpers (kept in-sync with src/lib/linkify.ts) ---
 import { withAuditWrapper } from "../_shared/audit.ts";
+import { announcementMessageId } from "./message-id.ts";
 
 const BodySchema = z.object({ announcement_id: z.string().optional() }).passthrough();
 const URL_RE = /\b((?:https?:\/\/|www\.)[^\s<>"'()]+[^\s<>"'(),.;:!?])/gi;
@@ -200,7 +201,12 @@ Deno.serve(
           .toLowerCase();
         if (!normalizedEmail) continue;
 
-        const messageId = `announcement-${announcement_id}-${crypto.randomUUID()}`;
+        // Audit H8: DETERMINISTIC per (announcement, recipient). A random UUID
+        // here made every re-run/retry a fresh idempotency key, so the pipeline's
+        // dedup (idempotencyKey / email_send_log.message_id) never matched and a
+        // timeout+retry re-blasted all opted-in members. A stable id makes a
+        // retry a no-op at the dedup layer. (Helper is unit-tested in message-id.test.ts.)
+        const messageId = announcementMessageId(announcement_id, normalizedEmail);
         const unsubscribeToken = crypto.randomUUID();
 
         const announcementUrl = `https://techfleet.network/updates?highlight=${announcement_id}`;

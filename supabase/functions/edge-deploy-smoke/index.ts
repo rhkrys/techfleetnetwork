@@ -9,12 +9,17 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { authorizeServiceRoleRequest } from "../_shared/service-role-auth.ts";
+import { auditEdgeEvent } from "../_shared/audit.ts";
+import { buildNotDeployedAuditEvent } from "./alerts.ts";
 import manifest from "./_manifest.json" with { type: "json" };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-interface FnEntry { name: string; verify_jwt: boolean }
+interface FnEntry {
+  name: string;
+  verify_jwt: boolean;
+}
 const FUNCTIONS: FnEntry[] = (manifest as { functions: FnEntry[] }).functions;
 
 Deno.serve(async (req) => {
@@ -62,16 +67,13 @@ Deno.serve(async (req) => {
   }
   await Promise.all(Array.from({ length: 8 }, worker));
 
-  // Page on any 404. Use audit_log with severity:error so Triage Critical
-  // Push picks it up. Fingerprint dedupes across runs.
+  // Page on any 404 via the canonical audit pipeline. auditEdgeEvent writes a
+  // severity:error audit_log row (correct text[] `changed_fields` schema) that
+  // the triage promotion lifts into agent_fix_queue — the table notify-critical-fix
+  // actually scans. The prior raw insert used non-existent columns and was never
+  // checked, so this safety net was itself silent (audit H14).
   for (const name of notDeployed) {
-    await admin.from("audit_log").insert({
-      action: "edge_function_not_deployed",
-      resource_type: "edge_function",
-      resource_id: name,
-      changed_fields: { severity: "error", fingerprint: `edge_function_404:${name}` },
-      metadata: { probe: "edge-deploy-smoke" },
-    });
+    await auditEdgeEvent(admin, buildNotDeployedAuditEvent(name));
   }
 
   return new Response(
@@ -80,6 +82,6 @@ Deno.serve(async (req) => {
       not_deployed: notDeployed,
       ok: notDeployed.length === 0,
     }),
-    { headers: { ...corsHeaders, "content-type": "application/json" } },
+    { headers: { ...corsHeaders, "content-type": "application/json" } }
   );
 });
