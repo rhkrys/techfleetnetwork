@@ -158,6 +158,12 @@ jobs:
       - name: Guard — no stray non-npm lockfiles
         run: node scripts/ci/check-no-stray-lockfiles.mjs
 
+      # Migration-version guard — two migrations sharing a version prefix collide
+      # on schema_migrations_pkey and break the blocking migration-smoke gate.
+      # Parallel date-stamped PRs kept doing this; catch it at PR time, clearly.
+      - name: Guard — no duplicate migration version prefixes
+        run: node scripts/ci/check-migration-version-collision.mjs
+
       - name: Type-check
         run: npx tsc --noEmit
       - name: Lint (ESLint)
