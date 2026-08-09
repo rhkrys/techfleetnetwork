@@ -5,6 +5,7 @@ import { createEdgeLogger } from "../_shared/logger.ts";
 import { discordFetch } from "../_shared/discord-fetch.ts";
 
 import { withAuditWrapper } from "../_shared/audit.ts";
+import { isFreshTimestamp } from "./freshness.ts";
 const log = createEdgeLogger("discord-interactions");
 
 /* ── Discord constants ─────────────────────────────────────────────── */
@@ -61,14 +62,14 @@ function verifySignature(
   body: string,
   signature: string | null,
   timestamp: string | null,
-  publicKey: string | null,
+  publicKey: string | null
 ): boolean {
   if (!signature || !timestamp || !publicKey) return false;
   try {
     return nacl.sign.detached.verify(
       new TextEncoder().encode(timestamp + body),
       hexToUint8Array(signature),
-      hexToUint8Array(publicKey),
+      hexToUint8Array(publicKey)
     );
   } catch {
     return false;
@@ -78,7 +79,7 @@ function verifySignature(
 async function loadKnowledgeBase(): Promise<string> {
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
 
   const { data: knowledge, error } = await supabase
@@ -140,28 +141,28 @@ async function getAIResponse(question: string, knowledgeCtx: string): Promise<st
 
   // LLM01: Log injection attempts
   if (DISCORD_INJECTION_PATTERNS.some((p) => p.test(truncatedQuestion))) {
-    log.warn("prompt-injection", `Potential injection in Discord command: ${truncatedQuestion.substring(0, 80)}`);
+    log.warn(
+      "prompt-injection",
+      `Potential injection in Discord command: ${truncatedQuestion.substring(0, 80)}`
+    );
   }
 
-  const response = await fetch(
-    "https://ai.gateway.lovable.dev/v1/chat/completions",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT + knowledgeCtx },
-          { role: "user", content: truncatedQuestion },
-        ],
-        stream: false,
-        max_tokens: 1800, // LLM10: Cap output to fit Discord message limits
-      }),
+  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
     },
-  );
+    body: JSON.stringify({
+      model: "google/gemini-3-flash-preview",
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT + knowledgeCtx },
+        { role: "user", content: truncatedQuestion },
+      ],
+      stream: false,
+      max_tokens: 1800, // LLM10: Cap output to fit Discord message limits
+    }),
+  });
 
   if (!response.ok) {
     const text = await response.text();
@@ -169,7 +170,8 @@ async function getAIResponse(question: string, knowledgeCtx: string): Promise<st
   }
 
   const data = await response.json();
-  const rawOutput = data.choices?.[0]?.message?.content ?? "I couldn't generate a response. Please try again.";
+  const rawOutput =
+    data.choices?.[0]?.message?.content ?? "I couldn't generate a response. Please try again.";
   // LLM02/LLM05: Sanitize output before returning
   return sanitizeDiscordOutput(rawOutput);
 }
@@ -208,7 +210,7 @@ function splitMessage(content: string): string[] {
 async function postFollowup(
   applicationId: string,
   interactionToken: string,
-  content: string,
+  content: string
 ): Promise<void> {
   const chunks = splitMessage(content);
   const baseUrl = `https://discord.com/api/v10/webhooks/${applicationId}/${interactionToken}`;
@@ -221,12 +223,18 @@ async function postFollowup(
     });
 
     if (retries > 0) {
-      log.info("followup", `Followup part ${i + 1}/${chunks.length} succeeded after ${retries} retries`);
+      log.info(
+        "followup",
+        `Followup part ${i + 1}/${chunks.length} succeeded after ${retries} retries`
+      );
     }
 
     if (!res.ok) {
       const text = await res.text();
-      log.error("followup", `Failed to post followup part ${i + 1}/${chunks.length} [${res.status}]: ${text.substring(0, 300)}`);
+      log.error(
+        "followup",
+        `Failed to post followup part ${i + 1}/${chunks.length} [${res.status}]: ${text.substring(0, 300)}`
+      );
       break;
     } else {
       await res.text(); // consume body
@@ -241,163 +249,210 @@ async function postFollowup(
 
 /* ── Main handler ─────────────────────────────────────────────────── */
 
-Deno.serve(withAuditWrapper("discord-interactions", async (req) => {
-  if (req.method !== "POST") {
-    return new Response("Method not allowed", { status: 405 });
-  }
+Deno.serve(
+  withAuditWrapper("discord-interactions", async (req) => {
+    if (req.method !== "POST") {
+      return new Response("Method not allowed", { status: 405 });
+    }
 
-  const body = await req.text();
+    const body = await req.text();
 
-  // ── Verify Discord signature ──
-  const publicKey = Deno.env.get("DISCORD_APPLICATION_PUBLIC_KEY");
-  const isValid = verifySignature(
-    body,
-    req.headers.get("x-signature-ed25519"),
-    req.headers.get("x-signature-timestamp"),
-    publicKey ?? null,
-  );
+    // ── Verify Discord signature ──
+    const publicKey = Deno.env.get("DISCORD_APPLICATION_PUBLIC_KEY");
+    const isValid = verifySignature(
+      body,
+      req.headers.get("x-signature-ed25519"),
+      req.headers.get("x-signature-timestamp"),
+      publicKey ?? null
+    );
 
-  if (!isValid) {
-    log.warn("auth", "Invalid Discord signature");
-    return new Response("Invalid signature", { status: 401 });
-  }
+    if (!isValid) {
+      log.warn("auth", "Invalid Discord signature");
+      return new Response("Invalid signature", { status: 401 });
+    }
 
-  let interaction: Record<string, unknown>;
-  try {
-    interaction = JSON.parse(body);
-  } catch {
-    return new Response("Bad request", { status: 400 });
-  }
+    // Bound replay: the signature covers the timestamp, so reject a validly-signed
+    // request that is older/newer than the ±5min window (audit T-F).
+    if (!isFreshTimestamp(req.headers.get("x-signature-timestamp"), Date.now())) {
+      log.warn("auth", "Stale Discord signature timestamp (replay window)");
+      return new Response("Invalid signature", { status: 401 });
+    }
 
-  // ── PING → PONG (required for endpoint verification) ──
-  if (interaction.type === INTERACTION_PING) {
-    log.info("ping", "Received Discord PING verification");
-    return new Response(JSON.stringify({ type: RESPONSE_PONG }), {
-      headers: { "Content-Type": "application/json" },
-    });
-  }
+    let interaction: Record<string, unknown>;
+    try {
+      interaction = JSON.parse(body);
+    } catch {
+      return new Response("Bad request", { status: 400 });
+    }
 
-  // ── Slash command ──
-  if (interaction.type === INTERACTION_APPLICATION_COMMAND) {
-    const data = interaction.data as Record<string, unknown> | undefined;
-    const commandName = data?.name as string | undefined;
+    // ── PING → PONG (required for endpoint verification) ──
+    if (interaction.type === INTERACTION_PING) {
+      log.info("ping", "Received Discord PING verification");
+      return new Response(JSON.stringify({ type: RESPONSE_PONG }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
 
-    const options = data?.options as Array<{ name: string; value: string }> | undefined;
-    const applicationId = Deno.env.get("DISCORD_APPLICATION_ID") ?? "";
-    const interactionToken = interaction.token as string;
-    const discordUser = (interaction.member as Record<string, unknown> | undefined)?.user as
-      | Record<string, unknown>
-      | undefined;
-    const discordUserId = discordUser?.id as string | undefined;
-    const userName = discordUser?.username as string | undefined;
+    // ── Slash command ──
+    if (interaction.type === INTERACTION_APPLICATION_COMMAND) {
+      const data = interaction.data as Record<string, unknown> | undefined;
+      const commandName = data?.name as string | undefined;
 
-    // Keep the edge function alive after returning the deferred response.
-    const keepAlive = (work: Promise<void>) => {
-      try {
-        const edgeRuntime = (globalThis as Record<string, unknown>).EdgeRuntime as
-          | { waitUntil?: (p: Promise<void>) => void }
-          | undefined;
-        edgeRuntime?.waitUntil?.(work);
-      } catch {
-        // fallback: the promise still runs
+      const options = data?.options as Array<{ name: string; value: string }> | undefined;
+      const applicationId = Deno.env.get("DISCORD_APPLICATION_ID") ?? "";
+      const interactionToken = interaction.token as string;
+      const discordUser = (interaction.member as Record<string, unknown> | undefined)?.user as
+        Record<string, unknown> | undefined;
+      const discordUserId = discordUser?.id as string | undefined;
+      const userName = discordUser?.username as string | undefined;
+
+      // Keep the edge function alive after returning the deferred response.
+      const keepAlive = (work: Promise<void>) => {
+        try {
+          const edgeRuntime = (globalThis as Record<string, unknown>).EdgeRuntime as
+            { waitUntil?: (p: Promise<void>) => void } | undefined;
+          edgeRuntime?.waitUntil?.(work);
+        } catch {
+          // fallback: the promise still runs
+        }
+      };
+
+      // ── /support → open a Freescout ticket for the linked member ──
+      if (commandName === "support") {
+        // Input validation parity with the web create's zod: drop control chars
+        // from the subject (single-line) and null bytes from the body. Codepoint
+        // filter (not a regex literal) keeps this source ASCII-clean.
+        const dropControls = (s: string) =>
+          Array.from(s)
+            .filter((ch) => {
+              const c = ch.charCodeAt(0);
+              return c >= 0x20 && c !== 0x7f;
+            })
+            .join("");
+        const dropNulls = (s: string) =>
+          Array.from(s)
+            .filter((ch) => ch.charCodeAt(0) !== 0)
+            .join("");
+        const subject = dropControls(options?.find((o) => o.name === "subject")?.value ?? "")
+          .trim()
+          .slice(0, 200);
+        const details = dropNulls(options?.find((o) => o.name === "details")?.value ?? "")
+          .trim()
+          .slice(0, 10000);
+
+        const work = (async () => {
+          try {
+            if (!discordUserId) {
+              await postFollowup(
+                applicationId,
+                interactionToken,
+                "⚠️ Could not read your Discord identity — please try again."
+              );
+              return;
+            }
+            if (subject.length < 3 || details.length < 1) {
+              await postFollowup(
+                applicationId,
+                interactionToken,
+                "⚠️ Please include a subject (at least 3 characters) and a short message."
+              );
+              return;
+            }
+            // Lazy import: keeps the FREESCOUT_API_KEY boot tripwire on the /support
+            // path only, so it can never break /fleety or the PING handshake.
+            const { createSupportTicketFromDiscord } = await import("../_shared/support-ticket.ts");
+            const result = await createSupportTicketFromDiscord(discordUserId, subject, details);
+            if (result.status === "unlinked") {
+              await postFollowup(
+                applicationId,
+                interactionToken,
+                "🔗 Your Discord isn't linked to a Tech Fleet account yet. Link it at <https://techfleet.network/community/connect-discord>, then run `/support` again."
+              );
+            } else if (result.status === "no_email") {
+              await postFollowup(
+                applicationId,
+                interactionToken,
+                "⚠️ Your Tech Fleet account has no email on file. Add one in your profile, then try again."
+              );
+            } else if (result.status === "rate_limited") {
+              await postFollowup(
+                applicationId,
+                interactionToken,
+                "🚦 You've opened several tickets recently. Please wait a bit before creating another, or reply to an existing ticket."
+              );
+            } else if (result.status === "ok") {
+              await postFollowup(
+                applicationId,
+                interactionToken,
+                "✅ Support ticket created! A Support Agent will reply by email, and you can track it at <https://techfleet.network/community/get-help>."
+              );
+              log.info("support", `Ticket created from Discord for ${userName ?? "unknown"}`);
+            } else {
+              await postFollowup(
+                applicationId,
+                interactionToken,
+                "⚠️ Sorry, we couldn't create your ticket right now. Please try again shortly."
+              );
+              log.error("support", `Ticket creation failed: ${result.message}`);
+            }
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            log.error("support", `Error: ${msg}`);
+            await postFollowup(
+              applicationId,
+              interactionToken,
+              "⚠️ Sorry, we couldn't create your ticket right now. Please try again shortly."
+            );
+          }
+        })();
+        keepAlive(work);
+        // Ephemeral defer (flags 64) — a member's support request + confirmation
+        // stay private to them, not posted in the channel.
+        return new Response(
+          JSON.stringify({ type: RESPONSE_DEFERRED_CHANNEL_MESSAGE, data: { flags: 64 } }),
+          { headers: { "Content-Type": "application/json" } }
+        );
       }
-    };
 
-    // ── /support → open a Freescout ticket for the linked member ──
-    if (commandName === "support") {
-      // Input validation parity with the web create's zod: drop control chars
-      // from the subject (single-line) and null bytes from the body. Codepoint
-      // filter (not a regex literal) keeps this source ASCII-clean.
-      const dropControls = (s: string) =>
-        Array.from(s).filter((ch) => {
-          const c = ch.charCodeAt(0);
-          return c >= 0x20 && c !== 0x7f;
-        }).join("");
-      const dropNulls = (s: string) => Array.from(s).filter((ch) => ch.charCodeAt(0) !== 0).join("");
-      const subject = dropControls(options?.find((o) => o.name === "subject")?.value ?? "").trim().slice(0, 200);
-      const details = dropNulls(options?.find((o) => o.name === "details")?.value ?? "").trim().slice(0, 10000);
+      // ── /fleety → AI answer ──
+      if (commandName === "fleety") {
+        const question = options?.find((o) => o.name === "question")?.value ?? "";
+        log.info(
+          "command",
+          `Fleety command from ${userName ?? "unknown"}: ${question.substring(0, 100)}`
+        );
 
-      const work = (async () => {
-        try {
-          if (!discordUserId) {
-            await postFollowup(applicationId, interactionToken, "⚠️ Could not read your Discord identity — please try again.");
-            return;
+        const work = (async () => {
+          try {
+            const knowledgeCtx = await loadKnowledgeBase();
+            const answer = await getAIResponse(question, knowledgeCtx);
+            await postFollowup(applicationId, interactionToken, answer);
+            log.info("done", `Answered question from ${userName ?? "unknown"}`);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            log.error("process", `Error: ${msg}`);
+            await postFollowup(
+              applicationId,
+              interactionToken,
+              "⚠️ Sorry, I encountered an error processing your question. Please try again later."
+            );
           }
-          if (subject.length < 3 || details.length < 1) {
-            await postFollowup(applicationId, interactionToken, "⚠️ Please include a subject (at least 3 characters) and a short message.");
-            return;
-          }
-          // Lazy import: keeps the FREESCOUT_API_KEY boot tripwire on the /support
-          // path only, so it can never break /fleety or the PING handshake.
-          const { createSupportTicketFromDiscord } = await import("../_shared/support-ticket.ts");
-          const result = await createSupportTicketFromDiscord(discordUserId, subject, details);
-          if (result.status === "unlinked") {
-            await postFollowup(applicationId, interactionToken,
-              "🔗 Your Discord isn't linked to a Tech Fleet account yet. Link it at <https://techfleet.network/community/connect-discord>, then run `/support` again.");
-          } else if (result.status === "no_email") {
-            await postFollowup(applicationId, interactionToken,
-              "⚠️ Your Tech Fleet account has no email on file. Add one in your profile, then try again.");
-          } else if (result.status === "rate_limited") {
-            await postFollowup(applicationId, interactionToken,
-              "🚦 You've opened several tickets recently. Please wait a bit before creating another, or reply to an existing ticket.");
-          } else if (result.status === "ok") {
-            await postFollowup(applicationId, interactionToken,
-              "✅ Support ticket created! A Support Agent will reply by email, and you can track it at <https://techfleet.network/community/get-help>.");
-            log.info("support", `Ticket created from Discord for ${userName ?? "unknown"}`);
-          } else {
-            await postFollowup(applicationId, interactionToken,
-              "⚠️ Sorry, we couldn't create your ticket right now. Please try again shortly.");
-            log.error("support", `Ticket creation failed: ${result.message}`);
-          }
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          log.error("support", `Error: ${msg}`);
-          await postFollowup(applicationId, interactionToken,
-            "⚠️ Sorry, we couldn't create your ticket right now. Please try again shortly.");
-        }
-      })();
-      keepAlive(work);
-      // Ephemeral defer (flags 64) — a member's support request + confirmation
-      // stay private to them, not posted in the channel.
-      return new Response(
-        JSON.stringify({ type: RESPONSE_DEFERRED_CHANNEL_MESSAGE, data: { flags: 64 } }),
-        { headers: { "Content-Type": "application/json" } },
-      );
+        })();
+        keepAlive(work);
+        return new Response(JSON.stringify({ type: RESPONSE_DEFERRED_CHANNEL_MESSAGE }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      // Unknown command → no-op PONG
+      return new Response(JSON.stringify({ type: RESPONSE_PONG }), {
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
-    // ── /fleety → AI answer ──
-    if (commandName === "fleety") {
-      const question = options?.find((o) => o.name === "question")?.value ?? "";
-      log.info("command", `Fleety command from ${userName ?? "unknown"}: ${question.substring(0, 100)}`);
-
-      const work = (async () => {
-        try {
-          const knowledgeCtx = await loadKnowledgeBase();
-          const answer = await getAIResponse(question, knowledgeCtx);
-          await postFollowup(applicationId, interactionToken, answer);
-          log.info("done", `Answered question from ${userName ?? "unknown"}`);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          log.error("process", `Error: ${msg}`);
-          await postFollowup(applicationId, interactionToken,
-            "⚠️ Sorry, I encountered an error processing your question. Please try again later.");
-        }
-      })();
-      keepAlive(work);
-      return new Response(
-        JSON.stringify({ type: RESPONSE_DEFERRED_CHANNEL_MESSAGE }),
-        { headers: { "Content-Type": "application/json" } },
-      );
-    }
-
-    // Unknown command → no-op PONG
+    // Unknown interaction type
     return new Response(JSON.stringify({ type: RESPONSE_PONG }), {
       headers: { "Content-Type": "application/json" },
     });
-  }
-
-  // Unknown interaction type
-  return new Response(JSON.stringify({ type: RESPONSE_PONG }), {
-    headers: { "Content-Type": "application/json" },
-  });
-}));
+  })
+);
