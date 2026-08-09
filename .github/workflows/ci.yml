@@ -645,7 +645,8 @@ jobs:
             supabase/functions/process-freescout-events/auth.test.ts \
             supabase/functions/reap-class-module-orphans/lib.test.ts \
             supabase/functions/_shared/confirm-role.test.ts \
-            supabase/functions/_shared/translation-guard.test.ts
+            supabase/functions/_shared/translation-guard.test.ts \
+            supabase/functions/_shared/escape-html.test.ts
 
   dependency-review:
     runs-on: ubuntu-latest
