@@ -7,30 +7,19 @@ import path from "path";
 const root = process.cwd();
 const tiersGridSrc = fs.readFileSync(
   path.join(root, "src/components/MembershipTiersGrid.tsx"),
-  "utf8",
+  "utf8"
 );
-const editProfileSrc = fs.readFileSync(
-  path.join(root, "src/pages/EditProfilePage.tsx"),
-  "utf8",
-);
-const faqDataSrc = fs.readFileSync(
-  path.join(root, "src/data/membership-faq.ts"),
-  "utf8",
-);
+const editProfileSrc = fs.readFileSync(path.join(root, "src/pages/EditProfilePage.tsx"), "utf8");
+const faqDataSrc = fs.readFileSync(path.join(root, "src/data/membership-faq.ts"), "utf8");
 const faqComponentSrc = fs.readFileSync(
   path.join(root, "src/components/MembershipFaq.tsx"),
-  "utf8",
+  "utf8"
 );
-const tiersConfigSrc = fs.readFileSync(
-  path.join(root, "src/config/membership-tiers.ts"),
-  "utf8",
-);
+const tiersConfigSrc = fs.readFileSync(path.join(root, "src/config/membership-tiers.ts"), "utf8");
 
 const migrationsDir = path.join(root, "supabase/migrations");
 const migrationFiles = fs.existsSync(migrationsDir)
-  ? fs.readdirSync(migrationsDir).map((f) =>
-      fs.readFileSync(path.join(migrationsDir, f), "utf8"),
-    )
+  ? fs.readdirSync(migrationsDir).map((f) => fs.readFileSync(path.join(migrationsDir, f), "utf8"))
   : [];
 const allMigrations = migrationFiles.join("\n---\n");
 
@@ -68,7 +57,7 @@ describe("Membership Parity, Tiers, FAQ & Announcement (smoke)", () => {
 
   it("MEM-PARITY-003: All three tier cards render in correct order via TIER_ORDER", () => {
     expect(tiersConfigSrc).toMatch(
-      /TIER_ORDER[^=]*=\s*\[\s*"starter"\s*,\s*"community"\s*,\s*"professional"\s*\]/,
+      /TIER_ORDER[^=]*=\s*\[\s*"starter"\s*,\s*"community"\s*,\s*"professional"\s*\]/
     );
     expect(tiersGridSrc).toMatch(/TIER_ORDER\.map/);
   });
@@ -78,11 +67,13 @@ describe("Membership Parity, Tiers, FAQ & Announcement (smoke)", () => {
     expect(tiersGridSrc).toMatch(/sr-only[^>]*>\s*tier/);
   });
 
-  it("MEM-PARITY-005: Founding promo strip is gated on Community + yearly view + active window", () => {
-    expect(tiersGridSrc).toMatch(
-      /tier\.id === "community"[^&]*&&[^&]*recurrence === "yearly"[^&]*&&[^&]*promoActive/,
-    );
-    expect(tiersGridSrc).toMatch(/Founding Member offer/);
+  it("MEM-PARITY-005: Redundant in-card founding promo strip is removed; founding info stays in the billing toggle + price footnote", () => {
+    // The "Founding Member offer" strip inside the tier card was removed as
+    // visual clutter (duplicated the billing toggle + price footnote).
+    expect(tiersGridSrc).not.toMatch(/Founding Member offer/);
+    // Founding messaging still surfaces via the billing toggle and footnote.
+    expect(tiersGridSrc).toMatch(/Founding Member rate/);
+    expect(tiersGridSrc).toMatch(/locked for life/i);
   });
 
   it("MEM-PARITY-006: Billing toggle exposes Monthly + Yearly with savings badge while promo active", () => {
@@ -102,9 +93,8 @@ describe("Membership Parity, Tiers, FAQ & Announcement (smoke)", () => {
     expect(tiersGridSrc).toMatch(/role="status"/);
     expect(tiersGridSrc).toMatch(/aria-label=\{`\$\{tier\.name\} is your current/);
     // Current-tier branch uses a <div> status block, not <button disabled>
-    const currentBranch = tiersGridSrc.match(
-      /if \(isCurrent\)[\s\S]*?return \([\s\S]*?\)\s*;\s*\}/,
-    )?.[0] ?? "";
+    const currentBranch =
+      tiersGridSrc.match(/if \(isCurrent\)[\s\S]*?return \([\s\S]*?\)\s*;\s*\}/)?.[0] ?? "";
     expect(currentBranch).not.toMatch(/\bdisabled\b/);
   });
 
@@ -138,9 +128,7 @@ describe("Membership Parity, Tiers, FAQ & Announcement (smoke)", () => {
   });
 
   it("MEM-PARITY-ANN-002: Seed insert is idempotent (WHERE NOT EXISTS / ON CONFLICT guard)", () => {
-    const parityMigration = migrationFiles.find((m) =>
-      /Pricing parity is on/i.test(m),
-    );
+    const parityMigration = migrationFiles.find((m) => /Pricing parity is on/i.test(m));
     expect(parityMigration).toBeDefined();
     expect(parityMigration!).toMatch(/WHERE NOT EXISTS|ON CONFLICT/i);
   });

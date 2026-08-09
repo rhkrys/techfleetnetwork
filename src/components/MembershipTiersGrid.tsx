@@ -51,16 +51,12 @@ export function MembershipTiersGrid({
   // Default to yearly while the founding promo is live so the discount is
   // the first thing members see — best-deal-forward (Heuristic #6).
   const [recurrence, setRecurrence] = useState<BillingRecurrence>(
-    promoActive ? "yearly" : "monthly",
+    promoActive ? "yearly" : "monthly"
   );
 
   return (
     <div className={cn("space-y-6", className)}>
-      <BillingToggle
-        value={recurrence}
-        onChange={setRecurrence}
-        promoActive={promoActive}
-      />
+      <BillingToggle value={recurrence} onChange={setRecurrence} promoActive={promoActive} />
 
       <div
         role="list"
@@ -83,9 +79,9 @@ export function MembershipTiersGrid({
       </div>
 
       <p className="text-xs text-muted-foreground text-center max-w-2xl mx-auto">
-        🌍 <strong>Fair pricing, wherever you are.</strong> We use Purchasing Power Parity.
-        If you're outside higher-cost regions, you may see an automatic discount at
-        checkout based on your country — no code needed.
+        🌍 <strong>Fair pricing, wherever you are.</strong> We use Purchasing Power Parity. If
+        you're outside higher-cost regions, you may see an automatic discount at checkout based on
+        your country — no code needed.
       </p>
     </div>
   );
@@ -161,7 +157,7 @@ function ToggleOption({
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         selected
           ? "bg-background text-foreground shadow-sm"
-          : "text-muted-foreground hover:text-foreground",
+          : "text-muted-foreground hover:text-foreground"
       )}
     >
       {label}
@@ -209,24 +205,35 @@ function TierCard({
         "relative flex flex-col rounded-lg border bg-card p-6 transition-shadow",
         "focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2",
         // Current-tier styling takes precedence over "popular" so the user's
-        // own plan is the most visually prominent card on the page.
-        // Uses bg-foreground/text-background tokens elsewhere to guarantee
-        // ≥7:1 contrast in both light and dark modes (WCAG AAA).
+        // own plan is the most visually prominent card on the page. The whole
+        // card gets a light-blue (primary) wash + border; the "current plan"
+        // status lives in the header (see below), not in a floating badge.
         isCurrent
-          ? "border-foreground border-2 shadow-xl ring-4 ring-foreground/20"
+          ? "border-primary border-2 bg-primary/5 shadow-lg ring-1 ring-primary/20"
           : tier.popular
-          ? "border-primary/60 shadow-lg ring-1 ring-primary/20"
-          : "border-border shadow-sm hover:shadow-md",
+            ? "border-primary/60 shadow-lg ring-1 ring-primary/20"
+            : "border-border shadow-sm hover:shadow-md"
       )}
     >
       {isCurrent && (
         <div
-          className="absolute -top-3 left-1/2 -translate-x-1/2 inline-flex items-center gap-1.5 rounded-full bg-foreground px-3 py-1 text-xs font-bold uppercase tracking-wide text-background shadow-md"
+          className="mb-4 flex flex-wrap items-center gap-2"
           role="status"
           aria-label={`${tier.name} is your current membership tier`}
         >
-          <Check className="h-3.5 w-3.5" aria-hidden="true" strokeWidth={3} />
-          <span>Your Current Plan</span>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1 text-xs font-bold uppercase tracking-wide text-primary-foreground shadow-sm">
+            <Check className="h-3.5 w-3.5" aria-hidden="true" strokeWidth={3} />
+            Your Current Plan
+          </span>
+          {tier.id === "community" && isFoundingMember && (
+            <Badge
+              variant="secondary"
+              className="gap-1 px-2 py-0.5 text-[10px] uppercase tracking-wide"
+            >
+              <Sparkles className="h-3 w-3" aria-hidden="true" />
+              Founding Member
+            </Badge>
+          )}
         </div>
       )}
       {tier.popular && !isCurrent && (
@@ -251,12 +258,8 @@ function TierCard({
       {/* Price block */}
       <div className="my-6 space-y-1">
         <div className="flex items-baseline gap-2 flex-wrap">
-          <span className="text-4xl font-bold text-foreground">
-            {priceView.priceDisplay}
-          </span>
-          <span className="text-sm text-muted-foreground">
-            {priceView.priceSubtitle}
-          </span>
+          <span className="text-4xl font-bold text-foreground">{priceView.priceDisplay}</span>
+          <span className="text-sm text-muted-foreground">{priceView.priceSubtitle}</span>
           {priceView.strikethroughDisplay && (
             <span
               className="text-sm text-muted-foreground line-through"
@@ -268,23 +271,6 @@ function TierCard({
         </div>
         {priceView.priceFootnote && (
           <p className="text-xs text-muted-foreground">{priceView.priceFootnote}</p>
-        )}
-
-        {/* Founding-member promo strip on Community + yearly view only */}
-        {tier.id === "community" && recurrence === "yearly" && promoActive && (
-          <div className="mt-4 rounded-md border border-primary/30 bg-primary/5 p-3 space-y-1">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-primary">
-              <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-              Founding Member offer
-            </div>
-            <p className="text-sm font-bold text-foreground">
-              {FOUNDING_PROMO.yearlyPriceDisplay}/year ·{" "}
-              <span className="text-primary">{FOUNDING_PROMO.savingsLabel}</span>
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {FOUNDING_PROMO.description}
-            </p>
-          </div>
         )}
       </div>
 
@@ -308,31 +294,31 @@ function TierCard({
             </h4>
             <ul className="space-y-2" role="list">
               {tier.inheritedFeatures.features.map((f) => (
-                <FeatureRow
-                  key={`${tier.id}-inh-${f.label}`}
-                  feature={f}
-                  muted
-                />
+                <FeatureRow key={`${tier.id}-inh-${f.label}`} feature={f} muted />
               ))}
             </ul>
           </div>
         )}
       </div>
 
-      {/* CTA area */}
-      <div className="mt-6 pt-4 border-t border-border">
-        <TierCtaButtons
-          tier={tier}
-          isCurrent={isCurrent}
-          isUpgrade={isUpgrade}
-          isDowngrade={isDowngrade}
-          isFoundingMember={isFoundingMember}
-          manageUrl={manageUrl}
-          promoActive={promoActive}
-          recurrence={recurrence}
-          onSelect={onSelect}
-        />
-      </div>
+      {/* CTA area — hidden for the free Starter plan when it's the current
+          tier, since that case renders no button and an empty divider looks
+          broken. */}
+      {!(isCurrent && tier.id === "starter") && (
+        <div className="mt-6 pt-4 border-t border-border">
+          <TierCtaButtons
+            tier={tier}
+            isCurrent={isCurrent}
+            isUpgrade={isUpgrade}
+            isDowngrade={isDowngrade}
+            isFoundingMember={isFoundingMember}
+            manageUrl={manageUrl}
+            promoActive={promoActive}
+            recurrence={recurrence}
+            onSelect={onSelect}
+          />
+        </div>
+      )}
     </article>
   );
 }
@@ -349,7 +335,7 @@ interface PriceView {
 function derivePriceView(
   tier: MembershipTier,
   recurrence: BillingRecurrence,
-  promoActive: boolean,
+  promoActive: boolean
 ): PriceView {
   // Starter is always free regardless of recurrence
   if (tier.id === "starter") {
@@ -403,21 +389,25 @@ function derivePriceView(
 
 /* ── Feature row + CTA buttons ──────────────────────────── */
 
-function FeatureRow({ feature, muted = false }: { feature: { label: string; qualifier?: string }; muted?: boolean }) {
+function FeatureRow({
+  feature,
+  muted = false,
+}: {
+  feature: { label: string; qualifier?: string };
+  muted?: boolean;
+}) {
   return (
     <li className="flex items-start gap-2 text-sm">
       <Check
         className={cn(
           "h-4 w-4 mt-0.5 flex-shrink-0",
-          muted ? "text-muted-foreground" : "text-primary",
+          muted ? "text-muted-foreground" : "text-primary"
         )}
         aria-hidden="true"
       />
       <span className={cn(muted ? "text-muted-foreground" : "text-foreground")}>
         {feature.label}
-        {feature.qualifier && (
-          <span className="text-muted-foreground"> ({feature.qualifier})</span>
-        )}
+        {feature.qualifier && <span className="text-muted-foreground"> ({feature.qualifier})</span>}
       </span>
     </li>
   );
@@ -447,39 +437,22 @@ function TierCtaButtons({
 }: CtaProps) {
   const isPaidTier = tier.id !== "starter";
 
-  // Current tier: status badge + (for paid tiers) Manage subscription button.
+  // Current tier: the card is already marked as current (light-blue fill +
+  // header indicator), so the CTA area only carries the management action for
+  // paid tiers. Free (Starter) current plan needs no CTA at all.
   if (isCurrent) {
+    if (!isPaidTier) return null;
     return (
-      <div className="space-y-2">
-        <div
-          className="flex items-center justify-center gap-2 py-3 px-4 rounded-md bg-foreground text-background text-sm font-semibold"
-          role="status"
-          aria-label={`${tier.name} is your current membership tier`}
-        >
-          <Check className="h-4 w-4" aria-hidden="true" strokeWidth={3} />
-          <span>Your Current Plan</span>
-          {tier.id === "community" && isFoundingMember && (
-            <Badge
-              variant="secondary"
-              className="ml-2 text-xs bg-background text-foreground"
-            >
-              Founding Member
-            </Badge>
-          )}
-        </div>
-        {isPaidTier && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="w-full gap-2"
-            onClick={() => onSelect({ tier: tier.id, action: "manage" })}
-          >
-            Manage subscription
-            <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-          </Button>
-        )}
-      </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="w-full gap-2"
+        onClick={() => onSelect({ tier: tier.id, action: "manage" })}
+      >
+        Manage subscription
+        <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+      </Button>
     );
   }
 
