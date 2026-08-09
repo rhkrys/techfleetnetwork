@@ -35,11 +35,22 @@ FK actions. The new surface is governed by FK behavior, verified against the mig
 No change to the deletion trigger is required; the FK actions make the auth-user delete
 succeed and behave correctly.
 
-**Right to access / portability (DSAR export).** `class_module_progress` is behavioral
-personal data and **should be included in the DSAR export** produced by `dsar-submit`.
-→ **Follow-up (P1):** extend `dsar-submit` to include a learner's curriculum progress. Not
-implemented in this ticket to keep scope contained and avoid modifying the DSAR function
-without its own test pass.
+**Right to access / portability (DSAR).** There is no automated data-export path in the
+app: `dsar-submit` only files a request row (`submit_dsar` → `dsar_requests`), and an admin
+fulfils access/portability requests **manually** (see `PrivacyRequestsTab`). Because
+`class_module_progress` is behavioral personal data, **manual fulfilment MUST include it.**
+Runbook — when exporting a subject's data, add their curriculum progress:
+
+```sql
+SELECT user_id, item_id, class_id, completed, completed_at
+FROM public.class_module_progress
+WHERE user_id = '<subject_user_id>';
+```
+
+Teacher-authored content (`class_module_items`, `class_module_attachments`) is business IP,
+not the requester's personal data, so it is **not** part of a learner DSAR export. A
+self-serve export feature covering all PII is a separate, out-of-scope initiative (decided
+2026-08-08: keep the manual process; document the curriculum step here).
 
 **Minimization.** Audit rows written by the new RPCs contain only bounded metadata
 (URL truncated to 120 chars, filename, size, policy params) — never content bodies. The
@@ -113,11 +124,22 @@ Video is embed-only (never in the bucket) — the single biggest egress lever. F
 ceiling + MIME allowlist enforced at both the storage edge and the register RPC; per-item
 attachment cap of 100. These keep a 100+ course catalog in the low tens of $/mo for files.
 
-## 7. Open compliance/ops follow-ups (tracked, not blockers for MVP)
+## 7. Open compliance/ops follow-ups (status as of 2026-08-08)
 
-1. Include `class_module_progress` in the `dsar-submit` export (P1).
-2. Retention job for `class_module_audit` (P2).
-3. Orphan-object reconciliation for the `class-module-files` bucket (P2).
+1. ✅ **DSAR — done (documentation).** No automated export exists; §2 now records the
+   mandatory manual-fulfilment step + query for `class_module_progress`. A self-serve export
+   feature is intentionally out of scope (decided 2026-08-08).
+2. ✅ **Retention — done.** `class_module_audit` pruned > 24 months daily via pg_cron
+   (`purge-class-module-audit`, migration `20260808170000`).
+3. **Orphan-object reclamation** for the `class-module-files` bucket — **P2, open.** Requires
+   a scheduled edge function calling the Storage API (deleting a `storage.objects` row alone
+   orphans the underlying blob), so it is not a pure-SQL cron. Scoped as its own follow-up.
 4. Field-level, bounded audit diff for `upsert_class_section` / `upsert_class_module_item`
-   (finding F9, pre-existing) (P2).
-5. Antivirus scan of uploads before first serve (P1, noted in the OWASP pass).
+   (finding F9, pre-existing) — **P2, open.**
+5. Antivirus scan of uploads before first serve — **P1, open** (noted in the OWASP pass).
+6. **Gumroad per-class entitlement** — **open, deferred.** The data model has no per-class
+   purchase concept (membership is a single global tier; nothing links a Gumroad sale to a
+   class), so `is_class_learner` stays cohort-registration-based for MVP. A real entitlement
+   ticket needs (a) the webhook config fixed (`GUMROAD_PING_SECRET` / `GUMROAD_SELLER_ID`),
+   and (b) a product decision on how class access maps to Gumroad. Decided 2026-08-08 to keep
+   cohort-registration for now.
