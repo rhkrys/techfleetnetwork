@@ -647,7 +647,9 @@ jobs:
             supabase/functions/_shared/confirm-role.test.ts \
             supabase/functions/_shared/translation-guard.test.ts \
             supabase/functions/_shared/escape-html.test.ts \
-            supabase/functions/sync-airtable/ownership.test.ts
+            supabase/functions/sync-airtable/ownership.test.ts \
+            supabase/functions/_shared/client-ip.test.ts \
+            supabase/functions/_shared/bounded-body.test.ts
 
   dependency-review:
     runs-on: ubuntu-latest

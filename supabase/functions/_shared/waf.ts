@@ -19,14 +19,17 @@
  *   if (blocked) return blocked;
  */
 import { getAdminClient } from "./admin-client.ts";
+import { clientIpOr } from "./client-ip.ts";
 
 const MAX_BODY_BYTES = 1_000_000; // 1 MB
 const RATE_LIMIT_WINDOW_MS = 10_000;
 const RATE_LIMIT_MAX = 100;
 
-const SCANNER_UA_RE = /sqlmap|nikto|acunetix|nessus|nmap|wpscan|dirbuster|gobuster|masscan|metasploit|fimap|w3af/i;
+const SCANNER_UA_RE =
+  /sqlmap|nikto|acunetix|nessus|nmap|wpscan|dirbuster|gobuster|masscan|metasploit|fimap|w3af/i;
 
-const SQLI_RE = /(\bunion\b\s+\bselect\b)|(\bdrop\b\s+\btable\b)|(\binsert\b\s+\binto\b\s+\w+\s+\bselect\b)|(\bor\b\s+1\s*=\s*1\b)|(\bor\b\s+'\w*'\s*=\s*'\w*\b)|(--\s*$)|(\/\*.*\*\/)/i;
+const SQLI_RE =
+  /(\bunion\b\s+\bselect\b)|(\bdrop\b\s+\btable\b)|(\binsert\b\s+\binto\b\s+\w+\s+\bselect\b)|(\bor\b\s+1\s*=\s*1\b)|(\bor\b\s+'\w*'\s*=\s*'\w*\b)|(--\s*$)|(\/\*.*\*\/)/i;
 const PATH_TRAVERSAL_RE = /(\.\.\/|\.\.\\|%2e%2e%2f|%2e%2e\/|%2e%2e%5c)/i;
 
 interface RateBucket {
@@ -35,12 +38,10 @@ interface RateBucket {
 }
 const ipBuckets = new Map<string, RateBucket>();
 
+// Audit T-C: prefer cf-connecting-ip; XFF leftmost is spoofable and this IP keys
+// the per-IP burst bucket + security_events audit rows.
 function clientIp(req: Request): string {
-  const xff = req.headers.get("x-forwarded-for");
-  if (xff) return xff.split(",")[0]!.trim();
-  const xri = req.headers.get("x-real-ip");
-  if (xri) return xri.trim();
-  return "unknown";
+  return clientIpOr(req, "unknown");
 }
 
 function checkRate(ip: string): boolean {
@@ -66,7 +67,7 @@ async function logEvent(
   eventType: string,
   severity: "info" | "warn" | "error" | "critical",
   ip: string,
-  details: Record<string, unknown>,
+  details: Record<string, unknown>
 ) {
   // Fire-and-forget; never block on logging
   try {

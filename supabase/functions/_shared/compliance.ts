@@ -12,11 +12,9 @@ export function json(body: unknown, status = 200) {
   });
 }
 
-export function clientIp(req: Request): string | null {
-  const xff = req.headers.get("x-forwarded-for");
-  if (xff) return xff.split(",")[0].trim();
-  return req.headers.get("cf-connecting-ip");
-}
+// Audit T-C: hardened IP resolution (prefer cf-connecting-ip; XFF is spoofable).
+// Re-exported from the shared helper so every compliance consumer is fixed at once.
+export { clientIp } from "./client-ip.ts";
 
 // Country-level export-control / sanctions deny list (US OFAC + EU + UK overlap).
 // Keep conservative; per-name SDN screening is a future workstream.
