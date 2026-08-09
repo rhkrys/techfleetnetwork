@@ -1,18 +1,40 @@
 import { useState, useEffect, useRef, useCallback, type FormEvent } from "react";
 import { useLocation } from "react-router-dom";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { MultiSelect } from "@/components/ui/multi-select";
-import { AlertCircle, User, Globe, Check, Mail, Clock, CheckCircle2, CloudUpload, CloudOff, Loader2 } from "lucide-react";
+import {
+  AlertCircle,
+  User,
+  Globe,
+  Check,
+  Mail,
+  Clock,
+  CheckCircle2,
+  CloudUpload,
+  CloudOff,
+  Loader2,
+} from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ProfileService } from "@/services/profile.service";
 import { JourneyService } from "@/services/journey.service";
 import { DiscordNotifyService } from "@/services/discord-notify.service";
-import { profileSchema, ACTIVITY_OPTIONS, PROFILE_FIELD_LABELS, PROFILE_FIELD_GUIDANCE } from "@/lib/validators/profile";
+import {
+  profileSchema,
+  ACTIVITY_OPTIONS,
+  PROFILE_FIELD_LABELS,
+  PROFILE_FIELD_GUIDANCE,
+} from "@/lib/validators/profile";
 import { showFormErrors, scrollToFirstError } from "@/lib/form-validation";
 import { EDUCATION_OPTIONS } from "@/lib/application-options";
 import { COUNTRIES } from "@/lib/countries";
@@ -23,24 +45,44 @@ import { SearchFirstCombobox } from "@/components/profile/SearchFirstCombobox";
 import { ProfileDiscordConnector } from "@/components/profile/ProfileDiscordConnector";
 import { reportValidationRejection } from "@/services/error-reporter.service";
 
-
 export function ProfileSetupDialog() {
   const { user, profile, profileLoaded, refreshProfile } = useAuth();
   const location = useLocation();
-  const isOAuth = user?.app_metadata?.provider === "google" || user?.app_metadata?.providers?.includes("google");
+  const isOAuth =
+    user?.app_metadata?.provider === "google" || user?.app_metadata?.providers?.includes("google");
   // Suppress the dialog on dedicated profile-setup/edit routes — the page already
   // renders the same form, and mounting both causes every field (e.g. timezone)
   // to appear twice on screen.
-  const onProfileSetupRoute = /^\/(profile-setup|profile\/edit|edit-profile)/i.test(location.pathname);
-  const shouldShow = !!user && profileLoaded && profile !== null && !profile.profile_completed && !onProfileSetupRoute;
+  //
+  // Also suppress on the password-recovery routes. A recovery link establishes a
+  // real session, so an incomplete-profile user (e.g. signed up but never
+  // onboarded, then forgot their password) would otherwise get this modal mounted
+  // OVER the "Set your new password" form — hijacking the reset before they can
+  // submit. Setting a password must never be interrupted; onboarding resumes on
+  // /dashboard after the reset completes.
+  const onSuppressedRoute =
+    /^\/(profile-setup|profile\/edit|edit-profile|reset-password|forgot-password)/i.test(
+      location.pathname
+    );
+  const shouldShow =
+    !!user && profileLoaded && profile !== null && !profile.profile_completed && !onSuppressedRoute;
 
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
-    firstName: "", lastName: "", email: "", country: "", timezone: "",
-    discordUsername: "", interests: [] as string[],
-    portfolio_url: "", linkedin_url: "", scheduling_url: "",
-    experience_areas: [] as string[], professional_goals: "",
-    notify_training_opportunities: false, notify_announcements: false,
+    firstName: "",
+    lastName: "",
+    email: "",
+    country: "",
+    timezone: "",
+    discordUsername: "",
+    interests: [] as string[],
+    portfolio_url: "",
+    linkedin_url: "",
+    scheduling_url: "",
+    experience_areas: [] as string[],
+    professional_goals: "",
+    notify_training_opportunities: false,
+    notify_announcements: false,
     education_background: [] as string[],
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -212,7 +254,8 @@ export function ProfileSetupDialog() {
         : [...prev.interests, interest],
     }));
   };
-  const selectedTimezoneLabel = TIMEZONES.find((tz) => tz.value === form.timezone)?.label || form.timezone;
+  const selectedTimezoneLabel =
+    TIMEZONES.find((tz) => tz.value === form.timezone)?.label || form.timezone;
 
   const handleComplete = async (e: FormEvent) => {
     e.preventDefault();
@@ -221,7 +264,8 @@ export function ProfileSetupDialog() {
     const fieldErrors: Record<string, string> = {};
     if (!isOAuth) {
       if (!form.email.trim()) fieldErrors.email = "Email is required";
-      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) fieldErrors.email = "Please enter a valid email";
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()))
+        fieldErrors.email = "Please enter a valid email";
     }
     if (Object.keys(fieldErrors).length > 0) {
       setErrors(fieldErrors);
@@ -248,7 +292,11 @@ export function ProfileSetupDialog() {
     });
 
     if (!result.success) {
-      reportValidationRejection("profileSchema", result.error.issues, "ProfileSetupDialog.handleSubmit");
+      reportValidationRejection(
+        "profileSchema",
+        result.error.issues,
+        "ProfileSetupDialog.handleSubmit"
+      );
       const errs: Record<string, string> = {};
       result.error.issues.forEach((err) => {
         const field = err.path[0] as string;
@@ -271,7 +319,12 @@ export function ProfileSetupDialog() {
       const discordUser = result.data.discordUsername || undefined;
       const updatedProfile = await ProfileService.fetch(user.id);
       const discordId = updatedProfile?.discord_user_id || undefined;
-      DiscordNotifyService.profileCompleted(displayName, result.data.country, discordUser, discordId);
+      DiscordNotifyService.profileCompleted(
+        displayName,
+        result.data.country,
+        discordUser,
+        discordId
+      );
       DiscordNotifyService.taskCompleted(displayName, "profile", discordUser, discordId);
       setOpen(false);
     } catch (err: any) {
@@ -301,7 +354,8 @@ export function ProfileSetupDialog() {
             <div className="min-w-0">
               <DialogTitle className="text-lg sm:text-xl">Welcome to Tech Fleet</DialogTitle>
               <DialogDescription className="mt-1 text-sm">
-                Take a moment to set up your profile so we can personalize your experience. You can also finish this later from your onboarding steps.
+                Take a moment to set up your profile so we can personalize your experience. You can
+                also finish this later from your onboarding steps.
               </DialogDescription>
             </div>
             <AutosaveIndicator status={autosaveStatus} lastSavedAt={lastSavedAt} />
@@ -309,63 +363,190 @@ export function ProfileSetupDialog() {
         </DialogHeader>
 
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
-          <form id="profile-setup-form" onSubmit={handleComplete} className="px-4 sm:px-6 py-5 sm:py-6 space-y-8" noValidate>
+          <form
+            id="profile-setup-form"
+            onSubmit={handleComplete}
+            className="px-4 sm:px-6 py-5 sm:py-6 space-y-8"
+            noValidate
+          >
             {errors.general && (
-              <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm" role="alert">
+              <div
+                className="p-3 rounded-md bg-destructive/10 text-destructive text-sm"
+                role="alert"
+              >
                 {errors.general}
               </div>
             )}
 
             {/* Section: Basics */}
             <section className="space-y-4" aria-labelledby="setup-section-basics">
-              <h3 id="setup-section-basics" className="text-sm font-semibold text-foreground/80 uppercase tracking-wide">
+              <h3
+                id="setup-section-basics"
+                className="text-sm font-semibold text-foreground/80 uppercase tracking-wide"
+              >
                 The basics
               </h3>
 
               {/* Email — full width */}
               <div className="space-y-1.5">
-                <Label htmlFor="dialog-email">Email {!isOAuth && <span className="text-destructive">*</span>}</Label>
+                <Label htmlFor="dialog-email">
+                  Email {!isOAuth && <span className="text-destructive">*</span>}
+                </Label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" aria-hidden="true" />
-                  <Input id="dialog-email" type="email" value={form.email} onChange={(e) => !isOAuth && setForm({ ...form, email: e.target.value })} readOnly={!!isOAuth} disabled={!!isOAuth} className={cn("pl-10", isOAuth && "bg-muted/50")} aria-invalid={!!errors.email} />
+                  <Mail
+                    className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
+                    aria-hidden="true"
+                  />
+                  <Input
+                    id="dialog-email"
+                    type="email"
+                    value={form.email}
+                    onChange={(e) => !isOAuth && setForm({ ...form, email: e.target.value })}
+                    readOnly={!!isOAuth}
+                    disabled={!!isOAuth}
+                    className={cn("pl-10", isOAuth && "bg-muted/50")}
+                    aria-invalid={!!errors.email}
+                  />
                 </div>
-                {isOAuth && <p className="text-xs text-muted-foreground">Email is managed by your Google account.</p>}
-                {errors.email && <p className="text-sm text-destructive flex items-center gap-1" role="alert"><AlertCircle className="h-3 w-3" /> {errors.email}</p>}
+                {isOAuth && (
+                  <p className="text-xs text-muted-foreground">
+                    Email is managed by your Google account.
+                  </p>
+                )}
+                {errors.email && (
+                  <p className="text-sm text-destructive flex items-center gap-1" role="alert">
+                    <AlertCircle className="h-3 w-3" /> {errors.email}
+                  </p>
+                )}
               </div>
 
               {/* First/Last name — 2-col on sm+ */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="dialog-firstName">First name <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="dialog-firstName">
+                    First name <span className="text-destructive">*</span>
+                  </Label>
                   <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" aria-hidden="true" />
-                    <Input id="dialog-firstName" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} placeholder="Jane" className="pl-10" required aria-invalid={!!errors.firstName} />
+                    <User
+                      className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
+                      aria-hidden="true"
+                    />
+                    <Input
+                      id="dialog-firstName"
+                      value={form.firstName}
+                      onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+                      placeholder="Jane"
+                      className="pl-10"
+                      required
+                      aria-invalid={!!errors.firstName}
+                    />
                   </div>
-                  {errors.firstName && <p className="text-sm text-destructive flex items-center gap-1" role="alert"><AlertCircle className="h-3 w-3" /> {errors.firstName}</p>}
+                  {errors.firstName && (
+                    <p className="text-sm text-destructive flex items-center gap-1" role="alert">
+                      <AlertCircle className="h-3 w-3" /> {errors.firstName}
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="dialog-lastName">Last name <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="dialog-lastName">
+                    Last name <span className="text-destructive">*</span>
+                  </Label>
                   <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" aria-hidden="true" />
-                    <Input id="dialog-lastName" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} placeholder="Doe" className="pl-10" required aria-invalid={!!errors.lastName} />
+                    <User
+                      className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
+                      aria-hidden="true"
+                    />
+                    <Input
+                      id="dialog-lastName"
+                      value={form.lastName}
+                      onChange={(e) => setForm({ ...form, lastName: e.target.value })}
+                      placeholder="Doe"
+                      className="pl-10"
+                      required
+                      aria-invalid={!!errors.lastName}
+                    />
                   </div>
-                  {errors.lastName && <p className="text-sm text-destructive flex items-center gap-1" role="alert"><AlertCircle className="h-3 w-3" /> {errors.lastName}</p>}
+                  {errors.lastName && (
+                    <p className="text-sm text-destructive flex items-center gap-1" role="alert">
+                      <AlertCircle className="h-3 w-3" /> {errors.lastName}
+                    </p>
+                  )}
                 </div>
               </div>
 
               {/* Country/Timezone — 2-col on sm+ */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="dialog-country-trigger">Country <span className="text-destructive">*</span></Label>
-                  <SearchFirstCombobox id="dialog-country-trigger" open={countryOpen} onOpenChange={setCountryOpen} selectedValue={form.country} selectedLabel={form.country} emptyLabel="Search country" searchPlaceholder="Start typing a country name…" emptyMessage="No country found." options={COUNTRIES.map((c) => ({ value: c.name, label: c.name }))} icon={<Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" aria-hidden="true" />} invalid={!!errors.country} contentClassName="z-[60]" listClassName="max-h-[260px]" modal onSelect={(value) => { setForm((prev) => ({ ...prev, country: value })); setCountryOpen(false); }} />
-                  {errors.country && <p className="text-sm text-destructive flex items-center gap-1" role="alert"><AlertCircle className="h-3 w-3" /> {errors.country}</p>}
+                  <Label htmlFor="dialog-country-trigger">
+                    Country <span className="text-destructive">*</span>
+                  </Label>
+                  <SearchFirstCombobox
+                    id="dialog-country-trigger"
+                    open={countryOpen}
+                    onOpenChange={setCountryOpen}
+                    selectedValue={form.country}
+                    selectedLabel={form.country}
+                    emptyLabel="Search country"
+                    searchPlaceholder="Start typing a country name…"
+                    emptyMessage="No country found."
+                    options={COUNTRIES.map((c) => ({ value: c.name, label: c.name }))}
+                    icon={
+                      <Globe
+                        className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
+                        aria-hidden="true"
+                      />
+                    }
+                    invalid={!!errors.country}
+                    contentClassName="z-[60]"
+                    listClassName="max-h-[260px]"
+                    modal
+                    onSelect={(value) => {
+                      setForm((prev) => ({ ...prev, country: value }));
+                      setCountryOpen(false);
+                    }}
+                  />
+                  {errors.country && (
+                    <p className="text-sm text-destructive flex items-center gap-1" role="alert">
+                      <AlertCircle className="h-3 w-3" /> {errors.country}
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="dialog-timezone-trigger">Timezone <span className="text-destructive">*</span></Label>
-                  <SearchFirstCombobox id="dialog-timezone-trigger" open={timezoneOpen} onOpenChange={setTimezoneOpen} selectedValue={form.timezone} selectedLabel={selectedTimezoneLabel} emptyLabel="Search timezone" searchPlaceholder="Start typing a city, region, or GMT offset…" emptyMessage="No timezone found." options={TIMEZONES.map((tz) => ({ value: tz.value, label: tz.label }))} icon={<Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" aria-hidden="true" />} invalid={!!errors.timezone} contentClassName="z-[60]" listClassName="max-h-[260px]" modal onSelect={(value) => { setForm((prev) => ({ ...prev, timezone: value })); setTimezoneOpen(false); }} />
-                  {errors.timezone && <p className="text-sm text-destructive flex items-center gap-1" role="alert"><AlertCircle className="h-3 w-3" /> {errors.timezone}</p>}
+                  <Label htmlFor="dialog-timezone-trigger">
+                    Timezone <span className="text-destructive">*</span>
+                  </Label>
+                  <SearchFirstCombobox
+                    id="dialog-timezone-trigger"
+                    open={timezoneOpen}
+                    onOpenChange={setTimezoneOpen}
+                    selectedValue={form.timezone}
+                    selectedLabel={selectedTimezoneLabel}
+                    emptyLabel="Search timezone"
+                    searchPlaceholder="Start typing a city, region, or GMT offset…"
+                    emptyMessage="No timezone found."
+                    options={TIMEZONES.map((tz) => ({ value: tz.value, label: tz.label }))}
+                    icon={
+                      <Clock
+                        className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
+                        aria-hidden="true"
+                      />
+                    }
+                    invalid={!!errors.timezone}
+                    contentClassName="z-[60]"
+                    listClassName="max-h-[260px]"
+                    modal
+                    onSelect={(value) => {
+                      setForm((prev) => ({ ...prev, timezone: value }));
+                      setTimezoneOpen(false);
+                    }}
+                  />
+                  {errors.timezone && (
+                    <p className="text-sm text-destructive flex items-center gap-1" role="alert">
+                      <AlertCircle className="h-3 w-3" /> {errors.timezone}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -374,31 +555,61 @@ export function ProfileSetupDialog() {
 
             {/* Section: Links */}
             <section className="space-y-4" aria-labelledby="setup-section-links">
-              <h3 id="setup-section-links" className="text-sm font-semibold text-foreground/80 uppercase tracking-wide">
-                Your links <span className="font-normal normal-case text-muted-foreground">(optional)</span>
+              <h3
+                id="setup-section-links"
+                className="text-sm font-semibold text-foreground/80 uppercase tracking-wide"
+              >
+                Your links{" "}
+                <span className="font-normal normal-case text-muted-foreground">(optional)</span>
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="dialog-portfolio">Portfolio URL</Label>
-                  <Input id="dialog-portfolio" type="url" value={form.portfolio_url} onChange={(e) => setForm({ ...form, portfolio_url: e.target.value })} placeholder="https://yourportfolio.com" maxLength={500} />
+                  <Input
+                    id="dialog-portfolio"
+                    type="url"
+                    value={form.portfolio_url}
+                    onChange={(e) => setForm({ ...form, portfolio_url: e.target.value })}
+                    placeholder="https://yourportfolio.com"
+                    maxLength={500}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="dialog-linkedin">LinkedIn URL</Label>
-                  <Input id="dialog-linkedin" type="url" value={form.linkedin_url} onChange={(e) => setForm({ ...form, linkedin_url: e.target.value })} placeholder="https://linkedin.com/in/yourprofile" maxLength={500} />
+                  <Input
+                    id="dialog-linkedin"
+                    type="url"
+                    value={form.linkedin_url}
+                    onChange={(e) => setForm({ ...form, linkedin_url: e.target.value })}
+                    placeholder="https://linkedin.com/in/yourprofile"
+                    maxLength={500}
+                  />
                 </div>
                 <div className="space-y-1.5 sm:col-span-2">
                   <Label htmlFor="dialog-scheduling">Your scheduling link</Label>
-                  <Input id="dialog-scheduling" type="url" value={form.scheduling_url} onChange={(e) => setForm({ ...form, scheduling_url: e.target.value })} placeholder="https://calendly.com/yourname" maxLength={500} />
+                  <Input
+                    id="dialog-scheduling"
+                    type="url"
+                    value={form.scheduling_url}
+                    onChange={(e) => setForm({ ...form, scheduling_url: e.target.value })}
+                    placeholder="https://calendly.com/yourname"
+                    maxLength={500}
+                  />
                 </div>
               </div>
             </section>
 
             {/* Section: Interests */}
             <section className="space-y-4" aria-labelledby="setup-section-interests">
-              <h3 id="setup-section-interests" className="text-sm font-semibold text-foreground/80 uppercase tracking-wide">
+              <h3
+                id="setup-section-interests"
+                className="text-sm font-semibold text-foreground/80 uppercase tracking-wide"
+              >
                 Activity interests
               </h3>
-              <p className="text-xs text-muted-foreground -mt-2">What kinds of activities do you want to do in Tech Fleet?</p>
+              <p className="text-xs text-muted-foreground -mt-2">
+                What kinds of activities do you want to do in Tech Fleet?
+              </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {ACTIVITY_OPTIONS.map((option) => (
                   <button
@@ -407,11 +618,21 @@ export function ProfileSetupDialog() {
                     onClick={() => toggleInterest(option)}
                     className={cn(
                       "w-full text-left p-3 rounded-lg border transition-all flex items-center gap-3 min-h-[44px]",
-                      form.interests.includes(option) ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
+                      form.interests.includes(option)
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:border-primary/50"
                     )}
                     aria-pressed={form.interests.includes(option)}
                   >
-                    <div className={cn("h-4 w-4 shrink-0 rounded-sm border flex items-center justify-center", form.interests.includes(option) ? "bg-primary border-primary text-primary-foreground" : "border-primary")} aria-hidden="true">
+                    <div
+                      className={cn(
+                        "h-4 w-4 shrink-0 rounded-sm border flex items-center justify-center",
+                        form.interests.includes(option)
+                          ? "bg-primary border-primary text-primary-foreground"
+                          : "border-primary"
+                      )}
+                      aria-hidden="true"
+                    >
                       {form.interests.includes(option) && <Check className="h-3 w-3" />}
                     </div>
                     <span className="text-sm text-foreground">{option}</span>
@@ -422,13 +643,18 @@ export function ProfileSetupDialog() {
 
             {/* Section: Background */}
             <section className="space-y-4" aria-labelledby="setup-section-background">
-              <h3 id="setup-section-background" className="text-sm font-semibold text-foreground/80 uppercase tracking-wide">
+              <h3
+                id="setup-section-background"
+                className="text-sm font-semibold text-foreground/80 uppercase tracking-wide"
+              >
                 Background &amp; goals
               </h3>
 
               <div className="space-y-1.5">
                 <Label>Experience areas</Label>
-                <p className="text-xs text-muted-foreground">What areas do you want to gain experience in?</p>
+                <p className="text-xs text-muted-foreground">
+                  What areas do you want to gain experience in?
+                </p>
                 <ExperienceAreasSelect
                   selected={form.experience_areas}
                   onChange={(v) => setForm({ ...form, experience_areas: v })}
@@ -461,25 +687,53 @@ export function ProfileSetupDialog() {
 
             {/* Section: Notifications */}
             <section className="space-y-3" aria-labelledby="setup-section-notifications">
-              <h3 id="setup-section-notifications" className="text-sm font-semibold text-foreground/80 uppercase tracking-wide">
+              <h3
+                id="setup-section-notifications"
+                className="text-sm font-semibold text-foreground/80 uppercase tracking-wide"
+              >
                 Notification preferences
               </h3>
               <div className="flex items-start gap-3">
-                <Checkbox id="dialog-notify-training" checked={form.notify_training_opportunities} onCheckedChange={(checked) => setForm({ ...form, notify_training_opportunities: !!checked })} className="mt-0.5" />
+                <Checkbox
+                  id="dialog-notify-training"
+                  checked={form.notify_training_opportunities}
+                  onCheckedChange={(checked) =>
+                    setForm({ ...form, notify_training_opportunities: !!checked })
+                  }
+                  className="mt-0.5"
+                />
                 <div className="min-w-0">
-                  <Label htmlFor="dialog-notify-training" className="text-sm leading-relaxed cursor-pointer">
+                  <Label
+                    htmlFor="dialog-notify-training"
+                    className="text-sm leading-relaxed cursor-pointer"
+                  >
                     Notify me about training opportunities that match my preferences
                   </Label>
-                  <p className="text-xs text-muted-foreground mt-0.5">Receive in-app notifications when matching opportunities open.</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Receive in-app notifications when matching opportunities open.
+                  </p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <Checkbox id="dialog-notify-announcements" checked={form.notify_announcements} onCheckedChange={(checked) => setForm({ ...form, notify_announcements: !!checked })} className="mt-0.5" />
+                <Checkbox
+                  id="dialog-notify-announcements"
+                  checked={form.notify_announcements}
+                  onCheckedChange={(checked) =>
+                    setForm({ ...form, notify_announcements: !!checked })
+                  }
+                  className="mt-0.5"
+                />
                 <div className="min-w-0">
-                  <Label htmlFor="dialog-notify-announcements" className="text-sm leading-relaxed cursor-pointer">
+                  <Label
+                    htmlFor="dialog-notify-announcements"
+                    className="text-sm leading-relaxed cursor-pointer"
+                  >
                     Send me email notifications
                   </Label>
-                  <p className="text-xs text-muted-foreground mt-0.5">Receive emails about announcements and, if combined with the above, training opportunity alerts.</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Receive emails about announcements and, if combined with the above, training
+                    opportunity alerts.
+                  </p>
                 </div>
               </div>
             </section>
@@ -491,10 +745,21 @@ export function ProfileSetupDialog() {
           className="border-t bg-background px-4 sm:px-6 py-3 sm:py-4 shrink-0 flex flex-col-reverse sm:flex-row sm:justify-end gap-2"
           style={{ paddingBottom: "max(env(safe-area-inset-bottom, 0px), 0.75rem)" }}
         >
-          <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={saving} className="w-full sm:w-auto">
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => setOpen(false)}
+            disabled={saving}
+            className="w-full sm:w-auto"
+          >
             Skip for now
           </Button>
-          <Button form="profile-setup-form" type="submit" disabled={saving} className="w-full sm:w-auto sm:min-w-[220px]">
+          <Button
+            form="profile-setup-form"
+            type="submit"
+            disabled={saving}
+            className="w-full sm:w-auto sm:min-w-[220px]"
+          >
             {saving ? "Saving…" : "Complete Profile Setup"}
           </Button>
         </div>

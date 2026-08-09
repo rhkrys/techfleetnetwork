@@ -23,6 +23,13 @@ async function reachSetNewPasswordForm(page: import("@playwright/test").Page) {
 }
 
 test.describe("AUTH-RESET-011 password reset round trip", () => {
+  // Run these two recovery flows one at a time. Both drive a GoTrue
+  // verifyOtp("recovery") gesture against the same local instance; run
+  // concurrently (fullyParallel), they contend and the Continue→verify step can
+  // stall, producing spurious "Set your new password never appeared" failures.
+  // Serial makes the suite deterministic without weakening what it proves.
+  test.describe.configure({ mode: "serial" });
+
   test.skip(
     !canRunLiveRoundtrip,
     "Live auth round trip requires backend URL, anon key, and service-role CI secret."
