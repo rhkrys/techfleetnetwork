@@ -61,6 +61,7 @@ interface UserActionsDropdownProps {
   onView: (user: UserRow) => void;
   onDelete: (user: UserRow) => void;
   onPromoteTeacher: (user: UserRow) => void;
+  onResendTeacher: (user: UserRow) => void;
   onRevokeTeacher: (user: UserRow) => void;
 }
 
@@ -72,6 +73,7 @@ export function UserActionsDropdown({
   onView,
   onDelete,
   onPromoteTeacher,
+  onResendTeacher,
   onRevokeTeacher,
 }: UserActionsDropdownProps) {
   const [open, setOpen] = useState(false);
@@ -142,9 +144,14 @@ export function UserActionsDropdown({
         )}
 
         {user.pendingTeacher && (
-          <DropdownMenuItem disabled>
-            <GraduationCap className="h-4 w-4 mr-2" />
-            Teacher invite pending
+          <DropdownMenuItem
+            onClick={() => {
+              setOpen(false);
+              onResendTeacher(user);
+            }}
+          >
+            <MailPlus className="h-4 w-4 mr-2" />
+            Resend Teacher Invite
           </DropdownMenuItem>
         )}
 

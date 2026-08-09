@@ -88,7 +88,7 @@ export default function UserAdminPage() {
   const [promoting, setPromoting] = useState<string | null>(null);
   const [confirmUser, setConfirmUser] = useState<UserRow | null>(null);
   const [confirmAction, setConfirmAction] = useState<
-    "promote" | "resend" | "delete" | "promote_teacher" | "revoke_teacher"
+    "promote" | "resend" | "delete" | "promote_teacher" | "resend_teacher" | "revoke_teacher"
   >("promote");
   const [viewUser, setViewUser] = useState<UserRow | null>(null);
 
@@ -346,6 +346,38 @@ export default function UserAdminPage() {
     }
   };
 
+  // Resend the teacher confirmation email. Same path as the initial promotion
+  // (promote-to-teacher): the target is still unconfirmed — no teacher role yet —
+  // so it passes the "already a teacher" guard and issues a fresh token + email.
+  // Mirrors the admin "Resend Admin Invite" flow.
+  const handleResendTeacher = async (targetUser: UserRow) => {
+    setPromoting(targetUser.user_id);
+    try {
+      const res = await supabase.functions.invoke("promote-to-teacher", {
+        body: { user_id: targetUser.user_id },
+      });
+      if (res.error)
+        throw new Error(
+          res.error.message || "We couldn't resend that teacher invite. Try again in a moment."
+        );
+      const result = res.data as { error?: string; message?: string } | null;
+      if (result?.error) throw new Error(result.error);
+      toast.success(
+        `Teacher invite resent to ${targetUser.email}. A new confirmation link was sent.`
+      );
+      await fetchData();
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "We couldn't resend that teacher invite. Try again in a moment."
+      );
+    } finally {
+      setPromoting(null);
+      setConfirmUser(null);
+    }
+  };
+
   const handleRevokeTeacher = async (targetUser: UserRow) => {
     setPromoting(targetUser.user_id);
     try {
@@ -443,6 +475,10 @@ export default function UserAdminPage() {
           }}
           onPromoteTeacher={(usr) => {
             setConfirmAction("promote_teacher");
+            setConfirmUser(usr);
+          }}
+          onResendTeacher={(usr) => {
+            setConfirmAction("resend_teacher");
             setConfirmUser(usr);
           }}
           onRevokeTeacher={(usr) => {
@@ -698,9 +734,11 @@ export default function UserAdminPage() {
         ? "Resend Admin Invite?"
         : confirmAction === "promote_teacher"
           ? "Promote to Teacher?"
-          : confirmAction === "revoke_teacher"
-            ? "Revoke Teacher Role?"
-            : "Delete User?";
+          : confirmAction === "resend_teacher"
+            ? "Resend Teacher Invite?"
+            : confirmAction === "revoke_teacher"
+              ? "Revoke Teacher Role?"
+              : "Delete User?";
   const confirmDesc =
     confirmAction === "promote"
       ? `This will send a confirmation email to ${confirmUser?.email}. They must click the link to activate their admin role.`
@@ -708,9 +746,11 @@ export default function UserAdminPage() {
         ? `This will re-send the admin confirmation email to ${confirmUser?.email}. A new confirmation link will be generated.`
         : confirmAction === "promote_teacher"
           ? `This will send a confirmation email to ${confirmUser?.email}. They must click the link to activate their teacher role and gain access to "My Classes".`
-          : confirmAction === "revoke_teacher"
-            ? `This will remove the teacher role from ${confirmUser?.email}. Their existing classes are preserved but they will lose access to author new ones.`
-            : `This will permanently delete ${confirmUser?.email} and remove related app data. This cannot be undone.`;
+          : confirmAction === "resend_teacher"
+            ? `This will re-send the teacher confirmation email to ${confirmUser?.email}. A new confirmation link will be generated.`
+            : confirmAction === "revoke_teacher"
+              ? `This will remove the teacher role from ${confirmUser?.email}. Their existing classes are preserved but they will lose access to author new ones.`
+              : `This will permanently delete ${confirmUser?.email} and remove related app data. This cannot be undone.`;
   const confirmButton =
     confirmAction === "promote"
       ? "Send Confirmation"
@@ -718,9 +758,11 @@ export default function UserAdminPage() {
         ? "Resend Invite"
         : confirmAction === "promote_teacher"
           ? "Send Teacher Invite"
-          : confirmAction === "revoke_teacher"
-            ? "Revoke Teacher"
-            : "Delete User";
+          : confirmAction === "resend_teacher"
+            ? "Resend Invite"
+            : confirmAction === "revoke_teacher"
+              ? "Revoke Teacher"
+              : "Delete User";
 
   return (
     <div className="container-app py-8 sm:py-12 space-y-6">
@@ -780,6 +822,7 @@ export default function UserAdminPage() {
                 if (confirmAction === "promote") handlePromote(confirmUser);
                 else if (confirmAction === "resend") handleResendInvite(confirmUser);
                 else if (confirmAction === "promote_teacher") handlePromoteTeacher(confirmUser);
+                else if (confirmAction === "resend_teacher") handleResendTeacher(confirmUser);
                 else if (confirmAction === "revoke_teacher") handleRevokeTeacher(confirmUser);
                 else handleDeleteUser(confirmUser);
               }}
