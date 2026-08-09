@@ -8,14 +8,17 @@
 // service role inside this function.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { z } from "npm:zod@4.3.6";
+import { guardTranslationRequest } from "../_shared/translation-guard.ts";
 
 // M-01: Lenient shape guard. Existing field-by-field checks below remain authoritative;
 // this only rejects requests whose top-level body is not a JSON object.
-const BodySchema = z.object({
-  locale: z.string().optional(),
-  namespace: z.string().optional(),
-  strings: z.array(z.unknown()).optional(),
-}).passthrough();
+const BodySchema = z
+  .object({
+    locale: z.string().optional(),
+    namespace: z.string().optional(),
+    strings: z.array(z.unknown()).optional(),
+  })
+  .passthrough();
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -46,8 +49,9 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
 
-  const auth = req.headers.get("Authorization") ?? "";
-  if (!auth.startsWith("Bearer ")) return json({ error: "unauthorized" }, 401);
+  // H15: require a genuine Supabase JWT (anon ok) + per-identity spend cap.
+  const gate = await guardTranslationRequest(req, { max: 30, windowMinutes: 1 });
+  if (!gate.ok) return json({ error: gate.error }, gate.status);
 
   let body: { locale?: string; strings?: unknown; namespace?: string };
   try {
@@ -69,14 +73,14 @@ Deno.serve(async (req) => {
       (body.strings as unknown[])
         .filter((s): s is string => typeof s === "string")
         .map((s) => s.trim())
-        .filter((s) => s.length > 0 && s.length <= MAX_LEN),
-    ),
+        .filter((s) => s.length > 0 && s.length <= MAX_LEN)
+    )
   ).slice(0, MAX_STRINGS);
   if (cleaned.length === 0) return json({ locale, map: {}, cached: 0, translated: 0 });
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
 
   // Compute content-addressed keys
@@ -85,7 +89,7 @@ Deno.serve(async (req) => {
     cleaned.map(async (s) => {
       const h = await sha256Hex(`${locale}::${s}`);
       keyOf.set(s, h.slice(0, 32));
-    }),
+    })
   );
 
   // Cache lookup

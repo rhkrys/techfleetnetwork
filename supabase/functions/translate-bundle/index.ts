@@ -13,6 +13,7 @@ const BodySchema = z
   .passthrough();
 
 import { withAuditWrapper } from "../_shared/audit.ts";
+import { guardTranslationRequest } from "../_shared/translation-guard.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -25,10 +26,12 @@ Deno.serve(
     if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
     try {
-      const auth = req.headers.get("Authorization") ?? "";
-      if (!auth.startsWith("Bearer ")) {
-        return new Response(JSON.stringify({ error: "unauthorized" }), {
-          status: 401,
+      // H15: require a genuine Supabase JWT (anon ok) + per-identity spend cap.
+      // Bundle translation is heavier (whole namespace), so a tighter limit.
+      const gate = await guardTranslationRequest(req, { max: 10, windowMinutes: 1 });
+      if (!gate.ok) {
+        return new Response(JSON.stringify({ error: gate.error }), {
+          status: gate.status,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
