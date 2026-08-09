@@ -131,15 +131,20 @@ attachment cap of 100. These keep a 100+ course catalog in the low tens of $/mo 
    feature is intentionally out of scope (decided 2026-08-08).
 2. ✅ **Retention — done.** `class_module_audit` pruned > 24 months daily via pg_cron
    (`purge-class-module-audit`, migration `20260808170000`).
-3. **Orphan-object reclamation** for the `class-module-files` bucket — **P2, open.** Requires
-   a scheduled edge function calling the Storage API (deleting a `storage.objects` row alone
-   orphans the underlying blob), so it is not a pure-SQL cron. Scoped as its own follow-up.
+3. ✅ **Orphan-object reclamation — done.** SQL diff `list_class_module_file_orphans(interval)`
+   (read-only) + the `reap-class-module-orphans` edge function (Storage-API deletion) on a
+   daily pg_cron poke (migration `20260808180000`). **Dry-run by default** — deletes only when
+   `CURRICULUM_ORPHAN_REAP_APPLY='true'`; 48h grace window; path-shape guard so it can never
+   touch a key outside `class/{id}/item/{id}/…`. Flip the env to activate after observing the
+   logged orphan counts.
 4. Field-level, bounded audit diff for `upsert_class_section` / `upsert_class_module_item`
    (finding F9, pre-existing) — **P2, open.**
 5. Antivirus scan of uploads before first serve — **P1, open** (noted in the OWASP pass).
-6. **Gumroad per-class entitlement** — **open, deferred.** The data model has no per-class
-   purchase concept (membership is a single global tier; nothing links a Gumroad sale to a
-   class), so `is_class_learner` stays cohort-registration-based for MVP. A real entitlement
-   ticket needs (a) the webhook config fixed (`GUMROAD_PING_SECRET` / `GUMROAD_SELLER_ID`),
-   and (b) a product decision on how class access maps to Gumroad. Decided 2026-08-08 to keep
-   cohort-registration for now.
+6. **Class entitlement — resolved: access is OPEN by design.** Per the product owner
+   (2026-08-08), any active member can register for a class openly; **Gumroad handles only
+   discounts at checkout — it is NOT an access gate.** So `is_class_learner` = "has a cohort
+   registration" is the **final, correct** model (registration is open to all active members),
+   not a placeholder to be tightened. The earlier "F2 over-grant / tighten to verified
+   purchase" framing was wrong and is retracted. (Fixing the Gumroad webhook secrets
+   `GUMROAD_PING_SECRET` / `GUMROAD_SELLER_ID` still matters for _membership-tier_ recognition
+   generally, but it is unrelated to class-curriculum access.)

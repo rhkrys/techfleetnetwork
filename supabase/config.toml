@@ -313,3 +313,7 @@ project_id = "pzvqxdgoztbfikfuifix"
     # service-role bearer OR an admin JWT, so verify_jwt stays false.
     verify_jwt = false
 
+  [functions.reap-class-module-orphans]
+    # Cron-poked storage reaper. Validates the service-role bearer in code
+    # (authorizeServiceRoleRequest), so verify_jwt stays false.
+    verify_jwt = false
