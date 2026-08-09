@@ -258,7 +258,7 @@ Deno.serve(
       <div style="text-align: center; margin-bottom: 24px;">
         <h1 style="font-size: 14px; font-weight: 600; color: #71717a; text-transform: uppercase; letter-spacing: 0.05em; margin: 0;">Tech Fleet Announcement</h1>
       </div>
-      <h2 style="font-size: 22px; font-weight: 700; color: #18181b; margin: 0 0 16px 0;">${announcement.title}</h2>
+      <h2 style="font-size: 22px; font-weight: 700; color: #18181b; margin: 0 0 16px 0;">${escHtml(announcement.title)}</h2>
       <div style="font-size: 15px; line-height: 1.6; color: #3f3f46;">
         ${inlineFormattedBody}
       </div>

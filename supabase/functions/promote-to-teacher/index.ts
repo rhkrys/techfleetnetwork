@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { z } from "npm:zod@4.3.6";
 
 import { withAuditWrapper } from "../_shared/audit.ts";
+import { escapeHtml } from "../_shared/escape-html.ts";
 
 // M-01: Lenient shape guard. Existing UUID regex below stays authoritative.
 const BodySchema = z.object({ user_id: z.string().optional() }).passthrough();
@@ -170,7 +171,7 @@ Deno.serve(
   <div style="background:#fff;border-radius:8px;padding:32px;border:1px solid #e4e4e7;">
     <h1 style="font-size:14px;font-weight:600;color:#71717a;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 24px 0;text-align:center;">Tech Fleet Network</h1>
     <h2 style="font-size:22px;font-weight:700;color:#18181b;margin:0 0 16px 0;">You've been invited to teach</h2>
-    <p style="font-size:15px;line-height:1.6;color:#3f3f46;">Hi ${userName},</p>
+    <p style="font-size:15px;line-height:1.6;color:#3f3f46;">Hi ${escapeHtml(userName)},</p>
     <p style="font-size:15px;line-height:1.6;color:#3f3f46;">A Tech Fleet admin has granted you the <strong>Teacher</strong> role. Teachers can author Basic Training and Advanced Training classes and publish cohorts (with admin approval).</p>
     <div style="text-align:center;margin:30px 0;">
       <a href="${confirmUrl}" style="background-color:hsl(221,83%,53%);color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block;">Confirm Teacher Role</a>

@@ -7,6 +7,7 @@ import { requireFreshAdmin2fa } from "../_shared/admin-step-up.ts";
 const BodySchema = z.object({ user_id: z.string().optional() }).passthrough();
 
 import { withAuditWrapper } from "../_shared/audit.ts";
+import { escapeHtml } from "../_shared/escape-html.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -199,7 +200,7 @@ Deno.serve(
         <h1 style="font-size: 14px; font-weight: 600; color: #71717a; text-transform: uppercase; letter-spacing: 0.05em; margin: 0;">Tech Fleet Network</h1>
       </div>
       <h2 style="font-size: 22px; font-weight: 700; color: #18181b; margin: 0 0 16px 0;">Admin Role Confirmation</h2>
-      <p style="font-size: 15px; line-height: 1.6; color: #3f3f46;">Hi ${userName},</p>
+      <p style="font-size: 15px; line-height: 1.6; color: #3f3f46;">Hi ${escapeHtml(userName)},</p>
       <p style="font-size: 15px; line-height: 1.6; color: #3f3f46;">You've been promoted to an <strong>Admin</strong> role in the Tech Fleet Network by an existing administrator.</p>
       <p style="font-size: 15px; line-height: 1.6; color: #3f3f46;">To confirm and activate your admin privileges, please click the button below:</p>
       <div style="text-align: center; margin: 30px 0;">
