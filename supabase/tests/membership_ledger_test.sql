@@ -14,9 +14,11 @@ INSERT INTO auth.users (id, email) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 -- Profiles exist (created by the app's handle_new_user in reality).
-INSERT INTO public.profiles (user_id, email) VALUES
-  ('11111111-1111-1111-1111-111111111111', 'member@example.com'),
-  ('22222222-2222-2222-2222-222222222222', 'victim@example.com')
+-- display_name is NOT NULL and a BEFORE INSERT trigger (auto_derive_display_name)
+-- nulls out a blank value derived from empty first/last names, so it must be set.
+INSERT INTO public.profiles (user_id, display_name, email) VALUES
+  ('11111111-1111-1111-1111-111111111111', 'Member', 'member@example.com'),
+  ('22222222-2222-2222-2222-222222222222', 'Victim', 'victim@example.com')
 ON CONFLICT (user_id) DO NOTHING;
 
 -- Catalog: the founding SKU is seeded by the feature migration. Add a plain
@@ -56,8 +58,12 @@ SELECT is(
   'uncataloged product grants nothing');
 
 -- 5. Founding latch: a founding sale sets is_founding_member true...
-INSERT INTO public.gumroad_sales (sale_id, email, product_id, resolved_user_id, status)
-VALUES ('sale-founding', 'member@example.com', 'founding-membership', '11111111-1111-1111-1111-111111111111', 'applied');
+--    The catalog is keyed on the stable product_id 'ftpql' (permalink
+--    'founding-membership' is only an alias); real Gumroad payloads carry both.
+--    The sale must therefore carry product_id 'ftpql' (or the permalink) for the
+--    catalog lookup to resolve it as founding.
+INSERT INTO public.gumroad_sales (sale_id, email, product_id, product_permalink, resolved_user_id, status)
+VALUES ('sale-founding', 'member@example.com', 'ftpql', 'founding-membership', '11111111-1111-1111-1111-111111111111', 'applied');
 SELECT lives_ok($$ SELECT public.compute_membership('11111111-1111-1111-1111-111111111111') $$, 'project founding member');
 SELECT is(
   (SELECT is_founding_member FROM public.profiles WHERE user_id = '11111111-1111-1111-1111-111111111111'),
@@ -91,6 +97,14 @@ SELECT lives_ok($$ SELECT public.compute_membership('11111111-1111-1111-1111-111
 SELECT is(
   (SELECT membership_billing_period FROM public.profiles WHERE user_id = '11111111-1111-1111-1111-111111111111'),
   'yearly', 'yearly recurrence -> yearly billing');
+
+-- Reset this member to starter (clear their ledger, then re-project) so the
+-- self-grant attempt below is a genuine tier CHANGE the column guard must block —
+-- not a no-op UPDATE to the tier they already hold (which the guard rightly allows).
+DO $$ BEGIN
+  DELETE FROM public.gumroad_sales WHERE resolved_user_id = '11111111-1111-1111-1111-111111111111';
+  PERFORM public.compute_membership('11111111-1111-1111-1111-111111111111');
+END $$;
 
 -- ── RLS / authorization negatives (as an authenticated member) ───────────────
 SET LOCAL role authenticated;
