@@ -201,9 +201,19 @@ Deno.serve(
             status: "pending",
           });
 
-          const { error: sendErr } = await supabase.rpc("enqueue_email", {
-            queue_name: "auth_emails",
-            payload: {
+          // Route through the v2 pipeline (email_outbox -> email-dispatcher-v2 ->
+          // Resend). The legacy `enqueue_email` RPC only does `pgmq.send` into the
+          // `auth_emails` queue, whose consumer (process-email-queue) was retired
+          // at the July v2 cutover, so these safety-net signup reminders were
+          // silently stranded and never delivered. The Resend provider reads
+          // payload.html / payload.text + subject; message_id matches the
+          // email_send_log 'pending' row for the terminal write-back trigger.
+          const { error: sendErr } = await supabase.rpc("enqueue_email_v2", {
+            p_lane: "auth",
+            p_template: "signup",
+            p_recipient: c.email,
+            p_subject: "Confirm your email",
+            p_payload: {
               message_id: messageId,
               to: c.email,
               from: `${SITE_NAME} <noreply@${FROM_DOMAIN}>`,
@@ -219,6 +229,8 @@ Deno.serve(
               recovery_reason: "unconfirmed_signup_safety_net",
               hours_since_signup: hoursAgo,
             },
+            p_idempotency_key: `signup-fallback-${c.id}-${attemptNumber}`,
+            p_message_id: messageId,
           });
 
           if (sendErr) {

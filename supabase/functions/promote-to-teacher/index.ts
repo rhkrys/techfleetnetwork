@@ -200,13 +200,39 @@ Deno.serve(
         metadata: { confirm_url: confirmUrl },
       });
 
-      try {
-        await adminClient.rpc("enqueue_email", {
-          queue_name: "transactional_emails",
-          payload: emailPayload,
+      // Route through the v2 pipeline (email_outbox -> email-dispatcher-v2 ->
+      // Resend). The legacy `enqueue_email` RPC only does `pgmq.send` into the
+      // `transactional_emails` queue, whose consumer (process-email-queue) was
+      // retired at the July v2 cutover — so every teacher-promotion email was
+      // silently stranded and never sent (the multi-week non-delivery this fixes).
+      // The Resend provider reads payload.html / payload.text + subject, which we
+      // built above; message_id matches the email_send_log 'pending' row so the
+      // terminal write-back trigger can reconcile it.
+      const { error: enqueueErr } = await adminClient.rpc("enqueue_email_v2", {
+        p_lane: "transactional",
+        p_template: "teacher_promotion",
+        p_recipient: normalizedEmail,
+        p_subject: emailPayload.subject as string,
+        p_payload: emailPayload,
+        p_idempotency_key: messageId,
+        p_message_id: messageId,
+      });
+      if (enqueueErr) {
+        // Never report success on a failed enqueue — the old code swallowed the
+        // error and still returned "Confirmation email sent", which is exactly
+        // how this stayed invisible for weeks. Surface it and mark the log row.
+        console.error("Failed to enqueue teacher promotion email:", enqueueErr);
+        await adminClient.from("email_send_log").insert({
+          message_id: messageId,
+          recipient_email: normalizedEmail,
+          template_name: "teacher_promotion",
+          status: "failed",
+          error_message: "Failed to enqueue teacher promotion email (v2)",
         });
-      } catch (e) {
-        console.error("Failed to enqueue email:", e);
+        return new Response(
+          JSON.stringify({ error: "Failed to send confirmation email. Please try again." }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
 
       await adminClient.rpc("write_audit_log", {
