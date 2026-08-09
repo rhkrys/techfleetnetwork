@@ -59,7 +59,9 @@ describe("Discord /support ticket (smoke)", () => {
   // ── Hardening folded in from the skills audit (#1-#4) ──
   it("HELP-DESK-086: Discord /support is rate-limited per member (abuse/DoS guard)", () => {
     expect(helper).toMatch(/RATE_LIMIT_PER_HOUR/);
-    expect(helper).toMatch(/from\("support_rate_limits"\)/);
+    // T-F: enforced via the ATOMIC increment RPC (was a read-then-upsert on
+    // support_rate_limits, which raced and let concurrent taps bypass the cap).
+    expect(helper).toMatch(/support_check_rate_limit_for/);
     expect(helper).toMatch(/return \{ status: "rate_limited" \}/);
     // The command surfaces the cap to the user rather than silently failing.
     expect(interactions).toMatch(/result\.status === "rate_limited"/);
@@ -73,11 +75,19 @@ describe("Discord /support ticket (smoke)", () => {
 
   it("HELP-DESK-088: create success/failure + rate-limit are audited to the Activity Log", () => {
     expect(helper).toMatch(/auditEdgeEvent/);
-    for (const evt of ["support_ticket_created", "support_ticket_create_failed", "support_rate_limited"]) {
+    for (const evt of [
+      "support_ticket_created",
+      "support_ticket_create_failed",
+      "support_rate_limited",
+    ]) {
       expect(helper).toContain(evt);
     }
     const activityLog = read("src/pages/ActivityLogPage.tsx");
-    for (const evt of ["support_ticket_created", "support_ticket_create_failed", "support_rate_limited"]) {
+    for (const evt of [
+      "support_ticket_created",
+      "support_ticket_create_failed",
+      "support_rate_limited",
+    ]) {
       expect(activityLog).toContain(evt);
     }
   });

@@ -113,17 +113,21 @@ export async function createSupportTicketFromDiscord(
   if (!email) return { status: "no_email" };
 
   // Per-member rate limit (abuse/DoS guard; parity with the web create path's
-  // 10/hr). This path has no auth.uid() for support_check_rate_limit, so we use
-  // the shared support_rate_limits table directly (service-role), rolling hourly.
-  const windowStart = new Date(Math.floor(Date.now() / 3_600_000) * 3_600_000).toISOString();
-  const { data: rl } = await admin
-    .from("support_rate_limits")
-    .select("count")
-    .eq("subject_user_id", prof.user_id)
-    .eq("action", "discord:support")
-    .eq("window_start", windowStart)
-    .maybeSingle();
-  if ((rl?.count ?? 0) >= RATE_LIMIT_PER_HOUR) {
+  // 10/hr). T-F: use the ATOMIC increment RPC (single UPSERT … RETURNING count)
+  // rather than a read-then-upsert, which raced — two concurrent /support taps
+  // both read count=N and both wrote N+1, bypassing the cap. This path has no
+  // auth.uid(), so it passes the resolved subject user_id to the service-role
+  // variant.
+  const { data: rlAllowed, error: rlErr } = await admin.rpc("support_check_rate_limit_for", {
+    _subject_user_id: prof.user_id,
+    _action: "discord:support",
+    _max_per_hour: RATE_LIMIT_PER_HOUR,
+  });
+  if (rlErr) {
+    // Degrade OPEN on a rate-limiter infra error: denying a member their support
+    // channel is worse than one un-capped ticket. Surface it for visibility.
+    console.error("support_check_rate_limit_for failed:", rlErr.message);
+  } else if (rlAllowed === false) {
     void auditEdgeEvent(admin, {
       fn: "discord-interactions",
       event: "support_rate_limited",
@@ -134,17 +138,6 @@ export async function createSupportTicketFromDiscord(
     });
     return { status: "rate_limited" };
   }
-  await admin
-    .from("support_rate_limits")
-    .upsert(
-      {
-        subject_user_id: prof.user_id,
-        action: "discord:support",
-        window_start: windowStart,
-        count: (rl?.count ?? 0) + 1,
-      },
-      { onConflict: "subject_user_id,action,window_start" }
-    );
 
   // Idempotency: a double-tap / retry returns the existing ticket, not a dup.
   const dupId = await recentDuplicateTicketId(prof.user_id, subject);
