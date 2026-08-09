@@ -605,14 +605,7 @@ serve(
         /* fail-open */
       }
 
-      // Stage-1 router runs in parallel with the query embedding (zero added serial latency).
-      const [queryEmbedding, routerDecision] = await Promise.all([
-        embedQuery(lastUserMessage, requestId),
-        routeWithModel(lastUserMessage, requestId),
-      ]);
-      const haveEmbeddings = !!queryEmbedding;
-
-      // ── Early audience detection (needed by L3 cache key) ─────────────
+      // ── Audience detection (needed by every cache key) ────────────────
       let audience: "member" | "teacher" | "admin" = "member";
       try {
         const { data: roles } = await supabase
@@ -626,10 +619,88 @@ serve(
         /* default member */
       }
 
+      // ── L2: exact-match response cache ────────────────────────────────
+      // A VERBATIM repeat of a prior question is served with zero Groq call and,
+      // unlike the semantic cache (L3), WITHOUT depending on the embedding — so
+      // it still hits when the embedding provider is degraded. Same normalized
+      // hash + kb_version scoping as the store, so it only returns a current,
+      // grounded answer. Runs in parallel with embed+router (no added latency).
+      const exactHash = await sha256Hex(`${audience}|${lastUserMessage.trim().toLowerCase()}`);
+
+      // Stage-1 router + query embedding + L2 exact-cache lookup, all in parallel.
+      const [queryEmbedding, routerDecision, exactHit] = await Promise.all([
+        embedQuery(lastUserMessage, requestId),
+        routeWithModel(lastUserMessage, requestId),
+        supabase.rpc("fleety_cache_lookup", { _query_hash: exactHash, _audience: audience }).then(
+          ({ data }: { data: unknown }) => {
+            const row = Array.isArray(data) ? data[0] : data;
+            const md = (row as { response_md?: unknown } | null)?.response_md;
+            return row && typeof md === "string" && md.length > 10
+              ? (row as { response_md: string; tier?: string })
+              : null;
+          },
+          () => null
+        ),
+      ]);
+      const haveEmbeddings = !!queryEmbedding;
+
+      // ── L2 exact-cache HIT: replay immediately (works even if embeddings failed).
+      if (exactHit) {
+        let cacheTurnId: string | null = null;
+        try {
+          const { data: sig } = await supabase
+            .from("fleety_turn_signals")
+            .insert({
+              conversation_id: conversation_id ?? null,
+              user_id: user.id,
+              user_query: lastUserMessage.slice(0, 2000),
+              audience,
+              kb_hit_count: 0,
+              framework_hit_count: 0,
+              web_hit_count: 0,
+              intent: routerDecision?.intent ?? "definition",
+              prompt_version: "cache-hit-exact",
+            })
+            .select("id")
+            .single();
+          cacheTurnId = sig?.id ?? null;
+        } catch (_) {
+          /* ok */
+        }
+        // fleety_cache_lookup already incremented hits; just record cost.
+        supabase
+          .rpc("fleety_record_cost", {
+            _model: "cache",
+            _tier: exactHit.tier ?? "B",
+            _tokens_in: 0,
+            _tokens_out: 0,
+            _est_usd: 0.00005,
+            _cache_hit: true,
+            _canned_hit: false,
+          })
+          .then(
+            () => {},
+            () => {}
+          );
+        log.info("cache", `L2 exact cache HIT [${requestId}]`, { requestId });
+        const headers: Record<string, string> = {
+          ...corsHeaders,
+          "Access-Control-Expose-Headers": "X-Fleety-Turn-Id, X-Fleety-Cache, X-Fleety-Intent",
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff",
+          "X-Fleety-Cache": "hit-exact",
+          "X-Fleety-Intent": routerDecision?.intent ?? "definition",
+        };
+        if (cacheTurnId) headers["X-Fleety-Turn-Id"] = cacheTurnId;
+        return new Response(buildCacheSSEStream(exactHit.response_md), { headers });
+      }
+
       // ── L3: Semantic response cache (Cost Plan v2) ───────────────────
       // If we have embeddings and a near-duplicate question was answered for
-      // this audience+kb_version within 7 days, replay the stored markdown as
-      // a synthetic SSE stream — zero AI gateway call, identical UX.
+      // this audience+kb_version (permanent cache — no time expiry), replay the
+      // stored markdown as a synthetic SSE stream — zero AI gateway call.
+      // (An exact verbatim repeat was already handled by the L2 cache above.)
       if (haveEmbeddings) {
         try {
           const { data: hit } = await supabase.rpc("fleety_cache_semantic_lookup", {
