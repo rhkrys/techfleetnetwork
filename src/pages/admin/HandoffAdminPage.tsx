@@ -52,8 +52,24 @@ export default function HandoffAdminPage() {
     },
   });
 
-  const [projectId, setProjectId] = useState("");
-  const [phaseOverride, setPhaseOverride] = useState("");
+  // Persist the selection so navigating away / a reload doesn't dump you back to the picker
+  // mid-entry (you're filling 26 components — losing your place makes it unusable).
+  const [projectId, setProjectIdState] = useState(
+    () => localStorage.getItem("handoff-admin-project") ?? ""
+  );
+  const [phaseOverride, setPhaseOverrideState] = useState(
+    () => localStorage.getItem("handoff-admin-phase") ?? ""
+  );
+  const setProjectId = (id: string) => {
+    localStorage.setItem("handoff-admin-project", id);
+    localStorage.removeItem("handoff-admin-phase"); // new project → default to its own phase
+    setPhaseOverrideState("");
+    setProjectIdState(id);
+  };
+  const setPhaseOverride = (ph: string) => {
+    localStorage.setItem("handoff-admin-phase", ph);
+    setPhaseOverrideState(ph);
+  };
   const selected = projects.data?.find((p) => p.id === projectId);
   const phase = phaseOverride || selected?.phase || "phase_1";
 

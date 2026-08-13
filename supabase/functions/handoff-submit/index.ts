@@ -14,7 +14,11 @@ import { checkSubmissionUrl, checkText, checkUpload, safeObjectName } from "./va
 const log = createEdgeLogger("handoff-submit");
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  // Must list every header the browser sends: the trace id (invokeEdge) + the x-supabase-client-*
+  // telemetry headers recent supabase-js attaches — otherwise the CORS preflight rejects the POST
+  // and the browser fails with "Failed to send request to the Edge Function".
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-trace-id, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 const MAX_BODY_BYTES = 72 * 1024 * 1024; // allows a 50MB file (+ base64/multipart overhead)
 const PHASES = new Set(["phase_1", "phase_2", "phase_3", "phase_4"]);

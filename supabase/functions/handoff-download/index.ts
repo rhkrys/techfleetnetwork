@@ -13,7 +13,11 @@ import { parseDownloadBody, SIGNED_URL_TTL_SECONDS } from "./download.ts";
 const log = createEdgeLogger("handoff-download");
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  // Must list every header the browser sends: the trace id (invokeEdge) + the x-supabase-client-*
+  // telemetry headers recent supabase-js attaches — otherwise the CORS preflight rejects the POST
+  // and the browser fails with "Failed to send request to the Edge Function".
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-trace-id, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 type SvcClient = SupabaseClient<any, "public", any>;
 
