@@ -19,6 +19,7 @@ import { HandoffPanel } from "@/components/HandoffPanel";
 interface AdminProjectRow {
   id: string;
   phase: string;
+  project_status: string;
   clients: { name: string } | null;
 }
 
@@ -29,13 +30,22 @@ const PHASES: { value: string; label: string }[] = [
   { value: "phase_4", label: "Phase 4" },
 ];
 
+const PROJECT_STATUS_LABEL: Record<string, string> = {
+  coming_soon: "Coming soon",
+  apply_now: "Apply now",
+  recruiting: "Recruiting",
+  team_onboarding: "Onboarding",
+  project_in_progress: "In progress",
+  project_complete: "Complete",
+};
+
 export default function HandoffAdminPage() {
   const projects = useQuery({
     queryKey: ["admin-handoff-projects"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("projects")
-        .select("id, phase, clients(name)")
+        .select("id, phase, project_status, clients(name)")
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data ?? []) as unknown as AdminProjectRow[];
@@ -52,8 +62,9 @@ export default function HandoffAdminPage() {
       <div>
         <h1 className="text-2xl font-bold">Hand-Off Production — admin</h1>
         <p className="text-muted-foreground">
-          Produce or review a hand-off for any project. You use the same tools and the same team
-          budget (one production plus one re-create) as an active teammate.
+          Produce or review a hand-off for any project — including <strong>completed</strong> ones
+          (hand-offs are often finished after a project ends). You use the same tools and the same
+          team budget (one production plus one re-create) as an active teammate.
         </p>
       </div>
 
@@ -74,7 +85,8 @@ export default function HandoffAdminPage() {
                   <SelectContent>
                     {(projects.data ?? []).map((p) => (
                       <SelectItem key={p.id} value={p.id}>
-                        {p.clients?.name ?? p.id.slice(0, 8)} · {p.phase}
+                        {p.clients?.name ?? p.id.slice(0, 8)} · {p.phase} ·{" "}
+                        {PROJECT_STATUS_LABEL[p.project_status] ?? p.project_status}
                       </SelectItem>
                     ))}
                   </SelectContent>
