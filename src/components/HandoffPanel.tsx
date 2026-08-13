@@ -665,7 +665,7 @@ function VersionCard({
           />
         )}
       </div>
-      <FeedbackControls productionId={productionId} audience={audience} existing={feedback[0]} />
+      <FeedbackControls productionId={productionId} audience={audience} />
     </div>
   );
 }
