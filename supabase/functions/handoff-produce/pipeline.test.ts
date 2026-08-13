@@ -1,5 +1,10 @@
 import { assertEquals } from "jsr:@std/assert@1";
-import { figmaMaterialBySlug, type FigmaSub, planFigmaFetch } from "./pipeline.ts";
+import {
+  fetchFigmaBounded,
+  figmaMaterialBySlug,
+  type FigmaSub,
+  planFigmaFetch,
+} from "./pipeline.ts";
 
 Deno.test(
   "planFigmaFetch batches node ids per file, dedupes, and skips non-figma/whole-file links",
@@ -61,3 +66,71 @@ Deno.test("figmaMaterialBySlug accumulates multiple figma submissions on one com
   ]);
   assertEquals(figmaMaterialBySlug(subs, nodeText).get("goals"), ["a", "b"]);
 });
+
+// fetchFigmaBounded is the fix for "exceeded max recovery attempts": the pre-checkpoint Figma load
+// must stay within the worker's invocation limit no matter how many boards a run has.
+Deno.test("fetchFigmaBounded fetches every file when within budget", async () => {
+  const byFile = new Map<string, string[]>([
+    ["A", ["1:1"]],
+    ["B", ["2:2"]],
+    ["C", ["3:3"]],
+  ]);
+  const calls: string[] = [];
+  const { nodeTextByFile, skipped } = await fetchFigmaBounded(
+    byFile,
+    (fileKey, ids) => {
+      calls.push(fileKey);
+      return Promise.resolve({ [ids[0]]: [`text-${fileKey}`] });
+    },
+    { concurrency: 2, budgetMs: 10_000, now: () => 0 }
+  );
+  assertEquals(skipped, 0);
+  assertEquals(nodeTextByFile.size, 3);
+  assertEquals(nodeTextByFile.get("A"), { "1:1": ["text-A"] });
+  assertEquals(calls.sort(), ["A", "B", "C"]);
+});
+
+Deno.test(
+  "fetchFigmaBounded skips every board once the budget is spent (never overruns the tick)",
+  async () => {
+    const byFile = new Map<string, string[]>([
+      ["A", ["1:1"]],
+      ["B", ["2:2"]],
+    ]);
+    let fetched = 0;
+    const { nodeTextByFile, skipped } = await fetchFigmaBounded(
+      byFile,
+      () => {
+        fetched++;
+        return Promise.resolve({});
+      },
+      { concurrency: 4, budgetMs: 0, now: () => 1000 } // deadline already reached
+    );
+    assertEquals(fetched, 0); // nothing fetched — no overrun
+    assertEquals(skipped, 2);
+    assertEquals(nodeTextByFile.size, 0);
+  }
+);
+
+Deno.test(
+  "fetchFigmaBounded isolates a failing board via onError and returns the rest",
+  async () => {
+    const byFile = new Map<string, string[]>([
+      ["OK", ["1:1"]],
+      ["BAD", ["2:2"]],
+    ]);
+    const errors: string[] = [];
+    const { nodeTextByFile, skipped } = await fetchFigmaBounded(
+      byFile,
+      (fileKey, ids) => {
+        if (fileKey === "BAD") return Promise.reject(new Error("boom"));
+        return Promise.resolve({ [ids[0]]: [`text-${fileKey}`] });
+      },
+      { concurrency: 1, budgetMs: 10_000, now: () => 0, onError: (fk) => errors.push(fk) }
+    );
+    assertEquals(skipped, 0);
+    assertEquals(errors, ["BAD"]);
+    assertEquals(nodeTextByFile.size, 1);
+    assertEquals(nodeTextByFile.get("OK"), { "1:1": ["text-OK"] });
+  }
+);

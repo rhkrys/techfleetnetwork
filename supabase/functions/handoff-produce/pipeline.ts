@@ -87,6 +87,16 @@ async function recordCost(
 const WRITER_TIMEOUT_MS = 150_000;
 const WRITER_DEADLINE_MS = 210_000;
 
+// External-material (Figma) load is BOUNDED: loadRunContext runs BEFORE the first checkpoint on
+// every worker tick, so any unbounded pre-work here can exceed the invocation limit and kill the
+// worker before it saves progress — the run then dies pre-checkpoint every tick until the recovery
+// cap fails it ("exceeded max recovery attempts"). A run with ~30 Figma boards did exactly this by
+// fetching them SEQUENTIALLY. We now fetch with a small concurrency pool under an overall wall-clock
+// budget; boards not reached within the budget are skipped + logged (their deep-link still renders
+// in the output). The durable fix (checkpointed material-ingest units) is tracked separately.
+const FIGMA_LOAD_BUDGET_MS = 35_000;
+const FIGMA_FETCH_CONCURRENCY = 6;
+
 // Loose client type: edge functions have no generated Database types.
 type SvcClient = SupabaseClient<any, "public", any>;
 
@@ -188,6 +198,65 @@ export function figmaMaterialBySlug(
   return bySlug;
 }
 
+/**
+ * Fetch many Figma files with BOUNDED concurrency under an overall wall-clock budget. Runs in
+ * loadRunContext BEFORE the first checkpoint, so it must never overrun the worker's invocation
+ * limit — an overrun kills the worker pre-progress and the run then dies every tick until the
+ * recovery cap fails it. At most `concurrency` fetches are in flight, and each is raced against the
+ * remaining budget so one slow board can't blow the total; files not reached (or raced out) are
+ * skipped and counted (their deep-link still renders). PURE over injected `fetchOne` + `now`, so the
+ * ordering/skip logic is unit-tested without network or real clocks.
+ */
+export async function fetchFigmaBounded(
+  byFile: Map<string, string[]>,
+  fetchOne: (fileKey: string, ids: string[]) => Promise<Record<string, string[]>>,
+  opts: {
+    concurrency: number;
+    budgetMs: number;
+    now?: () => number;
+    onError?: (fileKey: string, e: unknown) => void;
+  }
+): Promise<{ nodeTextByFile: Map<string, Record<string, string[]>>; skipped: number }> {
+  const now = opts.now ?? (() => Date.now());
+  const entries = [...byFile];
+  const deadline = now() + opts.budgetMs;
+  const nodeTextByFile = new Map<string, Record<string, string[]>>();
+  let next = 0;
+  let skipped = 0;
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const i = next++;
+      if (i >= entries.length) return;
+      if (deadline - now() <= 0) {
+        skipped++; // budget already spent; don't start another board
+        continue;
+      }
+      const [fileKey, ids] = entries[i];
+      const remaining = deadline - now();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const budgetGuard = new Promise<null>((r) => {
+          timer = setTimeout(() => r(null), Math.max(0, remaining));
+        });
+        const raced = await Promise.race([fetchOne(fileKey, ids), budgetGuard]);
+        if (raced === null) {
+          skipped++; // raced out by the budget; the deep-link still renders in the output
+          continue;
+        }
+        nodeTextByFile.set(fileKey, raced);
+      } catch (e) {
+        opts.onError?.(fileKey, e);
+      } finally {
+        if (timer !== undefined) clearTimeout(timer); // never leak the budget timer
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(opts.concurrency, entries.length) }, () => worker())
+  );
+  return { nodeTextByFile, skipped };
+}
+
 /** Load the per-run context that every worker tick needs (cheap + deterministic; safe to redo). */
 async function loadRunContext(svc: SvcClient, projectId: string, phase: string) {
   const { data: compRows, error: compErr } = await svc
@@ -241,17 +310,26 @@ async function loadRunContext(svc: SvcClient, projectId: string, phase: string) 
       }))
     );
     if (figSubs.length) {
-      const nodeTextByFile = new Map<string, Record<string, string[]>>();
-      for (const [fileKey, ids] of byFile) {
-        try {
-          nodeTextByFile.set(fileKey, await fetchNodesText(fileKey, ids, figmaToken));
-        } catch (e) {
-          log.warn(
-            "figma",
-            `fetch failed for file ${fileKey}: ${e instanceof Error ? e.message : String(e)}`
-          );
+      // Bounded + budgeted so this pre-checkpoint load can never overrun the worker invocation
+      // limit (the cause of "exceeded max recovery attempts" on a ~30-board run).
+      const { nodeTextByFile, skipped } = await fetchFigmaBounded(
+        byFile,
+        (fileKey, ids) => fetchNodesText(fileKey, ids, figmaToken),
+        {
+          concurrency: FIGMA_FETCH_CONCURRENCY,
+          budgetMs: FIGMA_LOAD_BUDGET_MS,
+          onError: (fileKey, e) =>
+            log.warn(
+              "figma",
+              `fetch failed for file ${fileKey}: ${e instanceof Error ? e.message : String(e)}`
+            ),
         }
-      }
+      );
+      if (skipped > 0)
+        log.warn(
+          "figma",
+          `${skipped} board(s) not fetched within the ${FIGMA_LOAD_BUDGET_MS}ms load budget (deep-links still rendered)`
+        );
       for (const [slug, texts] of figmaMaterialBySlug(figSubs, nodeTextByFile)) {
         const list = byComponent.get(slug) ?? [];
         // Blank line BETWEEN board items (each fetched node = one sticky/cell/text) so the extractor
