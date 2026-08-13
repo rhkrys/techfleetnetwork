@@ -23,6 +23,12 @@ const read = (rel: string) => readFileSync(resolve(REPO, rel), "utf8");
 
 const promoteTeacher = read("supabase/functions/promote-to-teacher/index.ts");
 const resendSignup = read("supabase/functions/resend-signup-confirmations/index.ts");
+const promoteAdmin = read("supabase/functions/promote-to-admin/index.ts");
+// The central transactional send helper imported by ~16 edge functions
+// (application confirmations, applicant-status, interview scheduling, nudges,
+// digests, project blasts, the generic send-transactional-email, …). A single
+// legacy call here stranded the entire transactional email system.
+const sharedTransactional = read("supabase/functions/_shared/transactional-email.ts");
 
 // The retired legacy call: `.rpc("enqueue_email", …)` — `enqueue_email`
 // immediately followed by a closing quote, which deliberately does NOT match the
@@ -53,5 +59,26 @@ describe("Email v2 routing regression (dead-queue incident 2026-08-09)", () => {
     expect(resendSignup).not.toMatch(LEGACY_ENQUEUE);
     expect(resendSignup).toMatch(/p_lane:\s*["'`]auth["'`]/);
     expect(resendSignup).toMatch(/p_message_id:\s*messageId/);
+  });
+
+  it("EMAIL-V2-ROUTE-004: promote-to-admin enqueues via the v2 outbox and surfaces enqueue failures", () => {
+    expect(promoteAdmin).toMatch(V2_ENQUEUE);
+    expect(promoteAdmin).not.toMatch(LEGACY_ENQUEUE);
+    expect(promoteAdmin).toMatch(/p_lane:\s*["'`]transactional["'`]/);
+    expect(promoteAdmin).toMatch(/if\s*\(\s*enqueueErr\s*\)/);
+    expect(promoteAdmin).toMatch(/status:\s*["'`]failed["'`]/);
+  });
+
+  it("EMAIL-V2-ROUTE-005: the shared transactional-email helper routes ALL callers through the v2 outbox", () => {
+    // This is the systemic fix: ~16 edge functions send through this helper, so a
+    // single legacy `enqueue_email` here stranded the whole transactional system.
+    expect(sharedTransactional).toMatch(V2_ENQUEUE);
+    expect(sharedTransactional).not.toMatch(LEGACY_ENQUEUE);
+    // Preserves the bulk-vs-transactional lane split (EMAIL-RL-005..008).
+    expect(sharedTransactional).toMatch(/p_lane:\s*v2Lane/);
+    expect(sharedTransactional).toMatch(
+      /bulk_emails["'`]\s*\?\s*["'`]bulk["'`]\s*:\s*["'`]transactional["'`]/
+    );
+    expect(sharedTransactional).toMatch(/p_message_id:\s*messageId/);
   });
 });

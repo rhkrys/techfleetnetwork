@@ -571,8 +571,8 @@ export async function queueTransactionalEmail({
   // H9: the durable email_send_log is long-lived, broadly service-role-read, and
   // survives GDPR erasure — so it must NOT persist rendered content (html/text/
   // subject) or raw templateData (names/tokens/PII). The full payload lives only
-  // transiently in the pgmq queue (enqueue_email below) and is consumed on
-  // delivery / re-rendered from source on DLQ replay. Store only non-PII
+  // transiently in the email_outbox row (enqueue_email_v2 below) and is consumed
+  // on delivery / re-rendered from source on DLQ replay. Store only non-PII
   // operational refs plus a content hash for correlation.
   const payloadSha256 = await sha256Hex(JSON.stringify(emailPayload));
   await insertEmailLog(supabase, {
@@ -589,9 +589,24 @@ export async function queueTransactionalEmail({
     },
   });
 
-  const { error: enqueueError } = await supabase.rpc("enqueue_email", {
-    queue_name: targetQueue,
-    payload: emailPayload,
+  // Route through the live v2 pipeline (email_outbox -> email-dispatcher-v2 ->
+  // Resend). The legacy `enqueue_email` RPC is a raw `pgmq.send` into the
+  // transactional_emails / bulk_emails queues, whose consumer (process-email-queue)
+  // was RETIRED at the July v2 cutover — so every transactional email sent through
+  // this shared helper (application confirmations, applicant-status, interview
+  // scheduling, nudges, digests, project blasts, the generic sender, …) was
+  // silently stranded in a queue with no reader. The Resend provider reads
+  // payload.html/text + subject; message_id threads to the terminal write-back
+  // trigger. targetQueue maps 1:1 to the v2 lane.
+  const v2Lane = targetQueue === "bulk_emails" ? "bulk" : "transactional";
+  const { error: enqueueError } = await supabase.rpc("enqueue_email_v2", {
+    p_lane: v2Lane,
+    p_template: templateName,
+    p_recipient: effectiveRecipient,
+    p_subject: resolvedSubject,
+    p_payload: emailPayload,
+    p_idempotency_key: requestIdempotencyKey,
+    p_message_id: messageId,
   });
 
   if (enqueueError) {
