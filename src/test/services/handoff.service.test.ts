@@ -24,6 +24,7 @@ import {
   getDownloadUrl,
   isTerminalStatus,
   produceHandoffs,
+  submitFile,
   submitText,
 } from "@/services/handoff.service";
 
@@ -120,5 +121,21 @@ describe("submission + production calls target the right edge functions", () => 
     expect(invokeEdge).toHaveBeenCalledWith("handoff-download", {
       body: { output_file_id: "out-1" },
     });
+  });
+
+  it("submitFile uploads with a generous timeout and no retry (a 50MB upload can't finish in the 8s default; the abort doesn't cancel the fetch, so a retry would duplicate the blob)", async () => {
+    const file = new File([new Uint8Array([1, 2, 3])], "deck.pdf", { type: "application/pdf" });
+    await submitFile("p1", "phase_1", "the-journey", file);
+    expect(invokeEdge).toHaveBeenCalledTimes(1);
+    const [fn, opts] = invokeEdge.mock.calls[0] as [string, Record<string, unknown>];
+    expect(fn).toBe("handoff-submit");
+    expect(opts.body).toBeInstanceOf(FormData);
+    // Must be well above the 8s generic default so a real upload isn't aborted mid-flight.
+    expect(opts.timeoutMs as number).toBeGreaterThanOrEqual(60_000);
+    expect(opts.noRetry).toBe(true);
+    const form = opts.body as FormData;
+    expect(form.get("type")).toBe("file");
+    expect(form.get("component_slug")).toBe("the-journey");
+    expect(form.get("file")).toBeInstanceOf(File);
   });
 });

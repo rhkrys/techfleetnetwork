@@ -118,6 +118,14 @@ export async function submitLink(
   });
 }
 
+// A file upload is nothing like a text/link submit: up to 50 MB has to travel the wire, then the
+// server sniffs magic bytes, writes the blob to Storage, and recomputes the 26-gate — all before it
+// answers. The generic 8s invokeEdge default aborts mid-upload ("timed out in the middle of me
+// uploading files"). Give uploads a generous ceiling instead. Also disable the auto-retry: invokeEdge
+// aborts the *race*, not the underlying fetch (supabase-js ignores the signal), so a slow upload can
+// still succeed server-side — retrying it would create a duplicate stored blob + submission row.
+const FILE_UPLOAD_TIMEOUT_MS = 120_000;
+
 export async function submitFile(
   projectId: string,
   phase: string,
@@ -131,7 +139,11 @@ export async function submitFile(
   form.set("type", "file");
   form.set("file", file);
   // FormData body -> supabase-js sends multipart/form-data automatically.
-  return invokeEdge("handoff-submit", { body: form });
+  return invokeEdge("handoff-submit", {
+    body: form,
+    timeoutMs: FILE_UPLOAD_TIMEOUT_MS,
+    noRetry: true,
+  });
 }
 
 export async function deleteSubmission(id: string): Promise<void> {
