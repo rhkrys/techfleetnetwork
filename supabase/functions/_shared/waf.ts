@@ -106,7 +106,11 @@ function deny(status: number, code: string): Response {
  *
  * The request body is NOT consumed — callers can still parse it normally.
  */
-export async function applyWaf(req: Request, source: string): Promise<Response | null> {
+export async function applyWaf(
+  req: Request,
+  source: string,
+  opts?: { maxBodyBytes?: number }
+): Promise<Response | null> {
   if (req.method === "OPTIONS") return null;
 
   const ip = clientIp(req);
@@ -117,10 +121,13 @@ export async function applyWaf(req: Request, source: string): Promise<Response |
     return deny(429, "Too many requests");
   }
 
-  // 2. Body size (use Content-Length when available)
+  // 2. Body size (use Content-Length when available). Default 1 MB, but a route that legitimately
+  // accepts large payloads (e.g. the hand-off file-upload intake) passes its own higher cap so the
+  // WAF's 1 MB default does not reject valid uploads before the handler's own size check runs.
+  const maxBody = opts?.maxBodyBytes ?? MAX_BODY_BYTES;
   const len = parseInt(req.headers.get("content-length") ?? "0", 10);
-  if (Number.isFinite(len) && len > MAX_BODY_BYTES) {
-    await logEvent(source, "waf_oversize_body", "warn", ip, { len, max: MAX_BODY_BYTES });
+  if (Number.isFinite(len) && len > maxBody) {
+    await logEvent(source, "waf_oversize_body", "warn", ip, { len, max: maxBody });
     return deny(413, "Payload too large");
   }
 

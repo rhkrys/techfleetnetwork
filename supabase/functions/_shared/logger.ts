@@ -8,7 +8,8 @@
 export type LogLevel = "debug" | "info" | "warn" | "error";
 type EventOutcome = "success" | "failure" | "denied" | "error";
 
-const SENSITIVE_LOG_KEY_PATTERN = /password|passcode|secret|token|jwt|authorization|cookie|api[_-]?key|private[_-]?key|session|otp|totp|mfa|ssn|credit|card/i;
+const SENSITIVE_LOG_KEY_PATTERN =
+  /password|passcode|secret|token|jwt|authorization|cookie|api[_-]?key|private[_-]?key|session|otp|totp|mfa|ssn|credit|card/i;
 
 interface LogEntry {
   level: LogLevel;
@@ -32,12 +33,20 @@ function redactLogValue(value: unknown, key = ""): unknown {
   if (typeof value === "string") {
     return value
       .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer [REDACTED]")
-      .replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, "[REDACTED_JWT]")
+      .replace(
+        /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g,
+        "[REDACTED_JWT]"
+      )
       .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z]{2,}\b/gi, "[REDACTED_EMAIL]");
   }
   if (Array.isArray(value)) return value.map((item) => redactLogValue(item, key));
   if (value && typeof value === "object") {
-    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([childKey, childValue]) => [childKey, redactLogValue(childValue, childKey)]));
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([childKey, childValue]) => [
+        childKey,
+        redactLogValue(childValue, childKey),
+      ])
+    );
   }
   return value;
 }
@@ -81,8 +90,16 @@ export function createEdgeLogger(fnName: string) {
     "event.outcome": level === "error" ? "error" : undefined,
     msg,
     ts: new Date().toISOString(),
-    meta: meta ? redactLogValue(meta) as Record<string, unknown> : undefined,
-    "trace.id": typeof meta?.traceId === "string" ? meta.traceId : undefined,
+    meta: meta ? (redactLogValue(meta) as Record<string, unknown>) : undefined,
+    // Populate the queryable trace.id from either traceId or requestId — the hand-off/SPF pipeline
+    // threads a `requestId` through every stage, so keying off it makes those logs correlatable
+    // (previously trace.id only read `traceId`, which those callers never set, leaving it empty).
+    "trace.id":
+      typeof meta?.traceId === "string"
+        ? meta.traceId
+        : typeof meta?.requestId === "string"
+          ? meta.requestId
+          : undefined,
     error: formatError(err),
   });
 
@@ -111,11 +128,17 @@ export function createEdgeLogger(fnName: string) {
       try {
         const result = await fn();
         const durationMs = Math.round(performance.now() - start);
-        emit({ ...make("info", action, `Completed: ${description}`, { ...meta, durationMs }), durationMs });
+        emit({
+          ...make("info", action, `Completed: ${description}`, { ...meta, durationMs }),
+          durationMs,
+        });
         return result;
       } catch (err) {
         const durationMs = Math.round(performance.now() - start);
-        emit({ ...make("error", action, `Failed: ${description}`, { ...meta, durationMs }, err), durationMs });
+        emit({
+          ...make("error", action, `Failed: ${description}`, { ...meta, durationMs }, err),
+          durationMs,
+        });
         throw err;
       }
     },

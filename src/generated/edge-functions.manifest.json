@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-09T13:24:53.639Z",
+  "generated_at": "2026-08-12T20:54:53.760Z",
   "functions": [
     {
       "name": "admin-purge-auth-user",
@@ -356,6 +356,34 @@
       "verify_jwt": false,
       "kind": "public",
       "critical": false,
+      "declared": true
+    },
+    {
+      "name": "handoff-download",
+      "verify_jwt": true,
+      "kind": "auth",
+      "critical": true,
+      "declared": true
+    },
+    {
+      "name": "handoff-produce",
+      "verify_jwt": true,
+      "kind": "auth",
+      "critical": true,
+      "declared": true
+    },
+    {
+      "name": "handoff-submit",
+      "verify_jwt": true,
+      "kind": "auth",
+      "critical": true,
+      "declared": true
+    },
+    {
+      "name": "handoff-worker",
+      "verify_jwt": true,
+      "kind": "auth",
+      "critical": true,
       "declared": true
     },
     {
@@ -746,6 +774,13 @@
     {
       "name": "sign-out-all-devices",
       "verify_jwt": false,
+      "kind": "auth",
+      "critical": true,
+      "declared": true
+    },
+    {
+      "name": "spf-sync",
+      "verify_jwt": true,
       "kind": "auth",
       "critical": true,
       "declared": true

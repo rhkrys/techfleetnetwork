@@ -6,7 +6,7 @@ name: CI
 #   gate               REQUIRED   aggregator over gate-verify / gate-test / gate-build
 #                                 / lint-arch-critical (auth-freeze invariants BLOCK)
 #   lint-arch          informational  remaining structural checks, parallel matrix
-#   deno-check         informational  edge-function typecheck (PRD v1.2 D-25)
+#   deno-check         BLOCKING (gate) edge-function typecheck + edge unit tests (PRD v1.2 D-25)
 #   migration-smoke    conditional    runs only when supabase/migrations/ changes
 #   e2e                conditional    Playwright vs LOCAL Supabase (Docker on the
 #                                     runner — B-01/B-09), when src/ or functions/ change
@@ -239,7 +239,7 @@ jobs:
   gate:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [gate-verify, gate-test, gate-build, lint-arch-critical, migration-smoke]
+    needs: [gate-verify, gate-test, gate-build, lint-arch-critical, migration-smoke, deno-check]
     if: always()
     permissions:
       contents: read
@@ -251,7 +251,8 @@ jobs:
           build='${{ needs.gate-build.result }}'
           arch='${{ needs.lint-arch-critical.result }}'
           migr='${{ needs.migration-smoke.result }}'
-          echo "gate-verify=$verify  gate-test=$test  gate-build=$build  lint-arch-critical=$arch  migration-smoke=$migr"
+          dchk='${{ needs.deno-check.result }}'
+          echo "gate-verify=$verify  gate-test=$test  gate-build=$build  lint-arch-critical=$arch  migration-smoke=$migr  deno-check=$dchk"
           fail=0
           [ "$verify" = "success" ] || fail=1
           [ "$test" = "success" ] || fail=1
@@ -259,8 +260,11 @@ jobs:
           [ "$arch" = "success" ] || fail=1
           # migration-smoke is conditional: skipped (no migration changes) passes.
           if [ "$migr" != "success" ] && [ "$migr" != "skipped" ]; then fail=1; fi
+          # deno-check is conditional on function changes: skipped (no function changes) passes,
+          # otherwise it must succeed — this is what makes the edge-function unit tests block merge.
+          if [ "$dchk" != "success" ] && [ "$dchk" != "skipped" ]; then fail=1; fi
           if [ "$fail" -ne 0 ]; then
-            echo "::error::Gate failed (verify=$verify test=$test build=$build arch=$arch migration-smoke=$migr)."
+            echo "::error::Gate failed (verify=$verify test=$test build=$build arch=$arch migration-smoke=$migr deno-check=$dchk)."
             exit 1
           fi
           echo "All gate jobs passed."
@@ -392,10 +396,20 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
-      - name: Install Supabase CLI
-        uses: supabase/setup-cli@v3
-        with:
-          version: 2.30.4
+      - name: Install Supabase CLI (retrying download — setup-cli's npm fetch flakes on GitHub 503s)
+        run: |
+          ver=2.30.4
+          url="https://github.com/supabase/cli/releases/download/v${ver}/supabase_linux_amd64.tar.gz"
+          n=0; max=5; delay=6
+          until curl -fSL --retry 6 --retry-all-errors --retry-delay 4 -o /tmp/supabase.tgz "$url"; do
+            n=$((n + 1))
+            [ "$n" -ge "$max" ] && { echo "::error::supabase CLI ${ver} download failed after ${max} attempts"; exit 1; }
+            echo "::warning::supabase CLI download failed (attempt ${n}/${max}); retrying in ${delay}s"
+            sleep "$delay"; delay=$((delay * 2))
+          done
+          tar -xzf /tmp/supabase.tgz -C /tmp supabase
+          sudo install -m 0755 /tmp/supabase /usr/local/bin/supabase
+          supabase --version
       - name: Start local Supabase (Postgres + pgvector)
         run: supabase start
       - name: Apply all migrations in sequence
@@ -423,10 +437,20 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
-      - name: Install Supabase CLI
-        uses: supabase/setup-cli@v3
-        with:
-          version: 2.30.4
+      - name: Install Supabase CLI (retrying download — setup-cli's npm fetch flakes on GitHub 503s)
+        run: |
+          ver=2.30.4
+          url="https://github.com/supabase/cli/releases/download/v${ver}/supabase_linux_amd64.tar.gz"
+          n=0; max=5; delay=6
+          until curl -fSL --retry 6 --retry-all-errors --retry-delay 4 -o /tmp/supabase.tgz "$url"; do
+            n=$((n + 1))
+            [ "$n" -ge "$max" ] && { echo "::error::supabase CLI ${ver} download failed after ${max} attempts"; exit 1; }
+            echo "::warning::supabase CLI download failed (attempt ${n}/${max}); retrying in ${delay}s"
+            sleep "$delay"; delay=$((delay * 2))
+          done
+          tar -xzf /tmp/supabase.tgz -C /tmp supabase
+          sudo install -m 0755 /tmp/supabase /usr/local/bin/supabase
+          supabase --version
       - name: Start local Supabase (Postgres + pgTAP)
         run: supabase start
       - name: Apply migrations
@@ -470,10 +494,20 @@ jobs:
           name: node-modules-${{ github.sha }}
           path: /tmp
       - run: tar --use-compress-program="zstd -d" -xf /tmp/node_modules.tar.zst
-      - name: Install Supabase CLI
-        uses: supabase/setup-cli@v3
-        with:
-          version: 2.30.4
+      - name: Install Supabase CLI (retrying download — setup-cli's npm fetch flakes on GitHub 503s)
+        run: |
+          ver=2.30.4
+          url="https://github.com/supabase/cli/releases/download/v${ver}/supabase_linux_amd64.tar.gz"
+          n=0; max=5; delay=6
+          until curl -fSL --retry 6 --retry-all-errors --retry-delay 4 -o /tmp/supabase.tgz "$url"; do
+            n=$((n + 1))
+            [ "$n" -ge "$max" ] && { echo "::error::supabase CLI ${ver} download failed after ${max} attempts"; exit 1; }
+            echo "::warning::supabase CLI download failed (attempt ${n}/${max}); retrying in ${delay}s"
+            sleep "$delay"; delay=$((delay * 2))
+          done
+          tar -xzf /tmp/supabase.tgz -C /tmp supabase
+          sudo install -m 0755 /tmp/supabase /usr/local/bin/supabase
+          supabase --version
       - name: Start local Supabase (Docker) + apply migrations
         run: |
           supabase start
@@ -642,7 +676,7 @@ jobs:
               return "$rc"
             done
           }
-          deno_retry deno test --no-lock --allow-import --allow-env \
+          deno_retry deno test --no-lock --allow-import --allow-env --allow-read \
             supabase/functions/techfleet-chat/prompt.test.ts \
             supabase/functions/_shared/freescout.test.ts \
             supabase/functions/_shared/gemini-embed.test.ts \
@@ -658,7 +692,14 @@ jobs:
             supabase/functions/sync-airtable/ownership.test.ts \
             supabase/functions/_shared/client-ip.test.ts \
             supabase/functions/_shared/bounded-body.test.ts \
-            supabase/functions/discord-interactions/freshness.test.ts
+            supabase/functions/discord-interactions/freshness.test.ts \
+            supabase/functions/handoff-produce/ \
+            supabase/functions/handoff-submit/ \
+            supabase/functions/handoff-worker/ \
+            supabase/functions/handoff-download/ \
+            supabase/functions/spf-sync/ \
+            supabase/functions/_shared/spf/ \
+            supabase/functions/_shared/llm/
 
   dependency-review:
     runs-on: ubuntu-latest

@@ -18,6 +18,7 @@ import {
   HeartPulse,
   LifeBuoy,
   School,
+  PackageCheck,
 } from "lucide-react";
 import {
   Sidebar,
@@ -223,6 +224,18 @@ export const AppSidebar = memo(function AppSidebar() {
                     <Link to="/admin/clients">
                       <Building2 className="h-4 w-4" />
                       <span>Clients and Projects</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isActive("/admin/handoff")}
+                    tooltip="Hand-Off Production"
+                  >
+                    <Link to="/admin/handoff">
+                      <PackageCheck className="h-4 w-4" />
+                      <span>Hand-Off Production</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

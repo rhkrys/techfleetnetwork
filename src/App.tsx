@@ -125,6 +125,7 @@ const TermsOfUsePage = lazy(() => import("./pages/TermsOfUsePage"));
 const CodeOfConductPage = lazy(() => import("./pages/CodeOfConductPage"));
 const DsarSubmitPage = lazy(() => import("./pages/DsarSubmitPage"));
 const AdminRosterPage = lazy(() => import("./pages/AdminRosterPage"));
+const HandoffAdminPage = lazy(() => import("./pages/admin/HandoffAdminPage"));
 const BannerManagementPage = lazy(() => import("./pages/BannerManagementPage"));
 const RosterProjectDetailPage = lazy(() => import("./pages/RosterProjectDetailPage"));
 const RosterApplicantDetailPage = lazy(() => import("./pages/RosterApplicantDetailPage"));
@@ -466,6 +467,14 @@ const App = () => (
                       element={
                         <AdminRoute>
                           <ActivityLogPage />
+                        </AdminRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/handoff"
+                      element={
+                        <AdminRoute>
+                          <HandoffAdminPage />
                         </AdminRoute>
                       }
                     />

@@ -1,0 +1,35 @@
+[
+  {
+    "id": 1,
+    "slug": "pre-amble",
+    "Hand-Off Story Arc": "Pre-amble",
+    "Component": "Project goals",
+    "Description": "The goals the phase was working toward",
+    "Format of the Resulting Section": "List of items",
+    "Is this in the Client Hand-Off?": "No",
+    "Is this in the Teammate Hand-off?": "Yes",
+    "Is this in the Teammate Case Study?": "Yes",
+    "Is this in the Tech Fleet Org Case Study?": "Yes",
+    "From Which Deliverable Does This Information Come?": [
+      { "slug": "project-plan", "label": "Project Plan" },
+      { "slug": "project-goals-definition", "label": "Project Goals Definition" }
+    ],
+    "Workshop Associated with the Deliverables": [
+      { "slug": "project-plan-workshop-template", "label": "Project Plan Workshop Template" }
+    ],
+    "Unique ID": 1
+  },
+  {
+    "id": 4,
+    "slug": "pre-amble-4",
+    "Hand-Off Story Arc": "Pre-amble",
+    "Component": "Summarized reflections on what the team learned in hindsight",
+    "Description": "Team's top takeaways summarized for the pre-amble",
+    "Format of the Resulting Section": "Paragraph",
+    "Is this in the Client Hand-Off?": "No",
+    "Is this in the Teammate Hand-off?": "Yes",
+    "Is this in the Teammate Case Study?": "Yes",
+    "Is this in the Tech Fleet Org Case Study?": "No",
+    "Unique ID": 4
+  }
+]

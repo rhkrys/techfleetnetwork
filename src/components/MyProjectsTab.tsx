@@ -4,9 +4,21 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
 import {
-  Loader2, Building2, ExternalLink, Briefcase, Users,
-  FileText, Lightbulb, ClipboardList, Target, Clock,
-  Link2, Trophy, Sparkles, ArrowLeft, LogOut,
+  Loader2,
+  Building2,
+  ExternalLink,
+  Briefcase,
+  Users,
+  FileText,
+  Lightbulb,
+  ClipboardList,
+  Target,
+  Clock,
+  Link2,
+  Trophy,
+  Sparkles,
+  ArrowLeft,
+  LogOut,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,6 +29,8 @@ import { FolderKanban } from "lucide-react";
 import { SectionEmptyState } from "@/components/SectionEmptyState";
 import { SafeExternalLink, getSafeLinkHostname } from "@/components/security/SafeExternalLink";
 import { ProjectOpeningHeading } from "@/components/projects/ProjectOpeningHeading";
+import { HandoffPanel } from "@/components/HandoffPanel";
+import { useAdmin } from "@/hooks/use-admin";
 
 /* ── Label helpers ───────────────────────────────────────── */
 const typeLabel = (v: string) => PROJECT_TYPES.find((t) => t.value === v)?.label ?? v;
@@ -24,24 +38,39 @@ const phaseLabel = (v: string) => PROJECT_PHASES.find((p) => p.value === v)?.lab
 const statusLabel = (v: string) => PROJECT_STATUSES.find((s) => s.value === v)?.label ?? v;
 
 /* ── Pill list ───────────────────────────────────────────── */
-function PillList({ items, variant = "outline" }: { items: string[]; variant?: "outline" | "secondary" }) {
+function PillList({
+  items,
+  variant = "outline",
+}: {
+  items: string[];
+  variant?: "outline" | "secondary";
+}) {
   if (!items.length) return <p className="text-sm text-muted-foreground italic">None specified</p>;
   return (
     <div className="flex flex-wrap gap-1.5">
       {items.map((item) => (
-        <Badge key={item} variant={variant} className="text-xs">{item}</Badge>
+        <Badge key={item} variant={variant} className="text-xs">
+          {item}
+        </Badge>
       ))}
     </div>
   );
 }
 
 /* ── Info Section ────────────────────────────────────────── */
-function InfoSection({ icon: Icon, title, children }: { icon: React.ElementType; title: string; children: React.ReactNode }) {
+function InfoSection({
+  icon: Icon,
+  title,
+  children,
+}: {
+  icon: React.ElementType;
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-lg">{title}
-        </CardTitle>
+        <CardTitle className="flex items-center gap-2 text-lg">{title}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">{children}</CardContent>
     </Card>
@@ -52,7 +81,9 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
   return (
     <div className="space-y-1">
       <p className="text-sm font-semibold text-foreground">{label}</p>
-      <div className="text-sm text-muted-foreground">{value || <span className="italic">Not provided</span>}</div>
+      <div className="text-sm text-muted-foreground">
+        {value || <span className="italic">Not provided</span>}
+      </div>
     </div>
   );
 }
@@ -107,9 +138,11 @@ function ProjectSummaryCard({
       aria-label={`View details for ${client?.name ?? "Project"}`}
     >
       <div className="flex items-center gap-4">
-        <div className={`h-12 w-12 rounded-xl flex items-center justify-center flex-shrink-0 ${
-          isActive ? "bg-primary/10" : "bg-muted"
-        }`}>
+        <div
+          className={`h-12 w-12 rounded-xl flex items-center justify-center flex-shrink-0 ${
+            isActive ? "bg-primary/10" : "bg-muted"
+          }`}
+        >
           {isActive ? (
             <Trophy className="h-6 w-6 text-primary" aria-hidden="true" />
           ) : (
@@ -136,7 +169,9 @@ function ProjectSummaryCard({
               </Badge>
             )}
             {client?.kind === "internal" && (
-              <Badge className="bg-info/10 text-info border-info/30 text-xs">Volunteer Opening</Badge>
+              <Badge className="bg-info/10 text-info border-info/30 text-xs">
+                Volunteer Opening
+              </Badge>
             )}
           </div>
           <p className="text-sm text-muted-foreground mt-0.5">
@@ -145,10 +180,15 @@ function ProjectSummaryCard({
           {project.description?.trim() ? (
             <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{project.description}</p>
           ) : client?.project_summary ? (
-            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{client.project_summary}</p>
+            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+              {client.project_summary}
+            </p>
           ) : null}
         </div>
-        <ArrowLeft className="h-5 w-5 text-muted-foreground rotate-180 flex-shrink-0" aria-hidden="true" />
+        <ArrowLeft
+          className="h-5 w-5 text-muted-foreground rotate-180 flex-shrink-0"
+          aria-hidden="true"
+        />
       </div>
     </button>
   );
@@ -164,6 +204,9 @@ function ActiveProjectDetail({
 }) {
   const client = project.clients;
   const isActive = project.applicant_status === "active_participant";
+  const { isAdmin } = useAdmin();
+  // Hand-off production is available to active teammates on the project AND to admins.
+  const canUseHandoff = isActive || isAdmin;
 
   const { data: milestoneData } = useQuery({
     queryKey: ["milestone-data", project.current_phase_milestones],
@@ -192,8 +235,9 @@ function ActiveProjectDetail({
   const { data: links } = useQuery({
     queryKey: ["project-internal-links", project.id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .rpc("get_project_internal_links", { p_project_id: project.id });
+      const { data, error } = await supabase.rpc("get_project_internal_links", {
+        p_project_id: project.id,
+      });
       if (error) throw error;
       return (data?.[0] ?? null) as {
         client_intake_url: string | null;
@@ -251,9 +295,13 @@ function ActiveProjectDetail({
             </div>
           </div>
           {project.description?.trim() ? (
-            <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{project.description}</p>
+            <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
+              {project.description}
+            </p>
           ) : client?.project_summary ? (
-            <p className="text-sm text-muted-foreground leading-relaxed">{client.project_summary}</p>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              {client.project_summary}
+            </p>
           ) : null}
         </CardContent>
       </Card>
@@ -263,14 +311,19 @@ function ActiveProjectDetail({
         <InfoSection icon={Building2} title="About the Client">
           <DetailRow label="Organization" value={client.name} />
           {client.mission && (
-            <DetailRow label="Mission" value={<p className="whitespace-pre-wrap leading-relaxed">{client.mission}</p>} />
+            <DetailRow
+              label="Mission"
+              value={<p className="whitespace-pre-wrap leading-relaxed">{client.mission}</p>}
+            />
           )}
           {client.website && (
             <DetailRow
               label="Website"
               value={
                 <a
-                  href={client.website.startsWith("http") ? client.website : `https://${client.website}`}
+                  href={
+                    client.website.startsWith("http") ? client.website : `https://${client.website}`
+                  }
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary hover:underline inline-flex items-center gap-1"
@@ -281,7 +334,9 @@ function ActiveProjectDetail({
               }
             />
           )}
-          {client.primary_contact && <DetailRow label="Primary Contact" value={client.primary_contact} />}
+          {client.primary_contact && (
+            <DetailRow label="Primary Contact" value={client.primary_contact} />
+          )}
         </InfoSection>
       )}
 
@@ -299,12 +354,23 @@ function ActiveProjectDetail({
       {(project.timezone_range || hasDateRange) && (
         <InfoSection icon={Clock} title="Schedule & Timezone">
           <div className="grid sm:grid-cols-2 gap-4">
-            {project.timezone_range && <DetailRow label="Timezone Range" value={project.timezone_range} />}
+            {project.timezone_range && (
+              <DetailRow label="Timezone Range" value={project.timezone_range} />
+            )}
             {project.anticipated_start_date && (
-              <DetailRow label="Anticipated Start" value={format(new Date(project.anticipated_start_date + "T00:00:00"), "MMMM d, yyyy")} />
+              <DetailRow
+                label="Anticipated Start"
+                value={format(
+                  new Date(project.anticipated_start_date + "T00:00:00"),
+                  "MMMM d, yyyy"
+                )}
+              />
             )}
             {project.anticipated_end_date && (
-              <DetailRow label="Anticipated End" value={format(new Date(project.anticipated_end_date + "T00:00:00"), "MMMM d, yyyy")} />
+              <DetailRow
+                label="Anticipated End"
+                value={format(new Date(project.anticipated_end_date + "T00:00:00"), "MMMM d, yyyy")}
+              />
             )}
           </div>
         </InfoSection>
@@ -318,7 +384,10 @@ function ActiveProjectDetail({
               <DetailRow
                 label="Client Intake"
                 value={
-                  <SafeExternalLink href={clientIntakeUrl} className="text-primary hover:underline inline-flex items-center gap-1">
+                  <SafeExternalLink
+                    href={clientIntakeUrl}
+                    className="text-primary hover:underline inline-flex items-center gap-1"
+                  >
                     {getSafeLinkHostname(clientIntakeUrl) ?? "Unavailable"}
                     <ExternalLink className="h-3 w-3" />
                   </SafeExternalLink>
@@ -329,7 +398,10 @@ function ActiveProjectDetail({
               <DetailRow
                 label="Project Repository (Notion)"
                 value={
-                  <SafeExternalLink href={notionRepoUrl} className="text-primary hover:underline inline-flex items-center gap-1">
+                  <SafeExternalLink
+                    href={notionRepoUrl}
+                    className="text-primary hover:underline inline-flex items-center gap-1"
+                  >
                     {getSafeLinkHostname(notionRepoUrl) ?? "Unavailable"}
                     <ExternalLink className="h-3 w-3" />
                   </SafeExternalLink>
@@ -355,7 +427,9 @@ function ActiveProjectDetail({
       {/* Deliverables */}
       {(milestoneData?.deliverables?.length ?? 0) > 0 && (
         <InfoSection icon={FileText} title="Deliverables">
-          <p className="text-sm text-muted-foreground">Key outputs your team will produce during this phase.</p>
+          <p className="text-sm text-muted-foreground">
+            Key outputs your team will produce during this phase.
+          </p>
           <PillList items={milestoneData!.deliverables} />
         </InfoSection>
       )}
@@ -363,7 +437,9 @@ function ActiveProjectDetail({
       {/* Activities */}
       {(milestoneData?.activities?.length ?? 0) > 0 && (
         <InfoSection icon={ClipboardList} title="Activities">
-          <p className="text-sm text-muted-foreground">Core activities your team engages in during this phase.</p>
+          <p className="text-sm text-muted-foreground">
+            Core activities your team engages in during this phase.
+          </p>
           <PillList items={milestoneData!.activities} />
         </InfoSection>
       )}
@@ -371,10 +447,15 @@ function ActiveProjectDetail({
       {/* Skills */}
       {(milestoneData?.skills?.length ?? 0) > 0 && (
         <InfoSection icon={Lightbulb} title="Skills You're Developing">
-          <p className="text-sm text-muted-foreground">Skills and competencies you're building on this project.</p>
+          <p className="text-sm text-muted-foreground">
+            Skills and competencies you're building on this project.
+          </p>
           <PillList items={milestoneData!.skills} />
         </InfoSection>
       )}
+
+      {/* Hand-Off Production — active teammates on the project, plus admins */}
+      {canUseHandoff && <HandoffPanel projectId={project.id} phase={project.phase} />}
     </div>
   );
 }
@@ -402,7 +483,9 @@ export function MyProjectsTab() {
   const projectIds = useMemo(() => (myApps ?? []).map((a) => a.project_id), [myApps]);
   const statusMap = useMemo(() => {
     const map: Record<string, string> = {};
-    (myApps ?? []).forEach((a) => { map[a.project_id] = a.applicant_status; });
+    (myApps ?? []).forEach((a) => {
+      map[a.project_id] = a.applicant_status;
+    });
     return map;
   }, [myApps]);
 
@@ -413,14 +496,16 @@ export function MyProjectsTab() {
       if (!projectIds.length) return [];
       const { data, error } = await supabase
         .from("projects")
-        .select(`
+        .select(
+          `
           id, project_type, phase, project_status, team_hats,
           current_phase_milestones, timezone_range,
           anticipated_start_date, anticipated_end_date,
           created_at,
           friendly_name, description,
           clients!projects_client_id_fkey ( name, website, mission, project_summary, primary_contact, kind )
-        `)
+        `
+        )
         .in("id", projectIds);
       if (error) throw error;
       return (data ?? []).map((p) => ({
@@ -437,10 +522,7 @@ export function MyProjectsTab() {
   const selectedProject = projects?.find((p) => p.id === selectedProjectId);
   if (selectedProject) {
     return (
-      <ActiveProjectDetail
-        project={selectedProject}
-        onBack={() => setSelectedProjectId(null)}
-      />
+      <ActiveProjectDetail project={selectedProject} onBack={() => setSelectedProjectId(null)} />
     );
   }
 
@@ -464,8 +546,10 @@ export function MyProjectsTab() {
 
   // Sort: active first, then left
   const sorted = [...projects].sort((a, b) => {
-    if (a.applicant_status === "active_participant" && b.applicant_status !== "active_participant") return -1;
-    if (a.applicant_status !== "active_participant" && b.applicant_status === "active_participant") return 1;
+    if (a.applicant_status === "active_participant" && b.applicant_status !== "active_participant")
+      return -1;
+    if (a.applicant_status !== "active_participant" && b.applicant_status === "active_participant")
+      return 1;
     return 0;
   });
 

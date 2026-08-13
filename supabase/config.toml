@@ -330,3 +330,13 @@ project_id = "pzvqxdgoztbfikfuifix"
     # Cron-poked storage reaper. Validates the service-role bearer in code
     # (authorizeServiceRoleRequest), so verify_jwt stays false.
     verify_jwt = false
+  [functions.handoff-download]
+    verify_jwt = true
+  [functions.handoff-produce]
+    verify_jwt = true
+  [functions.handoff-submit]
+    verify_jwt = true
+  [functions.handoff-worker]
+    verify_jwt = true
+  [functions.spf-sync]
+    verify_jwt = true

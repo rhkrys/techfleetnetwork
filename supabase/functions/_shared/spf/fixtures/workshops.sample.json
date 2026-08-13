@@ -1,0 +1,14 @@
+[
+  {
+    "id": 1,
+    "slug": "team-ice-breakers-workshop-template",
+    "Workshop Name": "Team Ice Breakers Workshop Template",
+    "What Milestone Does This Workshop Belong To?": [{ "slug": "intake", "label": "Intake" }],
+    "Practices That This Workshop Teaches": [
+      { "slug": "shared-leadership", "label": "Shared Leadership" },
+      { "slug": "psychological-safety", "label": "Psychological Safety" }
+    ],
+    "What Duty Runs This Workshop?": [{ "slug": "agile-coaching", "label": "Agile Coaching" }],
+    "Who Takes Part": [{ "slug": "internal-teammate", "label": "Internal Teammate" }]
+  }
+]
