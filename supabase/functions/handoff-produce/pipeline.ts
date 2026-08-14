@@ -28,9 +28,10 @@ import {
   buildRunPlan,
   type DriveStop,
   driveRun,
+  type FigmaFile,
   type FinalizeUnit,
+  firstCursor,
   firstWriteCursor,
-  initialState,
   type PipelineState,
   runGaps,
   type StepEffects,
@@ -96,6 +97,9 @@ const WRITER_DEADLINE_MS = 210_000;
 // in the output). The durable fix (checkpointed material-ingest units) is tracked separately.
 const FIGMA_LOAD_BUDGET_MS = 35_000;
 const FIGMA_FETCH_CONCURRENCY = 6;
+// Hard cap on the text stored per source (ADR-0006): a huge board/file can't become a huge
+// extracted_text row or a huge extraction prompt. The extractor chunks within this anyway.
+const MAX_EXTRACTED_CHARS = 200_000;
 
 // Loose client type: edge functions have no generated Database types.
 type SvcClient = SupabaseClient<any, "public", any>;
@@ -272,7 +276,7 @@ async function loadRunContext(svc: SvcClient, projectId: string, phase: string) 
 
   const { data: subs, error: subErr } = await svc
     .from("handoff_deliverable_submissions")
-    .select("component_slug,submission_type,text_content,external_url,file_name")
+    .select("id,component_slug,submission_type,text_content,external_url,file_name,extracted_text")
     .eq("project_id", projectId)
     .eq("phase", phase);
   if (subErr) throw subErr;
@@ -283,8 +287,11 @@ async function loadRunContext(svc: SvcClient, projectId: string, phase: string) 
   for (const s of subs ?? []) {
     const slug = s.component_slug as string;
     const list = byComponent.get(slug) ?? [];
+    // Real material: typed text, or the durably-ingested board/file text. A source not yet ingested
+    // falls back to its URL (filtered out of material below, but still deep-linked in the output).
     const content =
       (s.text_content as string) ||
+      (s.extracted_text as string) ||
       (s.external_url as string) ||
       `file: ${(s.file_name as string) ?? "uploaded"}`;
     list.push({ kind: s.submission_type as string, content });
@@ -297,48 +304,42 @@ async function loadRunContext(svc: SvcClient, projectId: string, phase: string) 
     }
   }
 
-  // Live Figma fetch: a figma-link submission is the deep-link anchor -> pull exactly that node's
-  // text (node-scoped, batched, retry-aware) and add it as extraction MATERIAL. The link itself
-  // still feeds linkMap for the output's deep-links; here we read the actual board content so the
-  // extractor works from the real work, not the URL string. SSRF-guarded by parseFigmaUrl.
+  // Figma/FigJam is fetched later as CHECKPOINTED ingest units (ADR-0006), NOT here: loadRunContext
+  // runs before the first checkpoint every tick, so fetching boards inline could exceed the worker
+  // invocation limit and kill it pre-progress (the "exceeded max recovery attempts" failure). Here we
+  // only PLAN the fetch (host-locked parse, no network) for sources NOT yet ingested; the ingest
+  // stage does the per-board fetch + persist to extracted_text. Already-ingested sources are skipped
+  // (idempotent) and their text is read straight from extracted_text above.
   const figmaToken = Deno.env.get("FIGMA_TOKEN");
+  const figmaSubsByFile = new Map<
+    string,
+    Array<{ submissionId: string; nodeId: string; slug: string }>
+  >();
   if (figmaToken) {
-    const { byFile, subs: figSubs } = planFigmaFetch(
-      (subs ?? []).map((s) => ({
-        component_slug: s.component_slug as string,
-        external_url: (s.external_url as string) ?? null,
-      }))
-    );
-    if (figSubs.length) {
-      // Bounded + budgeted so this pre-checkpoint load can never overrun the worker invocation
-      // limit (the cause of "exceeded max recovery attempts" on a ~30-board run).
-      const { nodeTextByFile, skipped } = await fetchFigmaBounded(
-        byFile,
-        (fileKey, ids) => fetchNodesText(fileKey, ids, figmaToken),
-        {
-          concurrency: FIGMA_FETCH_CONCURRENCY,
-          budgetMs: FIGMA_LOAD_BUDGET_MS,
-          onError: (fileKey, e) =>
-            log.warn(
-              "figma",
-              `fetch failed for file ${fileKey}: ${e instanceof Error ? e.message : String(e)}`
-            ),
-        }
-      );
-      if (skipped > 0)
-        log.warn(
-          "figma",
-          `${skipped} board(s) not fetched within the ${FIGMA_LOAD_BUDGET_MS}ms load budget (deep-links still rendered)`
-        );
-      for (const [slug, texts] of figmaMaterialBySlug(figSubs, nodeTextByFile)) {
-        const list = byComponent.get(slug) ?? [];
-        // Blank line BETWEEN board items (each fetched node = one sticky/cell/text) so the extractor
-        // sees discrete items and keeps a single multi-line sticky whole (one quote, not one per line).
-        list.push({ kind: "figma", content: texts.join("\n\n") });
-        byComponent.set(slug, list);
+    for (const s of subs ?? []) {
+      if (s.extracted_text) continue; // already ingested -> never re-fetch
+      const url = s.external_url as string | null;
+      if (!url) continue;
+      let parsed: { fileKey: string; nodeId?: string };
+      try {
+        parsed = parseFigmaUrl(url);
+      } catch {
+        continue; // not a figma/figjam URL (or unsafe host)
       }
+      if (!parsed.nodeId) continue; // whole-file links aren't node-scoped (separate follow-up)
+      const list = figmaSubsByFile.get(parsed.fileKey) ?? [];
+      list.push({
+        submissionId: s.id as string,
+        nodeId: parsed.nodeId,
+        slug: s.component_slug as string,
+      });
+      figmaSubsByFile.set(parsed.fileKey, list);
     }
   }
+  const figmaFiles: FigmaFile[] = [...figmaSubsByFile].map(([fileKey, entries]) => ({
+    fileKey,
+    nodeIds: [...new Set(entries.map((e) => e.nodeId))],
+  }));
 
   const { data: proj } = await svc
     .from("projects")
@@ -354,7 +355,17 @@ async function loadRunContext(svc: SvcClient, projectId: string, phase: string) 
   // Extractor SEARCH scope per component: the SPF deliverables + activities + workshops to look for.
   const spfScope = new Map([...spfCtx].map(([slug, c]) => [slug, toExtractionScope(c)]));
 
-  return { components, byComponent, linkMap, milestones, spfStrings, spfScope };
+  return {
+    components,
+    byComponent,
+    linkMap,
+    milestones,
+    spfStrings,
+    spfScope,
+    figmaFiles,
+    figmaSubsByFile,
+    figmaToken,
+  };
 }
 
 /** Build the injected side effects (LLM extract, LLM write-arc, render+store) for one run. */
@@ -367,7 +378,48 @@ function buildEffects(
 ): StepEffects {
   const { requestId, writerModel } = ctx;
   const mechModel = resolveMechanicalModel();
-  const { byComponent, linkMap, milestones, spfStrings, spfScope } = loaded;
+  const { byComponent, linkMap, milestones, spfStrings, spfScope, figmaSubsByFile, figmaToken } =
+    loaded;
+
+  // ADR-0006 ingest unit: fetch ONE Figma/FigJam file's nodes, persist each of its submissions' text
+  // to extracted_text (durable + idempotent), and feed it to THIS run's extractor. Fail-closed: a
+  // board that can't be fetched degrades to no material (its deep-link still renders), never fails the
+  // run. Runs as a checkpointed step, so many boards never overrun one worker invocation.
+  const ingestFigma = async (file: FigmaFile): Promise<void> => {
+    if (!figmaToken) return;
+    const entries = figmaSubsByFile.get(file.fileKey) ?? [];
+    if (!entries.length) return;
+    let nodeText: Record<string, string[]>;
+    try {
+      nodeText = await fetchNodesText(file.fileKey, file.nodeIds, figmaToken);
+    } catch (e) {
+      log.warn(
+        "ingest",
+        `figma fetch failed for file ${file.fileKey} [${requestId}]: ${e instanceof Error ? e.message : String(e)}`,
+        { requestId }
+      );
+      return;
+    }
+    for (const { submissionId, nodeId, slug } of entries) {
+      const texts = nodeText[nodeId] ?? [];
+      if (!texts.length) continue;
+      const joined = texts.join("\n\n").slice(0, MAX_EXTRACTED_CHARS);
+      const { error } = await svc
+        .from("handoff_deliverable_submissions")
+        .update({ extracted_text: joined, extracted_at: new Date().toISOString() })
+        .eq("id", submissionId);
+      if (error) {
+        log.warn("ingest", `persist extracted_text failed for ${submissionId} [${requestId}]`, {
+          requestId,
+        });
+        continue;
+      }
+      // Same-tick visibility for the extractor (loadRunContext rebuilds this from the DB next tick).
+      const list = byComponent.get(slug) ?? [];
+      list.push({ kind: "figma", content: joined });
+      byComponent.set(slug, list);
+    }
+  };
 
   const extractFacts = async (component: HandoffComponent): Promise<ComponentFactBase> => {
     const slug = component.slug;
@@ -516,7 +568,7 @@ function buildEffects(
     });
   };
 
-  return { extractFacts, writeArc, finalize };
+  return { ingestFigma, extractFacts, writeArc, finalize };
 }
 
 /**
@@ -549,7 +601,11 @@ export async function runHandoff(
     meter.set(u.model, cur);
   };
   const loaded = await loadRunContext(svc, ctx.projectId, ctx.phase);
-  const plan = buildRunPlan(loaded.components, ctx.audiences as HandoffAudience[] | undefined);
+  const plan = buildRunPlan(
+    loaded.components,
+    loaded.figmaFiles,
+    ctx.audiences as HandoffAudience[] | undefined
+  );
   const eff = buildEffects(svc, ctx, loaded, guardCall, onUsage);
 
   // Pick the starting state. A resumed run uses its persisted state. A fresh WRITER-ONLY re-create
@@ -561,7 +617,7 @@ export async function runHandoff(
       const facts = await loadFactBase(svc, ctx.projectId, ctx.phase);
       start = { cursor: firstWriteCursor(plan), factBase: facts, written: {} };
     } else {
-      start = initialState();
+      start = { cursor: firstCursor(plan), factBase: [], written: {} };
     }
   }
 

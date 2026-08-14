@@ -18,6 +18,10 @@ import {
   type WrittenComponent,
 } from "./assemble.ts";
 
+/** One ingest unit: fetch ONE external source (a Figma file's nodes) and add its text as material.
+ *  Ingest runs BEFORE extract as checkpointed units so no single tick does the whole external load —
+ *  fetching many boards inline (pre-checkpoint) is what killed the worker on a ~30-board run. */
+export type FigmaFile = { fileKey: string; nodeIds: string[] };
 /** One writer unit: a single story arc of a single audience version (a small, bounded LLM call). */
 export type WriteUnit = { audience: HandoffAudience; outline: VersionOutline; arcIndex: number };
 /** One finalize unit: render + store the documents for a single audience version. */
@@ -25,18 +29,22 @@ export type FinalizeUnit = { audience: HandoffAudience; outline: VersionOutline 
 
 /** The ordered plan of every unit in a run, derived PURELY from the SPF components. */
 export type RunPlan = {
+  ingest: FigmaFile[]; // one unit per external Figma file (checkpointed source acquisition)
   extract: HandoffComponent[]; // one unit per component
   write: WriteUnit[]; // one unit per (audience, arc)
   finalize: FinalizeUnit[]; // one unit per audience
 };
 
 export type Cursor =
+  | { stage: "ingest"; i: number }
   | { stage: "extract"; i: number }
   | { stage: "write"; i: number }
   | { stage: "finalize"; i: number }
   | { stage: "done" };
 
-/** The full resumable state of a run — this is what gets persisted between worker ticks. */
+/** The full resumable state of a run — persisted between worker ticks. Ingested MATERIAL is NOT
+ *  held here: it is written durably to handoff_deliverable_submissions.extracted_text (ADR-0006) and
+ *  rebuilt into the extractor's in-memory view by loadRunContext each tick, so this state stays small. */
 export type PipelineState = {
   cursor: Cursor;
   factBase: ComponentFactBase[]; // accumulates during the extract stage
@@ -45,6 +53,9 @@ export type PipelineState = {
 
 /** Injected side effects. Each returns quickly for one unit; the machine owns ordering + resume. */
 export type StepEffects = {
+  // Fetch ONE Figma file's node text and persist it (extracted_text on each of its submissions) +
+  // make it visible to this run's extractor. Side-effecting; returns nothing (material is durable).
+  ingestFigma: (file: FigmaFile) => Promise<void>;
   extractFacts: (component: HandoffComponent) => Promise<ComponentFactBase>;
   writeArc: (unit: WriteUnit, arcFacts: ComponentFactBase[]) => Promise<WrittenComponent[]>;
   finalize: (unit: FinalizeUnit, written: WrittenComponent[]) => Promise<void>;
@@ -58,6 +69,7 @@ export type StepEffects = {
  */
 export function buildRunPlan(
   components: HandoffComponent[],
+  ingest: FigmaFile[],
   only?: readonly HandoffAudience[]
 ): RunPlan {
   const wanted = only && only.length ? new Set(only) : null;
@@ -70,14 +82,22 @@ export function buildRunPlan(
     finalize.push({ audience, outline });
     outline.sections.forEach((_, arcIndex) => write.push({ audience, outline, arcIndex }));
   }
-  return { extract: components, write, finalize };
+  // A writer-only re-create passes no ingest (it reuses the persisted fact base + extracted_text).
+  return { ingest: wanted ? [] : ingest, extract: components, write, finalize };
 }
 
-/** PURE: the cursor a writer-only run starts at — straight to writing, skipping extraction. */
+/** PURE: the cursor a writer-only run starts at — straight to writing, skipping ingest + extraction. */
 export function firstWriteCursor(plan: RunPlan): Cursor {
   if (plan.write.length) return { stage: "write", i: 0 };
   if (plan.finalize.length) return { stage: "finalize", i: 0 };
   return { stage: "done" };
+}
+
+/** PURE: the cursor a fresh FULL run starts at — the first non-empty stage (ingest, then extract). */
+export function firstCursor(plan: RunPlan): Cursor {
+  if (plan.ingest.length) return { stage: "ingest", i: 0 };
+  if (plan.extract.length) return { stage: "extract", i: 0 };
+  return firstWriteCursor(plan);
 }
 
 export function initialState(): PipelineState {
@@ -90,6 +110,13 @@ export function arcSlugs(unit: WriteUnit): Set<string> {
 }
 
 // Cursor advance helpers: move to the next unit, or to the next non-empty stage, or done.
+function afterIngest(plan: RunPlan, i: number): Cursor {
+  if (i + 1 < plan.ingest.length) return { stage: "ingest", i: i + 1 };
+  if (plan.extract.length) return { stage: "extract", i: 0 };
+  if (plan.write.length) return { stage: "write", i: 0 };
+  if (plan.finalize.length) return { stage: "finalize", i: 0 };
+  return { stage: "done" };
+}
 function afterExtract(plan: RunPlan, i: number): Cursor {
   if (i + 1 < plan.extract.length) return { stage: "extract", i: i + 1 };
   if (plan.write.length) return { stage: "write", i: 0 };
@@ -113,6 +140,10 @@ export async function stepOnce(
   eff: StepEffects
 ): Promise<PipelineState> {
   const c = state.cursor;
+  if (c.stage === "ingest") {
+    await eff.ingestFigma(plan.ingest[c.i]); // persists extracted_text durably + feeds this extractor
+    return { ...state, cursor: afterIngest(plan, c.i) };
+  }
   if (c.stage === "extract") {
     const facts = await eff.extractFacts(plan.extract[c.i]);
     return { ...state, factBase: [...state.factBase, facts], cursor: afterExtract(plan, c.i) };

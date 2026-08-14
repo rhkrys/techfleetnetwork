@@ -6,6 +6,8 @@ import type { Cursor } from "../handoff-produce/pipeline-steps.ts";
  *  extract -> extracting, write -> writing, everything else (finalize/done) -> rendering. */
 export function statusForCursor(c: Cursor): string {
   switch (c.stage) {
+    case "ingest":
+      return "parsing";
     case "extract":
       return "extracting";
     case "write":

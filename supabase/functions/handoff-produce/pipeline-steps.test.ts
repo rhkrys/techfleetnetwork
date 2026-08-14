@@ -3,6 +3,7 @@ import {
   buildRunPlan,
   type Cursor,
   driveRun,
+  firstCursor,
   firstWriteCursor,
   initialState,
   type PipelineState,
@@ -35,6 +36,7 @@ function fakeEffects(sink: {
   finals: Array<{ audience: string; count: number }>;
 }): StepEffects {
   return {
+    ingestFigma: () => Promise.resolve(),
     extractFacts: (c) => {
       sink.extracts.push(c.slug);
       return Promise.resolve({
@@ -63,7 +65,7 @@ const always = {
 };
 
 Deno.test("buildRunPlan derives ordered units purely from the components", () => {
-  const plan = buildRunPlan(COMPONENTS);
+  const plan = buildRunPlan(COMPONENTS, []);
   assertEquals(plan.extract.length, 3);
   assertEquals(plan.write.length, 2); // two arcs for the teammate audience
   assertEquals(plan.finalize.length, 1); // only the teammate version has content
@@ -72,31 +74,62 @@ Deno.test("buildRunPlan derives ordered units purely from the components", () =>
 });
 
 Deno.test("buildRunPlan scopes a targeted re-create to the requested audiences", () => {
-  const all = buildRunPlan(COMPONENTS);
+  const all = buildRunPlan(COMPONENTS, []);
   // Fixtures are teammate-only, so scoping to 'teammate' equals the full plan...
-  const teammateOnly = buildRunPlan(COMPONENTS, ["teammate"]);
+  const teammateOnly = buildRunPlan(COMPONENTS, [], ["teammate"]);
   assertEquals(
     teammateOnly.finalize.map((f) => f.audience),
     ["teammate"]
   );
   assertEquals(teammateOnly.write.length, all.write.length);
   // ...and scoping to an audience with no included components yields an empty plan (nothing re-writes).
-  const clientOnly = buildRunPlan(COMPONENTS, ["client"]);
+  const clientOnly = buildRunPlan(COMPONENTS, [], ["client"]);
   assertEquals(clientOnly.finalize.length, 0);
   assertEquals(clientOnly.write.length, 0);
 });
 
 Deno.test("firstWriteCursor skips extraction (writer-only) or ends when nothing to write", () => {
-  assertEquals(firstWriteCursor(buildRunPlan(COMPONENTS)), { stage: "write", i: 0 });
-  assertEquals(firstWriteCursor(buildRunPlan(COMPONENTS, ["client"])), { stage: "done" });
+  assertEquals(firstWriteCursor(buildRunPlan(COMPONENTS, [])), { stage: "write", i: 0 });
+  assertEquals(firstWriteCursor(buildRunPlan(COMPONENTS, [], ["client"])), { stage: "done" });
 });
+
+Deno.test(
+  "ingest units run FIRST, are checkpointed, and a writer-only re-create skips them",
+  async () => {
+    const ingest = [{ fileKey: "ABC", nodeIds: ["1:1"] }];
+    const plan = buildRunPlan(COMPONENTS, ingest);
+    assertEquals(plan.ingest.length, 1);
+    assertEquals(firstCursor(plan), { stage: "ingest", i: 0 }); // a fresh full run starts at ingest
+
+    const seen: string[] = [];
+    const sink = {
+      extracts: [] as string[],
+      finals: [] as Array<{ audience: string; count: number }>,
+    };
+    const eff: StepEffects = {
+      ...fakeEffects(sink),
+      ingestFigma: (f) => {
+        seen.push(f.fileKey);
+        return Promise.resolve();
+      },
+    };
+    const start: PipelineState = { cursor: firstCursor(plan), factBase: [], written: {} };
+    const { stopped } = await driveRun(start, plan, eff, always);
+    assertEquals(stopped, "done");
+    assertEquals(seen, ["ABC"]); // the board was ingested...
+    assertEquals(sink.extracts, ["goals", "client", "problems"]); // ...before extraction ran
+
+    // A writer-only re-create carries no ingest (it reuses the persisted fact base + extracted_text).
+    assertEquals(buildRunPlan(COMPONENTS, ingest, ["teammate"]).ingest.length, 0);
+  }
+);
 
 Deno.test("driveRun runs a fresh run to completion in unit order", async () => {
   const sink = {
     extracts: [] as string[],
     finals: [] as Array<{ audience: string; count: number }>,
   };
-  const plan = buildRunPlan(COMPONENTS);
+  const plan = buildRunPlan(COMPONENTS, []);
   const { state, stopped } = await driveRun(initialState(), plan, fakeEffects(sink), always);
   assertEquals(stopped, "done");
   assertEquals(sink.extracts, ["goals", "client", "problems"]); // all extracted, in order
@@ -115,7 +148,7 @@ Deno.test(
       extracts: [] as string[],
       finals: [] as Array<{ audience: string; count: number }>,
     };
-    const plan = buildRunPlan(COMPONENTS);
+    const plan = buildRunPlan(COMPONENTS, []);
     // State as if a prior worker finished extraction + the first write arc, then died.
     const resumed: PipelineState = {
       cursor: { stage: "write", i: 1 } as Cursor,
@@ -153,7 +186,7 @@ Deno.test(
       extracts: [] as string[],
       finals: [] as Array<{ audience: string; count: number }>,
     };
-    const plan = buildRunPlan(COMPONENTS);
+    const plan = buildRunPlan(COMPONENTS, []);
     let allowed = 2; // let only two units run
     const { state, stopped } = await driveRun(initialState(), plan, fakeEffects(sink), {
       shouldContinue: () => allowed-- > 0,
@@ -172,7 +205,7 @@ Deno.test(
       extracts: [] as string[],
       finals: [] as Array<{ audience: string; count: number }>,
     };
-    const plan = buildRunPlan(COMPONENTS);
+    const plan = buildRunPlan(COMPONENTS, []);
     const { stopped } = await driveRun(initialState(), plan, fakeEffects(sink), {
       shouldContinue: () => true,
       checkpoint: () => Promise.resolve(false), // another worker took over
@@ -187,7 +220,7 @@ Deno.test("runGaps: a fully written run reports zero gaps", async () => {
     extracts: [] as string[],
     finals: [] as Array<{ audience: string; count: number }>,
   };
-  const plan = buildRunPlan(COMPONENTS);
+  const plan = buildRunPlan(COMPONENTS, []);
   const { state } = await driveRun(initialState(), plan, fakeEffects(sink), always);
   const gaps = runGaps(plan, state);
   assertEquals(gaps.total, 0);
@@ -197,7 +230,7 @@ Deno.test("runGaps: a fully written run reports zero gaps", async () => {
 Deno.test(
   "runGaps: a degraded arc (writer returned nothing) counts each placeholder component, per audience",
   async () => {
-    const plan = buildRunPlan(COMPONENTS);
+    const plan = buildRunPlan(COMPONENTS, []);
     // Simulate the pipeline's own graceful degradation: the Part-1 arc fails and writeArc returns []
     // (as it does on a terminal LLM error). Its one component ('problems') then ships as
     // "_Awaiting content._" — exactly one visible gap in the teammate version.
@@ -223,7 +256,7 @@ Deno.test(
 Deno.test(
   "runGaps: empty-string prose is a gap too (mirrors the renderer's placeholder rule)",
   () => {
-    const plan = buildRunPlan(COMPONENTS);
+    const plan = buildRunPlan(COMPONENTS, []);
     // All three components 'written' but one is blank -> the renderer would show a placeholder for it.
     const state: PipelineState = {
       cursor: { stage: "done" },
@@ -245,7 +278,7 @@ Deno.test("driveRun drops a foreign slug a writer echoes from outside the arc", 
     extracts: [] as string[],
     finals: [] as Array<{ audience: string; count: number }>,
   };
-  const plan = buildRunPlan(COMPONENTS);
+  const plan = buildRunPlan(COMPONENTS, []);
   const leaky: StepEffects = {
     ...fakeEffects(sink),
     writeArc: (unit) =>
