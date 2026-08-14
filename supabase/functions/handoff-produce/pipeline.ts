@@ -97,9 +97,11 @@ const WRITER_DEADLINE_MS = 210_000;
 // in the output). The durable fix (checkpointed material-ingest units) is tracked separately.
 const FIGMA_LOAD_BUDGET_MS = 35_000;
 const FIGMA_FETCH_CONCURRENCY = 6;
-// Hard cap on the text stored per source (ADR-0006): a huge board/file can't become a huge
-// extracted_text row or a huge extraction prompt. The extractor chunks within this anyway.
-const MAX_EXTRACTED_CHARS = 200_000;
+// Per-source pathological guard (ADR-0006): a single board/file can't become an unbounded row. Set
+// FAR above any real board's text so it NEVER truncates genuine content — the actual memory bound is
+// that extraction loads ONE component's material at a time (load-on-demand), releasing it before the
+// next, so the worker never holds every source at once (the cause of the extract-stage OOM).
+const MAX_EXTRACTED_CHARS = 2_000_000;
 
 // Loose client type: edge functions have no generated Database types.
 type SvcClient = SupabaseClient<any, "public", any>;
@@ -274,34 +276,24 @@ async function loadRunContext(svc: SvcClient, projectId: string, phase: string) 
     ...(r.data as Record<string, unknown>),
   })) as HandoffComponent[];
 
-  const { data: subs, error: subErr } = await svc
-    .from("handoff_deliverable_submissions")
-    .select("id,component_slug,submission_type,text_content,external_url,file_name,extracted_text")
-    .eq("project_id", projectId)
-    .eq("phase", phase);
-  if (subErr) throw subErr;
-
+  // LIGHTWEIGHT read only — we do NOT hold any source's material text here. Holding every source's
+  // text at once (the old byComponent) OOM'd the worker on a many-source component; extractFacts now
+  // loads each component's material on demand. Here we read just what the output's LINK MAP needs.
   const nameBySlug = new Map(components.map((c) => [c.slug, String(c.Component ?? c.slug)]));
-  const byComponent = new Map<string, Array<{ kind: string; content: string }>>();
   const linkMap = new Map<string, DeliverableLink[]>(); // deep-links to the actual submitted work
-  for (const s of subs ?? []) {
+  const { data: linkSubs, error: subErr } = await svc
+    .from("handoff_deliverable_submissions")
+    .select("component_slug,external_url")
+    .eq("project_id", projectId)
+    .eq("phase", phase)
+    .not("external_url", "is", null);
+  if (subErr) throw subErr;
+  for (const s of linkSubs ?? []) {
     const slug = s.component_slug as string;
-    const list = byComponent.get(slug) ?? [];
-    // Real material: typed text, or the durably-ingested board/file text. A source not yet ingested
-    // falls back to its URL (filtered out of material below, but still deep-linked in the output).
-    const content =
-      (s.text_content as string) ||
-      (s.extracted_text as string) ||
-      (s.external_url as string) ||
-      `file: ${(s.file_name as string) ?? "uploaded"}`;
-    list.push({ kind: s.submission_type as string, content });
-    byComponent.set(slug, list);
-    const url = s.external_url as string | null;
-    if (url) {
-      const links = linkMap.get(slug) ?? [];
-      links.push({ label: nameBySlug.get(slug) ?? slug, url });
-      linkMap.set(slug, links);
-    }
+    const url = s.external_url as string;
+    const links = linkMap.get(slug) ?? [];
+    links.push({ label: nameBySlug.get(slug) ?? slug, url });
+    linkMap.set(slug, links);
   }
 
   // Figma/FigJam is fetched later as CHECKPOINTED ingest units (ADR-0006), NOT here: loadRunContext
@@ -316,8 +308,15 @@ async function loadRunContext(svc: SvcClient, projectId: string, phase: string) 
     Array<{ submissionId: string; nodeId: string; slug: string }>
   >();
   if (figmaToken) {
-    for (const s of subs ?? []) {
-      if (s.extracted_text) continue; // already ingested -> never re-fetch
+    // Only sources NOT yet ingested (extracted_text null) — ids/urls only, no material content held.
+    const { data: figSubs } = await svc
+      .from("handoff_deliverable_submissions")
+      .select("id,component_slug,external_url")
+      .eq("project_id", projectId)
+      .eq("phase", phase)
+      .not("external_url", "is", null)
+      .is("extracted_text", null);
+    for (const s of figSubs ?? []) {
       const url = s.external_url as string | null;
       if (!url) continue;
       let parsed: { fileKey: string; nodeId?: string };
@@ -357,7 +356,6 @@ async function loadRunContext(svc: SvcClient, projectId: string, phase: string) 
 
   return {
     components,
-    byComponent,
     linkMap,
     milestones,
     spfStrings,
@@ -378,8 +376,7 @@ function buildEffects(
 ): StepEffects {
   const { requestId, writerModel } = ctx;
   const mechModel = resolveMechanicalModel();
-  const { byComponent, linkMap, milestones, spfStrings, spfScope, figmaSubsByFile, figmaToken } =
-    loaded;
+  const { linkMap, milestones, spfStrings, spfScope, figmaSubsByFile, figmaToken } = loaded;
 
   // ADR-0006 ingest unit: fetch ONE Figma/FigJam file's nodes, persist each of its submissions' text
   // to extracted_text (durable + idempotent), and feed it to THIS run's extractor. Fail-closed: a
@@ -400,7 +397,7 @@ function buildEffects(
       );
       return;
     }
-    for (const { submissionId, nodeId, slug } of entries) {
+    for (const { submissionId, nodeId } of entries) {
       const texts = nodeText[nodeId] ?? [];
       if (!texts.length) continue;
       const joined = texts.join("\n\n").slice(0, MAX_EXTRACTED_CHARS);
@@ -408,26 +405,39 @@ function buildEffects(
         .from("handoff_deliverable_submissions")
         .update({ extracted_text: joined, extracted_at: new Date().toISOString() })
         .eq("id", submissionId);
-      if (error) {
+      if (error)
         log.warn("ingest", `persist extracted_text failed for ${submissionId} [${requestId}]`, {
           requestId,
         });
-        continue;
-      }
-      // Same-tick visibility for the extractor (loadRunContext rebuilds this from the DB next tick).
-      const list = byComponent.get(slug) ?? [];
-      list.push({ kind: "figma", content: joined });
-      byComponent.set(slug, list);
+      // No in-memory hand-off: extractFacts reads extracted_text fresh from the DB (ingest units run +
+      // commit before extract in cursor order), so material is loaded one component at a time.
     }
   };
 
   const extractFacts = async (component: HandoffComponent): Promise<ComponentFactBase> => {
     const slug = component.slug;
     const name = String(component.Component ?? slug);
-    const subsFor = byComponent.get(slug) ?? [];
     const scope = spfScope.get(slug); // SPF deliverables + activities + workshops to search for
-    // Extract from real material only; bare-URL submissions (Figma deep-links) feed the link map.
-    const material = subsFor.filter((s) => !/^https?:\/\/\S+$/.test(s.content.trim()));
+    // LOAD-ON-DEMAND (ADR-0007): read ONLY this component's material now, process it, and let it be
+    // released before the next component runs — one component's material in RAM at a time. This is the
+    // memory-correct fix for the extract-stage OOM, with NO truncation of real content.
+    const { data: subsFor } = await svc
+      .from("handoff_deliverable_submissions")
+      .select("submission_type,text_content,external_url,file_name,extracted_text")
+      .eq("project_id", ctx.projectId)
+      .eq("phase", ctx.phase)
+      .eq("component_slug", slug);
+    const material = (subsFor ?? [])
+      .map((s) => ({
+        kind: s.submission_type as string,
+        content:
+          (s.text_content as string) ||
+          (s.extracted_text as string) ||
+          (s.external_url as string) ||
+          `file: ${(s.file_name as string) ?? "uploaded"}`,
+      }))
+      // Extract from real material only; bare-URL submissions (deep-links) just feed the link map.
+      .filter((s) => !/^https?:\/\/\S+$/.test(s.content.trim()));
     let facts: string[] = [];
     if (material.length) {
       // Read ALL of it: concatenate, drop unfilled-template noise, chunk to fit, extract per chunk,
@@ -445,21 +455,35 @@ function buildEffects(
           [{ kind: "material", content: chunk }],
           scope
         );
-        const out = await generateStructured(
-          // temperature 0 = deterministic extraction: same content -> same facts, every instance.
-          {
-            model: mechModel,
-            messages: p.messages,
-            toolName: p.toolName,
-            schema: p.schema,
-            reasoningEffort: "low",
-            temperature: 0,
-          },
-          { requestId, onUsage }
-        );
-        perChunk.push(
-          Array.isArray(out.facts) ? (out.facts as string[]).map((f) => dlpScrub(String(f))) : []
-        );
+        try {
+          const out = await generateStructured(
+            // temperature 0 = deterministic extraction: same content -> same facts, every instance.
+            {
+              model: mechModel,
+              messages: p.messages,
+              toolName: p.toolName,
+              schema: p.schema,
+              reasoningEffort: "low",
+              temperature: 0,
+            },
+            { requestId, onUsage }
+          );
+          perChunk.push(
+            Array.isArray(out.facts) ? (out.facts as string[]).map((f) => dlpScrub(String(f))) : []
+          );
+        } catch (e) {
+          // A chunk that fails extraction (terminal LLM error, oversize chunk, refusal) must NOT fail
+          // the whole run. Degrade to no facts for THIS chunk — the component may still get facts from
+          // its other chunks; if none succeed, its sections render the honest placeholder. Mirrors
+          // writeArc's degrade posture. (Without this, one heavy component killed the run at the
+          // recovery cap — extract unit i=3 dying 6x.)
+          log.warn(
+            "extract",
+            `${slug}: chunk extraction degraded [${requestId}]: ${e instanceof Error ? e.message : String(e)}`,
+            { requestId }
+          );
+          perChunk.push([]);
+        }
       }
       const merged = mergeFacts(perChunk);
       // Stage 3.5: collapse near-duplicate quotes (reworded/reordered restatements of one point) that
