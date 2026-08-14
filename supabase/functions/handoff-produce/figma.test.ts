@@ -1,11 +1,31 @@
 import { assert, assertEquals, assertThrows } from "jsr:@std/assert@1";
 import {
   collectText,
+  FigmaResponseTooLarge,
   groupByContainer,
   type FigmaNode,
   normalizeNodeId,
   parseFigmaUrl,
+  readJsonCapped,
 } from "./figma.ts";
+
+// readJsonCapped is the ADR-0007 ceiling-3 guard: a huge Figma design-file node tree must never be
+// buffered whole (256 MB edge OOM). Under the cap it parses; over it, it aborts the stream + throws.
+Deno.test("readJsonCapped parses a normal JSON body", async () => {
+  const out = await readJsonCapped(new Response(JSON.stringify({ a: 1, b: [2, 3] })), 1_000_000);
+  assertEquals(out, { a: 1, b: [2, 3] });
+});
+
+Deno.test("readJsonCapped throws FigmaResponseTooLarge when the body exceeds the cap", async () => {
+  const res = new Response(JSON.stringify({ big: "x".repeat(5000) }));
+  let caught: unknown;
+  try {
+    await readJsonCapped(res, 100); // cap far below the body size
+  } catch (e) {
+    caught = e;
+  }
+  assert(caught instanceof FigmaResponseTooLarge, "expected FigmaResponseTooLarge");
+});
 
 // A board section like a real FigJam node: content in many node types, plus decoration to skip.
 const fixture: FigmaNode = {

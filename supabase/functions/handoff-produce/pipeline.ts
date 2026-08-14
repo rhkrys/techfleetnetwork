@@ -386,21 +386,25 @@ function buildEffects(
     if (!figmaToken) return;
     const entries = figmaSubsByFile.get(file.fileKey) ?? [];
     if (!entries.length) return;
-    let nodeText: Record<string, string[]>;
+    let nodeText: Record<string, string[]> | null = null;
     try {
       nodeText = await fetchNodesText(file.fileKey, file.nodeIds, figmaToken);
     } catch (e) {
+      // Fetch failed OR the response was too large (a huge design-file node tree, ADR-0007 ceiling 3).
+      // Do NOT re-fetch it next run — mark this file's sources ingested-empty below. Design/visual
+      // sources have no text anyway (they go to the vision path later). Fail-closed, never fails the run.
       log.warn(
         "ingest",
-        `figma fetch failed for file ${file.fileKey} [${requestId}]: ${e instanceof Error ? e.message : String(e)}`,
+        `figma fetch skipped for file ${file.fileKey} [${requestId}]: ${e instanceof Error ? e.message : String(e)}`,
         { requestId }
       );
-      return;
     }
     for (const { submissionId, nodeId } of entries) {
-      const texts = nodeText[nodeId] ?? [];
-      if (!texts.length) continue;
-      const joined = texts.join("\n\n").slice(0, MAX_EXTRACTED_CHARS);
+      const texts = nodeText?.[nodeId] ?? [];
+      // ALWAYS mark attempted — real text, or an empty sentinel for a no-text / failed / too-large
+      // source. The empty value is non-null, so loadRunContext's plan (extracted_text IS NULL) never
+      // re-selects it: this is what stops the pre-checkpoint OOM loop on design files.
+      const joined = texts.length ? texts.join("\n\n").slice(0, MAX_EXTRACTED_CHARS) : "";
       const { error } = await svc
         .from("handoff_deliverable_submissions")
         .update({ extracted_text: joined, extracted_at: new Date().toISOString() })
@@ -409,8 +413,7 @@ function buildEffects(
         log.warn("ingest", `persist extracted_text failed for ${submissionId} [${requestId}]`, {
           requestId,
         });
-      // No in-memory hand-off: extractFacts reads extracted_text fresh from the DB (ingest units run +
-      // commit before extract in cursor order), so material is loaded one component at a time.
+      // No in-memory hand-off: extractFacts reads extracted_text fresh from the DB per component.
     }
   };
 

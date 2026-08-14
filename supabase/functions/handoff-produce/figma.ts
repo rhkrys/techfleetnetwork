@@ -133,6 +133,46 @@ const REQUEST_TIMEOUT_MS = 30_000;
 const MAX_RETRIES = 5;
 const MAX_WAIT_MS = 20_000;
 const MAX_IDS_PER_CALL = 50; // keep the ?ids= query well under URL-length limits
+// Bound the response we hold in memory: a Figma DESIGN-file node tree can be tens of MB, which OOMs
+// the ~256 MB edge worker (ADR-0007 ceiling 3). Cap the streamed body; over the cap we skip that file
+// (design/visual → no useful text anyway; those go to the vision path later). Generous vs any real
+// board's text payload.
+const MAX_FIGMA_RESPONSE_BYTES = 12_000_000;
+
+/** A figma response bigger than we'll hold in memory (a huge design node tree). NOT retryable. */
+export class FigmaResponseTooLarge extends Error {
+  constructor(bytes: number) {
+    super(`figma response exceeds ${MAX_FIGMA_RESPONSE_BYTES} bytes (${bytes})`);
+    this.name = "FigmaResponseTooLarge";
+  }
+}
+
+/** Read a JSON response under a hard byte cap, aborting the stream early if the body exceeds it so a
+ *  giant payload can never be fully buffered into memory. Falls back to res.json() if unstreamable. */
+export async function readJsonCapped(res: Response, cap: number): Promise<unknown> {
+  const reader = res.body?.getReader();
+  if (!reader) return await res.json();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    total += value.byteLength;
+    if (total > cap) {
+      await reader.cancel();
+      throw new FigmaResponseTooLarge(total);
+    }
+    chunks.push(value);
+  }
+  const buf = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) {
+    buf.set(c, off);
+    off += c.byteLength;
+  }
+  return JSON.parse(new TextDecoder().decode(buf));
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -169,8 +209,9 @@ async function figmaGet(path: string, token: string): Promise<unknown> {
         throw new Error(`figma HTTP ${res.status} after ${MAX_RETRIES} attempts`);
       }
       if (!res.ok) throw new Error(`figma HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
-      return await res.json();
+      return await readJsonCapped(res, MAX_FIGMA_RESPONSE_BYTES);
     } catch (e) {
+      if (e instanceof FigmaResponseTooLarge) throw e; // won't shrink on retry -> fail fast
       lastErr = e;
       if (attempt < MAX_RETRIES)
         await sleep(400 * 2 ** (attempt - 1) + Math.floor(Math.random() * 300));
