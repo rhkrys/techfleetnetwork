@@ -340,3 +340,5 @@ project_id = "pzvqxdgoztbfikfuifix"
     verify_jwt = true
   [functions.spf-sync]
     verify_jwt = true
+  [functions.guide-ingest]
+    verify_jwt = false
