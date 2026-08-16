@@ -96,6 +96,37 @@ function hasPromptInjection(content: string): boolean {
   return PROMPT_INJECTION_PATTERNS.some((p) => p.test(content));
 }
 
+// Content-safety gate (owner rule): Fleety NEVER converses on rude, hateful, harassing,
+// or sexually-explicit input. Whole-word, case-insensitive patterns (\b boundaries) so
+// legitimate words that merely CONTAIN a fragment (e.g. "assess", "class", "Scunthorpe")
+// are not falsely flagged. A match short-circuits to a firm-but-kind boundary reply with
+// NO retrieval and NO LLM call. Deliberately conservative — profanity/slurs/explicit only,
+// not clinical/professional terms (e.g. workplace "harassment policy" stays answerable).
+const INAPPROPRIATE_PATTERNS: RegExp[] = [
+  /\bf+u+c+k+(er|ing|ed|s)?\b/i,
+  /\bmother ?f+u+c+k+\w*/i,
+  /\bs+h+i+t+(ty|s|head)?\b/i,
+  /\bb+i+t+c+h+(es|y|ing)?\b/i,
+  /\b(ass ?hole|assholes|dumbass|jackass)\b/i,
+  /\bbastard(s)?\b/i,
+  /\b(dick|cock|prick)(head|s)?\b/i,
+  /\bc+u+n+t+(s)?\b/i,
+  /\bpiss(ed|ing|off)?\b/i,
+  /\b(slut|whore|hoe)(s|y)?\b/i,
+  /\b(retard|retarded)\b/i,
+  /\b(f+a+g+(got|s)?)\b/i,
+  /\bn+i+g+(g+e+r+|g+a+)(s)?\b/i,
+  /\bporn(o|hub|graphy)?\b/i,
+  /\b(horny|blow ?job|hand ?job|jerk ?off|masturbat\w*)\b/i,
+  /\b(pussy|penis|vagina|boobs?|titties|tits|nudes?)\b/i,
+  /\bkill\s+(yourself|urself)\b/i,
+  /\bkys\b/i,
+];
+
+function hasInappropriateContent(content: string): boolean {
+  return INAPPROPRIATE_PATTERNS.some((p) => p.test(content));
+}
+
 /**
  * OWASP LLM02/LLM05: Output sanitization.
  * Strips system prompt leakage, dangerous content, and PII patterns.
@@ -289,7 +320,12 @@ function isOperationalIntent(i: Intent): boolean {
  * Silently falls back to regex (classifyIntent) on any failure. The web-search
  * decision fields are vestigial — web search was removed (D-04) and is ignored.
  */
-type RouterDecision = { intent: Intent; needsWeb: boolean; webQuery: string | null };
+type RouterDecision = {
+  intent: Intent;
+  needsWeb: boolean;
+  webQuery: string | null;
+  outOfScope: boolean;
+};
 async function routeWithModel(
   userMessage: string,
   requestId: string
@@ -312,7 +348,13 @@ async function routeWithModel(
           {
             role: "system",
             content:
-              "You route user questions for a coaching assistant. Reply only via the route tool.",
+              "You route questions for Fleety, Tech Fleet's assistant. Fleety ONLY helps with " +
+              "Tech Fleet and members' professional growth within it (the Skills & Practices " +
+              "Framework — workshops, milestones, deliverables, Team Practices, skills, roles, " +
+              "career transitions — plus onboarding and the community). Reply only via the route " +
+              "tool. Set off_topic=true ONLY when the message is clearly NOT about Tech Fleet or " +
+              "professional growth (e.g. general coding help, other companies, medical/legal/" +
+              "financial/personal topics, jokes, role-play). When unsure, set off_topic=false.",
           },
           { role: "user", content: userMessage.slice(0, 1000) },
         ],
@@ -321,13 +363,18 @@ async function routeWithModel(
             type: "function",
             function: {
               name: "route",
-              description: "Classify intent and decide if web search is needed.",
+              description: "Classify intent, topic scope, and whether web search is needed.",
               parameters: {
                 type: "object",
                 properties: {
                   intent: {
                     type: "string",
                     enum: ["definition", "how_to", "troubleshoot", "decision", "reference"],
+                  },
+                  off_topic: {
+                    type: "boolean",
+                    description:
+                      "True ONLY if the message is clearly not about Tech Fleet or the member's professional growth. When unsure, false.",
                   },
                   needs_web: {
                     type: "boolean",
@@ -339,7 +386,7 @@ async function routeWithModel(
                     description: "Concise search query (3-8 words). Empty if needs_web is false.",
                   },
                 },
-                required: ["intent", "needs_web", "web_query"],
+                required: ["intent", "off_topic", "needs_web", "web_query"],
                 additionalProperties: false,
               },
             },
@@ -358,6 +405,7 @@ async function routeWithModel(
       intent: parsed.intent as Intent,
       needsWeb: !!parsed.needs_web,
       webQuery: parsed.web_query || null,
+      outOfScope: !!parsed.off_topic,
     };
   } catch (e) {
     console.warn(`[${requestId}] router model failed:`, e instanceof Error ? e.message : e);
@@ -487,6 +535,26 @@ serve(
       // ── OWASP AI: Prompt injection detection ──────────────────────────
       const lastUserMessage =
         messages.filter((m: { role: string }) => m.role === "user").pop()?.content || "";
+
+      // Content-safety hard gate (owner rule): Fleety NEVER converses on rude, hateful,
+      // harassing, or sexually-explicit input. Refuse outright — no retrieval, no LLM call,
+      // no persisted turn — with a firm-but-kind boundary that keeps the door open.
+      if (hasInappropriateContent(lastUserMessage)) {
+        log.warn("content-safety", `inappropriate input refused, no LLM call [${requestId}]`, {
+          requestId,
+          userId: user.id,
+        });
+        const boundary =
+          "I want to keep things respectful here, so I can't help with that. I'm your guide for Tech Fleet and your professional growth — ask me about workshops, milestones, Team Practices, or your career path and I'm glad to help.";
+        return new Response(buildCacheSSEStream(boundary), {
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            "X-Fleety-Refused": "inappropriate",
+          },
+        });
+      }
 
       if (hasPromptInjection(lastUserMessage)) {
         log.warn("prompt-injection", `Potential prompt injection detected [${requestId}]`, {
@@ -1459,6 +1527,29 @@ serve(
         fewShotContext
       );
       const groundedKnowledge = hasGrounding ? knowledgeContext : NO_KNOWLEDGE_DIRECTIVE;
+
+      // G1 — structural scope gate (defense-in-depth for the prompt's STRICT SCOPE rule).
+      // Refuse to GENERATE for a clearly off-topic message: stream a brief, warm redirect
+      // with ZERO answer-LLM call. Requires BOTH signals — the router flagged it off-topic
+      // AND retrieval found no Tech Fleet grounding — so a legitimate question that pulled
+      // in SPF/guide content is never blocked (err toward answering when unsure). The router
+      // fails safe: if it errored (null), outOfScope is falsy and we answer normally.
+      if (routerDecision?.outOfScope && !hasGrounding && !cannedAnswerId) {
+        log.info("scope", `out-of-scope refusal, no LLM call [${requestId}]`, {
+          requestId,
+          intent,
+        });
+        const redirect =
+          "That's outside what I can help with — I'm here for Tech Fleet and your professional growth: workshops, milestones, Team Practices, deliverables, and career transitions. What can I help you with there?";
+        return new Response(buildCacheSSEStream(redirect), {
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            "X-Fleety-Scope": "out-of-scope",
+          },
+        });
+      }
 
       const fullSystemPrompt = buildSystemPrompt({
         audience,

@@ -65,4 +65,20 @@ describe("fleety answer model (OpenRouter/DeepSeek) single source of truth", () 
     expect(chat).toMatch(/only:\s*US_INFERENCE_PROVIDERS/);
     expect(chat).toMatch(/provider:\s*OPENROUTER_PROVIDER/);
   });
+
+  it("FLEETY-SCOPE: off-topic messages are refused structurally, with no answer-LLM call", () => {
+    // G1: the Stage-1 router classifies off_topic; the handler short-circuits to a warm
+    // redirect (no generation) when the router flags off-topic AND nothing grounded.
+    expect(chat).toMatch(/off_topic/);
+    expect(chat).toMatch(/outOfScope/);
+    expect(chat).toMatch(/routerDecision\?\.outOfScope\s*&&\s*!hasGrounding/);
+    expect(chat).toMatch(/X-Fleety-Scope/);
+  });
+
+  it("FLEETY-SAFETY: inappropriate/abusive input is refused structurally, with no answer-LLM call", () => {
+    // Owner rule: never converse on rude/inappropriate/sexual input. A structural gate
+    // returns a firm-but-kind boundary before any retrieval/generation.
+    expect(chat).toMatch(/hasInappropriateContent|INAPPROPRIATE_PATTERNS/);
+    expect(chat).toMatch(/X-Fleety-Refused/);
+  });
 });
