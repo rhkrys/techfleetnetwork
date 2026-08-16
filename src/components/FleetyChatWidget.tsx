@@ -14,6 +14,8 @@ import {
   ThumbsUp,
   ThumbsDown,
   MessageCircleQuestion,
+  Copy,
+  Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -207,6 +209,7 @@ export function FleetyChatWidget() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [speakingIdx, setSpeakingIdx] = useState<number | null>(null);
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvoId, setActiveConvoId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
@@ -319,6 +322,16 @@ export function FleetyChatWidget() {
     },
     [speakingIdx]
   );
+
+  const copyMessage = useCallback(async (index: number, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedIdx(index);
+      setTimeout(() => setCopiedIdx((c) => (c === index ? null : c)), 1500);
+    } catch {
+      toast.error("Couldn't copy — try selecting the text manually.");
+    }
+  }, []);
 
   const sendText = async (text: string) => {
     text = text.trim();
@@ -729,6 +742,20 @@ export function FleetyChatWidget() {
                       )}
                       {!isLoading && msg.content.length > 0 && (
                         <div className="mt-2 pt-1 border-t border-border/50 flex items-center gap-1 flex-wrap">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => copyMessage(i, msg.content)}
+                            className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground gap-1"
+                            aria-label="Copy answer to clipboard"
+                          >
+                            {copiedIdx === i ? (
+                              <Check className="h-3 w-3" />
+                            ) : (
+                              <Copy className="h-3 w-3" />
+                            )}
+                            {copiedIdx === i ? "Copied" : "Copy"}
+                          </Button>
                           <Button
                             variant="ghost"
                             size="sm"

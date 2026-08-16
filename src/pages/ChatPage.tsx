@@ -11,6 +11,8 @@ import {
   Plus,
   MessageSquare,
   Trash2,
+  Copy,
+  Check,
 } from "lucide-react";
 import { SafeMarkdown } from "@/components/security/SafeMarkdown";
 import { toast } from "sonner";
@@ -154,6 +156,7 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [speakingIdx, setSpeakingIdx] = useState<number | null>(null);
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvoId, setActiveConvoId] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
@@ -225,6 +228,16 @@ export default function ChatPage() {
     },
     [speakingIdx]
   );
+
+  const copyMessage = useCallback(async (index: number, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedIdx(index);
+      setTimeout(() => setCopiedIdx((c) => (c === index ? null : c)), 1500);
+    } catch {
+      toast.error("Couldn't copy — try selecting the text manually.");
+    }
+  }, []);
 
   const createConversation = async (firstMessage: string): Promise<string | null> => {
     if (!user) return null;
@@ -489,7 +502,26 @@ export default function ChatPage() {
                       </div>
                     )}
                     {!isLoading && msg.content.length > 0 && (
-                      <div className="mt-3 pt-2 border-t border-border/50">
+                      <div className="mt-3 pt-2 border-t border-border/50 flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyMessage(i, msg.content)}
+                          className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground gap-1.5"
+                          aria-label="Copy answer to clipboard"
+                        >
+                          {copiedIdx === i ? (
+                            <>
+                              <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                              Copied
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                              Copy
+                            </>
+                          )}
+                        </Button>
                         <Button
                           variant="ghost"
                           size="sm"
