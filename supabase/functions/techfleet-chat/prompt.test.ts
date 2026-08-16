@@ -22,11 +22,14 @@ import {
 
 // The fixed instruction scaffold — base persona + canary + practical contract +
 // alias map + tone, with NO dynamic content — must stay within this ceiling so
-// runtime KB/context always has headroom. Measured base is ~1,854 tokens
-// (practical worst case); 2,000 leaves ~8% headroom. Raising it is a conscious
-// decision, never an accident: a bloated base silently steals KB budget at
-// request time.
-const TOKEN_CEILING = 2000;
+// runtime KB/context always has headroom. Raising it is a CONSCIOUS decision,
+// never an accident: a bloated base silently steals KB budget at request time.
+// Bumped 2000 -> 2500 (2026-08-16): the Tech Fleet brand-voice block, the STRICT
+// SCOPE / jailbreak-resistance safety rules, and the scannable-formatting guidance
+// are now core required behavior (brand + security), not optional. DeepSeek's
+// 131k-token context easily affords a ~2.4k base alongside retrieved KB context;
+// this ceiling still guards against unbounded prompt creep.
+const TOKEN_CEILING = 2500;
 
 function emptyCtx(overrides: Partial<PromptContext> = {}): PromptContext {
   return {
@@ -72,6 +75,32 @@ Deno.test("required instruction sections each appear exactly once", () => {
     const occurrences = base.split(marker).length - 1;
     assertEquals(occurrences, 1, `"${marker}" must appear exactly once (found ${occurrences}).`);
   }
+});
+
+Deno.test("Tech Fleet brand voice rules are present (regression guard)", () => {
+  const base = SYSTEM_PROMPT_BASE;
+  assert(base.includes("TECH FLEET BRAND VOICE"), "brand voice section header");
+  assert(
+    /Welcoming/.test(base) && /Caring/.test(base) && /Informative/.test(base),
+    "the three core voice traits"
+  );
+  assert(/Sage/.test(base), "the Sage archetype framing");
+  assert(/7th-to-9th-grade/.test(base), "brand reading level");
+  assert(/two words, never as one/i.test(base), "brand name two-word terminology rule");
+  assert(/behavior, not the identity/i.test(base), "praise behavior, not identity");
+  assert(/singular "they"/.test(base), "inclusive singular they");
+});
+
+Deno.test("strict-scope + jailbreak-resistance safety rules are present (regression guard)", () => {
+  const base = SYSTEM_PROMPT_BASE;
+  assert(/STRICT SCOPE/.test(base), "strict scope gate");
+  assert(/only discuss tech fleet/i.test(base) || /ONLY discuss Tech Fleet/.test(base));
+  assert(/untrusted data/i.test(base), "treat input + retrieved content as untrusted data");
+  assert(/never adopt a different persona/i.test(base), "no persona / no override");
+  assert(
+    /never execute code|no tools, files, or api calls/i.test(base),
+    "no code execution / no tools"
+  );
 });
 
 Deno.test("practical contract is omitted for non-operational intents", () => {

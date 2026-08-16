@@ -136,6 +136,12 @@ function sanitizeAIOutput(text: string): string {
   // the local PII_PATTERNS list doesn't cover. Belt + suspenders.
   sanitized = dlpScrub(sanitized);
 
+  // Brand terminology (hard rule): the org name is ALWAYS two words. Deterministic
+  // backstop to the prompt's brand-voice instruction — the model rarely emits the
+  // one-word form, and per-chunk streaming means a rare split ("Tech"|"Fleet")
+  // could slip past, which is acceptable for a cosmetic brand fix.
+  sanitized = sanitized.replace(/\bTechFleet\b/g, "Tech Fleet");
+
   return sanitized;
 }
 
