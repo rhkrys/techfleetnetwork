@@ -20,7 +20,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2.45.0";
 import { fromZonedTime } from "npm:date-fns-tz@3.2.0";
-import { authorizeServiceRoleRequest } from "../_shared/service-role-auth.ts";
+import { authorizeRefreshRequest } from "./auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -127,6 +127,11 @@ interface RawVEvent {
   end?: { date: Date; allDay: boolean };
   rrule?: Record<string, string>;
   exdates?: Date[];
+  // RECURRENCE-ID: this VEVENT overrides one instance of its master series
+  // (same UID). The value is the ORIGINAL start-time of the instance it replaces.
+  recurrenceId?: Date;
+  // STATUS:CANCELLED on an override means the instance was deleted, not moved.
+  status?: string;
 }
 
 function parseVEvents(ics: string, pastCutoff: Date): RawVEvent[] {
@@ -205,9 +210,96 @@ function parseVEvents(ics: string, pastCutoff: Date): RawVEvent[] {
         }
         break;
       }
+      case "RECURRENCE-ID":
+        cur.recurrenceId = parseIcsDate(value, params).date;
+        break;
+      case "STATUS":
+        cur.status = value.trim().toUpperCase();
+        break;
     }
   }
   return events;
+}
+
+const WEEKDAY_MAP: Record<string, number> = {
+  SU: 0,
+  MO: 1,
+  TU: 2,
+  WE: 3,
+  TH: 4,
+  FR: 5,
+  SA: 6,
+};
+
+// Resolve an ICS BYDAY token — "2TU" (2nd Tuesday), "-1FR" (last Friday), or a
+// bare "TU" (treated as 1st) — to a concrete instant in the given UTC month,
+// carrying the wall-clock time from the series master. Returns null if the
+// ordinal falls outside the month. Computed in UTC to match the rest of the
+// parser; correct for the common evening-meeting case where the UTC date equals
+// the local date.
+function nthWeekdayOfMonthUtc(
+  year: number,
+  month: number,
+  bydayToken: string,
+  timeFrom: Date
+): Date | null {
+  const m = /^([+-]?\d+)?([A-Z]{2})$/.exec(bydayToken.trim());
+  if (!m) return null;
+  const wd = WEEKDAY_MAP[m[2]];
+  if (wd === undefined) return null;
+  const ord = m[1] ? parseInt(m[1], 10) : 1;
+  if (ord === 0) return null;
+  const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  let day: number;
+  if (ord > 0) {
+    const firstWd = new Date(Date.UTC(year, month, 1)).getUTCDay();
+    day = 1 + ((wd - firstWd + 7) % 7) + (ord - 1) * 7;
+  } else {
+    const lastWd = new Date(Date.UTC(year, month, daysInMonth)).getUTCDay();
+    day = daysInMonth - ((lastWd - wd + 7) % 7) + (ord + 1) * 7;
+  }
+  if (day < 1 || day > daysInMonth) return null;
+  return new Date(
+    Date.UTC(
+      year,
+      month,
+      day,
+      timeFrom.getUTCHours(),
+      timeFrom.getUTCMinutes(),
+      timeFrom.getUTCSeconds()
+    )
+  );
+}
+
+// Reconcile RECURRENCE-ID overrides. Google exports an edited recurring series
+// as a master VEVENT plus one override VEVENT per changed instance (same UID,
+// carrying RECURRENCE-ID = the original instance time). Without reconciliation
+// the master emits the original slot AND the override emits the moved slot →
+// duplicates. Here we add each overridden original-instant to its master's
+// EXDATEs (so the master skips it) and drop cancelled overrides entirely; the
+// surviving override VEVENTs still emit their own moved time as one-shot events.
+function applyRecurrenceOverrides(raw: RawVEvent[]): RawVEvent[] {
+  const overridden = new Map<string, Set<number>>();
+  for (const ev of raw) {
+    if (ev.uid && ev.recurrenceId) {
+      let set = overridden.get(ev.uid);
+      if (!set) overridden.set(ev.uid, (set = new Set<number>()));
+      set.add(ev.recurrenceId.getTime());
+    }
+  }
+  const result: RawVEvent[] = [];
+  for (const ev of raw) {
+    if (ev.status === "CANCELLED") continue; // deleted instance — emit nothing
+    if (ev.rrule && ev.uid) {
+      const set = overridden.get(ev.uid);
+      if (set) {
+        ev.exdates = ev.exdates ?? [];
+        for (const t of set) ev.exdates.push(new Date(t));
+      }
+    }
+    result.push(ev);
+  }
+  return result;
 }
 
 function expandOccurrences(
@@ -306,26 +398,55 @@ function expandOccurrences(
       cursor = new Date(cursor.getTime() + stepMs[freq] * interval);
     }
   } else if (freq === "MONTHLY" || freq === "YEARLY") {
+    // Honor BYDAY (nth-weekday-of-month, e.g. "2TU" = 2nd Tuesday). Google uses
+    // this for most monthly community meetings. Without BYDAY, fall back to the
+    // same day-of-month/time as DTSTART (prior behaviour).
     let occurrencesEmitted = 0;
-    const cursor = new Date(start.getTime());
     let iterations = 0;
+    // Anchor to the first of DTSTART's month so nth-weekday math is stable.
+    const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+    const stepMonths = freq === "MONTHLY" ? interval : interval * 12;
     while (
       cursor <= windowEnd &&
       occurrencesEmitted < count &&
       out.length < MAX_INSTANCES &&
-      iterations < 200
+      iterations < 1200
     ) {
       iterations++;
       if (until && cursor > until) break;
-      if (cursor >= start && !exdateSet.has(cursor.getTime())) {
-        const cEnd = new Date(cursor.getTime() + duration);
-        if (cEnd >= windowStart && cursor <= windowEnd) {
-          out.push({ start: new Date(cursor.getTime()), end: cEnd });
+      const y = cursor.getUTCFullYear();
+      const mo = cursor.getUTCMonth();
+      const candidates: Date[] = [];
+      if (byday && (freq === "MONTHLY" || mo === start.getUTCMonth())) {
+        for (const token of byday) {
+          const inst = nthWeekdayOfMonthUtc(y, mo, token, start);
+          if (inst) candidates.push(inst);
         }
-        occurrencesEmitted++;
+        candidates.sort((a, b) => a.getTime() - b.getTime());
+      } else if (!byday) {
+        candidates.push(
+          new Date(
+            Date.UTC(
+              y,
+              mo,
+              start.getUTCDate(),
+              start.getUTCHours(),
+              start.getUTCMinutes(),
+              start.getUTCSeconds()
+            )
+          )
+        );
       }
-      if (freq === "MONTHLY") cursor.setUTCMonth(cursor.getUTCMonth() + interval);
-      else cursor.setUTCFullYear(cursor.getUTCFullYear() + interval);
+      for (const c of candidates) {
+        if (c < start) continue;
+        if (until && c > until) continue;
+        if (exdateSet.has(c.getTime())) continue;
+        if (occurrencesEmitted >= count) break;
+        occurrencesEmitted++;
+        const cEnd = new Date(c.getTime() + duration);
+        if (cEnd >= windowStart && c <= windowEnd) out.push({ start: c, end: cEnd });
+      }
+      cursor.setUTCMonth(cursor.getUTCMonth() + stepMonths);
     }
   } else {
     if (end >= windowStart && start <= windowEnd) out.push({ start, end });
@@ -339,11 +460,12 @@ function expandOccurrences(
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  // Service-role only. Constant-time exact key match; NO unverified JWT decode.
-  const svcAuth = authorizeServiceRoleRequest(req);
-  if (!svcAuth.ok) {
+  // Trigger auth: dedicated EVENTS_REFRESH_SECRET (preferred) OR the service-role
+  // key (backward-compatible). Both are constant-time exact matches; no JWT decode.
+  const auth = authorizeRefreshRequest(req);
+  if (!auth.ok) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: svcAuth.status,
+      status: auth.status,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
@@ -433,7 +555,7 @@ Deno.serve(async (req) => {
     const pastCutoff = new Date(now.getTime() - PAST_CUTOFF_DAYS * 24 * 60 * 60 * 1000);
     const windowEnd = new Date(now.getTime() + WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
-    const raw = parseVEvents(text, pastCutoff);
+    const raw = applyRecurrenceOverrides(parseVEvents(text, pastCutoff));
     const out: ParsedEvent[] = [];
     for (const ev of raw) {
       if (!ev.start || !ev.uid) continue;
