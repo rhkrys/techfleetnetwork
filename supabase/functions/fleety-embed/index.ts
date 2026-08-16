@@ -24,6 +24,7 @@ import {
   geminiEmbedUrl,
   parseGeminiEmbedding,
 } from "../_shared/gemini-embed.ts";
+import { buildSpfKbRow, groupSteps, SPF_EMBED_TYPES, type SpfRow } from "./spf-kb.ts";
 
 const BodySchema = z.object({}).passthrough();
 const corsHeaders = {
@@ -238,6 +239,66 @@ serve(
             }
           }
           result.examples = n;
+        }
+
+        // SPF snapshot -> KB (Phase 3): promote spf_entity rows into knowledge_base as
+        // rich, step-oriented text with real …/explore/#item/<slug> deep-links, then
+        // embed. Workshop steps are folded into their workshop row (buildSpfKbRow), so a
+        // single retrieval returns the full how-to. Idempotent: unchanged+embedded rows
+        // are skipped; changed content is re-embedded. Run repeatedly until spf === 0.
+        if (table === "all" || table === "spf") {
+          const { data: stepRows } = await admin
+            .from("spf_entity")
+            .select("entity_type,slug,name,description,data")
+            .eq("entity_type", "workshop_step")
+            .eq("is_active", true);
+          const stepsByWorkshop = groupSteps((stepRows ?? []) as SpfRow[]);
+
+          const { data: rows } = await admin
+            .from("spf_entity")
+            .select("entity_type,slug,name,description,data")
+            .in("entity_type", [...SPF_EMBED_TYPES])
+            .eq("is_active", true)
+            .order("slug", { ascending: true });
+
+          let n = 0;
+          for (const r of (rows ?? []) as SpfRow[]) {
+            if (n >= limit) break;
+            const kb = buildSpfKbRow(r, stepsByWorkshop);
+            if (!kb) continue;
+            // Skip untouched + already-embedded rows (idempotent re-runs).
+            const { data: existing } = await admin
+              .from("knowledge_base")
+              .select("content,embedding_model")
+              .eq("url", kb.url)
+              .maybeSingle();
+            if (
+              existing &&
+              existing.content === kb.content &&
+              existing.embedding_model === GEMINI_EMBED_MODEL_TAG
+            ) {
+              continue;
+            }
+            try {
+              const v = await embedText(`${kb.title}\n\n${kb.content}`);
+              await admin.from("knowledge_base").upsert(
+                {
+                  url: kb.url,
+                  title: kb.title,
+                  content: kb.content,
+                  embedding: vecLiteral(v) as unknown as number[],
+                  embedding_model: GEMINI_EMBED_MODEL_TAG,
+                  embedding_updated_at: new Date().toISOString(),
+                  scraped_at: new Date().toISOString(),
+                },
+                { onConflict: "url" }
+              );
+              n++;
+            } catch (e) {
+              console.error("spf embed fail", r.slug, e);
+            }
+          }
+          result.spf = n;
         }
 
         return new Response(JSON.stringify({ ok: true, embedded: result }), {
