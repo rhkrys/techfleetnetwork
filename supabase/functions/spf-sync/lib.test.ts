@@ -8,7 +8,7 @@ import {
   normalizeRecord,
   SPF_ENTITY_TYPE,
 } from "./lib.ts";
-import { SPF_DATASETS, spfDatasetUrl } from "../_shared/spf/contract.ts";
+import { datasetUrls, SPF_DATASETS } from "../_shared/spf/contract.ts";
 import handoffMap from "../_shared/spf/fixtures/handoff-deliverables-map.sample.json" with { type: "json" };
 
 Deno.test("every pinned dataset has an entity_type mapping", () => {
@@ -23,9 +23,11 @@ Deno.test("entityTypeFor rejects an unknown dataset", () => {
   assertThrows(() => entityTypeFor("nope"));
 });
 
-Deno.test("SSRF guard allows the real pinned SPF URLs", () => {
+Deno.test("SSRF guard allows the real pinned SPF URLs (incl. multi-file datasets)", () => {
   for (const key of Object.keys(SPF_DATASETS)) {
-    assertSpfUrlAllowed(spfDatasetUrl(key)); // throws on failure
+    for (const url of datasetUrls(key)) {
+      assertSpfUrlAllowed(url); // throws on failure
+    }
   }
 });
 

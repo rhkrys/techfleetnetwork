@@ -9,6 +9,7 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  datasetUrls,
   HANDOFF_AUDIENCE_FLAGS,
   HANDOFF_STORY_ARCS,
   SPF_DATASETS,
@@ -98,4 +99,38 @@ Deno.test("spfDatasetUrl builds the pinned v1 path", () => {
     spfDatasetUrl("handoff-deliverables-map"),
     "https://techfleetworks.github.io/skills-and-practices-framework/data/json/framework-data/handoff-deliverables-map.json"
   );
+});
+
+Deno.test("datasetUrls: single framework-data file", () => {
+  assertEquals(datasetUrls("workshops"), [
+    "https://techfleetworks.github.io/skills-and-practices-framework/data/json/framework-data/workshops.json",
+  ]);
+});
+
+Deno.test(
+  "datasetUrls: career-transitioning is a multi-file dataset (8 files, career path)",
+  () => {
+    const urls = datasetUrls("career-transitioning");
+    assertEquals(urls.length, 8);
+    for (const u of urls) {
+      assertStringIncludes(u, "/data/json/career-transitioning/");
+      assert(u.endsWith(".json"));
+    }
+  }
+);
+
+Deno.test("career-transitioning validates leniently (slug only) + tolerates rich fields", () => {
+  const sample = [
+    {
+      slug: "ux-design-from-academia",
+      "Target Field": "UX Design",
+      "Transition From": "Academia",
+      "First Steps": "Build a portfolio piece.",
+      "Foundational Skills to Build": [{ slug: "research", label: "User Research" }],
+    },
+    { slug: "pm-from-consulting" }, // minimal record still valid
+  ];
+  assert(validateRecords("career-transitioning", sample).ok);
+  // Missing slug fails (the one required field).
+  assert(!validateRecords("career-transitioning", [{ "Target Field": "UX Design" }]).ok);
 });

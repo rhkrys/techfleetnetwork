@@ -37,8 +37,13 @@ export const HANDOFF_AUDIENCE_FLAGS = [
 export type SpfRef = { slug: string; label: string };
 
 type DatasetSpec = {
-  /** File under /data/json/framework-data/ (from manifest.json). */
-  file: string;
+  /** Single file under /data/json/framework-data/ (from manifest.json). Use EITHER
+   *  `file` (framework-data) OR `files` (multi-file datasets under another path). */
+  file?: string;
+  /** Multi-file dataset: paths relative to /data/json/ (e.g. career-transitioning/*.json).
+   *  All files share one entity_type and are merged + applied as a SINGLE snapshot swap
+   *  (spf_apply_dataset deletes-then-inserts by entity_type, so per-file swaps would clobber). */
+  files?: string[];
   /** Human primary field (from manifest). */
   primaryField: string;
   /** Scalar fields that MUST be present and non-empty on every record. */
@@ -218,12 +223,44 @@ export const SPF_DATASETS: Record<string, DatasetSpec> = {
     required: ["slug"],
     refArrays: [],
   },
+
+  // Career-transitioning: 8 files (one per target field), all merged under the single
+  // entity_type 'career_transition'. Lenient validation (slug only); the rich fields
+  // (First Steps, Foundational Skills, Tools, Gaps, …) are rendered by fleety-embed/spf-kb.ts.
+  "career-transitioning": {
+    files: [
+      "career-transitioning/Transitioning_into_Agile_Coaching.json",
+      "career-transitioning/Transitioning_into_Business_Analysis.json",
+      "career-transitioning/Transitioning_into_Product_Management.json",
+      "career-transitioning/Transitioning_into_Product_Ownership.json",
+      "career-transitioning/Transitioning_into_Software_Engineering.json",
+      "career-transitioning/Transitioning_into_UX_Design.json",
+      "career-transitioning/Transitioning_into_UX_Research.json",
+      "career-transitioning/Transitioning_into_UX_Writing.json",
+    ],
+    primaryField: "slug",
+    required: ["slug"],
+    refArrays: [],
+  },
 };
 
 export function spfDatasetUrl(entity: string): string {
   const spec = SPF_DATASETS[entity];
   if (!spec) throw new Error(`Unknown SPF dataset: ${entity}`);
+  if (!spec.file) throw new Error(`SPF dataset ${entity} is multi-file; use datasetUrls()`);
   return `${SPF_BASE_URL}/data/json/framework-data/${spec.file}`;
+}
+
+/** All source URLs for a dataset: one for a framework-data `file`, or N for a
+ *  multi-file `files` dataset (paths already relative to /data/json/). */
+export function datasetUrls(entity: string): string[] {
+  const spec = SPF_DATASETS[entity];
+  if (!spec) throw new Error(`Unknown SPF dataset: ${entity}`);
+  if (spec.files && spec.files.length) {
+    return spec.files.map((f) => `${SPF_BASE_URL}/data/json/${f}`);
+  }
+  if (spec.file) return [`${SPF_BASE_URL}/data/json/framework-data/${spec.file}`];
+  throw new Error(`SPF dataset ${entity} has neither file nor files`);
 }
 
 export type ValidationResult = { ok: boolean; errors: string[] };

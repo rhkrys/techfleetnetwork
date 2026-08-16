@@ -29,6 +29,7 @@ export const SPF_ENTITY_TYPE: Record<string, string> = {
   "job-industries": "job_industry",
   "workshop-steps": "workshop_step",
   "workshop-template-sections": "workshop_template_section",
+  "career-transitioning": "career_transition",
 };
 
 // The primaryField is the manifest's key field, but it isn't always the best human "name"

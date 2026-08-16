@@ -9,9 +9,9 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { createEdgeLogger } from "../_shared/logger.ts";
 import { withAuditWrapper } from "../_shared/audit.ts";
 import {
+  datasetUrls,
   SPF_DATASETS,
   SPF_VERSION,
-  spfDatasetUrl,
   validateRecords,
 } from "../_shared/spf/contract.ts";
 import { assertSpfUrlAllowed, entityTypeFor, normalizeDataset } from "./lib.ts";
@@ -154,15 +154,39 @@ serve(
         continue;
       }
       try {
-        const text = await fetchDataset(spfDatasetUrl(entity), requestId);
-        let records: unknown;
-        try {
-          records = JSON.parse(text);
-        } catch {
+        // A dataset is one framework-data file OR many files (career-transitioning):
+        // fetch all, require each to be a JSON array, and MERGE into one record set so
+        // the single per-entity_type atomic swap gets the whole snapshot at once.
+        const urls = datasetUrls(entity);
+        const parts: string[] = [];
+        const merged: Record<string, unknown>[] = [];
+        let parseFailed = false;
+        for (const u of urls) {
+          const text = await fetchDataset(u, requestId);
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(text);
+          } catch {
+            parseFailed = true;
+            break;
+          }
+          if (!Array.isArray(parsed)) {
+            parseFailed = true;
+            break;
+          }
+          parts.push(text);
+          merged.push(...(parsed as Record<string, unknown>[]));
+        }
+        if (parseFailed) {
           consecutiveFailures++;
-          results.push({ entity, status: "fetch_failed", errors: ["payload is not valid JSON"] });
+          results.push({
+            entity,
+            status: "fetch_failed",
+            errors: ["a file payload is not a JSON array"],
+          });
           continue;
         }
+        const records: unknown = merged;
 
         // Contract validation — fail closed (do NOT swap on violation).
         const v = validateRecords(entity, records);
@@ -174,7 +198,7 @@ serve(
         }
 
         const arr = records as Record<string, unknown>[];
-        const checksum = await sha256Hex(text);
+        const checksum = await sha256Hex(parts.join(""));
         const rows = normalizeDataset(entity, arr);
 
         const { data: applied, error } = await supabase.rpc("spf_apply_dataset", {
