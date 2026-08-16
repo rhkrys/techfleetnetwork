@@ -9,7 +9,7 @@ const read = (path: string) => readFileSync(resolve(root, path), "utf8");
  * Guards the "permanent, growing" Fleety response cache (FLEETY-011/012).
  *
  * The cache is what keeps AI cost bounded — a hit serves stored markdown for ~$0
- * and never calls Groq. Two regressions would quietly break it:
+ * and never calls the LLM (OpenRouter/DeepSeek). Two regressions would quietly break it:
  *   1. Re-introducing a time-based TTL (`last_used_at >= now() - interval '…'`)
  *      in a lookup would make the cache stop growing / expire entries.
  *   2. A dimension mismatch (cache column not vector(768)) silently fails every

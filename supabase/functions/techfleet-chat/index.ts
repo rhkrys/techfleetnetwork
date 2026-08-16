@@ -8,6 +8,9 @@ import { scrub as dlpScrub } from "../_shared/dlp.ts";
 import { withAuditWrapper } from "../_shared/audit.ts";
 import { geminiEmbedBody, geminiEmbedUrl, parseGeminiEmbedding } from "../_shared/gemini-embed.ts";
 import { buildSystemPrompt, extractSourceUrls, NO_KNOWLEDGE_DIRECTIVE } from "./prompt.ts";
+// Residency pin for DeepSeek (ADR-0005): the SAME US-provider allow-list the hand-off LLM port
+// uses, imported (not duplicated) so the guarantee can never drift between the two call paths.
+import { US_INFERENCE_PROVIDERS } from "../_shared/llm/port.ts";
 
 const ChatBodySchema = z
   .object({
@@ -41,26 +44,31 @@ const MAX_MESSAGE_LENGTH = 20_000;
 // RPC, so there are no per-isolate full-table scans at scale.
 // D-04: the web-search timeout was removed along with web search.
 
-// ── Groq answer model (the "brain" that writes replies) ──────────────────────
-// Single source of truth so the router + main generation + cost accounting can
-// never drift onto different / deprecated models. `llama-3.3-70b-versatile` is
-// being DEPRECATED by Groq (scheduled shutoff 2026-08-16) — the same silent-
-// breakage pattern that killed retrieval when Google retired an embedding model.
-// `openai/gpt-oss-20b` is Groq's cheapest current high-quality NON-Meta model
-// ($0.075/$0.30 per 1M in/out — half the price of 120b) and its fastest
-// (~1000 tok/s), 131k ctx. Fleety answers from CLOSED RAG data, so retrieval —
-// not model size — dominates answer quality; a grounded 20B model matches 120B
-// here at half the cost. Bump to `openai/gpt-oss-120b` if quality testing ever
-// disagrees (one line). NOT Meta/Llama (deliberate) and NOT the deprecating one.
-// It is reasoning-capable, so we pin reasoning_effort="low": Groq streams any
-// reasoning on a SEPARATE `delta.reasoning` channel (never in `delta.content`,
-// so the client stream stays clean) and "low" protects the p95<3s latency SLO.
-const GROQ_MODEL = "openai/gpt-oss-20b";
-const GROQ_REASONING_EFFORT = "low";
-// Groq list price for gpt-oss-20b ($/token). Used only for the soft cost meter
-// (fleety_record_cost) — tune if Groq re-prices; not a correctness dependency.
-const PRICE_IN_PER_TOKEN = 0.075 / 1_000_000;
-const PRICE_OUT_PER_TOKEN = 0.3 / 1_000_000;
+// ── Answer model: OpenRouter + DeepSeek (owner decision 2026-08-16) ───────────
+// Fleety's "brain" runs on DeepSeek via OpenRouter — NEVER Groq, Llama, or Gemini
+// for generation. Single source of truth so the router + main generation + cost
+// accounting can never drift onto different models. We reuse the hand-off LLM
+// port's OpenRouter conventions (one OpenAI-compatible host, key LLM_API_KEY) and
+// its US-provider residency pin (US_INFERENCE_PROVIDERS) so DeepSeek only ever runs
+// on US-headquartered inference — user chat can contain personal data, same concern
+// as the hand-off tool. Model id is config (FLEETY_LLM_MODEL) so it can move without
+// a code change. DeepSeek has NO `reasoning_effort` param (that was Groq-specific).
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const FLEETY_LLM_MODEL = Deno.env.get("FLEETY_LLM_MODEL") || "deepseek/deepseek-v4-flash-0731";
+// Determinism (owner goal: the same question must not vary over time). temperature 0
+// + a fixed seed remove first-generation drift; the L2/L3 caches + canned answers
+// still provide the strongest guarantee (they replay an identical stored answer).
+const FLEETY_LLM_TEMPERATURE = 0;
+const FLEETY_LLM_SEED = 1;
+// OpenRouter price for deepseek-v4-flash-0731 ($/token) — soft cost meter only
+// (fleety_record_cost), not a correctness dependency. Current effective rate
+// (incl. OpenRouter's ~33%-off promo, confirmed 2026-08-16); standard ≈ $0.09/$0.18 per 1M.
+const PRICE_IN_PER_TOKEN = 0.0603 / 1_000_000;
+const PRICE_OUT_PER_TOKEN = 0.1206 / 1_000_000;
+// OpenRouter routing: pin DeepSeek to US providers (residency); harmless on other hosts.
+const OPENROUTER_PROVIDER = FLEETY_LLM_MODEL.includes("deepseek")
+  ? { only: US_INFERENCE_PROVIDERS, allow_fallbacks: true }
+  : undefined;
 
 /**
  * OWASP AI: Prompt injection detection patterns.
@@ -270,8 +278,8 @@ function isOperationalIntent(i: Intent): boolean {
 }
 
 /**
- * Stage-1 router: a Groq (GROQ_MODEL) forced tool call returning structured
- * intent. Runs in parallel with embedding so it adds zero serial latency.
+ * Stage-1 router: an OpenRouter/DeepSeek (FLEETY_LLM_MODEL) forced tool call returning
+ * structured intent. Runs in parallel with embedding so it adds zero serial latency.
  * Silently falls back to regex (classifyIntent) on any failure. The web-search
  * decision fields are vestigial — web search was removed (D-04) and is ignored.
  */
@@ -280,18 +288,20 @@ async function routeWithModel(
   userMessage: string,
   requestId: string
 ): Promise<RouterDecision | null> {
-  const apiKey = Deno.env.get("GROQ_API_KEY");
+  const apiKey = Deno.env.get("LLM_API_KEY");
   if (!apiKey) return null;
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 2500);
-    const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    const resp = await fetch(OPENROUTER_URL, {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       signal: controller.signal,
       body: JSON.stringify({
-        model: GROQ_MODEL,
-        reasoning_effort: GROQ_REASONING_EFFORT,
+        model: FLEETY_LLM_MODEL,
+        temperature: FLEETY_LLM_TEMPERATURE,
+        seed: FLEETY_LLM_SEED,
+        ...(OPENROUTER_PROVIDER ? { provider: OPENROUTER_PROVIDER } : {}),
         messages: [
           {
             role: "system",
@@ -491,9 +501,9 @@ serve(
         lastUserMessage: lastUserMessage.substring(0, 100),
       });
 
-      const GROQ_API_KEY = Deno.env.get("GROQ_API_KEY");
-      if (!GROQ_API_KEY) {
-        log.error("config", `GROQ_API_KEY is not configured [${requestId}]`, { requestId });
+      const LLM_API_KEY = Deno.env.get("LLM_API_KEY");
+      if (!LLM_API_KEY) {
+        log.error("config", `LLM_API_KEY is not configured [${requestId}]`, { requestId });
         return new Response(JSON.stringify({ error: "AI service is not configured" }), {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -1457,9 +1467,9 @@ serve(
         fewShotContext,
         webContext: webResult.context,
       });
-      log.info("ai", `Sending request to Groq [${requestId}]`, {
+      log.info("ai", `Sending request to OpenRouter (DeepSeek) [${requestId}]`, {
         requestId,
-        model: GROQ_MODEL,
+        model: FLEETY_LLM_MODEL,
         systemPromptLength: fullSystemPrompt.length,
         webSourceCount: webResult.sources.length,
         frameworkContextLength: frameworkContext.length,
@@ -1519,7 +1529,7 @@ serve(
       const estUsd = estTokensIn * PRICE_IN_PER_TOKEN + 4096 * PRICE_OUT_PER_TOKEN * 0.4; // assume 40% of cap
       supabase
         .rpc("fleety_record_cost", {
-          _model: GROQ_MODEL,
+          _model: FLEETY_LLM_MODEL,
           _tier: "B",
           _tokens_in: estTokensIn,
           _tokens_out: Math.round(4096 * 0.4),
@@ -1563,15 +1573,17 @@ serve(
       const maxTokensCap =
         costGuardStep === "medium" ? 2048 : costGuardStep === "hard" ? 3072 : 4096;
 
-      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      const response = await fetch(OPENROUTER_URL, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${GROQ_API_KEY}`,
+          Authorization: `Bearer ${LLM_API_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: GROQ_MODEL,
-          reasoning_effort: GROQ_REASONING_EFFORT, // reasoning stays on delta.reasoning, not delta.content
+          model: FLEETY_LLM_MODEL,
+          temperature: FLEETY_LLM_TEMPERATURE, // determinism: no drift for the same question
+          seed: FLEETY_LLM_SEED,
+          ...(OPENROUTER_PROVIDER ? { provider: OPENROUTER_PROVIDER } : {}), // DeepSeek → US providers
           messages: [{ role: "system", content: fullSystemPrompt }, ...sanitizedMessages],
           stream: true,
           max_tokens: maxTokensCap, // LLM10 + Cost Plan v2 §7

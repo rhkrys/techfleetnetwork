@@ -6,44 +6,63 @@ const root = resolve(__dirname, "../../..");
 const read = (path: string) => readFileSync(resolve(root, path), "utf8");
 
 /**
- * Regression guard for Fleety's ANSWER model (the Groq "brain" that writes
- * replies — distinct from the Gemini embedding model guarded in
+ * Regression guard for Fleety's ANSWER model (the "brain" that writes replies —
+ * distinct from the Gemini embedding model guarded in
  * fleety-embed-provider.smoke.test.ts).
  *
- * `llama-3.3-70b-versatile` is being deprecated by Groq (scheduled shutoff
- * 2026-08-16). Left in place it would fail exactly like the retired embedding
- * model did — a silent HTTP error, then ungrounded/broken answers. PR6 moved
- * every call site (router, main generation, cost accounting, log) onto a single
- * `GROQ_MODEL` constant set to the current production model. These assertions
- * read the source directly (Deno-only edge fn, can't be imported into vitest)
- * and fail loudly if a deprecated model or a hard-coded model string creeps
- * back in.
+ * Owner decision 2026-08-16: generation runs on DeepSeek via OpenRouter — NEVER
+ * Groq, Llama, or Gemini. A single `FLEETY_LLM_MODEL` constant drives every call
+ * site (router, main generation, cost accounting, log). These assertions read the
+ * source directly (Deno-only edge fn, can't be imported into vitest) and fail
+ * loudly if a banned provider/model or a hard-coded model string creeps back in,
+ * or if the determinism params regress.
  */
-describe("fleety answer model (Groq) single source of truth", () => {
+describe("fleety answer model (OpenRouter/DeepSeek) single source of truth", () => {
   const chat = read("supabase/functions/techfleet-chat/index.ts");
 
-  it("FLEETY-MODEL-001: the deprecated llama-3.3-70b answer model is gone from call sites", () => {
-    // A comment documenting the deprecation is fine; a model string passed to
-    // the API is not. Guard the JSON payload form `model: "...llama-3.3-70b..."`.
-    expect(chat).not.toMatch(/model:\s*["']llama-3\.3-70b-versatile["']/);
-    // And the cost-accounting _model field must not pin it either.
-    expect(chat).not.toMatch(/_model:\s*["']llama-3\.3-70b-versatile["']/);
+  it("FLEETY-MODEL-001: no banned provider/model strings reach the API", () => {
+    // The Groq host and Llama/gpt-oss model strings must not be passed to the API.
+    // (A comment naming them as banned is fine; a call/payload is not.)
+    expect(chat).not.toMatch(/api\.groq\.com/);
+    expect(chat).not.toMatch(/model:\s*["'][^"']*llama[^"']*["']/i);
+    expect(chat).not.toMatch(/model:\s*["'][^"']*gpt-oss[^"']*["']/i);
+    // reasoning_effort was Groq-specific; it must not be in any payload anymore.
+    expect(chat).not.toMatch(/reasoning_effort:/);
   });
 
-  it("FLEETY-MODEL-002: a single GROQ_MODEL constant drives every call site", () => {
-    // Defined once, on a current non-deprecated, non-Meta model (gpt-oss-20b or
-    // 120b — both OpenAI open-weight; the deprecating Meta Llama is banned below).
-    expect(chat).toMatch(/const GROQ_MODEL\s*=\s*["']openai\/gpt-oss-(20|120)b["']/);
-    // Router + main generation + cost + log all reference the constant, never a
-    // literal. Expect at least the 4 known call sites to use `GROQ_MODEL`.
-    const uses = chat.match(/\bGROQ_MODEL\b/g) ?? [];
+  it("FLEETY-MODEL-002: a single FLEETY_LLM_MODEL constant (DeepSeek default) drives every call site", () => {
+    // Defined once, env-overridable, defaulting to the decided DeepSeek model.
+    expect(chat).toMatch(
+      /const FLEETY_LLM_MODEL\s*=\s*Deno\.env\.get\(["']FLEETY_LLM_MODEL["']\)\s*\|\|\s*["']deepseek\/[^"']+["']/
+    );
+    // Router + main generation + cost + log all reference the constant, never a literal.
+    const uses = chat.match(/\bFLEETY_LLM_MODEL\b/g) ?? [];
     expect(uses.length).toBeGreaterThanOrEqual(5); // 1 decl + >=4 references
+    // Calls go to the OpenRouter host via a single constant.
+    expect(chat).toMatch(
+      /const OPENROUTER_URL\s*=\s*["']https:\/\/openrouter\.ai\/api\/v1\/chat\/completions["']/
+    );
+    // Key is the shared OpenRouter key (LLM_API_KEY), not GROQ_API_KEY.
+    expect(chat).toMatch(/Deno\.env\.get\(["']LLM_API_KEY["']\)/);
+    expect(chat).not.toMatch(/Deno\.env\.get\(["']GROQ_API_KEY["']\)/);
   });
 
-  it("FLEETY-MODEL-003: reasoning_effort is pinned low to protect the streaming latency SLO", () => {
-    // gpt-oss is reasoning-capable; low effort keeps reasoning off the critical
-    // path so time-to-first-content-token stays within the p95<3s target.
-    expect(chat).toMatch(/const GROQ_REASONING_EFFORT\s*=\s*["']low["']/);
-    expect(chat).toMatch(/reasoning_effort:\s*GROQ_REASONING_EFFORT/);
+  it("FLEETY-MODEL-003: generation is deterministic (temperature 0 + fixed seed)", () => {
+    // Owner goal: the same question must not vary over time. Guard the params so a
+    // future edit can't silently reintroduce sampling drift.
+    expect(chat).toMatch(/const FLEETY_LLM_TEMPERATURE\s*=\s*0\b/);
+    expect(chat).toMatch(/const FLEETY_LLM_SEED\s*=\s*\d+/);
+    expect(chat).toMatch(/temperature:\s*FLEETY_LLM_TEMPERATURE/);
+    expect(chat).toMatch(/seed:\s*FLEETY_LLM_SEED/);
+  });
+
+  it("FLEETY-MODEL-004: DeepSeek calls are pinned to US inference providers (data residency)", () => {
+    // User chat can contain personal data; DeepSeek must only run on US-headquartered
+    // providers — reusing the hand-off port's US_INFERENCE_PROVIDERS allow-list.
+    expect(chat).toMatch(
+      /import\s*\{\s*US_INFERENCE_PROVIDERS\s*\}\s*from\s*["']\.\.\/_shared\/llm\/port\.ts["']/
+    );
+    expect(chat).toMatch(/only:\s*US_INFERENCE_PROVIDERS/);
+    expect(chat).toMatch(/provider:\s*OPENROUTER_PROVIDER/);
   });
 });

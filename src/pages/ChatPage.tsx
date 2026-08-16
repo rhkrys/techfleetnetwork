@@ -1,13 +1,23 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 
-import { Send, Bot, User, Loader2, Volume2, VolumeX, Plus, MessageSquare, Trash2 } from "lucide-react";
+import {
+  Send,
+  Bot,
+  User,
+  Loader2,
+  Volume2,
+  VolumeX,
+  Plus,
+  MessageSquare,
+  Trash2,
+} from "lucide-react";
 import { SafeMarkdown } from "@/components/security/SafeMarkdown";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
-type Msg = { role: "user" | "assistant"; content: string };
+type Msg = { role: "user" | "assistant"; content: string; sources?: string[] };
 type Conversation = { id: string; title: string; updated_at: string };
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/techfleet-chat`;
@@ -15,10 +25,12 @@ const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/techfleet-ch
 async function streamChat({
   messages,
   onDelta,
+  onSources,
   onDone,
 }: {
   messages: Msg[];
   onDelta: (deltaText: string) => void;
+  onSources?: (urls: string[]) => void;
   onDone: () => void;
 }) {
   const resp = await fetch(CHAT_URL, {
@@ -33,6 +45,21 @@ async function streamChat({
   if (!resp.ok) {
     const errData = await resp.json().catch(() => ({}));
     throw new Error(errData.error || `Request failed (${resp.status})`);
+  }
+
+  // D-08: structural citations. The server GUARANTEES the source URLs (navigable
+  // guide/SPF links from the retrieved KB entries) in the X-Fleety-Sources header,
+  // independent of whatever the model wrote. Render these — never rely on the LLM.
+  const srcHeader = resp.headers.get("X-Fleety-Sources");
+  if (srcHeader && onSources) {
+    try {
+      const urls = JSON.parse(srcHeader);
+      if (Array.isArray(urls) && urls.length) {
+        onSources(urls.filter((u): u is string => typeof u === "string"));
+      }
+    } catch {
+      /* header malformed — ignore, the answer still renders */
+    }
   }
 
   if (!resp.body) throw new Error("No response stream");
@@ -85,7 +112,9 @@ async function streamChat({
         const parsed = JSON.parse(jsonStr);
         const content = parsed.choices?.[0]?.delta?.content as string | undefined;
         if (content) onDelta(content);
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
   }
 
@@ -107,6 +136,16 @@ function stripMarkdown(md: string): string {
     .replace(/\n{2,}/g, ". ")
     .replace(/\n/g, " ")
     .trim();
+}
+
+/** Readable label for a source link (host + path, no protocol/trailing slash). */
+function prettyUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    return (u.hostname + u.pathname).replace(/\/$/, "");
+  } catch {
+    return url;
+  }
 }
 
 export default function ChatPage() {
@@ -161,26 +200,31 @@ export default function ChatPage() {
   }, [messages]);
 
   useEffect(() => {
-    return () => { window.speechSynthesis.cancel(); };
+    return () => {
+      window.speechSynthesis.cancel();
+    };
   }, []);
 
-  const toggleSpeak = useCallback((index: number, text: string) => {
-    const synth = window.speechSynthesis;
-    if (speakingIdx === index) {
+  const toggleSpeak = useCallback(
+    (index: number, text: string) => {
+      const synth = window.speechSynthesis;
+      if (speakingIdx === index) {
+        synth.cancel();
+        setSpeakingIdx(null);
+        return;
+      }
       synth.cancel();
-      setSpeakingIdx(null);
-      return;
-    }
-    synth.cancel();
-    const plainText = stripMarkdown(text);
-    const utterance = new SpeechSynthesisUtterance(plainText);
-    utterance.rate = 0.95;
-    utterance.pitch = 1;
-    utterance.onend = () => setSpeakingIdx(null);
-    utterance.onerror = () => setSpeakingIdx(null);
-    setSpeakingIdx(index);
-    synth.speak(utterance);
-  }, [speakingIdx]);
+      const plainText = stripMarkdown(text);
+      const utterance = new SpeechSynthesisUtterance(plainText);
+      utterance.rate = 0.95;
+      utterance.pitch = 1;
+      utterance.onend = () => setSpeakingIdx(null);
+      utterance.onerror = () => setSpeakingIdx(null);
+      setSpeakingIdx(index);
+      synth.speak(utterance);
+    },
+    [speakingIdx]
+  );
 
   const createConversation = async (firstMessage: string): Promise<string | null> => {
     if (!user) return null;
@@ -248,14 +292,17 @@ export default function ChatPage() {
     if (convoId) await saveMessage(convoId, "user", text);
 
     let assistantSoFar = "";
+    let assistantSources: string[] = [];
     const upsertAssistant = (nextChunk: string) => {
       assistantSoFar += nextChunk;
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last?.role === "assistant") {
-          return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: assistantSoFar } : m));
+          return prev.map((m, i) =>
+            i === prev.length - 1 ? { ...m, content: assistantSoFar, sources: assistantSources } : m
+          );
         }
-        return [...prev, { role: "assistant", content: assistantSoFar }];
+        return [...prev, { role: "assistant", content: assistantSoFar, sources: assistantSources }];
       });
     };
 
@@ -263,6 +310,9 @@ export default function ChatPage() {
       await streamChat({
         messages: [...messages, userMsg],
         onDelta: (chunk) => upsertAssistant(chunk),
+        onSources: (urls) => {
+          assistantSources = urls;
+        },
         onDone: async () => {
           setIsLoading(false);
           // Save assistant message
@@ -288,8 +338,16 @@ export default function ChatPage() {
           } flex-col w-full max-h-[35dvh] shrink-0 border rounded-lg bg-card overflow-hidden sm:w-56 sm:max-h-none`}
         >
           <div className="p-3 border-b flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">History</span>
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={startNewChat} aria-label="New chat">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              History
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={startNewChat}
+              aria-label="New chat"
+            >
               <Plus className="h-4 w-4" />
             </Button>
           </div>
@@ -332,8 +390,7 @@ export default function ChatPage() {
       <div className="flex-1 flex flex-col min-w-0">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">Fleety
-            </h1>
+            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">Fleety</h1>
             <p className="text-sm text-muted-foreground mt-1 break-words">
               Ask me anything about Tech Fleet, team practices, workshops, and onboarding.
             </p>
@@ -363,7 +420,8 @@ export default function ChatPage() {
               <Bot className="h-12 w-12 text-muted-foreground/40 mb-4" aria-hidden="true" />
               <h2 className="text-lg font-medium text-muted-foreground">Hi! I'm Fleety</h2>
               <p className="text-sm text-muted-foreground/70 mt-1 max-w-md">
-                I can answer questions about Tech Fleet's community, team practices, workshops, handbooks, and onboarding process. I'll always include links to my sources!
+                I can answer questions about Tech Fleet's community, team practices, workshops,
+                handbooks, and onboarding process. I'll always include links to my sources!
               </p>
               <div className="mt-6 flex flex-wrap gap-2 justify-center">
                 {[
@@ -409,6 +467,27 @@ export default function ChatPage() {
                     <div className="fleety-prose">
                       <SafeMarkdown>{msg.content}</SafeMarkdown>
                     </div>
+                    {msg.sources && msg.sources.length > 0 && (
+                      <div className="mt-3 pt-2 border-t border-border/50">
+                        <p className="text-xs font-semibold text-muted-foreground mb-1">
+                          📚 Sources
+                        </p>
+                        <ul className="space-y-0.5">
+                          {msg.sources.map((url) => (
+                            <li key={url}>
+                              <a
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-primary hover:underline break-all"
+                              >
+                                {prettyUrl(url)}
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                     {!isLoading && msg.content.length > 0 && (
                       <div className="mt-3 pt-2 border-t border-border/50">
                         <Button
@@ -492,7 +571,12 @@ export default function ChatPage() {
               </p>
             )}
           </div>
-          <Button type="submit" disabled={isLoading || !input.trim()} size="icon" aria-label="Send message">
+          <Button
+            type="submit"
+            disabled={isLoading || !input.trim()}
+            size="icon"
+            aria-label="Send message"
+          >
             <Send className="h-4 w-4" />
           </Button>
         </form>

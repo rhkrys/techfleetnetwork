@@ -7,7 +7,7 @@ const read = (path: string) => readFileSync(resolve(root, path), "utf8");
 
 /**
  * Guards FLEETY-014: the L2 exact-match response cache. A verbatim repeat of a
- * prior question must be served with zero Groq call AND without depending on the
+ * prior question must be served with zero LLM (OpenRouter/DeepSeek) call AND without depending on the
  * embedding (so it still hits during an embedding-provider outage). It runs in
  * parallel with embed+router (no added latency) and returns early on a hit.
  * Reads the edge source directly (Deno-only fn).

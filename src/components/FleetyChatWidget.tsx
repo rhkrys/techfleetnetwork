@@ -1,6 +1,20 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { getSessionSafe } from "@/lib/auth/session-port";
-import { X, Send, Bot, User, Loader2, Volume2, VolumeX, Plus, MessageSquare, Trash2, ThumbsUp, ThumbsDown, MessageCircleQuestion } from "lucide-react";
+import {
+  X,
+  Send,
+  Bot,
+  User,
+  Loader2,
+  Volume2,
+  VolumeX,
+  Plus,
+  MessageSquare,
+  Trash2,
+  ThumbsUp,
+  ThumbsDown,
+  MessageCircleQuestion,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { SafeMarkdown } from "@/components/security/SafeMarkdown";
@@ -10,9 +24,26 @@ import { useAuth } from "@/contexts/AuthContext";
 import fleetyIcon from "@/assets/fleety-icon.png";
 
 type ActionChip = { label: string; action_type: string; target_url?: string | null };
-type Msg = { role: "user" | "assistant"; content: string; turnId?: string | null; chips?: ActionChip[]; followups?: string[] };
+type Msg = {
+  role: "user" | "assistant";
+  content: string;
+  turnId?: string | null;
+  chips?: ActionChip[];
+  followups?: string[];
+  sources?: string[];
+};
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/techfleet-chat`;
+
+/** Readable label for a source link (host + path, no protocol/trailing slash). */
+function prettyUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    return (u.hostname + u.pathname).replace(/\/$/, "");
+  } catch {
+    return url;
+  }
+}
 
 /**
  * OWASP LLM02/ASVS V13.2: Use session JWT for API auth, never static keys.
@@ -28,6 +59,7 @@ async function streamChat({
   onTurnId,
   onChips,
   onFollowups,
+  onSources,
   onDone,
 }: {
   messages: Msg[];
@@ -37,6 +69,7 @@ async function streamChat({
   onTurnId: (id: string | null) => void;
   onChips: (chips: ActionChip[]) => void;
   onFollowups: (followups: string[]) => void;
+  onSources: (urls: string[]) => void;
   onDone: () => void;
 }) {
   const session = await getSessionSafe();
@@ -73,7 +106,22 @@ async function streamChat({
       const decoded = decodeURIComponent(escape(atob(chipsHeader)));
       const parsed = JSON.parse(decoded) as ActionChip[];
       if (Array.isArray(parsed)) onChips(parsed.slice(0, 4));
-    } catch { /* ignore malformed header */ }
+    } catch {
+      /* ignore malformed header */
+    }
+  }
+  // D-08: structural citations guaranteed by the server (navigable guide/SPF links
+  // from the retrieved KB entries), independent of what the model wrote.
+  const srcHeader = resp.headers.get("X-Fleety-Sources");
+  if (srcHeader) {
+    try {
+      const urls = JSON.parse(srcHeader);
+      if (Array.isArray(urls) && urls.length) {
+        onSources(urls.filter((u: unknown): u is string => typeof u === "string"));
+      }
+    } catch {
+      /* header malformed — ignore, the answer still renders */
+    }
   }
 
   if (!resp.body) throw new Error("No response stream");
@@ -96,7 +144,10 @@ async function streamChat({
       if (line.startsWith(":") || line.trim() === "") continue;
       if (!line.startsWith("data: ")) continue;
       const jsonStr = line.slice(6).trim();
-      if (jsonStr === "[DONE]") { streamDone = true; break; }
+      if (jsonStr === "[DONE]") {
+        streamDone = true;
+        break;
+      }
       try {
         const parsed = JSON.parse(jsonStr);
         if (parsed?.fleety?.followups && Array.isArray(parsed.fleety.followups)) {
@@ -138,7 +189,9 @@ async function streamChat({
           const content = parsed.choices?.[0]?.delta?.content as string | undefined;
           if (content) onDelta(content);
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
   }
 
@@ -169,7 +222,9 @@ export function FleetyChatWidget() {
   }, [messages]);
 
   useEffect(() => {
-    return () => { window.speechSynthesis.cancel(); };
+    return () => {
+      window.speechSynthesis.cancel();
+    };
   }, []);
 
   useEffect(() => {
@@ -195,7 +250,10 @@ export function FleetyChatWidget() {
 
   // Load messages when conversation changes
   useEffect(() => {
-    if (!activeConvoId) { setMessages([]); return; }
+    if (!activeConvoId) {
+      setMessages([]);
+      return;
+    }
     (async () => {
       const { data } = await supabase
         .from("chat_messages")
@@ -221,12 +279,18 @@ export function FleetyChatWidget() {
 
   const saveMessage = async (convoId: string, role: string, content: string) => {
     await supabase.from("chat_messages").insert({ conversation_id: convoId, role, content });
-    await supabase.from("chat_conversations").update({ updated_at: new Date().toISOString() }).eq("id", convoId);
+    await supabase
+      .from("chat_conversations")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("id", convoId);
   };
 
   const deleteConversation = async (convoId: string) => {
     await supabase.from("chat_conversations").delete().eq("id", convoId);
-    if (activeConvoId === convoId) { setActiveConvoId(null); setMessages([]); }
+    if (activeConvoId === convoId) {
+      setActiveConvoId(null);
+      setMessages([]);
+    }
     await loadConversations();
   };
 
@@ -237,21 +301,24 @@ export function FleetyChatWidget() {
     inputRef.current?.focus();
   };
 
-  const toggleSpeak = useCallback((index: number, text: string) => {
-    const synth = window.speechSynthesis;
-    if (speakingIdx === index) {
+  const toggleSpeak = useCallback(
+    (index: number, text: string) => {
+      const synth = window.speechSynthesis;
+      if (speakingIdx === index) {
+        synth.cancel();
+        setSpeakingIdx(null);
+        return;
+      }
       synth.cancel();
-      setSpeakingIdx(null);
-      return;
-    }
-    synth.cancel();
-    const utterance = new SpeechSynthesisUtterance(text.replace(/[#*_`[\]()]/g, ""));
-    utterance.rate = 0.95;
-    utterance.onend = () => setSpeakingIdx(null);
-    utterance.onerror = () => setSpeakingIdx(null);
-    setSpeakingIdx(index);
-    synth.speak(utterance);
-  }, [speakingIdx]);
+      const utterance = new SpeechSynthesisUtterance(text.replace(/[#*_`[\]()]/g, ""));
+      utterance.rate = 0.95;
+      utterance.onend = () => setSpeakingIdx(null);
+      utterance.onerror = () => setSpeakingIdx(null);
+      setSpeakingIdx(index);
+      synth.speak(utterance);
+    },
+    [speakingIdx]
+  );
 
   const sendText = async (text: string) => {
     text = text.trim();
@@ -279,7 +346,9 @@ export function FleetyChatWidget() {
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last?.role === "assistant") {
-          return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: assistantSoFar, turnId: assistantTurnId } : m));
+          return prev.map((m, i) =>
+            i === prev.length - 1 ? { ...m, content: assistantSoFar, turnId: assistantTurnId } : m
+          );
         }
         return [...prev, { role: "assistant", content: assistantSoFar, turnId: assistantTurnId }];
       });
@@ -293,9 +362,11 @@ export function FleetyChatWidget() {
         onDelta: (chunk) => upsertAssistant(chunk),
         onTurnId: (id) => {
           assistantTurnId = id;
-          setMessages((prev) => prev.map((m, i) =>
-            i === prev.length - 1 && m.role === "assistant" ? { ...m, turnId: id } : m
-          ));
+          setMessages((prev) =>
+            prev.map((m, i) =>
+              i === prev.length - 1 && m.role === "assistant" ? { ...m, turnId: id } : m
+            )
+          );
         },
         onChips: (chips) => {
           setMessages((prev) => {
@@ -312,7 +383,22 @@ export function FleetyChatWidget() {
             if (last?.role === "assistant") {
               return prev.map((m, i) => (i === prev.length - 1 ? { ...m, followups } : m));
             }
-            return [...prev, { role: "assistant", content: "", turnId: assistantTurnId, followups }];
+            return [
+              ...prev,
+              { role: "assistant", content: "", turnId: assistantTurnId, followups },
+            ];
+          });
+        },
+        onSources: (urls) => {
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last?.role === "assistant") {
+              return prev.map((m, i) => (i === prev.length - 1 ? { ...m, sources: urls } : m));
+            }
+            return [
+              ...prev,
+              { role: "assistant", content: "", turnId: assistantTurnId, sources: urls },
+            ];
           });
         },
         onDone: async () => {
@@ -379,7 +465,9 @@ export function FleetyChatWidget() {
   const toggleReason = async (turnId: string, reason: string) => {
     if (!user) return;
     const current = submittedReasons[turnId] ?? [];
-    const next = current.includes(reason) ? current.filter((r) => r !== reason) : [...current, reason];
+    const next = current.includes(reason)
+      ? current.filter((r) => r !== reason)
+      : [...current, reason];
     setSubmittedReasons((m) => ({ ...m, [turnId]: next }));
     const { error } = await supabase
       .from("fleety_message_feedback")
@@ -427,7 +515,6 @@ export function FleetyChatWidget() {
     return () => window.removeEventListener("fleety:open", handler as EventListener);
   }, [openWithQuery]);
 
-
   if (!user) return null;
 
   return (
@@ -451,18 +538,41 @@ export function FleetyChatWidget() {
 
       {/* Side panel */}
       <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent side="right" resizeKey="fleety-chat" className="w-full sm:w-[440px] p-0 flex flex-col">
+        <SheetContent
+          side="right"
+          resizeKey="fleety-chat"
+          className="w-full sm:w-[440px] p-0 flex flex-col"
+        >
           <SheetHeader className="px-4 py-3 border-b shrink-0">
             <SheetTitle className="flex items-center gap-2 justify-between">
               <span className="flex items-center gap-2">
-                <img src={fleetyIcon} alt="" className="h-6 w-6 rounded-full" width={24} height={24} aria-hidden="true" />
+                <img
+                  src={fleetyIcon}
+                  alt=""
+                  className="h-6 w-6 rounded-full"
+                  width={24}
+                  height={24}
+                  aria-hidden="true"
+                />
                 Fleety
               </span>
               <span className="flex items-center gap-1 mr-8">
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowHistory(!showHistory)} aria-label="Toggle history">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => setShowHistory(!showHistory)}
+                  aria-label="Toggle history"
+                >
                   <MessageSquare className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={startNewChat} aria-label="New chat">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={startNewChat}
+                  aria-label="New chat"
+                >
                   <Plus className="h-4 w-4" />
                 </Button>
               </span>
@@ -473,7 +583,9 @@ export function FleetyChatWidget() {
           {showHistory && (
             <div className="border-b max-h-48 overflow-y-auto p-2 space-y-0.5 shrink-0">
               {conversations.length === 0 && (
-                <p className="text-xs text-muted-foreground p-2 text-center">No conversations yet</p>
+                <p className="text-xs text-muted-foreground p-2 text-center">
+                  No conversations yet
+                </p>
               )}
               {conversations.map((c) => (
                 <div
@@ -483,12 +595,18 @@ export function FleetyChatWidget() {
                       ? "bg-primary/10 text-primary font-medium"
                       : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   }`}
-                  onClick={() => { setActiveConvoId(c.id); setShowHistory(false); }}
+                  onClick={() => {
+                    setActiveConvoId(c.id);
+                    setShowHistory(false);
+                  }}
                 >
                   <MessageSquare className="h-3.5 w-3.5 shrink-0" />
                   <span className="truncate flex-1 text-xs">{c.title}</span>
                   <button
-                    onClick={(e) => { e.stopPropagation(); deleteConversation(c.id); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteConversation(c.id);
+                    }}
                     className="opacity-0 group-hover:opacity-100 transition-opacity"
                     aria-label="Delete conversation"
                   >
@@ -512,23 +630,44 @@ export function FleetyChatWidget() {
                 role="button"
                 tabIndex={0}
                 onClick={() => inputRef.current?.focus()}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); inputRef.current?.focus(); } }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    inputRef.current?.focus();
+                  }
+                }}
                 className="flex flex-col items-center justify-center h-full text-center py-8 rounded-lg hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors cursor-text"
                 aria-label="Focus message input to ask Fleety a question"
               >
-                <img src={fleetyIcon} alt="" className="h-16 w-16 opacity-40 mb-4" width={64} height={64} aria-hidden="true" />
-                <p className="text-sm text-muted-foreground">
-                  Ask me anything about Tech Fleet!
-                </p>
+                <img
+                  src={fleetyIcon}
+                  alt=""
+                  className="h-16 w-16 opacity-40 mb-4"
+                  width={64}
+                  height={64}
+                  aria-hidden="true"
+                />
+                <p className="text-sm text-muted-foreground">Ask me anything about Tech Fleet!</p>
                 <p className="text-xs text-muted-foreground/70 mt-1">
                   Tap a suggestion below or type your own question.
                 </p>
-                <div className="mt-4 flex flex-wrap gap-2 justify-center" onClick={(e) => e.stopPropagation()}>
-                  {["What is Tech Fleet?", "How do I get started?", "What workshops are available?"].map((q) => (
+                <div
+                  className="mt-4 flex flex-wrap gap-2 justify-center"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {[
+                    "What is Tech Fleet?",
+                    "How do I get started?",
+                    "What workshops are available?",
+                  ].map((q) => (
                     <button
                       key={q}
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); setInput(q); inputRef.current?.focus(); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setInput(q);
+                        inputRef.current?.focus();
+                      }}
                       className="text-xs px-3 py-1.5 rounded-full border border-border bg-background hover:bg-accent text-foreground transition-colors"
                     >
                       {q}
@@ -539,22 +678,55 @@ export function FleetyChatWidget() {
             )}
 
             {messages.map((msg, i) => (
-              <div key={i} className={`flex gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div
+                key={i}
+                className={`flex gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+              >
                 {msg.role === "assistant" && (
                   <div className="flex-shrink-0 h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center mt-1">
-                    <img src={fleetyIcon} alt="" className="h-5 w-5 rounded-full" width={20} height={20} aria-hidden="true" />
+                    <img
+                      src={fleetyIcon}
+                      alt=""
+                      className="h-5 w-5 rounded-full"
+                      width={20}
+                      height={20}
+                      aria-hidden="true"
+                    />
                   </div>
                 )}
-                <div className={`max-w-[80%] rounded-lg text-sm ${
-                  msg.role === "user"
-                    ? "bg-primary text-primary-foreground px-3 py-2"
-                    : "bg-card border border-border px-3 py-2"
-                }`}>
+                <div
+                  className={`max-w-[80%] rounded-lg text-sm ${
+                    msg.role === "user"
+                      ? "bg-primary text-primary-foreground px-3 py-2"
+                      : "bg-card border border-border px-3 py-2"
+                  }`}
+                >
                   {msg.role === "assistant" ? (
                     <div>
                       <div className="fleety-prose prose-sm">
                         <SafeMarkdown>{msg.content}</SafeMarkdown>
                       </div>
+                      {msg.sources && msg.sources.length > 0 && (
+                        <div className="mt-2 pt-1.5 border-t border-border/50">
+                          <p className="text-[11px] font-semibold text-muted-foreground mb-1">
+                            📚 Sources
+                          </p>
+                          <ul className="space-y-0.5">
+                            {msg.sources.map((url) => (
+                              <li key={url}>
+                                <a
+                                  href={url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[11px] text-primary hover:underline break-all"
+                                >
+                                  {prettyUrl(url)}
+                                </a>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                       {!isLoading && msg.content.length > 0 && (
                         <div className="mt-2 pt-1 border-t border-border/50 flex items-center gap-1 flex-wrap">
                           <Button
@@ -564,7 +736,11 @@ export function FleetyChatWidget() {
                             className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground gap-1"
                             aria-label={speakingIdx === i ? "Stop reading aloud" : "Read aloud"}
                           >
-                            {speakingIdx === i ? <VolumeX className="h-3 w-3" /> : <Volume2 className="h-3 w-3" />}
+                            {speakingIdx === i ? (
+                              <VolumeX className="h-3 w-3" />
+                            ) : (
+                              <Volume2 className="h-3 w-3" />
+                            )}
                             {speakingIdx === i ? "Stop" : "Listen"}
                           </Button>
                           {msg.turnId && (
@@ -594,10 +770,15 @@ export function FleetyChatWidget() {
                                   try {
                                     const { error } = await supabase.rpc("request_human_review", {
                                       _surface: "fleety_chat",
-                                      _context: { turn_id: msg.turnId, snippet: msg.content.slice(0, 500) },
+                                      _context: {
+                                        turn_id: msg.turnId,
+                                        snippet: msg.content.slice(0, 500),
+                                      },
                                     });
                                     if (error) throw error;
-                                    toast.success("Human review requested — we'll reply within 30 days.");
+                                    toast.success(
+                                      "Human review requested — we'll reply within 30 days."
+                                    );
                                   } catch (e) {
                                     toast.error("We couldn't file that request. Please try again.");
                                   }
@@ -619,7 +800,9 @@ export function FleetyChatWidget() {
                           role="group"
                           aria-label="Why wasn't this helpful?"
                         >
-                          <span className="text-[11px] text-muted-foreground self-center mr-1">What was off?</span>
+                          <span className="text-[11px] text-muted-foreground self-center mr-1">
+                            What was off?
+                          </span>
                           {FEEDBACK_REASONS.map((reason) => {
                             const active = (submittedReasons[msg.turnId!] ?? []).includes(reason);
                             return (
@@ -697,7 +880,14 @@ export function FleetyChatWidget() {
             {isLoading && messages[messages.length - 1]?.role !== "assistant" && (
               <div className="flex gap-2 justify-start">
                 <div className="flex-shrink-0 h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center">
-                  <img src={fleetyIcon} alt="" className="h-5 w-5 rounded-full" width={20} height={20} aria-hidden="true" />
+                  <img
+                    src={fleetyIcon}
+                    alt=""
+                    className="h-5 w-5 rounded-full"
+                    width={20}
+                    height={20}
+                    aria-hidden="true"
+                  />
                 </div>
                 <div className="bg-card border border-border rounded-lg px-3 py-2">
                   <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -712,7 +902,9 @@ export function FleetyChatWidget() {
               <textarea
                 ref={inputRef as React.RefObject<HTMLTextAreaElement>}
                 value={input}
-                onChange={(e) => { if (e.target.value.length <= 20000) setInput(e.target.value); }}
+                onChange={(e) => {
+                  if (e.target.value.length <= 20000) setInput(e.target.value);
+                }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
@@ -734,7 +926,13 @@ export function FleetyChatWidget() {
                 }}
               />
             </div>
-            <Button type="submit" disabled={isLoading || !input.trim()} size="icon" className="h-9 w-9" aria-label="Send message">
+            <Button
+              type="submit"
+              disabled={isLoading || !input.trim()}
+              size="icon"
+              className="h-9 w-9"
+              aria-label="Send message"
+            >
               <Send className="h-4 w-4" />
             </Button>
           </form>
