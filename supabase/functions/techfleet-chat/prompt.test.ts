@@ -24,12 +24,12 @@ import {
 // alias map + tone, with NO dynamic content — must stay within this ceiling so
 // runtime KB/context always has headroom. Raising it is a CONSCIOUS decision,
 // never an accident: a bloated base silently steals KB budget at request time.
-// Bumped 2000 -> 2500 (2026-08-16): the Tech Fleet brand-voice block, the STRICT
-// SCOPE / jailbreak-resistance safety rules, and the scannable-formatting guidance
-// are now core required behavior (brand + security), not optional. DeepSeek's
-// 131k-token context easily affords a ~2.4k base alongside retrieved KB context;
-// this ceiling still guards against unbounded prompt creep.
-const TOKEN_CEILING = 2500;
+// Bumped 2000 -> 2500 -> 2800 (2026-08-16): brand-voice + STRICT SCOPE/jailbreak +
+// scannable-formatting + framework-accuracy rules (milestone-not-phase, parallel/non-
+// linear, strict grounding) are all core required behavior, not optional. DeepSeek's
+// 131k-token context easily affords a ~2.6k base alongside retrieved KB context, so
+// this is a headroom bump, not a risk; the ceiling still guards against unbounded creep.
+const TOKEN_CEILING = 2800;
 
 function emptyCtx(overrides: Partial<PromptContext> = {}): PromptContext {
   return {
