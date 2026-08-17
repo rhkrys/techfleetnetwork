@@ -55,6 +55,14 @@ export function collectRuntimeIssues(page: Page): RuntimeIssueCollector {
 
   const onRequestFailed = (request: Request) => {
     const url = request.url();
+    // Only SAME-ORIGIN asset failures signal real app instability. Third-party (cross-origin)
+    // requests — consent/analytics CDNs like CookieYes — are outside our control and flake in
+    // CI (e.g. cdn-cookieyes.com returning net::ERR_ABORTED), so they must not fail the scan.
+    try {
+      if (new URL(url).origin !== new URL(page.url()).origin) return;
+    } catch {
+      return; // unparseable URL or about:blank — not one of our app assets
+    }
     if (!FAILED_REQUEST_PATTERNS.some((pattern) => pattern.test(url))) return;
     errors.push(`request failed: ${url} (${request.failure()?.errorText ?? "unknown"})`);
   };

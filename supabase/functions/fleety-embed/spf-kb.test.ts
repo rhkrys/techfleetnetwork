@@ -9,11 +9,25 @@ import {
   type SpfRow,
 } from "./spf-kb.ts";
 
-Deno.test("spfEntityUrl builds the confirmed #item/<slug> deep-link", () => {
+Deno.test("spfEntityUrl builds a type-disambiguated, still-navigable deep-link", () => {
+  const url = spfEntityUrl("workshop", "rapid-ideation-workshop-template");
   assertEquals(
-    spfEntityUrl("rapid-ideation-workshop-template"),
-    "https://techfleetworks.github.io/skills-and-practices-framework/explore/#item/rapid-ideation-workshop-template"
+    url,
+    "https://techfleetworks.github.io/skills-and-practices-framework/explore/?e=workshop#item/rapid-ideation-workshop-template"
   );
+  // The SPA routes on location.hash, which is everything after '#' — byte-identical to the
+  // slug-only link — so navigation is unchanged while the URL is unique per (type, slug).
+  assertEquals(new URL(url).hash, "#item/rapid-ideation-workshop-template");
+});
+
+Deno.test("spfEntityUrl: same slug across types yields DISTINCT urls (collision fix)", () => {
+  // The bug: a slug-only URL collided distinct entities onto one KB row (data loss + no
+  // convergence). Different types must now produce different urls.
+  const skill = spfEntityUrl("skill", "facilitation");
+  const practice = spfEntityUrl("practice", "facilitation");
+  assert(skill !== practice, "same slug, different type must not collide");
+  // ...but both still open the same underlying entity page (same hash route).
+  assertEquals(new URL(skill).hash, new URL(practice).hash);
 });
 
 Deno.test("parseWorkshopStep pulls the parent workshop slug + ordered step fields", () => {
@@ -72,7 +86,7 @@ Deno.test("buildSpfKbRow folds ordered steps into the workshop row + deep-links 
   };
   const row = buildSpfKbRow(workshop, steps)!;
   assert(row);
-  assertEquals(row.url, spfEntityUrl("rapid-ideation"));
+  assertEquals(row.url, spfEntityUrl("workshop", "rapid-ideation"));
   assertEquals(row.title, "Workshop: Rapid Ideation Workshop");
   // Steps appear in ascending Order (1 before 2), not input order.
   const i1 = row.content.indexOf("Set the context");
@@ -110,7 +124,7 @@ Deno.test("buildSpfKbRow renders a career-transition with a from->into title", (
       "Summary of the Gaps": "You need visual design reps.",
     },
   })!;
-  assertEquals(row.url, spfEntityUrl("ux-design-from-academia"));
+  assertEquals(row.url, spfEntityUrl("career_transition", "ux-design-from-academia"));
   assert(row.title.includes("into UX Design"));
   assert(row.title.includes("from Academia"));
   assert(row.content.includes("First steps: Build a portfolio piece."));

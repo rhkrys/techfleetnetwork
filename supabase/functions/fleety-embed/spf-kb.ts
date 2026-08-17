@@ -8,9 +8,19 @@
 export const SPF_EXPLORE_BASE =
   "https://techfleetworks.github.io/skills-and-practices-framework/explore";
 
-/** Deep-link to a specific SPF entity page (confirmed route: #item/<slug>). */
-export function spfEntityUrl(slug: string): string {
-  return `${SPF_EXPLORE_BASE}/#item/${slug}`;
+/**
+ * Deep-link to a specific SPF entity page, UNIQUE per entity.
+ *
+ * Slugs are NOT unique across entity types (e.g. a `skill` and a `practice` can both be
+ * "facilitation"), and the KB de-dups on `url`. A slug-only URL therefore collided distinct
+ * entities onto one KB row → they overwrote each other (data loss) and re-embedded forever
+ * (the backfill never converged). We disambiguate by putting the entity type in a query param
+ * BEFORE the hash: browsers place everything after `#` in `location.hash`, so the SPA's hash
+ * router still reads exactly `#item/<slug>` — navigation is byte-identical to the slug-only URL,
+ * but the URL is now unique per (type, slug), so every entity gets its own KB row.
+ */
+export function spfEntityUrl(entityType: string, slug: string): string {
+  return `${SPF_EXPLORE_BASE}/?e=${encodeURIComponent(entityType)}#item/${slug}`;
 }
 
 /** A {slug,label} graph ref as SPF emits it (label is what we surface to readers). */
@@ -221,7 +231,7 @@ export function buildSpfKbRow(
   }
 
   const content = `${title}\n${body}`.trim();
-  return { url: spfEntityUrl(row.slug), title, content };
+  return { url: spfEntityUrl(row.entity_type, row.slug), title, content };
 }
 
 /** Group workshop_step rows by their parent workshop slug (for buildSpfKbRow). */
