@@ -995,212 +995,198 @@ serve(
       // genuinely returned nothing, knowledgeContext stays "" and the honesty
       // directive is injected below once all context sources are known.
 
-      // ── Framework graph injection ─────────────────────────────────────
-      // Pull top-N framework nodes matching the user's query and append
-      // their full deduplicated neighborhood to the system context. Lets
-      // Fleety answer relationship questions ("who do I work with as a UX
-      // researcher in an agency?") in a single LLM round-trip.
+      // ── A4: goal-ranked, rich-metadata, 2-hop framework graph injection ──
+      // Replaces the old names-only, arbitrary-first-12 neighbor dump. We anchor on the user's
+      // current question, then ask fw_graph_context for each anchor's most goal-relevant
+      // neighbors (ranked in-DB against the *conversation* goal), WITH each node's teaching
+      // metadata, and expand the strongest neighbors one hop further ("the thing that explains
+      // the thing"). Fleety gets a mentor's map anchored to the goal, not a firehose. The graph
+      // now reads SPF through framework_entity_v; ids match the neighbor graph (2026-08 fix).
       let frameworkContext = "";
-      const MAX_NEIGHBORS_PER_DIR = 12; // was 20
-      const MAX_FRAMEWORK_CONTEXT_BYTES = 8_000; // ~2k tokens hard cap (was 6k)
+      const A4_ANCHORS = 6; // top search hits to anchor on
+      const A4_PER_DIR = 6; // neighbors per direction per anchor (the "mentor, not firehose" cap)
+      const A4_HOP2_NODES = 3; // how many top-scored neighbors get a 2-hop expansion
+      const A4_HOP2_PER_DIR = 4;
+      const MAX_FRAMEWORK_CONTEXT_BYTES = 16_000; // v4-pro has the room (was 8k)
+
+      type FwNode = {
+        type?: string;
+        id?: string;
+        slug?: string;
+        name?: string;
+        description?: string | null;
+        data?: Record<string, unknown>;
+      };
+      type FwNeighbor = FwNode & { dir?: string; rel?: string; score?: number };
+      type FwAnchorCtx = { anchor?: FwNode; neighbors?: FwNeighbor[] };
+
       try {
-        const { data: hits } = await supabase.rpc("search_framework", {
-          p_query: lastUserMessage.slice(0, 500),
-          p_limit: 8,
+        // Anchors come from the PRECISE current question (best exact match); ranking uses the
+        // recent CONVERSATION as the goal, so "what about interviews?" stays anchored to the
+        // thread's intent (e.g. becoming a UX researcher), per owner spec.
+        const searchQuery = lastUserMessage.slice(0, 500);
+        const goalQuery = (
+          messages
+            .filter((m: { role: string; content?: string }) => m.role === "user")
+            .slice(-3)
+            .map((m: { content?: string }) => (m.content || "").trim())
+            .filter(Boolean)
+            .join("  ") || searchQuery
+        ).slice(0, 800);
+
+        const { data: hits, error: searchErr } = await supabase.rpc("search_framework", {
+          p_query: searchQuery,
+          p_limit: A4_ANCHORS,
         });
-        if (Array.isArray(hits) && hits.length > 0) {
-          const sections: string[] = [
-            "\n\nFRAMEWORK GRAPH (authoritative relationships from the Skills & Practices Framework):",
-          ];
-          let totalBytes = sections[0].length;
+        if (searchErr) {
+          log.warn("framework", `search_framework failed [${requestId}]: ${searchErr.message}`, {
+            requestId,
+          });
+        }
+        const anchors = (Array.isArray(hits) ? hits : []) as Array<{
+          entity_type: string;
+          id: string;
+          name: string;
+          slug: string;
+        }>;
 
-          // ─── Verbatim PDF relationship sentences ───────────────
-          // Build distinct unordered entity-type pairs from the search hits;
-          // ask DB for the curator-authored sentences (description +
-          // inverse_description). Quote those verbatim so Fleety never has
-          // to invent phrasing for "skills ↔ deliverables" style questions.
-          const typedHits = hits as Array<{ entity_type: string; id: string; name: string }>;
-          const pairSet = new Set<string>();
-          const pairs: Array<{ a: string; b: string }> = [];
-          for (let i = 0; i < typedHits.length; i++) {
-            for (let j = i + 1; j < typedHits.length; j++) {
-              const a = typedHits[i].entity_type;
-              const b = typedHits[j].entity_type;
-              if (a === b) continue;
-              const k = a < b ? `${a}|${b}` : `${b}|${a}`;
-              if (pairSet.has(k)) continue;
-              pairSet.add(k);
-              pairs.push({ a, b });
-            }
-          }
-          if (pairs.length > 0) {
-            const { data: relRows, error: relErr } = await supabase.rpc("fw_lookup_relationships", {
-              p_pairs: pairs,
-            });
-            if (relErr) {
-              log.warn(
-                "framework",
-                `fw_lookup_relationships failed [${requestId}]: ${relErr.message}`,
-                { requestId }
-              );
-            }
-            const rows = (relRows ?? []) as Array<{
-              a: string;
-              b: string;
-              forward: string;
-              inverse: string | null;
-            }>;
-            if (rows.length > 0) {
-              const verbatim: string[] = [
-                "\nREFERENCE RELATIONSHIP SENTENCES (these are the canonical meanings — preserve the entity names and the relationship verb exactly, but REPHRASE the sentence in your own conversational Fleety voice; do NOT paste them verbatim):",
-              ];
-              for (const r of rows) {
-                verbatim.push(`  • ${r.a} → ${r.b}: "${r.forward}"`);
-                if (r.inverse && r.inverse.trim().length > 0) {
-                  verbatim.push(`  • ${r.b} → ${r.a}: "${r.inverse}"`);
-                }
-              }
-              const block = verbatim.join("\n") + "\n";
-              sections.push(block);
-              totalBytes += block.length;
-            }
-          }
-
-          // Single batched RPC replaces N parallel get_node_neighbors calls.
-          // Cuts DB round-trips from ~8 → 1 per chat turn.
-          const { data: batchData, error: batchErr } = await supabase.rpc(
-            "get_nodes_neighbors_batch",
-            { p_nodes: typedHits.map((h) => ({ type: h.entity_type, id: h.id })) }
-          );
-          if (batchErr) {
+        if (anchors.length > 0) {
+          const { data: ctx1data, error: ctxErr } = await supabase.rpc("fw_graph_context", {
+            p_query: goalQuery,
+            p_anchors: anchors.map((a) => ({ type: a.entity_type, id: a.id })),
+            p_per_dir: A4_PER_DIR,
+          });
+          if (ctxErr) {
             log.warn(
               "framework",
-              `get_nodes_neighbors_batch failed [${requestId}]: ${batchErr.message}`,
+              `fw_graph_context (hop1) failed [${requestId}]: ${ctxErr.message}`,
               { requestId }
             );
           }
-          const batchMap = (batchData ?? {}) as Record<
-            string,
-            {
-              outgoing?: Array<{ rel: string; type: string; name: string }>;
-              incoming?: Array<{ rel: string; type: string; name: string }>;
-            }
-          >;
-          const neighborResults = typedHits.map((hit) => ({
-            hit,
-            data: batchMap[`${hit.entity_type}:${hit.id}`] ?? { outgoing: [], incoming: [] },
-            error: null as { message?: string } | null,
-          }));
-          // ── Bidirectional natural-language label map ──────────────────
-          // Each rel_type is stored once (directed) in framework_edges, but
-          // Fleety must describe both directions in plain, human phrasing
-          // (per the Skills & Practices Framework PDF). The forward label
-          // applies when the searched node is the SOURCE of the edge; the
-          // inverse label applies when it is the TARGET. Cardinality hints
-          // ("one-to-many", "many-to-many") match the PDF wording so the
-          // LLM can quote them verbatim instead of inventing phrasing.
-          type RelLabel = { forward: string; inverse: string };
-          const REL_LABELS: Record<string, RelLabel> = {
-            produces: {
-              forward: "produces (one-to-many) deliverables",
-              inverse:
-                "is produced by — requires one-to-many Technical and Interpersonal Skills to complete",
-            },
-            requires_skill: {
-              forward: "requires (one-to-many) Technical and Interpersonal Skills",
-              inverse:
-                "is required by (one-to-many) deliverables/activities — these skills enable completion",
-            },
-            requires_activity: {
-              forward: "requires (one-to-many) activities to complete",
-              inverse:
-                "is required by (one-to-many) deliverables — this activity contributes to completing them",
-            },
-            uses_tool: {
-              forward: "uses (one-to-many) tools",
-              inverse: "is used by (one-to-many) activities/deliverables as a tool",
-            },
-            uses_practice: {
-              forward: "applies (one-to-many) Team Practices",
-              inverse: "is applied by (one-to-many) duties/activities as a Team Practice",
-            },
-            performed_by: {
-              forward: "is performed by (one-to-many) duties/job titles",
-              inverse: "performs (one-to-many) activities/deliverables",
-            },
-            teaches_skill: {
-              forward: "teaches (one-to-many) Technical and Interpersonal Skills",
-              inverse: "is taught by (one-to-many) workshops/learning experiences",
-            },
-            part_of: {
-              forward: "is part of",
-              inverse: "contains (one-to-many)",
-            },
-            targets_company_type: {
-              forward: "targets (one-to-many) company types",
-              inverse: "is targeted by (one-to-many) duties/activities",
-            },
-            engages_stakeholder: {
-              forward: "engages (one-to-many) stakeholders",
-              inverse: "is engaged by (one-to-many) duties/activities",
-            },
-            related_to: {
-              forward: "is related to",
-              inverse: "is related to",
-            },
-          };
-          const labelFor = (rel: string, dir: "forward" | "inverse"): string =>
-            REL_LABELS[rel]?.[dir] ?? (dir === "forward" ? rel : `is ${rel} by`);
+          const ctx1 = (ctx1data ?? {}) as Record<string, FwAnchorCtx>;
 
-          for (const { hit, data: neighbors, error: nErr } of neighborResults) {
-            if (nErr) {
-              log.warn(
-                "framework",
-                `get_node_neighbors failed for ${hit.entity_type}/${hit.id} [${requestId}]: ${nErr.message}`,
-                { requestId }
-              );
-              continue;
+          // Pick the globally top-scored, de-duplicated neighbors for ONE 2-hop expansion
+          // (skip nodes that are already anchors — they're covered at hop 1).
+          const flat: FwNeighbor[] = [];
+          for (const k of Object.keys(ctx1)) for (const n of ctx1[k].neighbors ?? []) flat.push(n);
+          const anchorKeys = new Set(anchors.map((a) => `${a.entity_type}:${a.id}`));
+          const seen2 = new Set<string>();
+          const hop2Anchors = flat
+            .slice()
+            .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+            .filter((n) => {
+              const key = `${n.type}:${n.id}`;
+              if (!n.type || !n.id || seen2.has(key) || anchorKeys.has(key)) return false;
+              seen2.add(key);
+              return true;
+            })
+            .slice(0, A4_HOP2_NODES)
+            .map((n) => ({ type: n.type as string, id: n.id as string }));
+
+          let ctx2: Record<string, FwAnchorCtx> = {};
+          if (hop2Anchors.length > 0) {
+            const { data: ctx2data } = await supabase.rpc("fw_graph_context", {
+              p_query: goalQuery,
+              p_anchors: hop2Anchors,
+              p_per_dir: A4_HOP2_PER_DIR,
+            });
+            ctx2 = (ctx2data ?? {}) as Record<string, FwAnchorCtx>;
+          }
+
+          // ── Render a mentor's map: rich, goal-ordered, with 2-hop nesting ──
+          const REL_PHRASE: Record<string, { out: string; in: string }> = {
+            produces: { out: "produces", in: "is produced by" },
+            requires_skill: { out: "requires the skill", in: "is a skill required by" },
+            requires_activity: { out: "requires the activity", in: "is an activity required by" },
+            requires_deliverable: {
+              out: "requires the deliverable",
+              in: "is a deliverable required by",
+            },
+            uses_tool: { out: "uses the tool", in: "is a tool used by" },
+            uses_practice: {
+              out: "applies the Team Practice",
+              in: "is a Team Practice applied by",
+            },
+            applies_method: { out: "applies the methodology", in: "is a methodology applied by" },
+            performed_by: { out: "is performed by", in: "performs" },
+            teaches_skill: { out: "teaches the skill", in: "is a skill taught by" },
+            part_of: { out: "is part of", in: "contains" },
+            targets_company_type: { out: "targets the company type", in: "is targeted by" },
+            engages_stakeholder: {
+              out: "engages the stakeholder",
+              in: "is a stakeholder engaged by",
+            },
+            precedes: { out: "comes before", in: "comes after" },
+            related_to: { out: "relates to", in: "relates to" },
+          };
+          const phrase = (rel?: string, dir?: string): string => {
+            const p = REL_PHRASE[rel ?? ""];
+            if (!p) return (rel ?? "relates to").replace(/_/g, " ");
+            return dir === "in" ? p.in : p.out;
+          };
+          const NOISE_KEYS = new Set(["id", "slug", "name", "Data Type", "description"]);
+          const narrative = (data: Record<string, unknown> | undefined, max: number): string => {
+            if (!data) return "";
+            const parts: string[] = [];
+            for (const [k, v] of Object.entries(data)) {
+              if (NOISE_KEYS.has(k)) continue;
+              if (typeof v !== "string" || !v.trim()) continue;
+              parts.push(`${k}: ${v.trim().slice(0, 220)}`);
+              if (parts.length >= max) break;
             }
-            const n = (neighbors ?? {}) as {
-              outgoing?: Array<{ rel: string; type: string; name: string }>;
-              incoming?: Array<{ rel: string; type: string; name: string }>;
-            };
-            // Group by relation, cap per direction, format with bidirectional
-            // human-readable labels so the LLM never has to guess inverse phrasing.
-            const fmtGroup = (
-              edges: Array<{ rel: string; type: string; name: string }> | undefined,
-              dir: "forward" | "inverse"
-            ): string => {
-              if (!Array.isArray(edges) || edges.length === 0) return "";
-              const byRel = new Map<string, string[]>();
-              for (const e of edges.slice(0, MAX_NEIGHBORS_PER_DIR)) {
-                const list = byRel.get(e.rel) ?? [];
-                if (list.length < MAX_NEIGHBORS_PER_DIR) list.push(e.name);
-                byRel.set(e.rel, list);
+            return parts.join(" · ");
+          };
+          const nodeLabel = (t?: string) => (t ?? "").replace(/_/g, " ");
+
+          const sections: string[] = [
+            "\n\nFRAMEWORK GRAPH — authoritative Skills & Practices Framework relationships selected for THIS question.",
+            "Teach the connections that move the learner toward what they asked: pick the few most relevant, explain how each relates to their goal, and ground every relationship and name strictly in this data (never invent one). The relationship verb and direction are authoritative. Weave it into your own mentor voice; do not dump the list.\n",
+          ];
+          let bytes = sections.reduce((s, x) => s + x.length, 0);
+          const hop2Index = new Map<string, FwAnchorCtx>();
+          for (const k of Object.keys(ctx2)) hop2Index.set(k, ctx2[k]);
+
+          for (const a of anchors) {
+            const entry = ctx1[`${a.entity_type}:${a.id}`];
+            if (!entry?.anchor) continue;
+            const an = entry.anchor;
+            const anchorNarr = narrative(an.data, 3);
+            const block: string[] = [
+              `\n▸ ${an.name} [${nodeLabel(an.type)}]`,
+              an.description ? `   ${an.description.slice(0, 300)}` : "",
+              anchorNarr ? `   Key facts — ${anchorNarr}` : "",
+              "   Related (most relevant to the goal first):",
+            ];
+            for (const n of entry.neighbors ?? []) {
+              const arrow = n.dir === "in" ? "←" : "→";
+              const nd = n.description ? ` — ${n.description.slice(0, 200)}` : "";
+              const nNarr = narrative(n.data, 1);
+              block.push(
+                `     ${arrow} ${phrase(n.rel, n.dir)}: ${n.name} [${nodeLabel(n.type)}]${nd}` +
+                  (nNarr ? `\n         (${nNarr})` : "")
+              );
+              // 2-hop: nest the strongest second-level links WITH their own descriptions, so Fleety
+              // can EXPLAIN the second level (build knowledge), not just name it.
+              const sub = hop2Index.get(`${n.type}:${n.id}`);
+              if (sub?.neighbors?.length) {
+                block.push(`         ↳ how ${n.name} connects (relevant to the goal):`);
+                for (const s of sub.neighbors.slice(0, 3)) {
+                  const sd = s.description ? ` — ${s.description.slice(0, 160)}` : "";
+                  block.push(
+                    `             · ${phrase(s.rel, s.dir)} ${s.name} [${nodeLabel(s.type)}]${sd}`
+                  );
+                }
               }
-              const lines: string[] = [];
-              for (const [rel, names] of byRel) {
-                const totalForRel = edges.filter((x) => x.rel === rel).length;
-                const truncated =
-                  totalForRel > names.length ? ` (+${totalForRel - names.length} more)` : "";
-                lines.push(
-                  `  • ${hit.name} ${labelFor(rel, dir)}: ${names.join(", ")}${truncated}`
-                );
-              }
-              return lines.join("\n");
-            };
-            const out = fmtGroup(n.outgoing, "forward");
-            const inc = fmtGroup(n.incoming, "inverse");
-            if (!out && !inc) continue;
-            const block = `\n▸ ${hit.name} (${hit.entity_type}) — both directions:\n${[out, inc].filter(Boolean).join("\n")}\n`;
-            if (totalBytes + block.length > MAX_FRAMEWORK_CONTEXT_BYTES) {
-              sections.push("\n[…additional framework matches truncated to fit context budget]");
+            }
+            const text = block.filter(Boolean).join("\n") + "\n";
+            if (bytes + text.length > MAX_FRAMEWORK_CONTEXT_BYTES) {
+              sections.push("\n[…further framework matches trimmed to fit the context budget]");
               break;
             }
-            sections.push(block);
-            totalBytes += block.length;
+            sections.push(text);
+            bytes += text.length;
           }
-          if (sections.length > 1) frameworkContext = sections.join("");
+          if (sections.length > 2) frameworkContext = sections.join("\n");
         }
       } catch (e) {
         log.warn(
