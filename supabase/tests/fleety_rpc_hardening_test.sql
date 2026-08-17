@@ -17,10 +17,13 @@ SELECT is(
   true, 'fleety_observe_synonym is SECURITY DEFINER');
 
 SELECT ok(
-  (SELECT proconfig FROM pg_proc
-     WHERE oid = 'public.fleety_observe_synonym(text,text,text,int)'::regprocedure)
-    @> ARRAY['search_path='],
-  'fleety_observe_synonym pins search_path to empty (not public)');
+  EXISTS (
+    SELECT 1
+    FROM pg_proc p, unnest(p.proconfig) AS c
+    WHERE p.oid = 'public.fleety_observe_synonym(text,text,text,int)'::regprocedure
+      AND c LIKE 'search_path=%'  -- Postgres stores empty as search_path="" (not search_path=)
+  ),
+  'fleety_observe_synonym pins search_path (not the caller default)');
 
 SELECT ok(
   NOT has_function_privilege('authenticated',
@@ -34,10 +37,13 @@ SELECT is(
   true, 'fleety_load_user_memories is SECURITY DEFINER');
 
 SELECT ok(
-  (SELECT proconfig FROM pg_proc
-     WHERE oid = 'public.fleety_load_user_memories(uuid)'::regprocedure)
-    @> ARRAY['search_path='],
-  'fleety_load_user_memories pins search_path to empty (not public)');
+  EXISTS (
+    SELECT 1
+    FROM pg_proc p, unnest(p.proconfig) AS c
+    WHERE p.oid = 'public.fleety_load_user_memories(uuid)'::regprocedure
+      AND c LIKE 'search_path=%'  -- Postgres stores empty as search_path="" (not search_path=)
+  ),
+  'fleety_load_user_memories pins search_path (not the caller default)');
 
 -- IDOR control: caller-supplied p_user_id is safe ONLY because the fn is not
 -- reachable by the authenticated/anon roles — assert that grant-scoping holds.
