@@ -81,7 +81,8 @@ jobs:
           fetch-depth: 0
 
       - name: Install Supabase CLI
-        uses: supabase/setup-cli@v3
+        # supabase/setup-cli@v3 — SHA-pinned (OWASP CI/CD supply-chain integrity)
+        uses: supabase/setup-cli@46f7f98c7f948ad727d22c1e67fab04c223a0520
         with:
           version: ${{ env.SUPABASE_CLI_VERSION }}
 

@@ -39,7 +39,8 @@ jobs:
             --assertions.categories:seo=warn:0.9 || true
       - name: Upload LHCI reports
         if: always()
-        uses: actions/upload-artifact@v4
+        # actions/upload-artifact v4 — SHA-pinned (matches ci.yml)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: lighthouse-report
           path: .lighthouseci/

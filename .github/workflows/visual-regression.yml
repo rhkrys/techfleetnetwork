@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
-      contents: write
+      contents: write # owasp-allow: push regenerated visual baselines to the PR branch (label-gated)
     env:
       PLAYWRIGHT_VISUAL: "1"
       PLAYWRIGHT_START_SERVER: "1"
@@ -96,14 +96,20 @@ jobs:
 
       - name: Commit regenerated baselines
         if: steps.flags.outputs.update == '1' && github.event_name == 'pull_request'
+        # github.head_ref (fork PR branch name) is attacker-controllable, so it
+        # is routed through env and referenced as "$HEAD_REF" — never
+        # interpolated directly into the shell (OWASP GitHub Actions cheat sheet:
+        # untrusted input → shell injection).
+        env:
+          HEAD_REF: ${{ github.head_ref }}
         run: |
           if [ -n "$(git status --porcelain -- e2e/visual)" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add e2e/visual
             git commit -m "test(visual): update screenshot baselines [skip ci]"
-            git push origin "HEAD:${{ github.head_ref }}"
-            echo "Committed updated baselines to ${{ github.head_ref }}."
+            git push origin "HEAD:$HEAD_REF"
+            echo "Committed updated baselines to $HEAD_REF."
           else
             echo "No baseline changes to commit."
           fi
