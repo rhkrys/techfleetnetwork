@@ -29,7 +29,12 @@ import {
 // linear, strict grounding) are all core required behavior, not optional. DeepSeek's
 // 131k-token context easily affords a ~2.6k base alongside retrieved KB context, so
 // this is a headroom bump, not a risk; the ceiling still guards against unbounded creep.
-const TOKEN_CEILING = 2800;
+// Bumped 2800 -> 3200 (2026-08-17): the answer contract now mandates depth-calibration, an
+// opinionated recommendation, a coaching close (recommended next step + offer to help), the
+// "Where to learn more" top-3-then-rest link hierarchy, C1 no-inline/no-invented-links, and a
+// non-negotiable adherence rule — all owner-required mentor behavior, not optional. v4-pro's
+// 131k context trivially affords a ~3k base; the ceiling still bounds unbounded creep.
+const TOKEN_CEILING = 3200;
 
 function emptyCtx(overrides: Partial<PromptContext> = {}): PromptContext {
   return {
@@ -103,6 +108,38 @@ Deno.test("strict-scope + jailbreak-resistance safety rules are present (regress
     "no code execution / no tools"
   );
 });
+
+Deno.test("answer-depth + coaching-close contract is present (owner mentor rules)", () => {
+  // Depth calibration + no brush-off + opinionated recommendation.
+  assert(/calibrated to the question/i.test(PRACTICAL_CONTRACT), "depth-calibration rule");
+  assert(/never brush off|cop out/i.test(PRACTICAL_CONTRACT), "no brush-off rule");
+  assert(/RECOMMEND/.test(PRACTICAL_CONTRACT), "opinionated recommendation");
+  // Coaching close: explicit next step + offer to help.
+  assert(/Your recommended next step/.test(PRACTICAL_CONTRACT), "recommended-next-step section");
+  assert(/ASK what they would like help with/i.test(PRACTICAL_CONTRACT), "offer-to-help close");
+  // Where to learn more: top-3-then-rest, real links only (C1).
+  assert(/Where to learn more/.test(PRACTICAL_CONTRACT), "where-to-learn-more section");
+  assert(/TOP 3/.test(PRACTICAL_CONTRACT), "top-3 sources first");
+});
+
+Deno.test(
+  "C1 + no-invented-links + no-emoji + adherence rules are present (regression guard)",
+  () => {
+    const base = SYSTEM_PROMPT_BASE;
+    assert(
+      /Links live ONLY in this section, never inline/i.test(base),
+      "C1: links only in section"
+    );
+    assert(/never invent or guess a URL/i.test(base), "no invented/guessed URLs");
+    assert(/Do NOT use emojis/i.test(base), "no-emoji rule present");
+    assert(!base.includes("📚") && !base.includes("🌐"), "no emoji characters in the base prompt");
+    assert(
+      !PRACTICAL_CONTRACT.includes("🎯") && !PRACTICAL_CONTRACT.includes("✅"),
+      "no emoji in contract"
+    );
+    assert(/NON-NEGOTIABLE/.test(base), "adherence rule present");
+  }
+);
 
 Deno.test("practical contract is omitted for non-operational intents", () => {
   const base = buildSystemPrompt(emptyCtx({ practical: false }));
