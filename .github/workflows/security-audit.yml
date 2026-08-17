@@ -1,0 +1,104 @@
+name: Security audit (full-system)
+
+# Nightly + on-demand audit of the ENTIRE codebase. Complements the per-PR
+# `ci / gate` (security-owasp) by re-running the whole-system static audit on a
+# schedule — so drift is caught even when nothing is pushed — and publishing one
+# consolidated report artifact.
+#
+# Secret-free and dependency-free: the OWASP SAST sweep, the 120-sheet coverage
+# gate, and the secret scan are Node built-ins; npm audit reads the lockfile. No
+# `npm ci`, no secrets, so this can never be silently skipped.
+#
+# Hard-fails (turns the run red) on an OWASP SAST regression, a coverage gap, or a
+# committed secret. The dependency audit is report-only (a documented accepted
+# advisory such as quill must not cry wolf nightly) — its full output is in the
+# uploaded artifact.
+
+on:
+  schedule:
+    - cron: "0 7 * * *" # daily 07:00 UTC
+  workflow_dispatch:
+
+# OWASP CI/CD: least privilege.
+permissions:
+  contents: read
+
+concurrency:
+  group: security-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Full-system security audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .nvmrc
+
+      # --- Hard gates (a regression turns the run red) ------------------------
+      - name: OWASP static SAST sweep (whole repo)
+        run: node scripts/pentest/sast.mjs
+
+      - name: OWASP 120-sheet coverage completeness
+        run: node scripts/ci/check-owasp-coverage.mjs
+
+      - name: Committed-secret scan
+        run: npm run scan:secrets
+
+      # --- Report-only dependency audit --------------------------------------
+      - name: Dependency audit (report-only)
+        run: |
+          set +e
+          npm audit --json > npm-audit.json 2>/dev/null
+          echo "::group::Production dependencies (--omit dev)"
+          npm audit --omit dev
+          echo "::endgroup::"
+          echo "::group::All dependencies (incl. dev tooling)"
+          npm audit
+          echo "::endgroup::"
+          exit 0
+
+      # --- Consolidated report artifact --------------------------------------
+      - name: Build consolidated report
+        if: always()
+        run: |
+          {
+            echo "# Full-system security audit"
+            echo
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Run:    ${GITHUB_RUN_ID}"
+            echo
+            echo "The OWASP SAST sweep, 120-sheet coverage gate, and secret scan are"
+            echo "hard gates — if this run is green, all three passed across the whole"
+            echo "repo. Full SAST results: pentest-report/sast.{json,md}. Dependency"
+            echo "posture: npm-audit.json (and the summary below)."
+            echo
+            echo '## Dependency audit summary'
+            echo '```'
+            npm audit 2>&1 | tail -n 20 || true
+            echo '```'
+            echo
+            echo "See docs/security/audit-2026-08-16.md and"
+            echo "docs/security/dependency-advisories.md for the standing posture."
+          } > audit-summary.md
+          cat audit-summary.md
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: security-audit-report
+          path: |
+            audit-summary.md
+            npm-audit.json
+            pentest-report/
+          retention-days: 90
+          if-no-files-found: warn
