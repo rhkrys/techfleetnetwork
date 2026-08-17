@@ -32,7 +32,7 @@ const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const REVIEW_MODEL = Deno.env.get("FLEETY_LLM_MODEL") || "deepseek/deepseek-v4-flash-0731";
+const REVIEW_MODEL = Deno.env.get("FLEETY_LLM_MODEL") || "deepseek/deepseek-v4-pro";
 const FETCH_TIMEOUT_MS = 12_000;
 const MAX_FETCH_BYTES = 2_000_000; // 2 MB cap on fetched material (DoS)
 

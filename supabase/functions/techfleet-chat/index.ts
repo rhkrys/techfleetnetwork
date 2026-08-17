@@ -55,21 +55,31 @@ const MAX_MESSAGE_LENGTH = 20_000;
 // as the hand-off tool. Model id is config (FLEETY_LLM_MODEL) so it can move without
 // a code change. DeepSeek has NO `reasoning_effort` param (that was Groq-specific).
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const FLEETY_LLM_MODEL = Deno.env.get("FLEETY_LLM_MODEL") || "deepseek/deepseek-v4-flash-0731";
+// TWO stages, two tiers (owner decision 2026-08-16):
+//  • ANSWER (stage-2, member-facing prose): DeepSeek V4 Pro — narrative nuance + faithful grounding
+//    (flash was altering retrieved facts, e.g. step time-boxes). Where quality matters.
+//  • ROUTER (stage-1, JSON classification only — intent/off-topic/needs-web/query terms; never prose):
+//    cheap/fast flash. Nuance is irrelevant here, so v4-pro would just add cost+latency for no gain.
+// NEVER Groq/Llama/Gemini for generation. Both ids are config so they move without a code change.
+const FLEETY_LLM_MODEL = Deno.env.get("FLEETY_LLM_MODEL") || "deepseek/deepseek-v4-pro";
+const FLEETY_ROUTER_MODEL =
+  Deno.env.get("FLEETY_ROUTER_MODEL") || "deepseek/deepseek-v4-flash-0731";
 // Determinism (owner goal: the same question must not vary over time). temperature 0
 // + a fixed seed remove first-generation drift; the L2/L3 caches + canned answers
 // still provide the strongest guarantee (they replay an identical stored answer).
 const FLEETY_LLM_TEMPERATURE = 0;
 const FLEETY_LLM_SEED = 1;
-// OpenRouter price for deepseek-v4-flash-0731 ($/token) — soft cost meter only
-// (fleety_record_cost), not a correctness dependency. Current effective rate
-// (incl. OpenRouter's ~33%-off promo, confirmed 2026-08-16); standard ≈ $0.09/$0.18 per 1M.
-const PRICE_IN_PER_TOKEN = 0.0603 / 1_000_000;
-const PRICE_OUT_PER_TOKEN = 0.1206 / 1_000_000;
-// OpenRouter routing: pin DeepSeek to US providers (residency); harmless on other hosts.
-const OPENROUTER_PROVIDER = FLEETY_LLM_MODEL.includes("deepseek")
-  ? { only: US_INFERENCE_PROVIDERS, allow_fallbacks: true }
-  : undefined;
+// Soft cost meter only (fleety_record_cost) — DeepSeek V4 Pro on the US-HQ set; OpenRouter routes to
+// the cheapest serving provider (≈ CoreWeave $1.15/$2.55 · DeepInfra $1.30/$2.60 · Together/Fireworks
+// $1.74/$3.48 per 1M). We record a mid estimate; not a correctness dependency, and router flash
+// tokens are negligible next to this.
+const PRICE_IN_PER_TOKEN = 1.3 / 1_000_000;
+const PRICE_OUT_PER_TOKEN = 2.6 / 1_000_000;
+// DATA RESIDENCY: pin every DeepSeek call to US-HEADQUARTERED providers (US_INFERENCE_PROVIDERS — the
+// same vetted set the hand-off tool uses), so user chat (possible personal data) is never processed
+// under China jurisdiction. All five serve BOTH the answer (v4-pro) and router (flash) models, giving
+// 5-way fallback resilience within the compliant set. Harmless on non-OpenRouter hosts.
+const OPENROUTER_PROVIDER = { only: US_INFERENCE_PROVIDERS, allow_fallbacks: true };
 
 /**
  * OWASP AI: Prompt injection detection patterns.
@@ -341,7 +351,7 @@ async function routeWithModel(
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       signal: controller.signal,
       body: JSON.stringify({
-        model: FLEETY_LLM_MODEL,
+        model: FLEETY_ROUTER_MODEL, // stage-1 classification → cheap/fast flash (not v4-pro)
         temperature: FLEETY_LLM_TEMPERATURE,
         seed: FLEETY_LLM_SEED,
         ...(OPENROUTER_PROVIDER ? { provider: OPENROUTER_PROVIDER } : {}),

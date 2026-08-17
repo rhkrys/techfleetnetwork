@@ -11,11 +11,13 @@ const read = (path: string) => readFileSync(resolve(root, path), "utf8");
  * fleety-embed-provider.smoke.test.ts).
  *
  * Owner decision 2026-08-16: generation runs on DeepSeek via OpenRouter — NEVER
- * Groq, Llama, or Gemini. A single `FLEETY_LLM_MODEL` constant drives every call
- * site (router, main generation, cost accounting, log). These assertions read the
- * source directly (Deno-only edge fn, can't be imported into vitest) and fail
- * loudly if a banned provider/model or a hard-coded model string creeps back in,
- * or if the determinism params regress.
+ * Groq, Llama, or Gemini. TWO model tiers: the ANSWER model (`FLEETY_LLM_MODEL`,
+ * DeepSeek V4 Pro — nuance + faithful grounding) writes the reply; the stage-1
+ * ROUTER (`FLEETY_ROUTER_MODEL`, DeepSeek V4 Flash — cheap JSON classification)
+ * never writes prose. Both are DeepSeek, both env-overridable. These assertions read
+ * the source directly (Deno-only edge fn, can't be imported into vitest) and fail
+ * loudly if a banned provider/model or hard-coded model string creeps back in, if
+ * the tiers collapse to one, or if the determinism params regress.
  */
 describe("fleety answer model (OpenRouter/DeepSeek) single source of truth", () => {
   const chat = read("supabase/functions/techfleet-chat/index.ts");
@@ -30,19 +32,22 @@ describe("fleety answer model (OpenRouter/DeepSeek) single source of truth", () 
     expect(chat).not.toMatch(/reasoning_effort:/);
   });
 
-  it("FLEETY-MODEL-002: a single FLEETY_LLM_MODEL constant (DeepSeek default) drives every call site", () => {
-    // Defined once, env-overridable, defaulting to the decided DeepSeek model.
+  it("FLEETY-MODEL-002: two DeepSeek model constants — v4-pro answers, flash router — drive the calls", () => {
+    // Both env-overridable, both defaulting to a DeepSeek model; the answer tier is the pro model.
     expect(chat).toMatch(
-      /const FLEETY_LLM_MODEL\s*=\s*Deno\.env\.get\(["']FLEETY_LLM_MODEL["']\)\s*\|\|\s*["']deepseek\/[^"']+["']/
+      /const FLEETY_LLM_MODEL\s*=\s*Deno\.env\.get\(["']FLEETY_LLM_MODEL["']\)\s*\|\|\s*["']deepseek\/deepseek-v4-pro["']/
     );
-    // Router + main generation + cost + log all reference the constant, never a literal.
-    const uses = chat.match(/\bFLEETY_LLM_MODEL\b/g) ?? [];
-    expect(uses.length).toBeGreaterThanOrEqual(5); // 1 decl + >=4 references
-    // Calls go to the OpenRouter host via a single constant.
+    expect(chat).toMatch(
+      /const FLEETY_ROUTER_MODEL\s*=\s*Deno\.env\.get\(["']FLEETY_ROUTER_MODEL["']\)\s*\|\|\s*["']deepseek\/[^"']+["']/
+    );
+    // The stage-1 router uses the router model; answer generation uses the answer model constant.
+    expect(chat).toMatch(/model:\s*FLEETY_ROUTER_MODEL/);
+    const answerUses = chat.match(/\bFLEETY_LLM_MODEL\b/g) ?? [];
+    expect(answerUses.length).toBeGreaterThanOrEqual(3); // decl + generation call(s) + cost record
+    // Calls go to the OpenRouter host; key is the shared OpenRouter key, never GROQ.
     expect(chat).toMatch(
       /const OPENROUTER_URL\s*=\s*["']https:\/\/openrouter\.ai\/api\/v1\/chat\/completions["']/
     );
-    // Key is the shared OpenRouter key (LLM_API_KEY), not GROQ_API_KEY.
     expect(chat).toMatch(/Deno\.env\.get\(["']LLM_API_KEY["']\)/);
     expect(chat).not.toMatch(/Deno\.env\.get\(["']GROQ_API_KEY["']\)/);
   });
