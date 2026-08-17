@@ -8,7 +8,7 @@
 -- (ported from the superseded PR #143 — the only part of it not already on main).
 
 BEGIN;
-SELECT plan(15);
+SELECT plan(17);
 
 -- ── fleety_observe_synonym ───────────────────────────────────────────────────
 SELECT is(
@@ -94,6 +94,19 @@ SELECT is(
        AND has_function_privilege('anon', p.oid, 'EXECUTE')),
   0,
   'no fleety_* SECURITY DEFINER function is anon-executable (systemic least-privilege guard)');
+
+-- Admin-gate guard: the two cost RPCs are callable by `authenticated` (the admin panel calls them
+-- with a user JWT), so their protection is an IN-FUNCTION has_role(auth.uid(),'admin') check that
+-- raises for non-admins. Assert that gate is present in the body so a refactor can't drop it and
+-- expose aggregate cost data to ordinary members.
+SELECT ok(
+  (SELECT prosrc FROM pg_proc
+     WHERE oid = 'public.fleety_cost_projection()'::regprocedure) LIKE '%has_role%',
+  'fleety_cost_projection self-gates on admin (has_role check in body)');
+SELECT ok(
+  (SELECT prosrc FROM pg_proc
+     WHERE oid = 'public.fleety_top_expensive_turns(integer)'::regprocedure) LIKE '%has_role%',
+  'fleety_top_expensive_turns self-gates on admin (has_role check in body)');
 
 SELECT * FROM finish();
 ROLLBACK;
