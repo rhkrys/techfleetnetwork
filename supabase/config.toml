@@ -342,3 +342,5 @@ project_id = "pzvqxdgoztbfikfuifix"
     verify_jwt = true
   [functions.guide-ingest]
     verify_jwt = false
+  [functions.fleety-review]
+    verify_jwt = true

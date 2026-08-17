@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-16T22:35:22.404Z",
+  "generated_at": "2026-08-16T22:54:56.980Z",
   "functions": [
     {
       "name": "admin-purge-auth-user",
@@ -216,6 +216,13 @@
       "verify_jwt": false,
       "kind": "cron",
       "critical": false,
+      "declared": true
+    },
+    {
+      "name": "fleety-review",
+      "verify_jwt": true,
+      "kind": "auth",
+      "critical": true,
       "declared": true
     },
     {
