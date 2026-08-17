@@ -44,6 +44,7 @@ function emptyCtx(overrides: Partial<PromptContext> = {}): PromptContext {
     frameworkContext: "",
     fewShotContext: "",
     webContext: "",
+    materialContext: "",
     ...overrides,
   };
 }
@@ -132,6 +133,7 @@ Deno.test("assembly order is byte-for-byte faithful to the original inline promp
     frameworkContext: "<<FRAMEWORK>>",
     fewShotContext: "<<FEWSHOT>>",
     webContext: "<<WEB>>",
+    materialContext: "<<MATERIAL>>",
   });
   const expected =
     SYSTEM_PROMPT_BASE +
@@ -146,7 +148,8 @@ Deno.test("assembly order is byte-for-byte faithful to the original inline promp
     ctx.knowledgeContext +
     ctx.frameworkContext +
     ctx.fewShotContext +
-    ctx.webContext;
+    ctx.webContext +
+    ctx.materialContext;
   assertEquals(buildSystemPrompt(ctx), expected);
 });
 

@@ -144,6 +144,12 @@ export interface PromptContext {
   fewShotContext: string;
   /** Web-result block (currently always "" — web search removed, D-04). */
   webContext: string;
+  /**
+   * Member-shared material under review (a fetched Figma/doc link), pre-framed by the caller
+   * as UNTRUSTED DATA. Empty for normal turns. Prompt-injection defense: the framing header
+   * tells the model this is content to review + discuss, never instructions to follow.
+   */
+  materialContext: string;
 }
 
 /**
@@ -165,6 +171,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     ctx.knowledgeContext +
     ctx.frameworkContext +
     ctx.fewShotContext +
-    ctx.webContext
+    ctx.webContext +
+    ctx.materialContext
   );
 }

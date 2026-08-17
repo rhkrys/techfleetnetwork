@@ -9,6 +9,11 @@
 // holds the SSRF allow-list, input validation, and the prompt builder that frames the
 // fetched material as UNTRUSTED DATA. No I/O here — the handler does the fetch/DB/LLM.
 
+// SSRF allow-list + guard now live in the shared module so fleety-review and techfleet-chat
+// (in-chat "review my link") share ONE allow-list and can't drift. Re-exported here under the
+// original names so this module's public API + tests are unchanged.
+import { ALLOWED_MATERIAL_HOSTS, assertMaterialUrlAllowed } from "../_shared/material-fetch.ts";
+
 export type ReviewTargetType = "deliverable" | "workshop" | "project_milestone";
 export type MaterialType = "figma" | "url" | "text";
 
@@ -18,43 +23,12 @@ export type ReviewInput = {
 };
 
 /** Hosts we will fetch a member's material from. NOTHING else (SSRF allow-list). */
-export const REVIEW_ALLOWED_HOSTS = [
-  "figma.com",
-  "www.figma.com",
-  "guide.techfleet.org",
-  "techfleetworks.github.io",
-] as const;
+export const REVIEW_ALLOWED_HOSTS = ALLOWED_MATERIAL_HOSTS;
 
-const IP_LITERAL = /^\d{1,3}(\.\d{1,3}){3}$|:/; // IPv4 or anything with a colon (IPv6)
 const MAX_MATERIAL_CHARS = 40_000; // cap extracted/pasted material before it reaches the LLM
-const MAX_URL_LEN = 2048;
 
-/**
- * SSRF guard for a member-supplied material URL. Allow ONLY https to the pinned host
- * allow-list (figma.com + its subdomains, and Tech Fleet's own domains). Reject IP-literal
- * hosts outright (defeats metadata/private-range tricks) and any non-allow-listed host.
- * Throws on violation; the caller MUST also fetch with redirect:"error".
- */
-export function assertReviewUrlAllowed(url: string): void {
-  if (typeof url !== "string" || url.length > MAX_URL_LEN) {
-    throw new Error("SSRF: invalid or oversized URL");
-  }
-  let u: URL;
-  try {
-    u = new URL(url);
-  } catch {
-    throw new Error(`SSRF: invalid URL: ${url}`);
-  }
-  if (u.protocol !== "https:") throw new Error(`SSRF: must be https (${u.protocol})`);
-  if (u.username || u.password) throw new Error("SSRF: credentials in URL not allowed");
-  const host = u.hostname.toLowerCase();
-  if (IP_LITERAL.test(host)) throw new Error(`SSRF: IP-literal host not allowed: ${host}`);
-  const allowed =
-    REVIEW_ALLOWED_HOSTS.includes(host as (typeof REVIEW_ALLOWED_HOSTS)[number]) ||
-    host === "figma.com" ||
-    host.endsWith(".figma.com");
-  if (!allowed) throw new Error(`SSRF: host not allow-listed: ${host}`);
-}
+/** SSRF guard for a member-supplied material URL (see _shared/material-fetch.ts). */
+export const assertReviewUrlAllowed = assertMaterialUrlAllowed;
 
 export type ValidationResult = { ok: true; input: ReviewInput } | { ok: false; error: string };
 

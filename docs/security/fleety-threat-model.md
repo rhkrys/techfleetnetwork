@@ -44,9 +44,17 @@ feature adopting it.)
 **G3 — Tighten chat CORS (optional).** Restrict `Access-Control-Allow-Origin` to the app origin(s)
 instead of `*`. Low risk (endpoint is JWT-authed), do if cheap.
 
-## Deliverable-review feature — required controls (🔭, next PR, do NOT open before these)
+## Deliverable-review feature — required controls (✅ IMPLEMENTED)
 
-Pasting a Figma/doc/URL is the SSRF + injection + DoS surface we are hardening for. Non-negotiables:
+**Status:** shipped as the `fleety-review` endpoint (#214) AND folded into the chat itself — a member
+pastes an allow-listed link in the normal Fleety chat and Fleety reviews it in-thread. Both paths
+share ONE SSRF allow-list + bounded fetch in `_shared/material-fetch.ts` (no duplicate to drift). The
+chat path: detects allow-listed URLs (`extractAllowedUrls`, max 2), fetches bounded/no-redirect
+(`fetchMaterialText`, 2 MB / 12 s), injects as a delimited **MEMBER-SHARED MATERIAL UNDER REVIEW
+(UNTRUSTED DATA)** prompt slot, and **bypasses the L2/L3/canned caches** (content-specific answer).
+Behavioral SSRF cases: `_shared/material-fetch.test.ts`; wiring guard: `fleety-chat-material.smoke.test.ts`.
+
+Non-negotiables (all satisfied by the shared module + chat wiring):
 
 - **SSRF allow-list**: fetch ONLY `*.figma.com` / `figma.com` and Tech Fleet's own domains
   (`guide.techfleet.org`, `techfleetworks.github.io`). https-only, `redirect:"error"`, block private/

@@ -34,7 +34,8 @@ describe("fleety L2 exact-match cache", () => {
   });
 
   it("FLEETY-014: an exact hit returns early with a distinct cache header, before generation", () => {
-    expect(chat).toMatch(/if \(exactHit\)/);
+    // `if (exactHit ...)` — may carry an added guard (e.g. `&& !hasMaterial`) but still returns early.
+    expect(chat).toMatch(/if \(exactHit\b/);
     expect(chat).toMatch(/"X-Fleety-Cache":\s*"hit-exact"/);
     // Served via the shared cache SSE replay (same UX as L3).
     expect(chat).toMatch(/return new Response\(buildCacheSSEStream\(exactHit\.response_md\)/);
@@ -44,7 +45,7 @@ describe("fleety L2 exact-match cache", () => {
     // Slice the exact-hit block only (up to the L3 semantic-cache marker) and
     // assert it records COST but does NOT also call record_hit — the
     // fleety_cache_lookup RPC already did SET hits = hits + 1.
-    const start = chat.indexOf("if (exactHit)");
+    const start = chat.indexOf("if (exactHit");
     const end = chat.indexOf("L3: Semantic response cache", start);
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
