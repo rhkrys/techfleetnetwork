@@ -41,6 +41,44 @@ function toAbsolute(href: string): string | null {
   }
 }
 
+/**
+ * A1: split a page's Markdown into embeddable chunks. fleety-embed only vectorises the first ~8k
+ * chars of a KB row, so a long handbook page was half-unsearchable. Chunk on blank-line (paragraph)
+ * boundaries, keeping each chunk <= maxChars so the whole page becomes searchable across rows. A
+ * heading-led paragraph starts a new chunk when possible so chunks stay topically coherent.
+ */
+export function chunkMarkdown(md: string, maxChars = 5500): string[] {
+  const text = (md || "").trim();
+  if (!text) return [];
+  if (text.length <= maxChars) return [text];
+  const paras = text.split(/\n{2,}/);
+  const chunks: string[] = [];
+  let cur = "";
+  const flush = () => {
+    if (cur.trim()) chunks.push(cur.trim());
+    cur = "";
+  };
+  for (const p of paras) {
+    // A paragraph bigger than the budget is hard-split so no chunk ever exceeds maxChars.
+    if (p.length > maxChars) {
+      flush();
+      for (let i = 0; i < p.length; i += maxChars) chunks.push(p.slice(i, i + maxChars));
+      continue;
+    }
+    if (cur && cur.length + 2 + p.length > maxChars) flush();
+    // Prefer starting a fresh chunk at a heading once the current one has real content.
+    if (cur && /^#{1,6}\s/.test(p) && cur.length > maxChars * 0.5) flush();
+    cur = cur ? `${cur}\n\n${p}` : p;
+  }
+  flush();
+  return chunks;
+}
+
+/** The chunk key/url for chunk i of a page: chunk 0 keeps the page url; later chunks get #pN. */
+export function chunkUrl(pageUrl: string, i: number): string {
+  return i === 0 ? pageUrl : `${pageUrl}#p${i + 1}`;
+}
+
 /** The Markdown URL for a guide page: strip trailing slash, append .md if absent. */
 export function markdownUrlFor(pageUrl: string): string {
   const u = new URL(pageUrl);

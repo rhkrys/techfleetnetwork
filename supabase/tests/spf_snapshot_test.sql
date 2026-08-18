@@ -11,10 +11,12 @@ SELECT has_table('public', 'spf_project_type_map', 'spf_project_type_map exists'
 SELECT has_table('public', 'spf_project_phase_map', 'spf_project_phase_map exists');
 SELECT has_function('public', 'spf_apply_dataset', 'atomic-swap RPC exists');
 
--- ── spf_entity mirrors the framework_entity_v 9-col contract (+ spf_version) ──
+-- ── spf_entity mirrors the framework_entity_v 9-col contract (+ spf_version, + search_tsv) ──
+-- search_tsv is a STORED generated column (precomputed FTS vector, derived from name+description) added
+-- for fw_graph_context ranking perf (migration 20260817230000) — not part of the swap payload.
 SELECT columns_are(
   'public', 'spf_entity',
-  ARRAY['entity_type','id','slug','name','description','category','data','is_active','updated_at','spf_version'],
+  ARRAY['entity_type','id','slug','name','description','category','data','is_active','updated_at','spf_version','search_tsv'],
   'spf_entity has exactly the snapshot columns'
 );
 

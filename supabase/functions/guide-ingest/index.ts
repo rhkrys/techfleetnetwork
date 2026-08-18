@@ -10,7 +10,22 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { withAuditWrapper } from "../_shared/audit.ts";
 import { authorizeServiceRoleRequest } from "../_shared/service-role-auth.ts";
-import { assertGuideUrlAllowed, GUIDE_LLMS_TXT, markdownUrlFor, parseLlmsTxt } from "./lib.ts";
+import {
+  assertGuideUrlAllowed,
+  chunkMarkdown,
+  chunkUrl,
+  GUIDE_LLMS_TXT,
+  markdownUrlFor,
+  parseLlmsTxt,
+} from "./lib.ts";
+
+/** SHA-256 hex of the full page markdown — the change-detector across a page's chunk rows. */
+async function hashText(s: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -101,34 +116,42 @@ serve(
 
       for (const page of pages) {
         try {
-          const md = await fetchGuideText(markdownUrlFor(page.url));
-          const content = md.slice(0, MAX_CONTENT_CHARS);
+          const md = (await fetchGuideText(markdownUrlFor(page.url))).slice(0, MAX_CONTENT_CHARS);
+          // A1: split long pages into embeddable chunks (fleety-embed only vectorises ~8k/row), so a
+          // whole handbook page becomes searchable across rows instead of half-lost.
+          const chunks = chunkMarkdown(md);
+          if (chunks.length === 0) {
+            unchanged++;
+            continue;
+          }
+          const hash = await hashText(md);
 
-          // Skip untouched pages so we don't needlessly re-embed unchanged content.
+          // Skip untouched pages (hash equality) so we don't needlessly re-embed unchanged content.
           const { data: existing } = await admin
             .from("knowledge_base")
-            .select("id, content")
+            .select("content_hash")
             .eq("url", page.url)
             .maybeSingle();
-
-          if (existing && existing.content === content) {
+          if (existing && existing.content_hash === hash) {
             unchanged++;
             continue;
           }
 
-          // New/changed page: upsert and NULL the embedding so the fleety-embed
-          // backfill re-vectorises it into the current gemini-embedding-001 space.
-          const row = {
-            url: page.url,
-            title: page.title,
-            content,
+          // New/changed page: clear stale chunk rows (#p2+) in case the chunk count shrank, then
+          // upsert every chunk with embedding NULLed so the fleety-embed backfill re-vectorises them.
+          await admin.from("knowledge_base").delete().like("url", `${page.url}#p%`);
+          const rows = chunks.map((chunk, i) => ({
+            url: chunkUrl(page.url, i),
+            title: i === 0 ? page.title : `${page.title} (part ${i + 1})`,
+            content: chunk,
+            content_hash: hash,
             embedding: null as unknown as number[] | null,
             embedding_model: null as string | null,
             scraped_at: new Date().toISOString(),
-          };
+          }));
           const { error: upErr } = await admin
             .from("knowledge_base")
-            .upsert(row, { onConflict: "url" });
+            .upsert(rows, { onConflict: "url" });
           if (upErr) throw new Error(upErr.message);
           if (existing) updated++;
           else added++;

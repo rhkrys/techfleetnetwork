@@ -35,6 +35,8 @@ Say plainly what to do or what is true. Be opinionated: when there are options, 
 ## How it works
 Teach it. Explain the moving parts and, using the FRAMEWORK GRAPH, how the related pieces connect to THIS person's goal — enough to build real understanding, still plain-spoken (7th-to-9th-grade). Keep this brief only when the ask is truly simple.
 
+ALWAYS JUSTIFY (this is what makes you a mentor, not a lookup): for every recommendation or claim, give a clean, precise WHY grounded in the framework — the relationship MEANINGS ("What these relationships MEAN") and the specific edges in the FRAMEWORK GRAPH. Say *because the framework connects X to Y this way*, not a vague "it's important." One tight sentence of reasoning per point; never hand-wave, never pad.
+
 ## Next steps
 A short numbered list of concrete actions, each starting with a verb, tailored to USER CONTEXT or a PLAYBOOK when present.
 
@@ -104,12 +106,52 @@ export function extractSourceUrls(hits: Array<{ url?: string | null }>, limit = 
     const u = h?.url;
     if (typeof u !== "string") continue;
     if (!/^https?:\/\//i.test(u)) continue;
-    if (seen.has(u)) continue;
-    seen.add(u);
-    out.push(u);
+    // A1: chunked handbook pages are stored as url#p2, url#p3… — collapse them back to the page so
+    // the Sources list links the page once, not one link per chunk.
+    const pageU = u.replace(/#p\d+$/, "");
+    if (seen.has(pageU)) continue;
+    seen.add(pageU);
+    out.push(pageU);
     if (out.length >= limit) break;
   }
   return out;
+}
+
+/**
+ * A2 query expansion. Retrieval + graph ranking score by lexical match (pg_trgm + FTS), so an entity
+ * named "research-plan" scores ~0 against a query that says "discovery" — even though it's central to
+ * discovery — and gets crowded out. This maps SPF concepts to their vocabulary so the ranker sees the
+ * connection. Pure + deterministic (owner determinism rule); extend the map as the framework grows.
+ * Applied to the anchor-search query AND the graph-ranking goal, never shown to the user.
+ */
+export const SPF_SYNONYMS: Record<string, string> = {
+  discovery:
+    "research user research interviews insights problem validation empathy personas synthesis analysis",
+  research: "interviews surveys usability synthesis analysis findings insights personas discovery",
+  "talking to users": "user research interviews usability discovery",
+  interviews: "user research discovery moderating usability qualitative",
+  requirements: "epics features user stories acceptance criteria backlog refinement",
+  scope: "prioritization moscow release backlog planning estimation",
+  vision: "strategy goals north star problem statement roadmap",
+  launch: "release go to market deployment rollout",
+  intake: "kickoff onboarding expectations client working agreements",
+  practices: "team practices mindset habits maturity psychological safety shared ownership",
+  career: "transition foundational skills first steps tools methodologies duties",
+  workshop: "template facilitation steps activities deliverable",
+};
+
+/**
+ * Expand a query with SPF synonyms so lexically-different but conceptually-central entities rank up.
+ * Appends the expansion terms for every trigger phrase the text contains. Deterministic; capped.
+ */
+export function expandQuery(text: string): string {
+  const lc = (text || "").toLowerCase();
+  const extra: string[] = [];
+  for (const [trigger, terms] of Object.entries(SPF_SYNONYMS)) {
+    if (lc.includes(trigger)) extra.push(terms);
+  }
+  if (extra.length === 0) return text;
+  return `${text} ${extra.join(" ")}`.slice(0, 1000);
 }
 
 /**

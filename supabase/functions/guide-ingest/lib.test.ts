@@ -1,7 +1,40 @@
 // Unit tests for the pure core of supabase/functions/guide-ingest (SSRF guard,
 // llms.txt parser, markdown-URL derivation). No network — runs in deno-check CI.
 import { assert, assertEquals, assertThrows } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { assertGuideUrlAllowed, GUIDE_ORIGIN, markdownUrlFor, parseLlmsTxt } from "./lib.ts";
+import {
+  assertGuideUrlAllowed,
+  chunkMarkdown,
+  chunkUrl,
+  GUIDE_ORIGIN,
+  markdownUrlFor,
+  parseLlmsTxt,
+} from "./lib.ts";
+
+Deno.test("chunkMarkdown: short text is one chunk; long text splits under the budget (A1)", () => {
+  assertEquals(chunkMarkdown(""), []);
+  assertEquals(chunkMarkdown("short page"), ["short page"]);
+  const para = "para text here.";
+  const long = Array.from({ length: 800 }, () => para).join("\n\n"); // ~12k chars
+  const chunks = chunkMarkdown(long, 5500);
+  assert(chunks.length > 1, "long page splits into multiple chunks");
+  for (const c of chunks) assert(c.length <= 5500, "no chunk exceeds the budget");
+  // no content lost (paragraph count preserved across chunks)
+  const rejoined = chunks.join("\n\n");
+  assertEquals(rejoined.split(para).length - 1, 800, "every paragraph survives chunking");
+});
+
+Deno.test("chunkMarkdown: a single over-budget paragraph is hard-split", () => {
+  const huge = "x".repeat(12000);
+  const chunks = chunkMarkdown(huge, 5500);
+  assert(chunks.length >= 3, "one giant paragraph is hard-split");
+  for (const c of chunks) assert(c.length <= 5500);
+});
+
+Deno.test("chunkUrl: chunk 0 keeps the page url; later chunks get #pN", () => {
+  assertEquals(chunkUrl("https://guide.techfleet.org/x", 0), "https://guide.techfleet.org/x");
+  assertEquals(chunkUrl("https://guide.techfleet.org/x", 1), "https://guide.techfleet.org/x#p2");
+  assertEquals(chunkUrl("https://guide.techfleet.org/x", 4), "https://guide.techfleet.org/x#p5");
+});
 
 Deno.test("assertGuideUrlAllowed accepts https guide URLs, rejects everything else (SSRF)", () => {
   assertGuideUrlAllowed(`${GUIDE_ORIGIN}/get-started/welcome`);

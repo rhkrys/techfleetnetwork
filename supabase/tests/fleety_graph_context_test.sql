@@ -9,7 +9,7 @@
 -- that revived graph injection); (4) the edge map covers career_transition (the coverage extension).
 
 BEGIN;
-SELECT plan(13);
+SELECT plan(19);
 
 -- ── Security ─────────────────────────────────────────────────────────────────
 SELECT is(
@@ -44,12 +44,22 @@ INSERT INTO public.spf_entity (entity_type, id, slug, name, description, data, i
   ('skill', 'aaaaaaaa-0000-0000-0000-000000000003', 'interviewing', 'Interviewing', 'Talk to users.',
      '{"Skill Name":"Interviewing"}'::jsonb, true, 'v1'),
   ('skill', 'aaaaaaaa-0000-0000-0000-000000000004', 'survey-design', 'Survey Design', 'Design surveys.',
-     '{"Skill Name":"Survey Design"}'::jsonb, true, 'v1');
+     '{"Skill Name":"Survey Design"}'::jsonb, true, 'v1'),
+  -- deliverables (a SECOND neighbor type): these must NOT be crowded out of the skill slots.
+  ('deliverable', 'aaaaaaaa-0000-0000-0000-000000000012', 'research-plan', 'Research Plan', 'Plan the study.',
+     '{"Deliverable Name":"Research Plan"}'::jsonb, true, 'v1'),
+  ('deliverable', 'aaaaaaaa-0000-0000-0000-000000000013', 'research-report', 'Research Report', 'Report findings.',
+     '{"Deliverable Name":"Research Report"}'::jsonb, true, 'v1'),
+  ('deliverable', 'aaaaaaaa-0000-0000-0000-000000000014', 'research-analysis', 'Research Analysis', 'Analyze data.',
+     '{"Deliverable Name":"Research Analysis"}'::jsonb, true, 'v1');
 
 INSERT INTO public.framework_edges (src_type, src_id, rel_type, dst_type, dst_id, weight, source) VALUES
   ('duty','aaaaaaaa-0000-0000-0000-000000000001','requires_skill','skill','aaaaaaaa-0000-0000-0000-000000000002',1,'spf'),
   ('duty','aaaaaaaa-0000-0000-0000-000000000001','requires_skill','skill','aaaaaaaa-0000-0000-0000-000000000003',1,'spf'),
-  ('duty','aaaaaaaa-0000-0000-0000-000000000001','requires_skill','skill','aaaaaaaa-0000-0000-0000-000000000004',1,'spf');
+  ('duty','aaaaaaaa-0000-0000-0000-000000000001','requires_skill','skill','aaaaaaaa-0000-0000-0000-000000000004',1,'spf'),
+  ('duty','aaaaaaaa-0000-0000-0000-000000000001','produces','deliverable','aaaaaaaa-0000-0000-0000-000000000012',1,'spf'),
+  ('duty','aaaaaaaa-0000-0000-0000-000000000001','produces','deliverable','aaaaaaaa-0000-0000-0000-000000000013',1,'spf'),
+  ('duty','aaaaaaaa-0000-0000-0000-000000000001','produces','deliverable','aaaaaaaa-0000-0000-0000-000000000014',1,'spf');
 
 CREATE TEMP TABLE gctx AS
   SELECT public.fw_graph_context(
@@ -63,9 +73,23 @@ SELECT is(
   (SELECT j -> 'duty:aaaaaaaa-0000-0000-0000-000000000001' -> 'anchor' ->> 'name' FROM gctx),
   'UX Research', 'anchor resolves with its name');
 
+-- Per-type quota: p_per_type=2 keeps 2 skills AND 2 deliverables = 4 total (NOT 2 shared) — the fix
+-- for the miss where 6 shared out-slots let skills crowd out the milestone's research deliverables.
 SELECT is(
   (SELECT jsonb_array_length(j -> 'duty:aaaaaaaa-0000-0000-0000-000000000001' -> 'neighbors') FROM gctx),
-  2, 'neighbors capped at p_per_dir (2), not all 3 out-edges');
+  4, 'per-type quota keeps 2 skills + 2 deliverables = 4, not one shared cap of 2');
+
+SELECT is(
+  (SELECT count(*)::int
+     FROM gctx, jsonb_array_elements(gctx.j -> 'duty:aaaaaaaa-0000-0000-0000-000000000001' -> 'neighbors') AS n
+    WHERE n->>'type' = 'skill'),
+  2, 'skills capped at p_per_type (2)');
+
+SELECT is(
+  (SELECT count(*)::int
+     FROM gctx, jsonb_array_elements(gctx.j -> 'duty:aaaaaaaa-0000-0000-0000-000000000001' -> 'neighbors') AS n
+    WHERE n->>'type' = 'deliverable'),
+  2, 'deliverables get their OWN quota (not crowded out by skills) — the per-type fix');
 
 SELECT is(
   (SELECT j -> 'duty:aaaaaaaa-0000-0000-0000-000000000001' -> 'neighbors' -> 0 ->> 'name' FROM gctx),
@@ -92,6 +116,28 @@ SELECT cmp_ok(
   (SELECT count(*)::int FROM public.spf_edge_map WHERE src_entity_type = 'career_transition'),
   '>', 0,
   'spf_edge_map covers career_transition (edge-map coverage extension)');
+
+-- ── Fleety 2.0 relational-intelligence guards (weights + RACI + precise relations) ──
+SELECT ok(
+  'responsible' = ANY (enum_range(NULL::public.framework_rel_type)::text[])
+  AND 'consulted' = ANY (enum_range(NULL::public.framework_rel_type)::text[]),
+  'RACI relation types (responsible/consulted) exist in framework_rel_type');
+
+SELECT ok(
+  'foundational_skill' = ANY (enum_range(NULL::public.framework_rel_type)::text[])
+  AND 'learns_tool' = ANY (enum_range(NULL::public.framework_rel_type)::text[])
+  AND 'delivered_in' = ANY (enum_range(NULL::public.framework_rel_type)::text[]),
+  'precise "true" relations (foundational_skill/learns_tool/delivered_in) exist');
+
+SELECT ok(
+  EXISTS (SELECT 1 FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='spf_edge_map' AND column_name='weight'),
+  'spf_edge_map has the foundational-importance weight column');
+
+SELECT cmp_ok(
+  (SELECT count(*)::int FROM public.spf_edge_map WHERE weight > 1),
+  '>', 0,
+  'importance weights are applied (foundational/required/UNIQUE/ownership/RACI fields > 1)');
 
 SELECT * FROM finish();
 ROLLBACK;

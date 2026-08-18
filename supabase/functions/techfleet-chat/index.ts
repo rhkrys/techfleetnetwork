@@ -7,7 +7,12 @@ import { applyWaf } from "../_shared/waf.ts";
 import { scrub as dlpScrub } from "../_shared/dlp.ts";
 import { withAuditWrapper } from "../_shared/audit.ts";
 import { geminiEmbedBody, geminiEmbedUrl, parseGeminiEmbedding } from "../_shared/gemini-embed.ts";
-import { buildSystemPrompt, extractSourceUrls, NO_KNOWLEDGE_DIRECTIVE } from "./prompt.ts";
+import {
+  buildSystemPrompt,
+  expandQuery,
+  extractSourceUrls,
+  NO_KNOWLEDGE_DIRECTIVE,
+} from "./prompt.ts";
 import { extractAllowedUrls, fetchMaterialText } from "../_shared/material-fetch.ts";
 // Residency pin for DeepSeek (ADR-0005): the SAME US-provider allow-list the hand-off LLM port
 // uses, imported (not duplicated) so the guarantee can never drift between the two call paths.
@@ -1004,10 +1009,26 @@ serve(
       // now reads SPF through framework_entity_v; ids match the neighbor graph (2026-08 fix).
       let frameworkContext = "";
       const A4_ANCHORS = 6; // top search hits to anchor on
-      const A4_PER_DIR = 6; // neighbors per direction per anchor (the "mentor, not firehose" cap)
+      // hop-1 CEILING: the RPC applies a per-object-type cap map (full context awareness), with the
+      // "answer" types (deliverable/activity/workshop/duty) set to 100% coverage. This ceiling sits
+      // above every per-type cap so the RPC policy governs. hop-2 keeps a small ceiling (bounded).
+      const A4_PER_DIR = 100;
       const A4_HOP2_NODES = 3; // how many top-scored neighbors get a 2-hop expansion
       const A4_HOP2_PER_DIR = 4;
-      const MAX_FRAMEWORK_CONTEXT_BYTES = 16_000; // v4-pro has the room (was 8k)
+      // Full per-type context (answer types at 100% coverage) fits comfortably: a hub milestone is
+      // ~160 neighbors x ~300 bytes ~= 50 KB. 64 KB budget covers it; v4-pro's 131k context affords it.
+      const MAX_FRAMEWORK_CONTEXT_BYTES = 64_000;
+
+      // A3 / Miss-2 fix: the "Where to learn more" links were ranked by raw KB-retrieval order, so a
+      // tangential handbook chunk (e.g. the Requirements milestone) could top the list for a Discovery
+      // question. Collect the SPF entity-page URLs of the entities Fleety actually anchored on + the
+      // neighbors it was shown, and prioritize THOSE in X-Fleety-Sources ahead of KB prose links.
+      // Built from real entity (type, slug) — never invented (C1-safe).
+      const SPF_EXPLORE_BASE =
+        "https://techfleetworks.github.io/skills-and-practices-framework/explore";
+      const spfPageUrl = (type?: string, slug?: string): string | null =>
+        type && slug ? `${SPF_EXPLORE_BASE}/?e=${encodeURIComponent(type)}#item/${slug}` : null;
+      const graphSourceUrls: string[] = [];
 
       type FwNode = {
         type?: string;
@@ -1024,15 +1045,21 @@ serve(
         // Anchors come from the PRECISE current question (best exact match); ranking uses the
         // recent CONVERSATION as the goal, so "what about interviews?" stays anchored to the
         // thread's intent (e.g. becoming a UX researcher), per owner spec.
+        // A2: anchor search uses the RAW question (search_framework's tsquery ANDs terms, so an
+        // expanded query would match nothing; trigram already finds the anchors). The RANKING goal
+        // is expanded with SPF synonyms so lexically-different but central entities (e.g.
+        // "research-plan" for a "discovery" question) rank up — fw_graph_context OR-matches the terms.
         const searchQuery = lastUserMessage.slice(0, 500);
-        const goalQuery = (
-          messages
-            .filter((m: { role: string; content?: string }) => m.role === "user")
-            .slice(-3)
-            .map((m: { content?: string }) => (m.content || "").trim())
-            .filter(Boolean)
-            .join("  ") || searchQuery
-        ).slice(0, 800);
+        const goalQuery = expandQuery(
+          (
+            messages
+              .filter((m: { role: string; content?: string }) => m.role === "user")
+              .slice(-3)
+              .map((m: { content?: string }) => (m.content || "").trim())
+              .filter(Boolean)
+              .join("  ") || lastUserMessage
+          ).slice(0, 800)
+        );
 
         const { data: hits, error: searchErr } = await supabase.rpc("search_framework", {
           p_query: searchQuery,
@@ -1093,6 +1120,50 @@ serve(
             ctx2 = (ctx2data ?? {}) as Record<string, FwAnchorCtx>;
           }
 
+          // ── Authored relationship MEANINGS (data-types table) ──────────────
+          // The SPF's data_type rows carry a plain-English "Relationship to <X>" definition for every
+          // OTHER type — the framework author's own meaning of each type-pair. Inject the meaning for
+          // each (anchor type ↔ neighbor type) pair present, so Fleety mentors on WHAT the relationship
+          // means (grounded, covers the whole type matrix), not just which objects connect.
+          const ENTITY_DT: Record<string, { slug: string; col: string }> = {
+            skill: { slug: "skills", col: "Relationship to Skills" },
+            job_function: { slug: "job-function", col: "Relationship to Job Functions" },
+            specialization: {
+              slug: "job-specialization",
+              col: "Relationship to Job Specializations",
+            },
+            practice: { slug: "practices", col: "Relationship to Practices" },
+            duty: { slug: "duty", col: "Relationship to Duties" },
+            stakeholder: { slug: "stakeholder", col: "Relationship to Stakeholders" },
+            project_milestone: { slug: "milestone", col: "Relationship to Milestones" },
+            tool: { slug: "tool", col: "Relationship to Tools" },
+            activity: { slug: "activity", col: "Relationship to Activities" },
+            deliverable: { slug: "deliverable", col: "Relationship to Deliverables" },
+            project_type: { slug: "project", col: "Relationship to Projects" },
+            company_type: { slug: "company-type", col: "Relationship to Company Types" },
+            methodology: { slug: "methodology", col: "Relationship to Methodologies" },
+            job_industry: { slug: "job-industry", col: "Relationship to Job Industries" },
+            workshop: { slug: "workshop", col: "Relationship to Workshops" },
+          };
+          const dtData: Record<string, Record<string, unknown>> = {};
+          try {
+            const { data: dts } = await supabase
+              .from("spf_entity")
+              .select("slug, data")
+              .eq("entity_type", "data_type");
+            for (const row of (dts ?? []) as Array<{ slug: string; data: Record<string, unknown> }>)
+              dtData[row.slug] = row.data ?? {};
+          } catch (_e) {
+            /* meanings are additive; a fetch failure just omits them */
+          }
+          const relMeaning = (aType?: string, nType?: string): string => {
+            const a = ENTITY_DT[aType ?? ""];
+            const n = ENTITY_DT[nType ?? ""];
+            if (!a || !n) return "";
+            const v = dtData[a.slug]?.[n.col];
+            return typeof v === "string" ? v.trim() : "";
+          };
+
           // ── Render a mentor's map: rich, goal-ordered, with 2-hop nesting ──
           const REL_PHRASE: Record<string, { out: string; in: string }> = {
             produces: { out: "produces", in: "is produced by" },
@@ -1118,6 +1189,34 @@ serve(
             },
             precedes: { out: "comes before", in: "comes after" },
             related_to: { out: "relates to", in: "relates to" },
+            // RACI hats — teach cross-functional dynamics with the actual accountability
+            responsible: { out: "is Responsible for", in: "is Responsible (RACI) —" },
+            accountable: { out: "is Accountable for", in: "is Accountable (RACI) —" },
+            consulted: { out: "is Consulted on", in: "is Consulted (RACI) —" },
+            informed: { out: "is kept Informed on", in: "is Informed (RACI) —" },
+            // Precise ("true") relations — the SPF field's real meaning, not a generic verb
+            foundational_skill: {
+              out: "builds on the foundational skill",
+              in: "is a foundational skill for",
+            },
+            first_step_skill: { out: "starts by learning", in: "is a first step toward" },
+            transferable_skill: {
+              out: "transfers in the skill",
+              in: "is a transferable skill for",
+            },
+            develops_skill: { out: "develops the skill", in: "is developed in" },
+            prerequisite_skill: { out: "needs first the skill", in: "is a prerequisite for" },
+            teaches_practice: { out: "teaches the practice", in: "is taught by" },
+            requires_practice: { out: "requires the practice", in: "is required by" },
+            applies_practice: { out: "applies the practice", in: "is applied by" },
+            has_component: { out: "is built from the component", in: "is a component of" },
+            learns_tool: { out: "learns the tool", in: "is a tool learned in" },
+            learns_method: { out: "learns the methodology", in: "is a methodology learned in" },
+            learns_deliverable: { out: "learns to produce", in: "is learned in" },
+            target_duty: { out: "targets the role", in: "is the target role of" },
+            delivered_in: { out: "is delivered in", in: "delivers" },
+            performed_in: { out: "includes the activity", in: "is performed in" },
+            follows: { out: "comes after", in: "comes before" },
           };
           const phrase = (rel?: string, dir?: string): string => {
             const p = REL_PHRASE[rel ?? ""];
@@ -1151,6 +1250,9 @@ serve(
             if (!entry?.anchor) continue;
             const an = entry.anchor;
             const anchorNarr = narrative(an.data, 3);
+            const anchorUrls: string[] = []; // entity-page URLs for this anchor + its shown neighbors
+            const au = spfPageUrl(an.type, an.slug);
+            if (au) anchorUrls.push(au);
             const block: string[] = [
               `\n▸ ${an.name} [${nodeLabel(an.type)}]`,
               an.description ? `   ${an.description.slice(0, 300)}` : "",
@@ -1165,6 +1267,8 @@ serve(
                 `     ${arrow} ${phrase(n.rel, n.dir)}: ${n.name} [${nodeLabel(n.type)}]${nd}` +
                   (nNarr ? `\n         (${nNarr})` : "")
               );
+              const nu = spfPageUrl(n.type, n.slug);
+              if (nu) anchorUrls.push(nu);
               // 2-hop: nest the strongest second-level links WITH their own descriptions, so Fleety
               // can EXPLAIN the second level (build knowledge), not just name it.
               const sub = hop2Index.get(`${n.type}:${n.id}`);
@@ -1178,6 +1282,23 @@ serve(
                 }
               }
             }
+            // Authored meaning of each (anchor type ↔ neighbor type) relationship present — the
+            // framework's OWN definition, so Fleety teaches WHY they connect, not just that they do.
+            const seenPairTypes = new Set<string>();
+            const meaningLines: string[] = [];
+            for (const n of entry.neighbors ?? []) {
+              if (!n.type || seenPairTypes.has(n.type)) continue;
+              seenPairTypes.add(n.type);
+              const m = relMeaning(an.type, n.type);
+              if (m)
+                meaningLines.push(
+                  `     • ${nodeLabel(an.type)} ↔ ${nodeLabel(n.type)}: ${m.replace(/\s+/g, " ").slice(0, 420)}`
+                );
+            }
+            if (meaningLines.length) {
+              block.push("   What these relationships MEAN (framework definitions):");
+              block.push(...meaningLines);
+            }
             const text = block.filter(Boolean).join("\n") + "\n";
             if (bytes + text.length > MAX_FRAMEWORK_CONTEXT_BYTES) {
               sections.push("\n[…further framework matches trimmed to fit the context budget]");
@@ -1185,6 +1306,7 @@ serve(
             }
             sections.push(text);
             bytes += text.length;
+            graphSourceUrls.push(...anchorUrls); // only entities actually shown to the model
           }
           if (sections.length > 2) frameworkContext = sections.join("\n");
         }
@@ -1925,9 +2047,13 @@ serve(
           ? btoa(unescape(encodeURIComponent(JSON.stringify(actionChips))))
           : "";
 
-      // D-08: structural citations — navigable source URLs from the KB hits,
-      // guaranteed by code (not the LLM). http(s) only, deduped, capped.
-      const sourceUrls = extractSourceUrls(kbHits);
+      // D-08: structural citations — navigable source URLs, guaranteed by code (not the LLM).
+      // A3/Miss-2: prioritize the SPF entity pages Fleety actually anchored on (graphSourceUrls)
+      // ahead of KB prose links, so "Where to learn more" leads with the on-topic entity pages
+      // instead of a tangential handbook chunk. Deduped (order-preserving), http(s) only, capped at 8.
+      const sourceUrls = [...new Set([...graphSourceUrls, ...extractSourceUrls(kbHits, 8)])]
+        .filter((u) => /^https?:\/\//i.test(u))
+        .slice(0, 8);
 
       const exposeHeaders: Record<string, string> = {
         ...corsHeaders,

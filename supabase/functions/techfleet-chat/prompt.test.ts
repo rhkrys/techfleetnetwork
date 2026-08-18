@@ -12,6 +12,7 @@ import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.t
 import {
   ALIAS_MAP,
   buildSystemPrompt,
+  expandQuery,
   extractSourceUrls,
   NO_KNOWLEDGE_DIRECTIVE,
   PRACTICAL_CONTRACT,
@@ -120,6 +121,12 @@ Deno.test("answer-depth + coaching-close contract is present (owner mentor rules
   // Where to learn more: top-3-then-rest, real links only (C1).
   assert(/Where to learn more/.test(PRACTICAL_CONTRACT), "where-to-learn-more section");
   assert(/TOP 3/.test(PRACTICAL_CONTRACT), "top-3 sources first");
+  // Always justify (grounded WHY) — Fleety explains its reasoning from the framework relationships.
+  assert(/ALWAYS JUSTIFY/.test(PRACTICAL_CONTRACT), "justify-every-claim rule");
+  assert(
+    /relationship MEANINGS/i.test(PRACTICAL_CONTRACT),
+    "why is grounded in relationship meanings"
+  );
 });
 
 Deno.test(
@@ -205,12 +212,31 @@ Deno.test("extractSourceUrls: http(s) only, deduped, order-preserving", () => {
   assertEquals(extractSourceUrls(hits), ["https://guide.techfleet.org/a", "http://example.com/b"]);
 });
 
+Deno.test("extractSourceUrls: chunk urls (#pN) collapse back to the page (A1)", () => {
+  const hits = [
+    { url: "https://guide.techfleet.org/handbook" },
+    { url: "https://guide.techfleet.org/handbook#p2" }, // same page, different chunk → deduped
+    { url: "https://guide.techfleet.org/handbook#p3" },
+  ];
+  assertEquals(extractSourceUrls(hits), ["https://guide.techfleet.org/handbook"]);
+});
+
 Deno.test("extractSourceUrls respects the cap", () => {
   const hits = Array.from({ length: 20 }, (_, i) => ({ url: `https://x/${i}` }));
   assertEquals(extractSourceUrls(hits, 8).length, 8);
 });
 
 // ── UC-04 honesty hard-gate ──────────────────────────────────────────────────
+
+Deno.test("expandQuery: SPF synonyms surface lexically-different central entities (A2)", () => {
+  const out = expandQuery("what does my team need to do to do discovery");
+  assert(
+    /research/i.test(out),
+    "'discovery' expands to include 'research' so research-plan ranks up"
+  );
+  assert(out.startsWith("what does my team"), "original query preserved as prefix");
+  assertEquals(expandQuery("xyzzy nothing matches"), "xyzzy nothing matches"); // no trigger → unchanged
+});
 
 Deno.test("NO_KNOWLEDGE_DIRECTIVE forbids fabrication and gives a real fallback", () => {
   assert(NO_KNOWLEDGE_DIRECTIVE.includes("NO KNOWLEDGE MATCH"));
