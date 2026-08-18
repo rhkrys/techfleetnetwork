@@ -5,23 +5,48 @@ import { Button } from "@/components/ui/button";
 import { SafeMarkdown } from "@/components/security/SafeMarkdown";
 import { toast } from "sonner";
 import fleetyIcon from "@/assets/fleety-icon.png";
+import {
+  type FleetyMode,
+  FLEETY_MODES,
+  fleetyModeMeta,
+  loadStoredMode,
+  storeMode,
+} from "@/lib/fleety/modes";
 
-
-type Msg = { role: "user" | "assistant"; content: string; followups?: string[] };
+type Msg = {
+  role: "user" | "assistant";
+  content: string;
+  followups?: string[];
+  sources?: string[];
+};
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/techfleet-chat`;
 
 const MAX_INPUT_LENGTH = 4000;
 
+/** Readable label for a source link (host + path, no protocol/trailing slash). */
+function prettyUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    return (u.hostname + u.pathname).replace(/\/$/, "");
+  } catch {
+    return url;
+  }
+}
+
 async function streamChat({
   messages,
+  mode,
   onDelta,
   onFollowups,
+  onSources,
   onDone,
 }: {
   messages: Msg[];
+  mode: FleetyMode;
   onDelta: (deltaText: string) => void;
   onFollowups: (followups: string[]) => void;
+  onSources: (urls: string[]) => void;
   onDone: () => void;
 }) {
   // ASVS V13.2.1: Use session-bound JWT, not static publishable key
@@ -40,13 +65,28 @@ async function streamChat({
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ messages: sanitizedMessages }),
+    body: JSON.stringify({ messages: sanitizedMessages, mode }),
   });
 
   if (!resp.ok) {
     const errData = await resp.json().catch(() => ({}));
     throw new Error(errData.error || `Request failed (${resp.status})`);
   }
+
+  // D-08: structural citations guaranteed by the server (navigable guide/SPF links from the
+  // retrieved KB entries), independent of what the model wrote.
+  const srcHeader = resp.headers.get("X-Fleety-Sources");
+  if (srcHeader) {
+    try {
+      const urls = JSON.parse(srcHeader);
+      if (Array.isArray(urls) && urls.length) {
+        onSources(urls.filter((u: unknown): u is string => typeof u === "string"));
+      }
+    } catch {
+      /* header malformed — ignore, the answer still renders */
+    }
+  }
+
   if (!resp.body) throw new Error("No response stream");
 
   const reader = resp.body.getReader();
@@ -66,7 +106,10 @@ async function streamChat({
       if (line.startsWith(":") || line.trim() === "") continue;
       if (!line.startsWith("data: ")) continue;
       const jsonStr = line.slice(6).trim();
-      if (jsonStr === "[DONE]") { streamDone = true; break; }
+      if (jsonStr === "[DONE]") {
+        streamDone = true;
+        break;
+      }
       try {
         const parsed = JSON.parse(jsonStr);
         if (parsed?.fleety?.followups && Array.isArray(parsed.fleety.followups)) {
@@ -108,7 +151,9 @@ async function streamChat({
           const content = parsed.choices?.[0]?.delta?.content as string | undefined;
           if (content) onDelta(content);
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
   }
   onDone();
@@ -123,26 +168,44 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
   const [input, setInput] = useState(initialQuery ?? "");
   const [isLoading, setIsLoading] = useState(false);
   const [speakingIdx, setSpeakingIdx] = useState<number | null>(null);
+  const [mode, setMode] = useState<FleetyMode>(() => loadStoredMode());
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const activeMode = fleetyModeMeta(mode);
+
+  // Remember the member's last mode across reloads (shared with the other Fleety surfaces).
+  useEffect(() => {
+    storeMode(mode);
+  }, [mode]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages]);
 
-  useEffect(() => { return () => { window.speechSynthesis.cancel(); }; }, []);
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis.cancel();
+    };
+  }, []);
 
-  const toggleSpeak = useCallback((index: number, text: string) => {
-    const synth = window.speechSynthesis;
-    if (speakingIdx === index) { synth.cancel(); setSpeakingIdx(null); return; }
-    synth.cancel();
-    const utterance = new SpeechSynthesisUtterance(text.replace(/[#*_`[\]()]/g, ""));
-    utterance.rate = 0.95;
-    utterance.onend = () => setSpeakingIdx(null);
-    utterance.onerror = () => setSpeakingIdx(null);
-    setSpeakingIdx(index);
-    synth.speak(utterance);
-  }, [speakingIdx]);
+  const toggleSpeak = useCallback(
+    (index: number, text: string) => {
+      const synth = window.speechSynthesis;
+      if (speakingIdx === index) {
+        synth.cancel();
+        setSpeakingIdx(null);
+        return;
+      }
+      synth.cancel();
+      const utterance = new SpeechSynthesisUtterance(text.replace(/[#*_`[\]()]/g, ""));
+      utterance.rate = 0.95;
+      utterance.onend = () => setSpeakingIdx(null);
+      utterance.onerror = () => setSpeakingIdx(null);
+      setSpeakingIdx(index);
+      synth.speak(utterance);
+    },
+    [speakingIdx]
+  );
 
   const sendText = async (text: string) => {
     text = text.trim();
@@ -161,7 +224,9 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last?.role === "assistant") {
-          return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: assistantSoFar } : m));
+          return prev.map((m, i) =>
+            i === prev.length - 1 ? { ...m, content: assistantSoFar } : m
+          );
         }
         return [...prev, { role: "assistant", content: assistantSoFar }];
       });
@@ -170,6 +235,7 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
     try {
       await streamChat({
         messages: [...messages, userMsg],
+        mode,
         onDelta: (chunk) => upsertAssistant(chunk),
         onFollowups: (followups) => {
           setMessages((prev) => {
@@ -178,6 +244,15 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
               return prev.map((m, i) => (i === prev.length - 1 ? { ...m, followups } : m));
             }
             return [...prev, { role: "assistant", content: "", followups }];
+          });
+        },
+        onSources: (urls) => {
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last?.role === "assistant") {
+              return prev.map((m, i) => (i === prev.length - 1 ? { ...m, sources: urls } : m));
+            }
+            return [...prev, { role: "assistant", content: "", sources: urls }];
           });
         },
         onDone: () => setIsLoading(false),
@@ -209,10 +284,18 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
       >
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center py-12">
-            <img src={fleetyIcon} alt="" className="h-16 w-16 opacity-40 mb-4" width={64} height={64} aria-hidden="true" />
+            <img
+              src={fleetyIcon}
+              alt=""
+              className="h-16 w-16 opacity-40 mb-4"
+              width={64}
+              height={64}
+              aria-hidden="true"
+            />
             <h2 className="text-lg font-medium text-muted-foreground">Hi! I'm Fleety</h2>
             <p className="text-sm text-muted-foreground/70 mt-1 max-w-md">
-              I can answer questions about Tech Fleet's community, team practices, workshops, handbooks, and onboarding process.
+              I can answer questions about Tech Fleet's community, team practices, workshops,
+              handbooks, and onboarding process.
             </p>
             <div className="mt-6 flex flex-wrap gap-2 justify-center">
               {[
@@ -223,7 +306,10 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
               ].map((q) => (
                 <button
                   key={q}
-                  onClick={() => { setInput(q); inputRef.current?.focus(); }}
+                  onClick={() => {
+                    setInput(q);
+                    inputRef.current?.focus();
+                  }}
                   className="text-xs px-3 py-1.5 rounded-full border border-border bg-background hover:bg-accent text-foreground transition-colors"
                 >
                   {q}
@@ -234,22 +320,53 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
         )}
 
         {messages.map((msg, i) => (
-          <div key={i} className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+          <div
+            key={i}
+            className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+          >
             {msg.role === "assistant" && (
               <div className="flex-shrink-0 h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center mt-1">
-                <img src={fleetyIcon} alt="" className="h-6 w-6 rounded-full" width={24} height={24} aria-hidden="true" />
+                <img
+                  src={fleetyIcon}
+                  alt=""
+                  className="h-6 w-6 rounded-full"
+                  width={24}
+                  height={24}
+                  aria-hidden="true"
+                />
               </div>
             )}
-            <div className={`max-w-[85%] rounded-lg ${
-              msg.role === "user"
-                ? "bg-primary text-primary-foreground px-4 py-3"
-                : "bg-muted/30 border border-border px-5 py-4"
-            }`}>
+            <div
+              className={`max-w-[85%] rounded-lg ${
+                msg.role === "user"
+                  ? "bg-primary text-primary-foreground px-4 py-3"
+                  : "bg-muted/30 border border-border px-5 py-4"
+              }`}
+            >
               {msg.role === "assistant" ? (
                 <div>
                   <div className="fleety-prose">
                     <SafeMarkdown>{msg.content}</SafeMarkdown>
                   </div>
+                  {msg.sources && msg.sources.length > 0 && (
+                    <div className="mt-3 pt-2 border-t border-border/50">
+                      <p className="text-xs font-semibold text-muted-foreground mb-1">📚 Sources</p>
+                      <ul className="space-y-0.5">
+                        {msg.sources.map((url) => (
+                          <li key={url}>
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-primary hover:underline break-all"
+                            >
+                              {prettyUrl(url)}
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   {!isLoading && msg.content.length > 0 && (
                     <div className="mt-3 pt-2 border-t border-border/50">
                       <Button
@@ -259,7 +376,11 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
                         className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground gap-1.5"
                         aria-label={speakingIdx === i ? "Stop reading aloud" : "Read aloud"}
                       >
-                        {speakingIdx === i ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+                        {speakingIdx === i ? (
+                          <VolumeX className="h-3.5 w-3.5" />
+                        ) : (
+                          <Volume2 className="h-3.5 w-3.5" />
+                        )}
                         {speakingIdx === i ? "Stop reading" : "Read aloud"}
                       </Button>
                     </div>
@@ -303,7 +424,14 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
         {isLoading && messages[messages.length - 1]?.role !== "assistant" && (
           <div className="flex gap-3 justify-start">
             <div className="flex-shrink-0 h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-              <img src={fleetyIcon} alt="" className="h-6 w-6 rounded-full" width={24} height={24} aria-hidden="true" />
+              <img
+                src={fleetyIcon}
+                alt=""
+                className="h-6 w-6 rounded-full"
+                width={24}
+                height={24}
+                aria-hidden="true"
+              />
             </div>
             <div className="bg-muted/30 border border-border rounded-lg px-4 py-3">
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -312,20 +440,48 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
         )}
       </div>
 
+      {/* Mode selector — Chat / Deliverables Review / Plan (parity with the other Fleety surfaces) */}
+      <div
+        className="border-t px-4 pt-3 flex flex-wrap gap-1.5 shrink-0"
+        role="radiogroup"
+        aria-label="Fleety mode"
+      >
+        {FLEETY_MODES.map((m) => (
+          <button
+            key={m.id}
+            type="button"
+            role="radio"
+            aria-checked={mode === m.id}
+            title={m.label}
+            onClick={() => setMode(m.id)}
+            className={`text-xs px-3 py-1.5 rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+              mode === m.id
+                ? "border-primary bg-primary/10 text-primary font-medium"
+                : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground"
+            }`}
+          >
+            <span className="sm:hidden">{m.short}</span>
+            <span className="hidden sm:inline">{m.label}</span>
+          </button>
+        ))}
+      </div>
+
       {/* Input */}
-      <form onSubmit={send} className="border-t p-4 flex gap-2 items-end shrink-0">
+      <form onSubmit={send} className="p-4 pt-2 flex gap-2 items-end shrink-0">
         <div className="flex-1 relative">
           <textarea
             ref={inputRef as React.RefObject<HTMLTextAreaElement>}
             value={input}
-            onChange={(e) => { if (e.target.value.length <= 20000) setInput(e.target.value); }}
+            onChange={(e) => {
+              if (e.target.value.length <= 20000) setInput(e.target.value);
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 if (input.trim() && !isLoading) send(e);
               }
             }}
-            placeholder="Ask about Tech Fleet..."
+            placeholder={activeMode.placeholder}
             disabled={isLoading}
             className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none min-h-[40px] max-h-[200px]"
             rows={1}
@@ -345,7 +501,12 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
             </p>
           )}
         </div>
-        <Button type="submit" disabled={isLoading || !input.trim()} size="icon" aria-label="Send message">
+        <Button
+          type="submit"
+          disabled={isLoading || !input.trim()}
+          size="icon"
+          aria-label="Send message"
+        >
           <Send className="h-4 w-4" />
         </Button>
       </form>

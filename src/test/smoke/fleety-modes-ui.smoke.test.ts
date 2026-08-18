@@ -29,9 +29,16 @@ describe("fleety mode metadata (shared source of truth)", () => {
   });
 });
 
-const SURFACES = ["src/pages/ChatPage.tsx", "src/components/FleetyChatWidget.tsx"];
+// ALL three member-facing Fleety surfaces must carry the mode switch — the /chat page, the floating
+// widget, and the /resources GuidanceEmbed (the main member widget). Fleety UI changes must land on
+// all of them together, so this list guards against a surface silently drifting behind.
+const SURFACES = [
+  "src/pages/ChatPage.tsx",
+  "src/components/FleetyChatWidget.tsx",
+  "src/components/resources/GuidanceEmbed.tsx",
+];
 
-describe("both chat surfaces wire the mode switch", () => {
+describe("all chat surfaces wire the mode switch", () => {
   for (const path of SURFACES) {
     describe(path, () => {
       const src = read(path);
