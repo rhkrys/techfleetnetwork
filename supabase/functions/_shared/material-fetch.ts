@@ -7,6 +7,8 @@
 // redirect:"error"; response is size- and time-bounded. The fetched bytes are UNTRUSTED DATA —
 // callers frame them as data (never instructions) when they reach an LLM (prompt-injection defense).
 
+import { fetchFigmaContent, parseFigmaKey } from "./figma-extract.ts";
+
 /** Hosts we will fetch a member's material from. NOTHING else. */
 export const ALLOWED_MATERIAL_HOSTS = [
   "figma.com",
@@ -93,6 +95,27 @@ export async function fetchMaterialText(
   opts: { maxBytes?: number; timeoutMs?: number } = {}
 ): Promise<string> {
   assertMaterialUrlAllowed(url); // throws on violation
+
+  // Figma boards can't be read as a web page (that returns the app's JS bundle, not the design).
+  // Route file/design/board links to the Figma REST API instead. Fail CLOSED with a clear message
+  // when no token is configured, rather than falling through to a useless HTML scrape.
+  const figmaKey = parseFigmaKey(url);
+  if (figmaKey) {
+    // Use the Figma PAT already configured in prod (the hand-off generator + DeepSeek Figma parsing
+    // use FIGMA_TOKEN), so this works with zero new config. FLEETY_FIGMA_TOKEN is an optional
+    // override for later, if the owner ever wants Fleety to read Figma under a distinct PAT.
+    const figmaToken = Deno.env.get("FLEETY_FIGMA_TOKEN") || Deno.env.get("FIGMA_TOKEN");
+    if (!figmaToken) {
+      throw new Error(
+        "figma: reading Figma boards isn't enabled yet — paste the key content or describe the board instead"
+      );
+    }
+    return fetchFigmaContent(url, figmaToken, {
+      maxBytes: opts.maxBytes,
+      timeoutMs: opts.timeoutMs,
+    });
+  }
+
   const maxBytes = opts.maxBytes ?? MATERIAL_MAX_BYTES;
   const timeoutMs = opts.timeoutMs ?? MATERIAL_FETCH_TIMEOUT_MS;
   const controller = new AbortController();

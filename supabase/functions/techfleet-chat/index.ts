@@ -765,9 +765,14 @@ serve(
                 : `--- Shared link: ${url} (no readable text could be extracted) ---`
             );
           } catch (e) {
-            const why =
-              e instanceof Error && /^SSRF:/.test(e.message)
-                ? "not an allowed source"
+            // Surface our own safe, user-facing Figma guidance verbatim (e.g. "reading Figma isn't
+            // enabled — paste the content" or "share the board with the integration"); collapse
+            // everything else to a generic reason so no internals leak.
+            const msg = e instanceof Error ? e.message : "";
+            const why = /^SSRF:/.test(msg)
+              ? "not an allowed source"
+              : /^figma:/.test(msg)
+                ? msg.replace(/^figma:\s*/, "")
                 : "could not be opened";
             parts.push(`--- Shared link: ${url} (${why}) ---`);
             log.warn("material", `material fetch failed [${requestId}]`, { requestId });
