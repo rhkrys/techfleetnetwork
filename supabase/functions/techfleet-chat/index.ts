@@ -6,6 +6,7 @@ import { createEdgeLogger } from "../_shared/logger.ts";
 import { applyWaf } from "../_shared/waf.ts";
 import { scrub as dlpScrub } from "../_shared/dlp.ts";
 import { withAuditWrapper } from "../_shared/audit.ts";
+import { isTrustedInternal } from "../_shared/internal-auth.ts";
 import { geminiEmbedBody, geminiEmbedUrl, parseGeminiEmbedding } from "../_shared/gemini-embed.ts";
 import {
   buildSystemPrompt,
@@ -455,35 +456,57 @@ serve(
     log.info("handler", `Chat request received [${requestId}]`, { requestId });
 
     try {
-      // ── WSTG-ATHZ-01: JWT Authentication ──────────────────────────────
-      const authHeader = req.headers.get("authorization");
-      if (!authHeader?.startsWith("Bearer ")) {
-        return new Response(JSON.stringify({ error: "Authentication required" }), {
-          status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
+      // ── WSTG-ATHZ-01: auth — an end-user JWT OR a trusted internal caller ──
+      // Fleety 2.1: a server-to-server caller (the Discord /fleety adapter) reaches
+      // this SAME 2.0 brain with a shared secret (x-fleety-internal) instead of an
+      // end-user JWT. Internal turns still pass the global system rate-limit +
+      // cost-guard below; only the per-USER soft quota is skipped (there is no end
+      // user — the turn is billed to a synthetic system id, no personal context).
       const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-      const SUPABASE_ANON_KEY =
-        Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY")!;
-      const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        global: { headers: { Authorization: authHeader } },
-      });
-
-      const {
-        data: { user },
-        error: authError,
-      } = await authClient.auth.getUser();
-      if (authError || !user) {
-        log.warn("auth", `Authentication failed [${requestId}]`, { requestId });
-        return new Response(JSON.stringify({ error: "Invalid or expired token" }), {
-          status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+      const authHeader = req.headers.get("authorization");
+      // Constant-time, fail-closed trusted-caller check (see _shared/internal-auth.ts + its tests).
+      const internalHeader = req.headers.get("x-fleety-internal");
+      const isInternal = isTrustedInternal(Deno.env.get("FLEETY_INTERNAL_SECRET"), internalHeader);
+      if (internalHeader && !isInternal) {
+        log.warn(
+          "auth",
+          `x-fleety-internal presented but rejected (unset/short/mismatch) [${requestId}]`,
+          { requestId }
+        );
       }
+      // Synthetic, non-personal id for internal turns (stable, never an auth.users row).
+      const INTERNAL_SYSTEM_USER_ID = "00000000-0000-4000-8000-0000000d15c0";
 
-      log.info("auth", `Authenticated user [${requestId}]`, { requestId, userId: user.id });
+      let user: { id: string; email?: string };
+      if (isInternal) {
+        user = { id: INTERNAL_SYSTEM_USER_ID };
+        log.info("auth", `Trusted internal caller [${requestId}]`, { requestId });
+      } else {
+        if (!authHeader?.startsWith("Bearer ")) {
+          return new Response(JSON.stringify({ error: "Authentication required" }), {
+            status: 401,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        const SUPABASE_ANON_KEY =
+          Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY")!;
+        const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+          global: { headers: { Authorization: authHeader } },
+        });
+        const {
+          data: { user: authedUser },
+          error: authError,
+        } = await authClient.auth.getUser();
+        if (authError || !authedUser) {
+          log.warn("auth", `Authentication failed [${requestId}]`, { requestId });
+          return new Response(JSON.stringify({ error: "Invalid or expired token" }), {
+            status: 401,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        user = authedUser;
+        log.info("auth", `Authenticated user [${requestId}]`, { requestId, userId: user.id });
+      }
 
       // ── Payload size check ────────────────────────────────────────────
       const contentLength = parseInt(req.headers.get("content-length") || "0", 10);
@@ -607,51 +630,54 @@ serve(
       // Caps abusive/runaway usage at 30 turns/day and 150 turns/month so a
       // viral spike from a tiny number of power users can't blow the AI
       // budget. Friendly, helpful redirect — never a dead end.
-      try {
-        const { data: q, error: qErr } = await supabase.rpc("check_fleety_user_quota", {
-          _user_id: user.id,
-        });
-        const row = Array.isArray(q) ? q[0] : q;
-        if (!qErr && row && row.allowed === false) {
-          log.info("quota", `User quota reached [${requestId}] reason=${row.reason}`, {
-            requestId,
-            userId: user.id,
-            reason: row.reason,
-            dailyUsed: row.daily_used,
-            monthlyUsed: row.monthly_used,
+      // Fleety 2.1: internal callers have no end user to meter, so the per-USER
+      // quota is skipped; the global system rate-limit + cost-guard below still bind them.
+      if (!isInternal)
+        try {
+          const { data: q, error: qErr } = await supabase.rpc("check_fleety_user_quota", {
+            _user_id: user.id,
           });
-          const friendly =
-            row.reason === "monthly_cap"
-              ? "You've reached your Fleety chat limit for this month. Try the search bar at the top, browse the Knowledge Base, or book office hours — and I'll be back next month."
-              : "You've hit today's Fleety chat limit. Try the search bar at the top, browse the Knowledge Base, or book office hours — I'll reset overnight.";
-          return new Response(
-            JSON.stringify({
-              error: friendly,
-              quota: {
-                reason: row.reason,
-                daily_used: row.daily_used,
-                daily_limit: row.daily_limit,
-                monthly_used: row.monthly_used,
-                monthly_limit: row.monthly_limit,
-              },
-            }),
-            {
-              status: 429,
-              headers: {
-                ...corsHeaders,
-                "Content-Type": "application/json",
-                "Retry-After": row.reason === "daily_cap" ? "3600" : "86400",
-              },
-            }
+          const row = Array.isArray(q) ? q[0] : q;
+          if (!qErr && row && row.allowed === false) {
+            log.info("quota", `User quota reached [${requestId}] reason=${row.reason}`, {
+              requestId,
+              userId: user.id,
+              reason: row.reason,
+              dailyUsed: row.daily_used,
+              monthlyUsed: row.monthly_used,
+            });
+            const friendly =
+              row.reason === "monthly_cap"
+                ? "You've reached your Fleety chat limit for this month. Try the search bar at the top, browse the Knowledge Base, or book office hours — and I'll be back next month."
+                : "You've hit today's Fleety chat limit. Try the search bar at the top, browse the Knowledge Base, or book office hours — I'll reset overnight.";
+            return new Response(
+              JSON.stringify({
+                error: friendly,
+                quota: {
+                  reason: row.reason,
+                  daily_used: row.daily_used,
+                  daily_limit: row.daily_limit,
+                  monthly_used: row.monthly_used,
+                  monthly_limit: row.monthly_limit,
+                },
+              }),
+              {
+                status: 429,
+                headers: {
+                  ...corsHeaders,
+                  "Content-Type": "application/json",
+                  "Retry-After": row.reason === "daily_cap" ? "3600" : "86400",
+                },
+              }
+            );
+          }
+        } catch (e) {
+          log.warn(
+            "quota",
+            `quota check failed open [${requestId}]: ${e instanceof Error ? e.message : "unknown"}`,
+            { requestId }
           );
         }
-      } catch (e) {
-        log.warn(
-          "quota",
-          `quota check failed open [${requestId}]: ${e instanceof Error ? e.message : "unknown"}`,
-          { requestId }
-        );
-      }
 
       // ── Server-side shared chatbot rate limiting (WSTG-BUSL-05) ────────
       const { data: rateLimitResult, error: rateLimitError } = await supabase.rpc(

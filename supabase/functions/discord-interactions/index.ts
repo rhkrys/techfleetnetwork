@@ -6,7 +6,7 @@ import { discordFetch } from "../_shared/discord-fetch.ts";
 
 import { withAuditWrapper } from "../_shared/audit.ts";
 import { isFreshTimestamp } from "./freshness.ts";
-import { publicKbUrl, stripInternalLinks } from "./spf-links.ts";
+import { stripInternalLinks } from "./spf-links.ts";
 import { withQuestionEcho } from "./echo.ts";
 const log = createEdgeLogger("discord-interactions");
 
@@ -19,36 +19,6 @@ const RESPONSE_DEFERRED_CHANNEL_MESSAGE = 5;
 const MAX_DISCORD_LENGTH = 1950;
 /** LLM10: Max input question length to prevent unbounded consumption */
 const MAX_QUESTION_LENGTH = 2000;
-
-/* ── Fleety system prompt (Discord‑adapted) ─────────────────────── */
-const SYSTEM_PROMPT = `You are Fleety, the official Tech Fleet Assistant — a helpful AI that answers questions exclusively about Tech Fleet, its community, processes, team practices, workshops, handbooks, and onboarding.
-
-IMPORTANT RULES:
-1. ONLY answer questions using the Tech Fleet knowledge base provided below. Do NOT use any external knowledge or information from the internet.
-2. If a question is not related to Tech Fleet, politely redirect the user to ask about Tech Fleet topics.
-3. If you don't have enough information in the knowledge base to answer a question, say so honestly rather than making up an answer.
-4. Do not discuss topics outside of Tech Fleet, even if the user insists.
-
-FORMATTING RULES — follow these strictly (you are responding in Discord):
-1. Use Discord-compatible markdown: **bold**, *italic*, \`code\`, \`\`\`code blocks\`\`\`, > blockquotes, bullet points, numbered lists.
-2. Do NOT use HTML or headings larger than bold text.
-3. Keep paragraphs short (2-3 sentences max) for easy scanning.
-4. Use line breaks between sections for readability.
-5. When listing items, always use bullet points or numbered lists.
-6. Keep your total response under 1800 characters so it fits in a single Discord message.
-
-SOURCE CITATION RULES — follow these strictly:
-1. ALWAYS cite your sources at the end of your answer in a "📚 **Sources**" section.
-2. For each source, include the title and a clickable link using the URL from the knowledge base.
-3. Only cite sources you actually used to form your answer.
-4. Format sources as a bulleted list like:
-   - [Source Title](url)
-5. Use ONLY the URL shown in parentheses after a SOURCE. If a SOURCE is marked "[internal reference — no link]", cite it by name WITHOUT a link. Never invent a link, and never output a "framework://" or "csv://" URL.
-6. For Notion URLs, use the full URL as the link.
-7. For guide.techfleet.org URLs, use the full URL as the link.
-
-KNOWLEDGE BASE:
-`;
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
 
@@ -78,71 +48,99 @@ function verifySignature(
   }
 }
 
-async function loadKnowledgeBase(): Promise<string> {
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-  );
+// ── Fleety 2.1: one brain. Discord delegates the answer to the unified 2.0 handler ──
+// (techfleet-chat) over a trusted internal call. ALL retrieval, grounding, prompt-injection +
+// strict-scope gates, PII redaction, determinism, and real public source links come from 2.0 —
+// the Discord bot no longer runs its own weaker Gemini/Lovable brain.
+const SB_URL = Deno.env.get("SUPABASE_URL")!;
+const SB_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const SB_ANON_KEY =
+  Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? "";
 
-  const { data: knowledge, error } = await supabase
-    .from("knowledge_base")
-    .select("title, content, url")
-    .order("title");
-
-  if (error) {
-    log.error("kb", `Failed to load knowledge base: ${error.message}`);
+/**
+ * Per-Discord-user rate limit — bounds abuse at the source BEFORE any 2.0 call, so a single
+ * member can't spam /fleety and drain the shared budget. Fails OPEN (limiter errors never block a
+ * legitimate question); the 2.0 handler's global system rate-limit + cost-guard are the backstop.
+ */
+async function underRateLimit(discordUserId: string): Promise<boolean> {
+  try {
+    const sb = createClient(SB_URL, SB_SERVICE_ROLE_KEY);
+    const { data, error } = await sb.rpc("check_rate_limit", {
+      p_identifier: `discord:${discordUserId}`,
+      p_action: "fleety",
+      p_max_attempts: 10,
+      p_window_minutes: 60,
+      p_block_minutes: 15,
+    });
+    if (error) return true; // fail open
+    return typeof data === "object" && data !== null
+      ? (data as { allowed?: boolean }).allowed !== false
+      : data !== false;
+  } catch {
+    return true;
   }
-
-  if (!knowledge?.length) {
-    return "\nNo knowledge base content available yet.\n";
-  }
-
-  // Resolve internal framework://entity/<table>/<id> KB urls → public explore pages. The <id> is a
-  // framework entity UUID; map it to {entity_type, slug} via framework_entity_v (which follows the
-  // active source) so the citations the model emits point at human-facing pages, not internal ids.
-  const entityMap = new Map<string, { entity_type: string; slug: string }>();
-  const ids = [
-    ...new Set(
-      (knowledge ?? [])
-        .map((k) => /^framework:\/\/entity\/[^/]+\/([0-9a-fA-F-]{36})$/.exec(k.url ?? "")?.[1])
-        .filter((v): v is string => Boolean(v))
-    ),
-  ];
-  if (ids.length) {
-    const { data: ents, error: entErr } = await supabase
-      .from("framework_entity_v")
-      .select("id, entity_type, slug")
-      .in("id", ids);
-    if (entErr) log.warn("kb", `entity resolve failed: ${entErr.message}`);
-    for (const e of ents ?? []) entityMap.set(e.id, { entity_type: e.entity_type, slug: e.slug });
-  }
-
-  let ctx = "";
-  for (const entry of knowledge) {
-    const truncated =
-      entry.content.length > 3000
-        ? entry.content.substring(0, 3000) + "...[truncated]"
-        : entry.content;
-    const link = publicKbUrl(entry.url, entityMap);
-    // Only expose a URL the user can actually open; internal-only rows are cited without a link.
-    const source = link
-      ? `${entry.title} (${link})`
-      : `${entry.title} [internal reference — no link]`;
-    ctx += `\n---\nSOURCE: ${source}\n${truncated}\n`;
-  }
-  return ctx;
 }
 
-/** LLM01: Prompt injection detection for Discord */
-const DISCORD_INJECTION_PATTERNS = [
-  /ignore\s+(all\s+)?(previous|prior|above)\s+(instructions?|prompts?|rules?)/i,
-  /you\s+are\s+now\s+(a|an|the|DAN|jailbroken)/i,
-  /system\s*prompt/i,
-  /\[SYSTEM\]/i,
-  /reveal\s+(your|the)\s+(system|initial)\s+(prompt|instructions?)/i,
-  /bypass\s+(the\s+)?(restrictions?|filters?|safety)/i,
-  /jailbreak/i,
-];
+/**
+ * Ask the unified 2.0 brain and return { answer, sources }. Posts the question as a normal user
+ * turn; techfleet-chat handles retrieval/grounding/safety. Egress target is fixed (env-derived,
+ * never from Discord input) → no SSRF. Consumes the SSE stream (uniform
+ * `data: {choices:[{delta:{content}}]}` frames + `data: [DONE]`).
+ */
+async function askFleety2(question: string): Promise<{ answer: string; sources: string[] }> {
+  const internalSecret = Deno.env.get("FLEETY_INTERNAL_SECRET");
+  if (!internalSecret) throw new Error("FLEETY_INTERNAL_SECRET not configured");
+  const q = question.slice(0, MAX_QUESTION_LENGTH); // bound input (LLM10)
+
+  const res = await fetch(`${SB_URL}/functions/v1/techfleet-chat`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: SB_ANON_KEY,
+      Authorization: `Bearer ${SB_SERVICE_ROLE_KEY}`, // pass the edge gateway (defense in depth)
+      "x-fleety-internal": internalSecret, // trusted-caller seam
+    },
+    body: JSON.stringify({ messages: [{ role: "user", content: q }], client_path: "discord" }),
+  });
+  if (!res.ok || !res.body) throw new Error(`techfleet-chat [${res.status}]`);
+
+  let sources: string[] = [];
+  const sh = res.headers.get("X-Fleety-Sources");
+  if (sh) {
+    try {
+      const arr = JSON.parse(sh);
+      if (Array.isArray(arr))
+        sources = arr.filter((u) => typeof u === "string" && /^https?:\/\//.test(u));
+    } catch {
+      /* ignore malformed header */
+    }
+  }
+
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  let answer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split("\n");
+    buf = lines.pop() ?? "";
+    for (const line of lines) {
+      const t = line.trim();
+      if (!t.startsWith("data:")) continue;
+      const payload = t.slice(5).trim();
+      if (!payload || payload === "[DONE]") continue;
+      try {
+        const delta = JSON.parse(payload)?.choices?.[0]?.delta?.content;
+        if (typeof delta === "string") answer += delta;
+      } catch {
+        /* skip non-JSON keepalive/frame */
+      }
+    }
+  }
+  return { answer: answer.trim() || "I couldn't generate a response. Please try again.", sources };
+}
 
 /** LLM02: PII patterns to redact from output */
 const PII_OUTPUT_PATTERNS = [
@@ -159,50 +157,6 @@ function sanitizeDiscordOutput(text: string): string {
   // Belt-and-suspenders: strip any internal-scheme link (framework://, csv://) that slipped through.
   sanitized = stripInternalLinks(sanitized);
   return sanitized;
-}
-
-async function getAIResponse(question: string, knowledgeCtx: string): Promise<string> {
-  const apiKey = Deno.env.get("LOVABLE_API_KEY");
-  if (!apiKey) throw new Error("LOVABLE_API_KEY is not configured");
-
-  // LLM10: Truncate question to prevent unbounded input
-  const truncatedQuestion = question.slice(0, MAX_QUESTION_LENGTH);
-
-  // LLM01: Log injection attempts
-  if (DISCORD_INJECTION_PATTERNS.some((p) => p.test(truncatedQuestion))) {
-    log.warn(
-      "prompt-injection",
-      `Potential injection in Discord command: ${truncatedQuestion.substring(0, 80)}`
-    );
-  }
-
-  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "google/gemini-3-flash-preview",
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT + knowledgeCtx },
-        { role: "user", content: truncatedQuestion },
-      ],
-      stream: false,
-      max_tokens: 1800, // LLM10: Cap output to fit Discord message limits
-    }),
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`AI gateway error [${response.status}]: ${text.substring(0, 300)}`);
-  }
-
-  const data = await response.json();
-  const rawOutput =
-    data.choices?.[0]?.message?.content ?? "I couldn't generate a response. Please try again.";
-  // LLM02/LLM05: Sanitize output before returning
-  return sanitizeDiscordOutput(rawOutput);
 }
 
 /** Split content into chunks that fit Discord's message limit, breaking at newlines when possible */
@@ -453,11 +407,30 @@ Deno.serve(
 
         const work = (async () => {
           try {
-            const knowledgeCtx = await loadKnowledgeBase();
-            const answer = await getAIResponse(question, knowledgeCtx);
-            // Echo the question so the public reply is self-contained (sanitized: no mention/markdown injection).
-            await postFollowup(applicationId, interactionToken, withQuestionEcho(question, answer));
-            log.info("done", `Answered question from ${userName ?? "unknown"}`);
+            // Bound abuse at the source before spending any 2.0 budget.
+            if (discordUserId && !(await underRateLimit(discordUserId))) {
+              await postFollowup(
+                applicationId,
+                interactionToken,
+                "🚦 You've asked Fleety a lot in the last hour — give it a few minutes and try again."
+              );
+              return;
+            }
+            // One brain: delegate to the unified 2.0 handler.
+            const { answer, sources } = await askFleety2(question);
+            let body = answer;
+            if (sources.length) {
+              // Angle-bracket the URLs so Discord doesn't spam link embeds.
+              const top = sources
+                .slice(0, 5)
+                .map((u) => `- <${u}>`)
+                .join("\n");
+              body += `\n\n📚 **Sources**\n${top}`;
+            }
+            // Echo the question (sanitized: no mention/markdown injection), then redact output PII.
+            const final = sanitizeDiscordOutput(withQuestionEcho(question, body));
+            await postFollowup(applicationId, interactionToken, final);
+            log.info("done", `Answered question from ${userName ?? "unknown"} via 2.0`);
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             log.error("process", `Error: ${msg}`);
