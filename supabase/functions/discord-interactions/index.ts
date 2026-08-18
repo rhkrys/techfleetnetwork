@@ -6,6 +6,8 @@ import { discordFetch } from "../_shared/discord-fetch.ts";
 
 import { withAuditWrapper } from "../_shared/audit.ts";
 import { isFreshTimestamp } from "./freshness.ts";
+import { publicKbUrl, stripInternalLinks } from "./spf-links.ts";
+import { withQuestionEcho } from "./echo.ts";
 const log = createEdgeLogger("discord-interactions");
 
 /* ── Discord constants ─────────────────────────────────────────────── */
@@ -41,7 +43,7 @@ SOURCE CITATION RULES — follow these strictly:
 3. Only cite sources you actually used to form your answer.
 4. Format sources as a bulleted list like:
    - [Source Title](url)
-5. If a source URL starts with "csv://", do NOT include it as a link — instead just mention it as internal reference data.
+5. Use ONLY the URL shown in parentheses after a SOURCE. If a SOURCE is marked "[internal reference — no link]", cite it by name WITHOUT a link. Never invent a link, and never output a "framework://" or "csv://" URL.
 6. For Notion URLs, use the full URL as the link.
 7. For guide.techfleet.org URLs, use the full URL as the link.
 
@@ -95,13 +97,38 @@ async function loadKnowledgeBase(): Promise<string> {
     return "\nNo knowledge base content available yet.\n";
   }
 
+  // Resolve internal framework://entity/<table>/<id> KB urls → public explore pages. The <id> is a
+  // framework entity UUID; map it to {entity_type, slug} via framework_entity_v (which follows the
+  // active source) so the citations the model emits point at human-facing pages, not internal ids.
+  const entityMap = new Map<string, { entity_type: string; slug: string }>();
+  const ids = [
+    ...new Set(
+      (knowledge ?? [])
+        .map((k) => /^framework:\/\/entity\/[^/]+\/([0-9a-fA-F-]{36})$/.exec(k.url ?? "")?.[1])
+        .filter((v): v is string => Boolean(v))
+    ),
+  ];
+  if (ids.length) {
+    const { data: ents, error: entErr } = await supabase
+      .from("framework_entity_v")
+      .select("id, entity_type, slug")
+      .in("id", ids);
+    if (entErr) log.warn("kb", `entity resolve failed: ${entErr.message}`);
+    for (const e of ents ?? []) entityMap.set(e.id, { entity_type: e.entity_type, slug: e.slug });
+  }
+
   let ctx = "";
   for (const entry of knowledge) {
     const truncated =
       entry.content.length > 3000
         ? entry.content.substring(0, 3000) + "...[truncated]"
         : entry.content;
-    ctx += `\n---\nSOURCE: ${entry.title} (${entry.url})\n${truncated}\n`;
+    const link = publicKbUrl(entry.url, entityMap);
+    // Only expose a URL the user can actually open; internal-only rows are cited without a link.
+    const source = link
+      ? `${entry.title} (${link})`
+      : `${entry.title} [internal reference — no link]`;
+    ctx += `\n---\nSOURCE: ${source}\n${truncated}\n`;
   }
   return ctx;
 }
@@ -129,6 +156,8 @@ function sanitizeDiscordOutput(text: string): string {
   for (const pattern of PII_OUTPUT_PATTERNS) {
     sanitized = sanitized.replace(pattern, "[REDACTED]");
   }
+  // Belt-and-suspenders: strip any internal-scheme link (framework://, csv://) that slipped through.
+  sanitized = stripInternalLinks(sanitized);
   return sanitized;
 }
 
@@ -426,7 +455,8 @@ Deno.serve(
           try {
             const knowledgeCtx = await loadKnowledgeBase();
             const answer = await getAIResponse(question, knowledgeCtx);
-            await postFollowup(applicationId, interactionToken, answer);
+            // Echo the question so the public reply is self-contained (sanitized: no mention/markdown injection).
+            await postFollowup(applicationId, interactionToken, withQuestionEcho(question, answer));
             log.info("done", `Answered question from ${userName ?? "unknown"}`);
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
