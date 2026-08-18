@@ -162,6 +162,11 @@ export default function ChatPage() {
   const [showSidebar, setShowSidebar] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // When WE create a conversation as part of sending, activeConvoId flips to the new id — but the
+  // live turn (streaming answer) is already in memory. Skip the [activeConvoId] DB reload for that
+  // one flip so it can't clobber the in-flight answer off the screen (the "history disappeared
+  // mid-session" bug). Reloads still happen when the user picks an existing chat from the sidebar.
+  const skipConvoReloadRef = useRef(false);
 
   // Load conversations list
   useEffect(() => {
@@ -182,6 +187,11 @@ export default function ChatPage() {
   useEffect(() => {
     if (!activeConvoId) {
       setMessages([]);
+      return;
+    }
+    if (skipConvoReloadRef.current) {
+      // This flip came from starting a brand-new chat we're already rendering live — don't reload.
+      skipConvoReloadRef.current = false;
       return;
     }
     loadMessages(activeConvoId);
@@ -298,7 +308,10 @@ export default function ChatPage() {
     let convoId = activeConvoId;
     if (!convoId && user) {
       convoId = await createConversation(text);
-      if (convoId) setActiveConvoId(convoId);
+      if (convoId) {
+        skipConvoReloadRef.current = true; // keep the live turn; don't reload over it
+        setActiveConvoId(convoId);
+      }
     }
 
     // Save user message

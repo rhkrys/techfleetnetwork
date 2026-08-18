@@ -217,6 +217,9 @@ export function FleetyChatWidget() {
   const [submittedReasons, setSubmittedReasons] = useState<Record<string, string[]>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // Skip the [activeConvoId] DB reload for the one flip caused by starting a brand-new chat, so it
+  // can't overwrite the live streaming turn off screen (the "history disappeared mid-session" bug).
+  const skipConvoReloadRef = useRef(false);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -255,6 +258,11 @@ export function FleetyChatWidget() {
   useEffect(() => {
     if (!activeConvoId) {
       setMessages([]);
+      return;
+    }
+    if (skipConvoReloadRef.current) {
+      // Flip came from starting a brand-new chat we're already rendering live — don't reload over it.
+      skipConvoReloadRef.current = false;
       return;
     }
     (async () => {
@@ -348,7 +356,10 @@ export function FleetyChatWidget() {
     let convoId = activeConvoId;
     if (!convoId && user) {
       convoId = await createConversation(text);
-      if (convoId) setActiveConvoId(convoId);
+      if (convoId) {
+        skipConvoReloadRef.current = true; // keep the live turn; don't reload over it
+        setActiveConvoId(convoId);
+      }
     }
     if (convoId) await saveMessage(convoId, "user", text);
 
