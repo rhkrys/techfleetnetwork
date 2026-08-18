@@ -37,9 +37,11 @@ describe("in-chat material review is wired securely", () => {
   });
 
   it("chat bypasses the caches + canned answers when material is present", () => {
+    // The guards also require chatMode === "chat" now (Review/Plan modes bypass the caches too),
+    // so match the !hasMaterial guard loosely rather than pinning the exact neighboring tokens.
     expect(chat).toMatch(/exactHit && !hasMaterial/);
     expect(chat).toMatch(/haveEmbeddings && !hasMaterial/);
-    expect(chat).toMatch(/!hasMaterial && top/);
+    expect(chat).toMatch(/!hasMaterial &&[^\n]*top/);
   });
 
   it("material counts as grounding so a 'review my link' turn isn't refused as off-topic", () => {

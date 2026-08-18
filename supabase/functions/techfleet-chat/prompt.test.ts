@@ -15,8 +15,10 @@ import {
   expandQuery,
   extractSourceUrls,
   NO_KNOWLEDGE_DIRECTIVE,
+  PLAN_MODE_CONTRACT,
   PRACTICAL_CONTRACT,
   type PromptContext,
+  REVIEW_MODE_CONTRACT,
   SYSTEM_PROMPT_BASE,
   tonePresetFor,
 } from "./prompt.ts";
@@ -151,6 +153,30 @@ Deno.test(
 Deno.test("practical contract is omitted for non-operational intents", () => {
   const base = buildSystemPrompt(emptyCtx({ practical: false }));
   assertEquals(base.includes("PRACTICAL MODE — ANSWER CONTRACT"), false);
+});
+
+Deno.test("mode: chat is byte-for-byte identical to no mode (backward compatible)", () => {
+  assertEquals(buildSystemPrompt(emptyCtx({ mode: "chat" })), buildSystemPrompt(emptyCtx()));
+});
+
+Deno.test("mode: review injects the review contract and REPLACES the practical contract", () => {
+  const p = buildSystemPrompt(emptyCtx({ mode: "review", practical: true }));
+  assert(p.includes("DELIVERABLE REVIEW MODE"));
+  assert(p.includes("## What you did well"));
+  assertEquals(p.includes("PRACTICAL MODE — ANSWER CONTRACT"), false);
+  assertEquals(p.includes("PLAN MODE"), false);
+});
+
+Deno.test("mode: plan injects the plan contract and REPLACES the practical contract", () => {
+  const p = buildSystemPrompt(emptyCtx({ mode: "plan", practical: true }));
+  assert(p.includes("PLAN MODE"));
+  assert(p.includes("## Your first step"));
+  assertEquals(p.includes("PRACTICAL MODE — ANSWER CONTRACT"), false);
+  assertEquals(p.includes("DELIVERABLE REVIEW MODE"), false);
+});
+
+Deno.test("mode contracts are exported and non-empty", () => {
+  assert(REVIEW_MODE_CONTRACT.length > 0 && PLAN_MODE_CONTRACT.length > 0);
 });
 
 Deno.test("output is deterministic for identical input", () => {

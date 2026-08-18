@@ -18,6 +18,14 @@ import { SafeMarkdown } from "@/components/security/SafeMarkdown";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  type FleetyMode,
+  FLEETY_MODES,
+  fleetyModeMeta,
+  loadStoredMode,
+  storeMode,
+} from "@/lib/fleety/modes";
+import { groupConversationsByDate } from "@/lib/fleety/history";
 
 type Msg = { role: "user" | "assistant"; content: string; sources?: string[] };
 type Conversation = { id: string; title: string; updated_at: string };
@@ -26,11 +34,13 @@ const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/techfleet-ch
 
 async function streamChat({
   messages,
+  mode,
   onDelta,
   onSources,
   onDone,
 }: {
   messages: Msg[];
+  mode: FleetyMode;
   onDelta: (deltaText: string) => void;
   onSources?: (urls: string[]) => void;
   onDone: () => void;
@@ -41,7 +51,7 @@ async function streamChat({
       "Content-Type": "application/json",
       Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
     },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ messages, mode }),
   });
 
   if (!resp.ok) {
@@ -160,8 +170,16 @@ export default function ChatPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvoId, setActiveConvoId] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [mode, setMode] = useState<FleetyMode>(() => loadStoredMode());
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const activeMode = fleetyModeMeta(mode);
+  const conversationGroups = groupConversationsByDate(conversations, new Date());
+
+  // Remember the member's last mode across reloads (Claude/ChatGPT-style).
+  useEffect(() => {
+    storeMode(mode);
+  }, [mode]);
   // When WE create a conversation as part of sending, activeConvoId flips to the new id — but the
   // live turn (streaming answer) is already in memory. Skip the [activeConvoId] DB reload for that
   // one flip so it can't clobber the in-flight answer off the screen (the "history disappeared
@@ -335,6 +353,7 @@ export default function ChatPage() {
     try {
       await streamChat({
         messages: [...messages, userMsg],
+        mode,
         onDelta: (chunk) => upsertAssistant(chunk),
         onSources: (urls) => {
           assistantSources = urls;
@@ -377,35 +396,42 @@ export default function ChatPage() {
               <Plus className="h-4 w-4" />
             </Button>
           </div>
-          <div className="flex-1 overflow-y-auto p-1.5 space-y-0.5">
+          <div className="flex-1 overflow-y-auto p-1.5 space-y-1">
             {conversations.length === 0 && (
               <p className="text-xs text-muted-foreground p-2 text-center">No conversations yet</p>
             )}
-            {conversations.map((c) => (
-              <div
-                key={c.id}
-                className={`group flex items-center gap-1.5 rounded-md px-2 py-1.5 cursor-pointer text-sm transition-colors ${
-                  activeConvoId === c.id
-                    ? "bg-primary/10 text-primary font-medium"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                }`}
-                onClick={() => {
-                  setActiveConvoId(c.id);
-                  setShowSidebar(false);
-                }}
-              >
-                <MessageSquare className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate flex-1 text-xs">{c.title}</span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    deleteConversation(c.id);
-                  }}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity"
-                  aria-label="Delete conversation"
-                >
-                  <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
-                </button>
+            {conversationGroups.map((grp) => (
+              <div key={grp.label} className="space-y-0.5">
+                <p className="px-2 pt-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+                  {grp.label}
+                </p>
+                {grp.items.map((c) => (
+                  <div
+                    key={c.id}
+                    className={`group flex items-center gap-1.5 rounded-md px-2 py-1.5 cursor-pointer text-sm transition-colors ${
+                      activeConvoId === c.id
+                        ? "bg-primary/10 text-primary font-medium"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                    onClick={() => {
+                      setActiveConvoId(c.id);
+                      setShowSidebar(false);
+                    }}
+                  >
+                    <MessageSquare className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate flex-1 text-xs">{c.title}</span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteConversation(c.id);
+                      }}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity"
+                      aria-label="Delete conversation"
+                    >
+                      <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                    </button>
+                  </div>
+                ))}
               </div>
             ))}
           </div>
@@ -581,6 +607,29 @@ export default function ChatPage() {
           )}
         </div>
 
+        {/* Mode selector — Chat / Deliverables Review / Plan (like Claude's modes).
+            Wraps on narrow screens; shows the short label on mobile, full label from sm up. */}
+        <div className="mb-2 flex flex-wrap gap-1.5" role="radiogroup" aria-label="Fleety mode">
+          {FLEETY_MODES.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              role="radio"
+              aria-checked={mode === m.id}
+              title={m.label}
+              onClick={() => setMode(m.id)}
+              className={`text-xs px-3 py-1.5 rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                mode === m.id
+                  ? "border-primary bg-primary/10 text-primary font-medium"
+                  : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground"
+              }`}
+            >
+              <span className="sm:hidden">{m.short}</span>
+              <span className="hidden sm:inline">{m.label}</span>
+            </button>
+          ))}
+        </div>
+
         {/* Input */}
         <form onSubmit={send} className="flex gap-2 items-end">
           <div className="flex-1 relative">
@@ -596,7 +645,7 @@ export default function ChatPage() {
                   if (input.trim() && !isLoading) send(e);
                 }
               }}
-              placeholder="Ask about Tech Fleet..."
+              placeholder={activeMode.placeholder}
               disabled={isLoading}
               className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none min-h-[40px] max-h-[200px]"
               rows={1}

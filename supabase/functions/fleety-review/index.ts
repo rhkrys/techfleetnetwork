@@ -7,6 +7,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { withAuditWrapper } from "../_shared/audit.ts";
+import { fetchMaterialText } from "../_shared/material-fetch.ts";
 import { US_INFERENCE_PROVIDERS } from "../_shared/llm/port.ts";
 import {
   buildSpfKbRow,
@@ -14,12 +15,7 @@ import {
   type SpfRow,
   type WorkshopStep,
 } from "../fleety-embed/spf-kb.ts";
-import {
-  assertReviewUrlAllowed,
-  buildReviewPrompt,
-  capMaterial,
-  validateReviewInput,
-} from "./lib.ts";
+import { buildReviewPrompt, capMaterial, validateReviewInput } from "./lib.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -33,31 +29,12 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const REVIEW_MODEL = Deno.env.get("FLEETY_LLM_MODEL") || "deepseek/deepseek-v4-pro";
-const FETCH_TIMEOUT_MS = 12_000;
-const MAX_FETCH_BYTES = 2_000_000; // 2 MB cap on fetched material (DoS)
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
-}
-
-/** SSRF-guarded, bounded, no-redirect fetch of a member material URL → text. */
-async function fetchMaterial(url: string): Promise<string> {
-  assertReviewUrlAllowed(url); // throws on violation
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, { signal: controller.signal, redirect: "error" });
-    if (!res.ok) throw new Error(`fetch failed (HTTP ${res.status})`);
-    const buf = new Uint8Array(await res.arrayBuffer());
-    const bounded = buf.slice(0, MAX_FETCH_BYTES);
-    // Strip tags to plain text (defense against markup; the model reviews content, not HTML).
-    return new TextDecoder().decode(bounded).replace(/<[^>]+>/g, " ");
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 /** Assemble the SPF expectations text for a target by reusing the spf-kb content builder. */
@@ -143,7 +120,9 @@ serve(
       if (material.type === "text") {
         materialText = capMaterial(material.value);
       } else {
-        materialText = capMaterial(await fetchMaterial(material.value));
+        // Shared fetcher: SSRF-guarded + bounded, and routes Figma links to the Figma REST API
+        // (a plain fetch of a figma.com URL returns the app's JS bundle, not the design).
+        materialText = capMaterial(await fetchMaterialText(material.value));
       }
 
       const { system, user: userMsg } = buildReviewPrompt({
@@ -186,11 +165,13 @@ serve(
         review,
       });
     } catch (e) {
-      // SSRF/validation errors surface as 400; everything else generic (no internals leaked).
+      // SSRF/validation and our own safe "figma:" guidance surface as 400 (both are user-facing and
+      // leak no internals); everything else is generic so no internals escape.
       const msg = e instanceof Error ? e.message : "Review failed";
-      const status = /^SSRF:/.test(msg) ? 400 : 500;
+      const userFacing = /^SSRF:/.test(msg) || /^figma:/.test(msg);
+      const status = userFacing ? 400 : 500;
       console.error("fleety-review error");
-      return json({ error: status === 400 ? msg : "Review failed" }, status);
+      return json({ error: userFacing ? msg : "Review failed" }, status);
     }
   })
 );

@@ -24,6 +24,9 @@ const ChatBodySchema = z
     messages: z.array(z.any()).optional(),
     conversation_id: z.string().optional(),
     client_path: z.string().optional(),
+    // UI conversation mode (Chat / Deliverables Review / Plan). Optional + defaulted to "chat"
+    // so older clients that omit it behave exactly as before.
+    mode: z.enum(["chat", "review", "plan"]).optional(),
   })
   .passthrough();
 
@@ -529,11 +532,13 @@ serve(
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const { messages, conversation_id, client_path } = _parsedChat.data as {
+      const { messages, conversation_id, client_path, mode } = _parsedChat.data as {
         messages?: any[];
         conversation_id?: string;
         client_path?: string;
+        mode?: "chat" | "review" | "plan";
       };
+      const chatMode: "chat" | "review" | "plan" = mode ?? "chat";
       const safeClientPath =
         typeof client_path === "string"
           ? client_path.replace(/[^A-Za-z0-9/_\-?=&.]/g, "").slice(0, 200)
@@ -818,7 +823,7 @@ serve(
 
       // ── L2 exact-cache HIT: replay immediately (works even if embeddings failed).
       // Skipped when the member shared material — that answer is content-specific, not cacheable.
-      if (exactHit && !hasMaterial) {
+      if (exactHit && !hasMaterial && chatMode === "chat") {
         let cacheTurnId: string | null = null;
         try {
           const { data: sig } = await supabase
@@ -875,7 +880,7 @@ serve(
       // stored markdown as a synthetic SSE stream — zero AI gateway call.
       // (An exact verbatim repeat was already handled by the L2 cache above.)
       // Skipped when the member shared material — the review depends on live content.
-      if (haveEmbeddings && !hasMaterial) {
+      if (haveEmbeddings && !hasMaterial && chatMode === "chat") {
         try {
           const { data: hit } = await supabase.rpc("fleety_cache_semantic_lookup", {
             _query_embedding: vecLiteral(queryEmbedding!) as unknown as number[],
@@ -1365,7 +1370,7 @@ serve(
         const top = (canned ?? [])[0] as
           { id: string; answer_md: string; similarity: number } | undefined;
         // Never short-circuit to a canned answer when the member shared material to review.
-        if (!hasMaterial && top && top.similarity >= 0.45) {
+        if (!hasMaterial && chatMode === "chat" && top && top.similarity >= 0.45) {
           cannedAnswerId = top.id;
           cannedContext = `\n\nCURATED ANSWER (admin-approved — start from this exact content; you may lightly tailor wording but must preserve every fact and link):\n${top.answer_md}\n`;
           // Wave 1 COST-W1-014: high-confidence canned hit short-circuits the
@@ -1750,6 +1755,7 @@ serve(
         audience,
         canaryPhrase: CANARY_PHRASE,
         practical,
+        mode: chatMode,
         cannedContext,
         userContext,
         playbookContext,
@@ -1771,6 +1777,7 @@ serve(
         fewShotChars: fewShotContext.length,
         intent,
         practical,
+        mode: chatMode,
         playbookHits,
         exampleHits,
       });
@@ -2089,12 +2096,13 @@ serve(
       const exposeHeaders: Record<string, string> = {
         ...corsHeaders,
         "Access-Control-Expose-Headers":
-          "X-Fleety-Turn-Id, X-Fleety-Intent, X-Fleety-Chips, X-Fleety-Practical, X-Fleety-Cache, X-Fleety-Guard, X-Fleety-Sources",
+          "X-Fleety-Turn-Id, X-Fleety-Intent, X-Fleety-Chips, X-Fleety-Practical, X-Fleety-Mode, X-Fleety-Cache, X-Fleety-Guard, X-Fleety-Sources",
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-store",
         "X-Content-Type-Options": "nosniff",
         "X-Fleety-Intent": intent,
         "X-Fleety-Practical": practical ? "1" : "0",
+        "X-Fleety-Mode": chatMode,
         "X-Fleety-Cache": "miss",
         "X-Fleety-Guard": costGuardStep,
       };
