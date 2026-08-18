@@ -7,7 +7,7 @@
     "predev": "tsx scripts/generate-sitemap.ts",
     "dev": "vite",
     "prebuild": "tsx scripts/generate-sitemap.ts",
-    "build": "vite build && node scripts/post-build-smoke.mjs",
+    "build": "vite build && node scripts/write-build-info.mjs && node scripts/post-build-smoke.mjs",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "lint:css": "stylelint \"src/**/*.css\"",

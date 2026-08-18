@@ -1,0 +1,71 @@
+# VERIFY DEPLOY — makes a silent frontend deploy failure impossible to miss.
+#
+# The recurring incident: a change merges to main, the Cloudflare git-integration build fails (or
+# never promotes to production) SILENTLY, and the old bundle keeps serving for days. Local build is
+# green, so nobody notices. This workflow closes that hole with ZERO Cloudflare secrets:
+#
+#   every build stamps dist/build-info.json with its commit SHA (scripts/write-build-info.mjs);
+#   after each push to main this job polls the PRODUCTION url's /build-info.json and checks the
+#   live SHA equals the merged SHA. If it doesn't match within the window, the job FAILS RED —
+#   turning a silent stale-deploy into a loud, dated signal with a link.
+#
+# Setup (one public repo VARIABLE, not a secret):
+#   Settings → Secrets and variables → Actions → Variables → New variable
+#     PROD_URL = https://<your production domain>   (e.g. https://www.techfleet.org)
+# Until PROD_URL is set this job is a green no-op with a notice, so merging it is safe.
+name: Verify deploy
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "supabase/**"
+      - "docs/**"
+      - "**/*.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-deploy
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PROD_URL is configured
+        id: cfg
+        run: |
+          if [ -n "${{ vars.PROD_URL }}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::PROD_URL variable not set — skipping live deploy verification. Add it (Actions → Variables) to arm the net."
+          fi
+
+      - name: Poll production for the merged commit
+        if: steps.cfg.outputs.configured == 'true'
+        env:
+          PROD_URL: ${{ vars.PROD_URL }}
+          EXPECT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          url="${PROD_URL%/}/build-info.json"
+          echo "Expecting sha=$EXPECT_SHA live at $url"
+          # Cloudflare Pages typically builds+promotes within a couple minutes; give it up to ~15.
+          for i in $(seq 1 30); do
+            live=$(curl -fsS --max-time 15 -H 'cache-control: no-cache' "$url" 2>/dev/null | tr -d ' \n\r\t' || true)
+            echo "attempt $i: $live"
+            case "$live" in
+              *"\"sha\":\"$EXPECT_SHA\""*)
+                echo "✅ Live site is serving the merged commit ($EXPECT_SHA)."
+                exit 0
+                ;;
+            esac
+            sleep 30
+          done
+          echo "::error::Production did not serve the merged commit ($EXPECT_SHA) within ~15 min."
+          echo "::error::The Cloudflare deploy likely failed or did not promote. Check the Cloudflare Pages build log; the site is serving a STALE bundle."
+          exit 1

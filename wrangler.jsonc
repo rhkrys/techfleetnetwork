@@ -9,5 +9,23 @@
     // For a React single-page app: any URL that isn't a real file
     // serves index.html so client-side routing works (no 404s on deep links).
     "not_found_handling": "single-page-application"
+  },
+  // Observability declared in-config so it's consistent across deployments (clears Cloudflare's
+  // "update your Wrangler config" warning) and version-controlled. Logs on for debuggability;
+  // traces off (static asset Worker has no server code to trace).
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "persist": true,
+      "invocation_logs": true
+    },
+    "traces": {
+      "enabled": false,
+      "persist": true,
+      "head_sampling_rate": 1
+    }
   }
 }
