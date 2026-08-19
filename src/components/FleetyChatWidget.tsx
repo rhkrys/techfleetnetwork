@@ -11,8 +11,6 @@ import {
   Plus,
   MessageSquare,
   Trash2,
-  ThumbsUp,
-  ThumbsDown,
   MessageCircleQuestion,
   Copy,
   Check,
@@ -36,6 +34,8 @@ import { groupConversationsByDate } from "@/lib/fleety/history";
 import { toChatAttachment } from "@/lib/fleety/attachment";
 import { useFleetyAttachment } from "@/hooks/useFleetyAttachment";
 import { FleetyAttachButton, FleetyAttachmentChip } from "@/components/fleety/FleetyAttach";
+import { FleetyMessageFeedback } from "@/components/fleety/FleetyFeedback";
+import { FleetySources } from "@/components/fleety/FleetySources";
 
 type ActionChip = { label: string; action_type: string; target_url?: string | null };
 type Msg = {
@@ -48,16 +48,6 @@ type Msg = {
 };
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/techfleet-chat`;
-
-/** Readable label for a source link (host + path, no protocol/trailing slash). */
-function prettyUrl(url: string): string {
-  try {
-    const u = new URL(url);
-    return (u.hostname + u.pathname).replace(/\/$/, "");
-  } catch {
-    return url;
-  }
-}
 
 /**
  * OWASP LLM02/ASVS V13.2: Use session JWT for API auth, never static keys.
@@ -231,8 +221,6 @@ export function FleetyChatWidget() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvoId, setActiveConvoId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
-  const [negFeedbackTurn, setNegFeedbackTurn] = useState<string | null>(null);
-  const [submittedReasons, setSubmittedReasons] = useState<Record<string, string[]>>({});
   const [mode, setMode] = useState<FleetyMode>(() => loadStoredMode());
   const {
     attachment,
@@ -504,42 +492,6 @@ export function FleetyChatWidget() {
     await sendText(query);
   };
 
-  // Submit thumbs feedback for an assistant message
-  const submitFeedback = async (turnId: string, rating: 1 | -1) => {
-    if (!user || !turnId) return;
-    const { error } = await supabase
-      .from("fleety_message_feedback")
-      .upsert({ turn_id: turnId, user_id: user.id, rating }, { onConflict: "turn_id,user_id" });
-    if (error) toast.error("Couldn't save your feedback.");
-    else {
-      toast.success(rating === 1 ? "Thanks — glad it helped!" : "Thanks — we'll improve it.");
-      if (rating === -1) setNegFeedbackTurn(turnId);
-    }
-  };
-
-  // Toggle a reason chip on negative feedback
-  const FEEDBACK_REASONS = [
-    "Too vague",
-    "Wrong project",
-    "Missing steps",
-    "Needed a template",
-    "Outdated info",
-  ];
-  const toggleReason = async (turnId: string, reason: string) => {
-    if (!user) return;
-    const current = submittedReasons[turnId] ?? [];
-    const next = current.includes(reason)
-      ? current.filter((r) => r !== reason)
-      : [...current, reason];
-    setSubmittedReasons((m) => ({ ...m, [turnId]: next }));
-    const { error } = await supabase
-      .from("fleety_message_feedback")
-      .update({ reasons: next })
-      .eq("turn_id", turnId)
-      .eq("user_id", user.id);
-    if (error) toast.error("Couldn't save the reason.");
-  };
-
   // Action chip click — record event + open URL or post to Discord
   const handleChip = async (turnId: string | null | undefined, chip: ActionChip) => {
     try {
@@ -776,27 +728,9 @@ export function FleetyChatWidget() {
                       <div className="fleety-prose prose-sm">
                         <SafeMarkdown>{msg.content}</SafeMarkdown>
                       </div>
-                      {msg.sources && msg.sources.length > 0 && (
-                        <div className="mt-2 pt-1.5 border-t border-border/50">
-                          <p className="text-[11px] font-semibold text-muted-foreground mb-1">
-                            📚 Sources
-                          </p>
-                          <ul className="space-y-0.5">
-                            {msg.sources.map((url) => (
-                              <li key={url}>
-                                <a
-                                  href={url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-[11px] text-primary hover:underline break-all"
-                                >
-                                  {prettyUrl(url)}
-                                </a>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
+                      {/* Sources collapsed + gated on answer content — the answer shows first,
+                          never a link block that hides it. */}
+                      {msg.content.length > 0 && <FleetySources urls={msg.sources} />}
                       {!isLoading && msg.content.length > 0 && (
                         <div className="mt-2 pt-1 border-t border-border/50 flex items-center gap-1 flex-wrap">
                           <Button
@@ -829,24 +763,8 @@ export function FleetyChatWidget() {
                           </Button>
                           {msg.turnId && (
                             <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => submitFeedback(msg.turnId!, 1)}
-                                className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground gap-1"
-                                aria-label="Mark answer as helpful"
-                              >
-                                <ThumbsUp className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => submitFeedback(msg.turnId!, -1)}
-                                className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground gap-1"
-                                aria-label="Mark answer as not helpful"
-                              >
-                                <ThumbsDown className="h-3 w-3" />
-                              </Button>
+                              {/* Shared 👍/👎 + reason chips (parity with ChatPage + GuidanceEmbed) */}
+                              <FleetyMessageFeedback turnId={msg.turnId} />
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -876,32 +794,6 @@ export function FleetyChatWidget() {
                               </Button>
                             </>
                           )}
-                        </div>
-                      )}
-                      {msg.turnId && negFeedbackTurn === msg.turnId && (
-                        <div
-                          className="mt-2 pt-2 border-t border-border/50 flex flex-wrap gap-1.5"
-                          role="group"
-                          aria-label="Why wasn't this helpful?"
-                        >
-                          <span className="text-[11px] text-muted-foreground self-center mr-1">
-                            What was off?
-                          </span>
-                          {FEEDBACK_REASONS.map((reason) => {
-                            const active = (submittedReasons[msg.turnId!] ?? []).includes(reason);
-                            return (
-                              <Button
-                                key={reason}
-                                variant={active ? "secondary" : "outline"}
-                                size="sm"
-                                onClick={() => toggleReason(msg.turnId!, reason)}
-                                className="h-6 px-2 text-[11px]"
-                                aria-pressed={active}
-                              >
-                                {reason}
-                              </Button>
-                            );
-                          })}
                         </div>
                       )}
                       {msg.chips && msg.chips.length > 0 && (
