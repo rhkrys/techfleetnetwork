@@ -7,7 +7,16 @@
 // redirect:"error"; response is size- and time-bounded. The fetched bytes are UNTRUSTED DATA —
 // callers frame them as data (never instructions) when they reach an LLM (prompt-injection defense).
 
-import { fetchFigmaContent, parseFigmaKey } from "./figma-extract.ts";
+// Reuse the ONE hardened Figma engine (the hand-off generator's): node-scoped fetch that pulls only
+// the linked frame's subtree (so a 100k-node board never blows up), a streamed byte cap that can't
+// OOM the worker, and 429/5xx retry. This is why Fleety can now read large boards the same way
+// hand-off does — earlier it fetched the WHOLE file and choked on "too large".
+import {
+  fetchFileGroups,
+  fetchNodesText,
+  FigmaResponseTooLarge,
+  parseFigmaUrl,
+} from "../handoff-produce/figma.ts";
 
 /** Hosts we will fetch a member's material from. NOTHING else. */
 export const ALLOWED_MATERIAL_HOSTS = [
@@ -21,6 +30,8 @@ const IP_LITERAL = /^\d{1,3}(\.\d{1,3}){3}$|:/; // IPv4 or anything with a colon
 const MAX_URL_LEN = 2048;
 export const MATERIAL_FETCH_TIMEOUT_MS = 12_000;
 export const MATERIAL_MAX_BYTES = 2_000_000; // 2 MB cap on fetched material (DoS)
+/** Cap on extracted Figma text handed to the LLM (keeps the turn's context bounded). */
+export const FIGMA_MAX_TEXT_CHARS = 40_000;
 
 /** True iff `host` is exactly an allow-listed host or a subdomain of figma.com. */
 function hostAllowed(host: string): boolean {
@@ -97,23 +108,46 @@ export async function fetchMaterialText(
   assertMaterialUrlAllowed(url); // throws on violation
 
   // Figma boards can't be read as a web page (that returns the app's JS bundle, not the design).
-  // Route file/design/board links to the Figma REST API instead. Fail CLOSED with a clear message
-  // when no token is configured, rather than falling through to a useless HTML scrape.
-  const figmaKey = parseFigmaKey(url);
-  if (figmaKey) {
-    // Use the Figma PAT already configured in prod (the hand-off generator + DeepSeek Figma parsing
-    // use FIGMA_TOKEN), so this works with zero new config. FLEETY_FIGMA_TOKEN is an optional
-    // override for later, if the owner ever wants Fleety to read Figma under a distinct PAT.
+  // parseFigmaUrl throws on any non-figma URL, so guard it and fall through to the generic fetch.
+  let figma: { fileKey: string; nodeId?: string } | null = null;
+  try {
+    figma = parseFigmaUrl(url);
+  } catch {
+    figma = null;
+  }
+  if (figma) {
+    // Uses the Figma PAT already in prod (hand-off uses FIGMA_TOKEN), zero new config.
+    // FLEETY_FIGMA_TOKEN is an optional override for a Fleety-specific PAT later.
     const figmaToken = Deno.env.get("FLEETY_FIGMA_TOKEN") || Deno.env.get("FIGMA_TOKEN");
     if (!figmaToken) {
       throw new Error(
         "figma: reading Figma boards isn't enabled yet — paste the key content or describe the board instead"
       );
     }
-    return fetchFigmaContent(url, figmaToken, {
-      maxBytes: opts.maxBytes,
-      timeoutMs: opts.timeoutMs,
-    });
+    try {
+      let parts: string[];
+      if (figma.nodeId) {
+        // Node-scoped: the member linked a specific frame/section → fetch just that subtree.
+        // This is how a huge board stays readable (the whole-file fetch is what hit "too large").
+        const byId = await fetchNodesText(figma.fileKey, [figma.nodeId], figmaToken);
+        parts = Object.values(byId).flat();
+      } else {
+        // No node in the link → grouped whole-file read (streamed under a hard byte cap).
+        const groups = await fetchFileGroups(figma.fileKey, figmaToken);
+        parts = groups.flatMap((g) => [`## ${g.name}`, ...g.text]);
+      }
+      const text = parts.join("\n").slice(0, FIGMA_MAX_TEXT_CHARS).trim();
+      if (!text) throw new Error("figma: no readable text found on that board");
+      return text;
+    } catch (e) {
+      if (e instanceof FigmaResponseTooLarge) {
+        // Whole-file was too big — steer the member to link a specific frame so we go node-scoped.
+        throw new Error(
+          "figma: that board is very large — open the specific frame/section, right-click → Copy link to selection, and share THAT link so I can read just that part"
+        );
+      }
+      throw e;
+    }
   }
 
   const maxBytes = opts.maxBytes ?? MATERIAL_MAX_BYTES;
