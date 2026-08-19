@@ -1004,7 +1004,7 @@ export function FleetyChatWidget() {
                 }}
                 placeholder={activeMode.placeholder}
                 disabled={isLoading}
-                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none min-h-[40px] max-h-[120px]"
+                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none min-h-[160px] max-h-[300px]"
                 rows={1}
                 autoComplete="off"
                 aria-label="Type your question"
@@ -1013,7 +1013,7 @@ export function FleetyChatWidget() {
                 onInput={(e) => {
                   const el = e.currentTarget;
                   el.style.height = "auto";
-                  el.style.height = Math.min(el.scrollHeight, 120) + "px";
+                  el.style.height = Math.min(el.scrollHeight, 300) + "px";
                 }}
               />
             </div>
