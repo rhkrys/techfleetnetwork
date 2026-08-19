@@ -135,6 +135,18 @@ export const SPF_EMBED_TYPES = new Set([
   "specialization",
   "job_function",
   "career_transition",
+  // 2.2-D reach gaps: these live in spf_entity + the graph but were never in the KB prose channel,
+  // so a "what tools should I learn?" / "what's a stakeholder?" / "what project types does TF run?"
+  // question retrieved nothing. Embed them via the default builder (name + description).
+  // (workshop_step is folded into its workshop; workshop_template_section + handoff_component are
+  //  internal; project_phase is intentionally excluded — it would surface "phase" language that
+  //  conflicts with the milestones-not-phases rule.)
+  "tool",
+  "job_industry",
+  "project_type",
+  "stakeholder",
+  "company_type",
+  "data_type",
 ]);
 
 const TYPE_LABEL: Record<string, string> = {
@@ -150,6 +162,12 @@ const TYPE_LABEL: Record<string, string> = {
   specialization: "Specialization",
   job_function: "Job Function",
   career_transition: "Career Transition",
+  tool: "Tool",
+  job_industry: "Industry",
+  project_type: "Project Type",
+  stakeholder: "Stakeholder",
+  company_type: "Company Type",
+  data_type: "Data Type",
 };
 
 /**

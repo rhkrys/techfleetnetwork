@@ -247,22 +247,43 @@ serve(
         // single retrieval returns the full how-to. Idempotent: unchanged+embedded rows
         // are skipped; changed content is re-embedded. Run repeatedly until spf === 0.
         if (table === "all" || table === "spf") {
-          const { data: stepRows } = await admin
-            .from("spf_entity")
-            .select("entity_type,slug,name,description,data")
-            .eq("entity_type", "workshop_step")
-            .eq("is_active", true);
-          const stepsByWorkshop = groupSteps((stepRows ?? []) as SpfRow[]);
+          // Paginate spf_entity: PostgREST caps a single response at 1000 rows, so a single query
+          // silently dropped the tail once the SPF grew past 1000 (audit #3). Order by id for stable
+          // page boundaries (slug is not globally unique across types → unsafe as a page cursor).
+          const SPF_PAGE = 1000;
+          const stepRows: SpfRow[] = [];
+          for (let from = 0; ; from += SPF_PAGE) {
+            const { data: page, error } = await admin
+              .from("spf_entity")
+              .select("entity_type,slug,name,description,data")
+              .eq("entity_type", "workshop_step")
+              .eq("is_active", true)
+              .order("id", { ascending: true })
+              .range(from, from + SPF_PAGE - 1);
+            if (error) break;
+            const chunk = (page ?? []) as SpfRow[];
+            stepRows.push(...chunk);
+            if (chunk.length < SPF_PAGE) break;
+          }
+          const stepsByWorkshop = groupSteps(stepRows);
 
-          const { data: rows } = await admin
-            .from("spf_entity")
-            .select("entity_type,slug,name,description,data")
-            .in("entity_type", [...SPF_EMBED_TYPES])
-            .eq("is_active", true)
-            .order("slug", { ascending: true });
+          const rows: SpfRow[] = [];
+          for (let from = 0; ; from += SPF_PAGE) {
+            const { data: page, error } = await admin
+              .from("spf_entity")
+              .select("entity_type,slug,name,description,data")
+              .in("entity_type", [...SPF_EMBED_TYPES])
+              .eq("is_active", true)
+              .order("id", { ascending: true })
+              .range(from, from + SPF_PAGE - 1);
+            if (error) break;
+            const chunk = (page ?? []) as SpfRow[];
+            rows.push(...chunk);
+            if (chunk.length < SPF_PAGE) break;
+          }
 
           let n = 0;
-          for (const r of (rows ?? []) as SpfRow[]) {
+          for (const r of rows) {
             if (n >= limit) break;
             const kb = buildSpfKbRow(r, stepsByWorkshop);
             if (!kb) continue;

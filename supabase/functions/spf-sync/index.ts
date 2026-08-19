@@ -226,6 +226,34 @@ serve(
     }
 
     const okCount = results.filter((r) => r.status === "ok").length;
+
+    // Self-heal the graph after any successful swap. spf_apply_dataset does DELETE+INSERT, which
+    // reassigns every row's id — orphaning framework_edges and framework_search_mv against the OLD
+    // ids. Without this, the graph/search retrieval channel silently returns nothing after every
+    // sync until someone runs the rebuild by hand (the audit's #1 finding). Rebuild edges, then
+    // refresh the neighbor + search MVs (same as the reference-CSV path). All non-fatal: a swap that
+    // succeeded must not be reported as failed just because a refresh hiccuped.
+    if (okCount > 0) {
+      try {
+        await supabase.rpc("spf_rebuild_edges");
+        log.info("selfheal", `rebuilt framework_edges [${requestId}]`, { requestId });
+      } catch (e) {
+        log.warn("selfheal", `spf_rebuild_edges failed [${requestId}]: ${String(e)}`, {
+          requestId,
+        });
+      }
+      try {
+        await supabase.rpc("fw_refresh_neighbors_mv");
+      } catch {
+        /* non-fatal */
+      }
+      try {
+        await supabase.rpc("fw_refresh_search_mv");
+      } catch {
+        /* non-fatal */
+      }
+    }
+
     log.info("run", `SPF sync done [${requestId}] ok=${okCount}/${results.length}`, { requestId });
 
     return new Response(
