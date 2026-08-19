@@ -52,11 +52,13 @@ jobs:
           EXPECT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          url="${PROD_URL%/}/build-info.json"
-          echo "Expecting sha=$EXPECT_SHA live at $url"
+          base="${PROD_URL%/}/build-info.json"
+          echo "Expecting sha=$EXPECT_SHA live at $base"
           # Cloudflare Pages typically builds+promotes within a couple minutes; give it up to ~15.
           for i in $(seq 1 30); do
-            live=$(curl -fsS --max-time 15 -H 'cache-control: no-cache' "$url" 2>/dev/null | tr -d ' \n\r\t' || true)
+            # Unique query per attempt busts Cloudflare's edge cache — a request cache-control header
+            # alone does NOT force revalidation, so a stale build-info.json would false-fail this.
+            live=$(curl -fsS --max-time 15 -H 'cache-control: no-cache' "${base}?cb=${EXPECT_SHA}-${i}-$RANDOM" 2>/dev/null | tr -d ' \n\r\t' || true)
             echo "attempt $i: $live"
             case "$live" in
               *"\"sha\":\"$EXPECT_SHA\""*)

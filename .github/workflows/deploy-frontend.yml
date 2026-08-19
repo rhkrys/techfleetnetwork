@@ -102,10 +102,13 @@ jobs:
           EXPECT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          url="${PROD_URL%/}/build-info.json"
-          echo "Confirming $url serves sha=$EXPECT_SHA"
+          base="${PROD_URL%/}/build-info.json"
+          echo "Confirming $base serves sha=$EXPECT_SHA"
           for i in $(seq 1 20); do
-            live=$(curl -fsS --max-time 15 -H 'cache-control: no-cache' "$url" 2>/dev/null | tr -d ' \n\r\t' || true)
+            # Unique query per attempt busts Cloudflare's edge cache (a request `cache-control`
+            # header alone does NOT force the edge to revalidate) — otherwise a stale build-info.json
+            # cached from the previous deploy false-fails this check even when the deploy is live.
+            live=$(curl -fsS --max-time 15 -H 'cache-control: no-cache' "${base}?cb=${EXPECT_SHA}-${i}-$RANDOM" 2>/dev/null | tr -d ' \n\r\t' || true)
             echo "attempt $i: $live"
             case "$live" in
               *"\"sha\":\"$EXPECT_SHA\""*) echo "✅ Live at 100% with the deployed commit."; exit 0 ;;
