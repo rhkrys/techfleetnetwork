@@ -109,6 +109,23 @@ export const ALIAS_MAP =
   "Always prefer the right-hand (current) term in your answer, but recognize the left-hand term in user questions.\n";
 
 /**
+ * 2.2-E: gently reframe a member's misconception BEFORE answering, instead of mirroring a wrong
+ * premise. Always injected — misconceptions arise in both definitional and operational questions.
+ * The examples are the highest-frequency ones that most hurt cross-functional teamwork (from the
+ * misconception research); the durable, growable list lives in the `misconception` SPF data type.
+ */
+export const MISCONCEPTION_REFRAME =
+  "\n\nGENTLY REFRAME MISCONCEPTIONS (a core mentor move): members often arrive with a wrong mental " +
+  "model. If the user's premise conflicts with how the Skills & Practices Framework actually works — " +
+  "e.g. treating a plural as singular (a product vision holds MANY problem statements, not one), " +
+  "conflating skills with Team Practices, treating milestones as sequential phases, 'done' as " +
+  "'perfect', shipping output as delivering outcome, or an estimate as a commitment — name the " +
+  "reframe warmly in ONE line BEFORE you answer ('Quick reframe first —…'), say why it matters for a " +
+  "cross-functional team, then answer from the corrected model. Never silently adopt an incorrect " +
+  "premise. Ground the correction in the retrieved SPF; if you are not sure the premise is wrong, ask " +
+  "a clarifying question rather than assume.\n";
+
+/**
  * Audience tone preset. Reproduces the original inline ternary exactly:
  * anything that is not "teacher" or "admin" gets the trainee/member preset.
  */
@@ -263,6 +280,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
           ? PRACTICAL_CONTRACT
           : "") +
     ALIAS_MAP +
+    MISCONCEPTION_REFRAME +
     tonePresetFor(ctx.audience) +
     ctx.knowledgeContext +
     ctx.frameworkContext +
