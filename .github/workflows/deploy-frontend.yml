@@ -73,15 +73,27 @@ jobs:
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
           VITE_SUPABASE_PROJECT_ID: ${{ secrets.VITE_SUPABASE_PROJECT_ID }}
 
-      - name: Deploy to Cloudflare (wrangler — full deploy = 100% traffic)
+      - name: Deploy to Cloudflare AND force the new version to 100% traffic
         if: steps.cfg.outputs.configured == 'true'
-        # `wrangler deploy` (NOT `versions upload`) promotes the new version to 100% traffic
-        # immediately. The recurring stale-prod incident was a gradual-deploy path that uploaded a
-        # version at 0% and never promoted it — this command makes that impossible.
-        run: npx wrangler deploy
+        # Gradual Deployments makes `wrangler deploy` upload a version but park it at 0% traffic
+        # (the custom domain then serves the OLD version). So we deploy, capture the new Version ID
+        # from the output, and explicitly promote it to 100%. Idempotent: if the Worker isn't
+        # gradual, the promote just re-confirms 100%.
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          out=$(npx wrangler deploy 2>&1); printf '%s\n' "$out"
+          vid=$(printf '%s\n' "$out" \
+            | grep -oiE 'Current Version ID:[[:space:]]*[0-9a-fA-F-]{36}' \
+            | grep -oiE '[0-9a-fA-F-]{36}' | head -n1 || true)
+          if [ -n "$vid" ]; then
+            echo "Forcing version $vid to 100% traffic (defeats gradual-deploy 0% parking)"
+            npx wrangler versions deploy "${vid}@100%" -y
+          else
+            echo "::warning::Could not parse the new Version ID; if the site is stale, promote to 100% manually (wrangler versions deploy <id>@100% -y)."
+          fi
 
       - name: Verify production is serving THIS commit at 100%
         if: steps.cfg.outputs.configured == 'true' && vars.PROD_URL != ''
