@@ -102,17 +102,19 @@ jobs:
           EXPECT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          base="${PROD_URL%/}/build-info.json"
-          echo "Confirming $base serves sha=$EXPECT_SHA"
+          # Cache-PROOF check: a per-commit marker at /deploys/<sha>.txt only exists once THIS build
+          # is live and was never requested before, so Cloudflare's edge can't serve it stale (a
+          # fixed path like build-info.json gets edge-cached and false-fails even when live).
+          url="${PROD_URL%/}/deploys/${EXPECT_SHA}.txt"
+          echo "Confirming $url is live"
           for i in $(seq 1 20); do
-            # Unique query per attempt busts Cloudflare's edge cache (a request `cache-control`
-            # header alone does NOT force the edge to revalidate) — otherwise a stale build-info.json
-            # cached from the previous deploy false-fails this check even when the deploy is live.
-            live=$(curl -fsS --max-time 15 -H 'cache-control: no-cache' "${base}?cb=${EXPECT_SHA}-${i}-$RANDOM" 2>/dev/null | tr -d ' \n\r\t' || true)
-            echo "attempt $i: $live"
-            case "$live" in
-              *"\"sha\":\"$EXPECT_SHA\""*) echo "✅ Live at 100% with the deployed commit."; exit 0 ;;
-            esac
+            live=$(curl -fsS --max-time 15 "$url" 2>/dev/null | tr -d ' \n\r\t' || true)
+            echo "attempt $i: '${live:0:60}'"
+            # A real marker is EXACTLY the sha; a missing file returns the SPA index.html fallback.
+            if [ "$live" = "$EXPECT_SHA" ]; then
+              echo "✅ Production is serving the deployed commit at 100%."
+              exit 0
+            fi
             sleep 15
           done
           echo "::error::Deploy reported success but production is NOT serving $EXPECT_SHA — investigate promotion/traffic split."

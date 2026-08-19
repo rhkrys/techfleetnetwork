@@ -52,20 +52,18 @@ jobs:
           EXPECT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          base="${PROD_URL%/}/build-info.json"
-          echo "Expecting sha=$EXPECT_SHA live at $base"
-          # Cloudflare Pages typically builds+promotes within a couple minutes; give it up to ~15.
+          # Cache-proof: per-commit marker at a unique path the edge can't have cached (see
+          # scripts/write-build-info.mjs). A fixed path like build-info.json gets edge-cached stale.
+          url="${PROD_URL%/}/deploys/${EXPECT_SHA}.txt"
+          echo "Expecting $url to go live"
+          # Cloudflare typically builds+promotes within a couple minutes; give it up to ~15.
           for i in $(seq 1 30); do
-            # Unique query per attempt busts Cloudflare's edge cache — a request cache-control header
-            # alone does NOT force revalidation, so a stale build-info.json would false-fail this.
-            live=$(curl -fsS --max-time 15 -H 'cache-control: no-cache' "${base}?cb=${EXPECT_SHA}-${i}-$RANDOM" 2>/dev/null | tr -d ' \n\r\t' || true)
-            echo "attempt $i: $live"
-            case "$live" in
-              *"\"sha\":\"$EXPECT_SHA\""*)
-                echo "✅ Live site is serving the merged commit ($EXPECT_SHA)."
-                exit 0
-                ;;
-            esac
+            live=$(curl -fsS --max-time 15 "$url" 2>/dev/null | tr -d ' \n\r\t' || true)
+            echo "attempt $i: '${live:0:60}'"
+            if [ "$live" = "$EXPECT_SHA" ]; then
+              echo "✅ Live site is serving the merged commit ($EXPECT_SHA)."
+              exit 0
+            fi
             sleep 30
           done
           echo "::error::Production did not serve the merged commit ($EXPECT_SHA) within ~15 min."

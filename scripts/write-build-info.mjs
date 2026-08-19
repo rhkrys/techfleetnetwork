@@ -21,6 +21,16 @@ const info = { sha: sha || "unknown", builtAt: new Date().toISOString() };
 
 fs.writeFileSync("dist/build-info.json", JSON.stringify(info) + "\n");
 
+// Per-commit marker at a UNIQUE path. The deploy verifier fetches /deploys/<sha>.txt — a URL that
+// only exists once THIS build is live, and was never requested before, so Cloudflare's edge can't
+// serve it stale. This is the cache-proof deploy check (build-info.json, a fixed path, gets edge-
+// cached and false-fails the verifier even though _headers says no-store — Workers assets don't
+// fully honor _headers).
+if (info.sha && info.sha !== "unknown") {
+  fs.mkdirSync("dist/deploys", { recursive: true });
+  fs.writeFileSync(`dist/deploys/${info.sha}.txt`, info.sha + "\n");
+}
+
 // Also embed the sha as a meta tag so it's visible in the served HTML itself.
 try {
   const p = "dist/index.html";
