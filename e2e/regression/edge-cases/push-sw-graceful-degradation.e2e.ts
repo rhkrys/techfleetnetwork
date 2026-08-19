@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { isIgnorableRuntimeNoise } from "../../helpers/runtime-stability";
 
 /**
  * BDD NOTIF-EDGE-PUSH-001 — When the browser has no service worker (or it is
@@ -28,7 +29,12 @@ test.describe("Push SW graceful degradation (NOTIF-EDGE-PUSH-001) @critical", ()
     });
 
     const fatal: string[] = [];
-    page.on("pageerror", (err) => fatal.push(String(err?.message ?? err)));
+    // Ignore third-party noise (e.g. CookieYes' preview-URL notice) via the
+    // shared runtime-stability allowlist — this collector predates that helper.
+    page.on("pageerror", (err) => {
+      const m = String(err?.message ?? err);
+      if (!isIgnorableRuntimeNoise(m)) fatal.push(m);
+    });
     page.on("console", (msg) => {
       if (msg.type() === "error" && /service worker|push/i.test(msg.text())) {
         fatal.push(msg.text());

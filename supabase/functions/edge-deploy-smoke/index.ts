@@ -1,9 +1,14 @@
 // @edge-cron
 // edge-deploy-smoke
-// Probes every edge function listed in supabase/functions.manifest.json with
-// an OPTIONS request. A 404 means the platform stopped shipping it. On 404 we write a
-// severity:error row to audit_log which the existing Triage Critical Push
-// (5-min cron) pages admins on within minutes.
+// Liveness-probes every edge function in the manifest. Classification is
+// reliability-hardened (see probe.ts) after INCIDENT
+// edge-deploy-smoke-false-alarms-2026-08, where an OPTIONS-only probe that
+// treated any 404 OR any fetch timeout as "not deployed" emitted 36,270 false
+// severity:error rows and libeled the live handoff-worker. Only a CONFIRMED
+// missing function (a JWT-gated function whose gateway returns 404) writes the
+// severity:error row that the Triage Critical Push (5-min cron) pages on.
+// Ambiguous signals (a verify_jwt=false function that doesn't answer OPTIONS,
+// or a transient timeout) are reported as `inconclusive` and never page.
 //
 // Runs on a 10-min cron, service-role authed.
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -11,6 +16,7 @@ import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { authorizeServiceRoleRequest } from "../_shared/service-role-auth.ts";
 import { auditEdgeEvent } from "../_shared/audit.ts";
 import { buildNotDeployedAuditEvent } from "./alerts.ts";
+import { classifyProbe, probeMethodFor, type ProbeVerdict } from "./probe.ts";
 import manifest from "./_manifest.json" with { type: "json" };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -38,8 +44,9 @@ Deno.serve(async (req) => {
   });
 
   const base = `${SUPABASE_URL}/functions/v1`;
-  const results: Array<{ name: string; status: number; ok: boolean }> = [];
+  const results: Array<{ name: string; status: number; verdict: ProbeVerdict }> = [];
   const notDeployed: string[] = [];
+  const inconclusive: string[] = [];
 
   // 8-way concurrency
   const queue = [...FUNCTIONS];
@@ -49,20 +56,25 @@ Deno.serve(async (req) => {
       if (!fn) break;
       // Skip self to avoid recursion
       if (fn.name === "edge-deploy-smoke") continue;
+      // Side-effect-free probe chosen by auth gate; reliable classification in
+      // probe.ts (INCIDENT edge-deploy-smoke-false-alarms-2026-08).
+      const method = probeMethodFor(fn.verify_jwt);
+      let status: number;
       try {
         const r = await fetch(`${base}/${fn.name}`, {
-          method: "OPTIONS",
-          headers: { "access-control-request-method": "POST" },
+          method,
+          headers: method === "OPTIONS" ? { "access-control-request-method": "POST" } : {},
           signal: AbortSignal.timeout(5000),
         });
         await r.body?.cancel();
-        const ok = r.status !== 404;
-        results.push({ name: fn.name, status: r.status, ok });
-        if (!ok) notDeployed.push(fn.name);
-      } catch (e) {
-        results.push({ name: fn.name, status: 0, ok: false });
-        notDeployed.push(fn.name);
+        status = r.status;
+      } catch (_e) {
+        status = 0; // fetch threw / timed out — transient, NOT evidence of removal
       }
+      const verdict = classifyProbe(status, fn.verify_jwt);
+      results.push({ name: fn.name, status, verdict });
+      if (verdict === "missing") notDeployed.push(fn.name);
+      else if (verdict === "inconclusive") inconclusive.push(fn.name);
     }
   }
   await Promise.all(Array.from({ length: 8 }, worker));
@@ -80,6 +92,7 @@ Deno.serve(async (req) => {
     JSON.stringify({
       checked: results.length,
       not_deployed: notDeployed,
+      inconclusive,
       ok: notDeployed.length === 0,
     }),
     { headers: { ...corsHeaders, "content-type": "application/json" } }

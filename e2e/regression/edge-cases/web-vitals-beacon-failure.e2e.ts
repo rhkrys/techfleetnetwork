@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { isIgnorableRuntimeNoise } from "../../helpers/runtime-stability";
 
 /**
  * BDD PERF-EDGE-VITALS-001 — When the /record-web-vital edge fn is down,
@@ -21,7 +22,12 @@ test.describe("Web vitals beacon failure (PERF-EDGE-VITALS-001) @critical", () =
     });
 
     const fatal: string[] = [];
-    page.on("pageerror", (err) => fatal.push(String(err?.message ?? err)));
+    // Ignore third-party noise (e.g. CookieYes' preview-URL notice) via the
+    // shared runtime-stability allowlist — this collector predates that helper.
+    page.on("pageerror", (err) => {
+      const m = String(err?.message ?? err);
+      if (!isIgnorableRuntimeNoise(m)) fatal.push(m);
+    });
 
     const resp = await page.goto("/", { waitUntil: "domcontentloaded" });
     expect(resp?.status() ?? 200).toBeLessThan(500);

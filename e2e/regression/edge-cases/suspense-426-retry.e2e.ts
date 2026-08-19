@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { isIgnorableRuntimeNoise } from "../../helpers/runtime-stability";
 
 /**
  * BDD UI-EDGE-426-001 — Minified React error #426 (Suspense hydration race
@@ -15,15 +16,18 @@ test.describe("Suspense 426 retry (UI-EDGE-426-001) @critical", () => {
 
   test("synthetic React 426 does not surface an error toast", async ({ page }) => {
     const fatal: string[] = [];
-    page.on("pageerror", (err) => fatal.push(String(err?.message ?? err)));
+    // Ignore third-party noise (e.g. CookieYes' preview-URL notice) via the
+    // shared runtime-stability allowlist — this collector predates that helper.
+    page.on("pageerror", (err) => {
+      const m = String(err?.message ?? err);
+      if (!isIgnorableRuntimeNoise(m)) fatal.push(m);
+    });
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
     // Fire a synthetic React 426 to confirm ErrorBoundary downgrades it.
     await page.evaluate(() => {
-      const err = new Error(
-        "Minified React error #426; visit https://react.dev/errors/426"
-      );
+      const err = new Error("Minified React error #426; visit https://react.dev/errors/426");
       window.dispatchEvent(new ErrorEvent("error", { error: err, message: err.message }));
     });
 
