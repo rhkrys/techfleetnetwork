@@ -41,7 +41,8 @@ import {
   consentFingerprint,
 } from "@/lib/consent/cookieyes";
 
-type CkyCategory = "necessary" | "functional" | "analytics" | "performance" | "advertisement" | "other";
+type CkyCategory =
+  "necessary" | "functional" | "analytics" | "performance" | "advertisement" | "other";
 
 interface CkyConsentDetail {
   accepted?: CkyCategory[];
@@ -55,10 +56,11 @@ declare global {
   }
 }
 
-
-
-
-const COOKIEYES_SRC = "https://cdn-cookieyes.com/client_data/d4f48648fa538464e81930cedd3aff82/script.js";
+// Active CookieYes site ID. The prior site (d4f48648…) was paused, which left
+// its CDN script.js loading but inert — no banner, no getCkyConsent() API — so
+// analytics consent could never be granted. This is the reactivated site.
+const COOKIEYES_SRC =
+  "https://cdn-cookieyes.com/client_data/99ff3106dea7a5721edfab1d3c457cd7/script.js";
 const DEDUP_KEY = "tfn.consent.fp.v1";
 
 function loadCookieYesScript() {
@@ -118,7 +120,9 @@ function persist(state: ConsentState, source: "cookieyes" | "gpc" | "reconcile" 
     const prev = sessionStorage.getItem(DEDUP_KEY);
     if (prev === fp) return;
     sessionStorage.setItem(DEDUP_KEY, fp);
-  } catch { /* private mode */ }
+  } catch {
+    /* private mode */
+  }
   try {
     void supabase.functions.invoke("record-consent", {
       body: {
@@ -134,7 +138,9 @@ function persist(state: ConsentState, source: "cookieyes" | "gpc" | "reconcile" 
         source,
       },
     });
-  } catch { /* offline ok */ }
+  } catch {
+    /* offline ok */
+  }
 }
 
 /**
@@ -142,7 +148,10 @@ function persist(state: ConsentState, source: "cookieyes" | "gpc" | "reconcile" 
  * mount, route change, visibility return, and after the CookieYes script
  * finally loads. This is the retroactive recovery path.
  */
-function reconcileFromCookieYes(prev: ConsentState, source: "reconcile" | "backfill" = "reconcile") {
+function reconcileFromCookieYes(
+  prev: ConsentState,
+  source: "reconcile" | "backfill" = "reconcile"
+) {
   const stored = readStoredCookieYesConsent();
   if (!stored) return;
   const next = ckyToConsentState(prev, stored);
