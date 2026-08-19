@@ -1002,9 +1002,35 @@ serve(
         }
       }
 
-      // D-11: no full-table fallback. If semantic search returns nothing, kbHits
-      // stays empty and the honest "no knowledge available" path below handles it
-      // (a trigram fallback for embedding outages is tracked separately — UC-22).
+      // UC-22 (2.2-D): lexical fallback removes the query-embedding single point of failure.
+      // If the query embedding was unavailable (embedding-provider outage / free-tier 429 quota) OR
+      // semantic search returned nothing, fall back to a full-text search over the SAME
+      // knowledge_base — no embedding needed — so Fleety never goes blind to the entire corpus
+      // (skills, practices, careers) because of one live API call.
+      let kbRetrievalMode: "semantic" | "lexical" | "none" = kbHits.length ? "semantic" : "none";
+      if (kbHits.length === 0) {
+        try {
+          const { data, error } = await supabase.rpc("fleety_kb_lexical_search", {
+            p_query: lastUserMessage.slice(0, 1000),
+            p_limit: KB_TOPK,
+          });
+          if (error) throw error;
+          const lexHits = (data ?? []) as KbHit[];
+          if (lexHits.length) {
+            kbHits = lexHits;
+            kbRetrievalMode = "lexical";
+          }
+        } catch (e) {
+          log.warn(
+            "kb",
+            `lexical KB fallback failed [${requestId}]: ${e instanceof Error ? e.message : "unknown"}`,
+            { requestId }
+          );
+        }
+      }
+      // True when the semantic channel was unavailable this turn (embedding down/quota) — surfaced
+      // for observability so an outage never silently reads as "the data doesn't exist".
+      const embeddingDegraded = !haveEmbeddings;
 
       // D-04: web search removed. webResult kept as an empty shape so downstream
       // logging and turn-signal counts stay valid without further edits.
@@ -1015,9 +1041,16 @@ serve(
 
       log.info(
         "kb",
-        `Using ${kbHits.length} KB entries [${requestId}] (semantic=${haveEmbeddings})`,
+        `Using ${kbHits.length} KB entries [${requestId}] (retrieval=${kbRetrievalMode}, embeddingDegraded=${embeddingDegraded})`,
         { requestId }
       );
+      if (embeddingDegraded) {
+        log.warn(
+          "kb",
+          `retrieval degraded to ${kbRetrievalMode} (embedding unavailable) [${requestId}]`,
+          { requestId }
+        );
+      }
 
       let knowledgeContext = "";
       if (kbHits.length > 0) {
@@ -2096,13 +2129,14 @@ serve(
       const exposeHeaders: Record<string, string> = {
         ...corsHeaders,
         "Access-Control-Expose-Headers":
-          "X-Fleety-Turn-Id, X-Fleety-Intent, X-Fleety-Chips, X-Fleety-Practical, X-Fleety-Mode, X-Fleety-Cache, X-Fleety-Guard, X-Fleety-Sources",
+          "X-Fleety-Turn-Id, X-Fleety-Intent, X-Fleety-Chips, X-Fleety-Practical, X-Fleety-Mode, X-Fleety-Retrieval, X-Fleety-Cache, X-Fleety-Guard, X-Fleety-Sources",
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-store",
         "X-Content-Type-Options": "nosniff",
         "X-Fleety-Intent": intent,
         "X-Fleety-Practical": practical ? "1" : "0",
         "X-Fleety-Mode": chatMode,
+        "X-Fleety-Retrieval": kbRetrievalMode,
         "X-Fleety-Cache": "miss",
         "X-Fleety-Guard": costGuardStep,
       };
