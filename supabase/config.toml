@@ -103,6 +103,11 @@ project_id = "pzvqxdgoztbfikfuifix"
     verify_jwt = false
   [functions.fleety-embed]
     verify_jwt = false
+  [functions.fleety-extract]
+    # 2.2-F member file upload -> text extraction. Member JWT verified in code
+    # (getUser + 401) + per-user rate limit; verify_jwt stays false to match the
+    # in-code auth pattern the rest of the Fleety functions use.
+    verify_jwt = false
   [functions.fleety-learning-digest]
     verify_jwt = false
   [functions.fleety-weekly-digest]

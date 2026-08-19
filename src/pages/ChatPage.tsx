@@ -26,6 +26,9 @@ import {
   storeMode,
 } from "@/lib/fleety/modes";
 import { groupConversationsByDate } from "@/lib/fleety/history";
+import { toChatAttachment } from "@/lib/fleety/attachment";
+import { useFleetyAttachment } from "@/hooks/useFleetyAttachment";
+import { FleetyAttachButton, FleetyAttachmentChip } from "@/components/fleety/FleetyAttach";
 
 type Msg = { role: "user" | "assistant"; content: string; sources?: string[] };
 type Conversation = { id: string; title: string; updated_at: string };
@@ -35,12 +38,14 @@ const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/techfleet-ch
 async function streamChat({
   messages,
   mode,
+  attachment,
   onDelta,
   onSources,
   onDone,
 }: {
   messages: Msg[];
   mode: FleetyMode;
+  attachment?: { filename: string; text: string };
   onDelta: (deltaText: string) => void;
   onSources?: (urls: string[]) => void;
   onDone: () => void;
@@ -51,7 +56,7 @@ async function streamChat({
       "Content-Type": "application/json",
       Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
     },
-    body: JSON.stringify({ messages, mode }),
+    body: JSON.stringify({ messages, mode, attachment }),
   });
 
   if (!resp.ok) {
@@ -171,6 +176,13 @@ export default function ChatPage() {
   const [activeConvoId, setActiveConvoId] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
   const [mode, setMode] = useState<FleetyMode>(() => loadStoredMode());
+  const {
+    attachment,
+    status: attachStatus,
+    error: attachError,
+    attach,
+    clear: clearAttachment,
+  } = useFleetyAttachment();
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const activeMode = fleetyModeMeta(mode);
@@ -314,11 +326,18 @@ export default function ChatPage() {
 
   const send = async (e: React.FormEvent) => {
     e.preventDefault();
-    const text = input.trim();
-    if (!text || isLoading) return;
+    const typed = input.trim();
+    // An attachment alone is enough to send — fall back to a default review prompt so the turn
+    // always has a user message (techfleet-chat requires non-empty content).
+    const hasAttachment = !!attachment?.text;
+    if ((!typed && !hasAttachment) || isLoading) return;
+    const text =
+      typed || (attachment ? `Please review my uploaded file: ${attachment.filename}` : "");
 
+    const chatAttachment = toChatAttachment(attachment);
     const userMsg: Msg = { role: "user", content: text };
     setInput("");
+    clearAttachment();
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
 
@@ -354,6 +373,7 @@ export default function ChatPage() {
       await streamChat({
         messages: [...messages, userMsg],
         mode,
+        attachment: chatAttachment,
         onDelta: (chunk) => upsertAssistant(chunk),
         onSources: (urls) => {
           assistantSources = urls;
@@ -630,8 +650,21 @@ export default function ChatPage() {
           ))}
         </div>
 
+        {/* Attached-file status chip (2.2-F) */}
+        <FleetyAttachmentChip
+          attachment={attachment}
+          status={attachStatus}
+          error={attachError}
+          onClear={clearAttachment}
+        />
+
         {/* Input */}
         <form onSubmit={send} className="flex gap-2 items-end">
+          <FleetyAttachButton
+            onPick={(f) => attach(f)}
+            disabled={isLoading}
+            busy={attachStatus === "extracting"}
+          />
           <div className="flex-1 relative">
             <textarea
               ref={inputRef as React.RefObject<HTMLTextAreaElement>}
@@ -667,7 +700,7 @@ export default function ChatPage() {
           </div>
           <Button
             type="submit"
-            disabled={isLoading || !input.trim()}
+            disabled={isLoading || (!input.trim() && !attachment?.text)}
             size="icon"
             aria-label="Send message"
           >

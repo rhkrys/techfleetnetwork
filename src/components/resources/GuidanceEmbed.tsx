@@ -15,6 +15,9 @@ import {
   storeMode,
 } from "@/lib/fleety/modes";
 import { groupConversationsByDate } from "@/lib/fleety/history";
+import { toChatAttachment } from "@/lib/fleety/attachment";
+import { useFleetyAttachment } from "@/hooks/useFleetyAttachment";
+import { FleetyAttachButton, FleetyAttachmentChip } from "@/components/fleety/FleetyAttach";
 
 type Msg = {
   role: "user" | "assistant";
@@ -42,6 +45,7 @@ function prettyUrl(url: string): string {
 async function streamChat({
   messages,
   mode,
+  attachment,
   onDelta,
   onFollowups,
   onSources,
@@ -49,6 +53,7 @@ async function streamChat({
 }: {
   messages: Msg[];
   mode: FleetyMode;
+  attachment?: { filename: string; text: string };
   onDelta: (deltaText: string) => void;
   onFollowups: (followups: string[]) => void;
   onSources: (urls: string[]) => void;
@@ -70,7 +75,7 @@ async function streamChat({
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ messages: sanitizedMessages, mode }),
+    body: JSON.stringify({ messages: sanitizedMessages, mode, attachment }),
   });
 
   if (!resp.ok) {
@@ -175,6 +180,13 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [speakingIdx, setSpeakingIdx] = useState<number | null>(null);
   const [mode, setMode] = useState<FleetyMode>(() => loadStoredMode());
+  const {
+    attachment,
+    status: attachStatus,
+    error: attachError,
+    attach,
+    clear: clearAttachment,
+  } = useFleetyAttachment();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvoId, setActiveConvoId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
@@ -290,7 +302,11 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
 
   const sendText = async (text: string) => {
     text = text.trim();
-    if (!text || isLoading) return;
+    // An attachment alone can be sent; capture + clear it for this turn.
+    const chatAttachment = toChatAttachment(attachment);
+    if ((!text && !chatAttachment) || isLoading) return;
+    if (!text && attachment) text = `Please review my uploaded file: ${attachment.filename}`;
+    clearAttachment();
 
     const userMsg: Msg = { role: "user", content: text };
     setMessages((prev) => [
@@ -327,6 +343,7 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
       await streamChat({
         messages: [...messages, userMsg],
         mode,
+        attachment: chatAttachment,
         onDelta: (chunk) => upsertAssistant(chunk),
         onFollowups: (followups) => {
           setMessages((prev) => {
@@ -643,8 +660,25 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
         ))}
       </div>
 
+      {/* Attached-file status chip (2.2-F) */}
+      {attachStatus !== "idle" && (
+        <div className="px-4">
+          <FleetyAttachmentChip
+            attachment={attachment}
+            status={attachStatus}
+            error={attachError}
+            onClear={clearAttachment}
+          />
+        </div>
+      )}
+
       {/* Input */}
       <form onSubmit={send} className="p-4 pt-2 flex gap-2 items-end shrink-0">
+        <FleetyAttachButton
+          onPick={(f) => attach(f)}
+          disabled={isLoading}
+          busy={attachStatus === "extracting"}
+        />
         <div className="flex-1 relative">
           <textarea
             ref={inputRef as React.RefObject<HTMLTextAreaElement>}
@@ -655,7 +689,7 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                if (input.trim() && !isLoading) send(e);
+                if ((input.trim() || attachment?.text) && !isLoading) send(e);
               }
             }}
             placeholder={activeMode.placeholder}
@@ -680,7 +714,7 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
         </div>
         <Button
           type="submit"
-          disabled={isLoading || !input.trim()}
+          disabled={isLoading || (!input.trim() && !attachment?.text)}
           size="icon"
           aria-label="Send message"
         >

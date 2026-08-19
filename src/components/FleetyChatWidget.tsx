@@ -33,6 +33,9 @@ import {
   storeMode,
 } from "@/lib/fleety/modes";
 import { groupConversationsByDate } from "@/lib/fleety/history";
+import { toChatAttachment } from "@/lib/fleety/attachment";
+import { useFleetyAttachment } from "@/hooks/useFleetyAttachment";
+import { FleetyAttachButton, FleetyAttachmentChip } from "@/components/fleety/FleetyAttach";
 
 type ActionChip = { label: string; action_type: string; target_url?: string | null };
 type Msg = {
@@ -67,6 +70,7 @@ async function streamChat({
   conversationId,
   clientPath,
   mode,
+  attachment,
   onDelta,
   onTurnId,
   onChips,
@@ -78,6 +82,7 @@ async function streamChat({
   conversationId: string | null;
   clientPath: string | null;
   mode: FleetyMode;
+  attachment?: { filename: string; text: string };
   onDelta: (deltaText: string) => void;
   onTurnId: (id: string | null) => void;
   onChips: (chips: ActionChip[]) => void;
@@ -105,6 +110,7 @@ async function streamChat({
       conversation_id: conversationId,
       client_path: clientPath ? clientPath.slice(0, 200) : null,
       mode,
+      attachment,
     }),
   });
 
@@ -228,6 +234,13 @@ export function FleetyChatWidget() {
   const [negFeedbackTurn, setNegFeedbackTurn] = useState<string | null>(null);
   const [submittedReasons, setSubmittedReasons] = useState<Record<string, string[]>>({});
   const [mode, setMode] = useState<FleetyMode>(() => loadStoredMode());
+  const {
+    attachment,
+    status: attachStatus,
+    error: attachError,
+    attach,
+    clear: clearAttachment,
+  } = useFleetyAttachment();
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // Skip the [activeConvoId] DB reload for the one flip caused by starting a brand-new chat, so it
@@ -363,7 +376,11 @@ export function FleetyChatWidget() {
 
   const sendText = async (text: string) => {
     text = text.trim();
-    if (!text || isLoading) return;
+    // An attachment alone can be sent; capture + clear it for this turn.
+    const chatAttachment = toChatAttachment(attachment);
+    if ((!text && !chatAttachment) || isLoading) return;
+    if (!text && attachment) text = `Please review my uploaded file: ${attachment.filename}`;
+    clearAttachment();
 
     const userMsg: Msg = { role: "user", content: text };
     // Clear follow-ups on previous assistant message so they can't be re-clicked.
@@ -404,6 +421,7 @@ export function FleetyChatWidget() {
         conversationId: convoId,
         clientPath: typeof window !== "undefined" ? window.location.pathname : null,
         mode,
+        attachment: chatAttachment,
         onDelta: (chunk) => upsertAssistant(chunk),
         onTurnId: (id) => {
           assistantTurnId = id;
@@ -464,7 +482,7 @@ export function FleetyChatWidget() {
   const send = async (e: React.FormEvent) => {
     e.preventDefault();
     const text = input.trim();
-    if (!text || isLoading) return;
+    if ((!text && !attachment?.text) || isLoading) return;
     setInput("");
     await sendText(text);
   };
@@ -987,8 +1005,25 @@ export function FleetyChatWidget() {
             ))}
           </div>
 
+          {/* Attached-file status chip (2.2-F) */}
+          {attachStatus !== "idle" && (
+            <div className="px-3">
+              <FleetyAttachmentChip
+                attachment={attachment}
+                status={attachStatus}
+                error={attachError}
+                onClear={clearAttachment}
+              />
+            </div>
+          )}
+
           {/* Input */}
           <form onSubmit={send} className="border-t-0 p-3 flex gap-2 items-end shrink-0">
+            <FleetyAttachButton
+              onPick={(f) => attach(f)}
+              disabled={isLoading}
+              busy={attachStatus === "extracting"}
+            />
             <div className="flex-1">
               <textarea
                 ref={inputRef as React.RefObject<HTMLTextAreaElement>}
@@ -999,7 +1034,7 @@ export function FleetyChatWidget() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
-                    if (input.trim() && !isLoading) send(e);
+                    if ((input.trim() || attachment?.text) && !isLoading) send(e);
                   }
                 }}
                 placeholder={activeMode.placeholder}
@@ -1019,7 +1054,7 @@ export function FleetyChatWidget() {
             </div>
             <Button
               type="submit"
-              disabled={isLoading || !input.trim()}
+              disabled={isLoading || (!input.trim() && !attachment?.text)}
               size="icon"
               className="h-9 w-9"
               aria-label="Send message"

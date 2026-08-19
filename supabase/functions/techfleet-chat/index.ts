@@ -27,6 +27,14 @@ const ChatBodySchema = z
     // UI conversation mode (Chat / Deliverables Review / Plan). Optional + defaulted to "chat"
     // so older clients that omit it behave exactly as before.
     mode: z.enum(["chat", "review", "plan"]).optional(),
+    // 2.2-F: text already extracted from a member's uploaded file by fleety-extract. Injected as
+    // UNTRUSTED material (same framing as a shared link). Capped defensively here too.
+    attachment: z
+      .object({
+        filename: z.string().max(200).optional(),
+        text: z.string().max(60_000),
+      })
+      .optional(),
   })
   .passthrough();
 
@@ -532,11 +540,12 @@ serve(
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const { messages, conversation_id, client_path, mode } = _parsedChat.data as {
+      const { messages, conversation_id, client_path, mode, attachment } = _parsedChat.data as {
         messages?: any[];
         conversation_id?: string;
         client_path?: string;
         mode?: "chat" | "review" | "plan";
+        attachment?: { filename?: string; text: string };
       };
       const chatMode: "chat" | "review" | "plan" = mode ?? "chat";
       const safeClientPath =
@@ -757,7 +766,18 @@ serve(
       // canned caches (the answer depends on live, member-specific content) and counts as
       // grounding (so a "review my Figma" turn is never refused as off-topic).
       const materialUrls = extractAllowedUrls(lastUserMessage, 2);
-      const hasMaterial = materialUrls.length > 0;
+      // 2.2-F: an uploaded file's extracted text (from fleety-extract) is material too — it makes
+      // the turn a review of the member's own work, exactly like a shared link.
+      const attachmentText =
+        attachment && typeof attachment.text === "string"
+          ? attachment.text.slice(0, 40_000).trim()
+          : "";
+      const hasAttachment = attachmentText.length > 0;
+      const attachmentName =
+        typeof attachment?.filename === "string"
+          ? attachment.filename.replace(/[\x00-\x1F\x7F<>]/g, "").slice(0, 120) || "upload"
+          : "uploaded file";
+      const hasMaterial = materialUrls.length > 0 || hasAttachment;
       let materialContext = "";
       if (hasMaterial) {
         const parts: string[] = [];
@@ -782,6 +802,10 @@ serve(
             parts.push(`--- Shared link: ${url} (${why}) ---`);
             log.warn("material", `material fetch failed [${requestId}]`, { requestId });
           }
+        }
+        if (hasAttachment) {
+          parts.push(`--- Uploaded file: ${attachmentName} ---\n${attachmentText}`);
+          log.info("material", `reviewing uploaded file [${requestId}]`, { requestId });
         }
         materialContext =
           `\n=== MEMBER-SHARED MATERIAL UNDER REVIEW ===\n` +
