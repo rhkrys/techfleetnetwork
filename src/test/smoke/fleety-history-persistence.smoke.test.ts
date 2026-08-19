@@ -22,7 +22,11 @@ const read = (path: string) => readFileSync(resolve(root, path), "utf8");
  * source-level assertions (matching fleety-sources-ui.smoke.test.ts) fail loudly if a refactor
  * drops the guard and reopens the clobber.
  */
-const SURFACES = ["src/pages/ChatPage.tsx", "src/components/FleetyChatWidget.tsx"];
+const SURFACES = [
+  "src/pages/ChatPage.tsx",
+  "src/components/FleetyChatWidget.tsx",
+  "src/components/resources/GuidanceEmbed.tsx",
+];
 
 describe("fleety chat history survives the first-message reload (G1/#21)", () => {
   for (const path of SURFACES) {

@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { getSessionSafe } from "@/lib/auth/session-port";
-import { Send, Loader2, Volume2, VolumeX, User } from "lucide-react";
+import { Send, Loader2, Volume2, VolumeX, User, MessageSquare, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SafeMarkdown } from "@/components/security/SafeMarkdown";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import fleetyIcon from "@/assets/fleety-icon.png";
 import {
   type FleetyMode,
@@ -12,6 +14,7 @@ import {
   loadStoredMode,
   storeMode,
 } from "@/lib/fleety/modes";
+import { groupConversationsByDate } from "@/lib/fleety/history";
 
 type Msg = {
   role: "user" | "assistant";
@@ -19,6 +22,8 @@ type Msg = {
   followups?: string[];
   sources?: string[];
 };
+
+type Conversation = { id: string; title: string; updated_at: string };
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/techfleet-chat`;
 
@@ -164,14 +169,22 @@ interface GuidanceEmbedProps {
 }
 
 export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
+  const { user } = useAuth();
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState(initialQuery ?? "");
   const [isLoading, setIsLoading] = useState(false);
   const [speakingIdx, setSpeakingIdx] = useState<number | null>(null);
   const [mode, setMode] = useState<FleetyMode>(() => loadStoredMode());
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeConvoId, setActiveConvoId] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // Skip the [activeConvoId] reload for the flip caused by starting a new chat, so it can't clobber
+  // the live streaming turn (the "history disappeared mid-session" bug — parity with the fix in #237).
+  const skipConvoReloadRef = useRef(false);
   const activeMode = fleetyModeMeta(mode);
+  const conversationGroups = groupConversationsByDate(conversations, new Date());
 
   // Remember the member's last mode across reloads (shared with the other Fleety surfaces).
   useEffect(() => {
@@ -187,6 +200,74 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
       window.speechSynthesis.cancel();
     };
   }, []);
+
+  // ── Chat persistence (parity with ChatPage / FleetyChatWidget) ─────────
+  const loadConversations = useCallback(async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from("chat_conversations")
+      .select("id, title, updated_at")
+      .order("updated_at", { ascending: false });
+    if (data) setConversations(data as Conversation[]);
+  }, [user]);
+
+  useEffect(() => {
+    if (user) void loadConversations();
+  }, [user, loadConversations]);
+
+  // Load messages when switching to an existing conversation (skip the self-created flip).
+  useEffect(() => {
+    if (!activeConvoId) return;
+    if (skipConvoReloadRef.current) {
+      skipConvoReloadRef.current = false;
+      return;
+    }
+    (async () => {
+      const { data } = await supabase
+        .from("chat_messages")
+        .select("role, content")
+        .eq("conversation_id", activeConvoId)
+        .order("created_at", { ascending: true });
+      if (data) setMessages(data as Msg[]);
+    })();
+  }, [activeConvoId]);
+
+  const createConversation = async (firstMessage: string): Promise<string | null> => {
+    if (!user) return null;
+    const title = firstMessage.length > 50 ? firstMessage.slice(0, 50) + "…" : firstMessage;
+    const { data, error } = await supabase
+      .from("chat_conversations")
+      .insert({ user_id: user.id, title })
+      .select("id")
+      .single();
+    if (error || !data) return null;
+    await loadConversations();
+    return data.id;
+  };
+
+  const saveMessage = async (convoId: string, role: string, content: string) => {
+    await supabase.from("chat_messages").insert({ conversation_id: convoId, role, content });
+    await supabase
+      .from("chat_conversations")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("id", convoId);
+  };
+
+  const deleteConversation = async (convoId: string) => {
+    await supabase.from("chat_conversations").delete().eq("id", convoId);
+    if (activeConvoId === convoId) {
+      setActiveConvoId(null);
+      setMessages([]);
+    }
+    await loadConversations();
+  };
+
+  const startNewChat = () => {
+    setActiveConvoId(null);
+    setMessages([]);
+    setShowHistory(false);
+    inputRef.current?.focus();
+  };
 
   const toggleSpeak = useCallback(
     (index: number, text: string) => {
@@ -217,6 +298,16 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
       userMsg,
     ]);
     setIsLoading(true);
+
+    let convoId = activeConvoId;
+    if (!convoId && user) {
+      convoId = await createConversation(text);
+      if (convoId) {
+        skipConvoReloadRef.current = true; // keep the live turn; don't reload over it
+        setActiveConvoId(convoId);
+      }
+    }
+    if (convoId) await saveMessage(convoId, "user", text);
 
     let assistantSoFar = "";
     const upsertAssistant = (nextChunk: string) => {
@@ -255,7 +346,13 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
             return [...prev, { role: "assistant", content: "", sources: urls }];
           });
         },
-        onDone: () => setIsLoading(false),
+        onDone: async () => {
+          setIsLoading(false);
+          if (convoId && assistantSoFar) {
+            await saveMessage(convoId, "assistant", assistantSoFar);
+            await loadConversations();
+          }
+        },
       });
     } catch (e: any) {
       console.error(e);
@@ -274,6 +371,86 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
 
   return (
     <div className="flex flex-col h-[60vh] min-h-[400px] rounded-lg border bg-card overflow-hidden">
+      {/* Header: history + new chat (parity with the side-panel Fleety) */}
+      {user && (
+        <div className="flex items-center justify-between border-b px-3 py-2 shrink-0">
+          <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+            <img
+              src={fleetyIcon}
+              alt=""
+              className="h-5 w-5 rounded-full"
+              width={20}
+              height={20}
+              aria-hidden="true"
+            />
+            Fleety
+          </span>
+          <span className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => setShowHistory((v) => !v)}
+              aria-label="Toggle chat history"
+            >
+              <MessageSquare className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={startNewChat}
+              aria-label="New chat"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </span>
+        </div>
+      )}
+
+      {/* History panel — date-grouped, same as the side-panel Fleety */}
+      {user && showHistory && (
+        <div className="border-b max-h-48 overflow-y-auto p-2 space-y-1 shrink-0">
+          {conversations.length === 0 && (
+            <p className="text-xs text-muted-foreground p-2 text-center">No conversations yet</p>
+          )}
+          {conversationGroups.map((grp) => (
+            <div key={grp.label} className="space-y-0.5">
+              <p className="px-2 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+                {grp.label}
+              </p>
+              {grp.items.map((c) => (
+                <div
+                  key={c.id}
+                  className={`group flex items-center gap-1.5 rounded-md px-2 py-1.5 cursor-pointer text-sm transition-colors ${
+                    activeConvoId === c.id
+                      ? "bg-primary/10 text-primary font-medium"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
+                  onClick={() => {
+                    setActiveConvoId(c.id);
+                    setShowHistory(false);
+                  }}
+                >
+                  <MessageSquare className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate flex-1 text-xs">{c.title}</span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteConversation(c.id);
+                    }}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity"
+                    aria-label="Delete conversation"
+                  >
+                    <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Messages */}
       <div
         ref={scrollRef}
@@ -483,7 +660,7 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
             }}
             placeholder={activeMode.placeholder}
             disabled={isLoading}
-            className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none min-h-[160px] max-h-[400px]"
+            className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none min-h-[80px] max-h-[400px]"
             rows={1}
             autoComplete="off"
             aria-label="Type your question"
