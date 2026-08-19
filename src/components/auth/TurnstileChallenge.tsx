@@ -4,7 +4,8 @@ import { isProductionHostname, warnOnUnknownAuthHost } from "@/lib/auth/producti
 import { supabase } from "@/integrations/supabase/client";
 import { recordLoginEvent, newAttemptId } from "@/lib/login-telemetry";
 
-const TURNSTILE_SCRIPT_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+const TURNSTILE_SCRIPT_SRC =
+  "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
 const PRODUCTION_SITE_KEY = "0x4AAAAAADEF72dWIkFxiGOU";
 // Cloudflare-published "always passes" test site key. Used ONLY on non-production
 // hostnames (Lovable preview/sandbox/localhost) where the production site key is
@@ -71,7 +72,9 @@ function classifyTurnstileError(code?: string): TurnstileErrorKind {
 }
 
 function injectScript(onReady: () => void): HTMLScriptElement {
-  const existing = document.querySelector<HTMLScriptElement>(`script[src="${TURNSTILE_SCRIPT_SRC}"]`);
+  const existing = document.querySelector<HTMLScriptElement>(
+    `script[src="${TURNSTILE_SCRIPT_SRC}"]`
+  );
   if (existing) {
     if (window.turnstile) {
       onReady();
@@ -89,22 +92,38 @@ function injectScript(onReady: () => void): HTMLScriptElement {
   return script;
 }
 
-export function TurnstileChallenge({ action, onTokenChange, failureCount = 0, softResetCount = 0, email }: TurnstileChallengeProps) {
+export function TurnstileChallenge({
+  action,
+  onTokenChange,
+  failureCount = 0,
+  softResetCount = 0,
+  email,
+}: TurnstileChallengeProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<string | null>(null);
   const [scriptReady, setScriptReady] = useState(Boolean(window.turnstile));
   const [retrySeconds, setRetrySeconds] = useState(0);
   const [transientError, setTransientError] = useState<TurnstileErrorKind | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [magicLinkState, setMagicLinkState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [magicLinkState, setMagicLinkState] = useState<"idle" | "sending" | "sent" | "error">(
+    "idle"
+  );
   const consecutiveFailuresRef = useRef(0);
+  // INCIDENT captcha-transient-lockout-2026-08: non-punitive counter for
+  // transient Turnstile widget errors (timeout/expired/network/config). Drives
+  // the magic-link fallback WITHOUT arming the 30s consecutive-failure lockout.
+  const transientErrorCountRef = useRef(0);
   const lastFailureCountRef = useRef(failureCount);
   const lastSoftResetCountRef = useRef(softResetCount);
   const retryCountRef = useRef(0);
 
   const resetWidget = () => {
     if (widgetIdRef.current && window.turnstile) {
-      try { window.turnstile.reset(widgetIdRef.current); } catch { /* ignore */ }
+      try {
+        window.turnstile.reset(widgetIdRef.current);
+      } catch {
+        /* ignore */
+      }
     }
   };
 
@@ -117,7 +136,10 @@ export function TurnstileChallenge({ action, onTokenChange, failureCount = 0, so
   // Script injection (kicks off on mount; widget render still defers until
   // scriptReady fires and the container is mounted).
   useEffect(() => {
-    if (window.turnstile) { setScriptReady(true); return; }
+    if (window.turnstile) {
+      setScriptReady(true);
+      return;
+    }
     injectScript(() => setScriptReady(true));
   }, []);
 
@@ -144,7 +166,7 @@ export function TurnstileChallenge({ action, onTokenChange, failureCount = 0, so
       action,
       theme: "auto",
       "refresh-expired": "auto",
-      "retry": "auto",
+      retry: "auto",
       callback: (token: string) => {
         consecutiveFailuresRef.current = 0;
         setTransientError(null);
@@ -163,18 +185,41 @@ export function TurnstileChallenge({ action, onTokenChange, failureCount = 0, so
         onTokenChange(token);
       },
       "expired-callback": () => {
+        // A previously-issued token hit its ~300s TTL before submit. Not the
+        // user's fault: soft-reset for a fresh token, never punish. Record it
+        // (Bug C: this path was previously silent, hiding real expiry volume).
         setTransientError("expired");
+        transientErrorCountRef.current += 1;
+        if (action === "login") {
+          recordLoginEvent(newAttemptId(), "captcha_failed", {
+            branch: "expired",
+            requestId: "expired-callback",
+          });
+        }
         onTokenChange("");
         resetWidget();
       },
       "error-callback": (code?: string) => {
-        consecutiveFailuresRef.current += 1;
         const kind = classifyTurnstileError(code);
         setTransientError(kind);
         if (action === "login") {
-          recordLoginEvent(newAttemptId(), "captcha_failed", { branch: kind, requestId: code ?? null });
+          recordLoginEvent(newAttemptId(), "captcha_failed", {
+            branch: kind,
+            requestId: code ?? null,
+          });
         }
-        beginRetryCountdown();
+        // INCIDENT captcha-transient-lockout-2026-08 / Bug A: Turnstile widget
+        // errors (timeout 300010, network 600010, config 110600, interrupted
+        // challenge 300030) are NOT confirmed user-attributable failures — the
+        // server (Cloudflare + GoTrue) is the real verification boundary, so
+        // punishing them locked real members out (86% of Aug-2026
+        // captcha_failed). Treat every widget error as a NON-punitive soft
+        // reset: fetch a fresh token, never touch consecutiveFailuresRef, never
+        // start the 30s countdown. The punitive path stays wired to the
+        // failureCount prop (genuine invalid credentials) only.
+        transientErrorCountRef.current += 1;
+        onTokenChange("");
+        resetWidget();
       },
     });
 
@@ -213,7 +258,10 @@ export function TurnstileChallenge({ action, onTokenChange, failureCount = 0, so
     if (retrySeconds <= 0) return;
     const timer = window.setInterval(() => {
       setRetrySeconds((current) => {
-        if (current <= 1) { resetWidget(); return 0; }
+        if (current <= 1) {
+          resetWidget();
+          return 0;
+        }
         return current - 1;
       });
     }, 1_000);
@@ -226,9 +274,17 @@ export function TurnstileChallenge({ action, onTokenChange, failureCount = 0, so
     setMagicLinkState("idle");
     // Remove any stale script tag + global so the next inject is a clean slate.
     document.querySelectorAll(`script[src="${TURNSTILE_SCRIPT_SRC}"]`).forEach((s) => s.remove());
-    try { delete (window as { turnstile?: unknown }).turnstile; } catch { /* ignore */ }
+    try {
+      delete (window as { turnstile?: unknown }).turnstile;
+    } catch {
+      /* ignore */
+    }
     if (widgetIdRef.current && window.turnstile) {
-      try { window.turnstile.remove(widgetIdRef.current); } catch { /* ignore */ }
+      try {
+        window.turnstile.remove(widgetIdRef.current);
+      } catch {
+        /* ignore */
+      }
     }
     widgetIdRef.current = null;
     setScriptReady(false);
@@ -241,7 +297,11 @@ export function TurnstileChallenge({ action, onTokenChange, failureCount = 0, so
     const magicAttemptId = newAttemptId();
     try {
       const { error } = await supabase.functions.invoke("send-magic-link", {
-        body: { email, redirectTo: `${window.location.origin}/dashboard`, attemptId: magicAttemptId },
+        body: {
+          email,
+          redirectTo: `${window.location.origin}/dashboard`,
+          attemptId: magicAttemptId,
+        },
       });
       if (error) throw error;
       setMagicLinkState("sent");
@@ -254,37 +314,45 @@ export function TurnstileChallenge({ action, onTokenChange, failureCount = 0, so
 
   const errorMessage = (() => {
     if (retrySeconds > 0) {
-      const base = transientError === "network"
-        ? "Verification couldn't reach Cloudflare."
-        : "Human verification didn't go through.";
+      const base =
+        transientError === "network"
+          ? "Verification couldn't reach Cloudflare."
+          : "Human verification didn't go through.";
       return `${base} Please retry in ${retrySeconds} second${retrySeconds === 1 ? "" : "s"}.`;
     }
     if (transientError === "expired") return "Verification refreshed — please wait a moment.";
-    if (transientError === "network") return "Verification is having trouble reaching Cloudflare. Retrying…";
+    if (transientError === "network")
+      return "Verification is having trouble reaching Cloudflare. Retrying…";
     return null;
   })();
 
-  // PERMANENT FIX (captcha-fallback): the magic-link escape hatch used to
-  // render only when the Turnstile script never loaded (loadFailed). In
-  // practice the dominant failure mode is the script loading but the
-  // challenge erroring out repeatedly (1,128 `network`-class failures in
-  // the last 7 days). Surface the recovery UI for persistent network/unknown
-  // errors too, so a real member is never stranded on "Retrying…" without a
-  // way to sign in.
+  // Magic-link escape hatch. Surfaces when the script never loaded, OR when
+  // ANY transient widget error (timeout/expired/network/config/unknown)
+  // persists — closing the Aug-2026 gap where timeout/expired-looped members
+  // (the dominant failure mode) had no way in. Uses the non-punitive transient
+  // counter, so the fallback appears WITHOUT the 30s lockout.
+  const FALLBACK_AFTER = 3;
   const showFallback =
     loadFailed ||
     (action === "login" &&
-      (transientError === "network" || transientError === "unknown") &&
-      consecutiveFailuresRef.current >= 2);
+      transientError !== null &&
+      transientErrorCountRef.current >= FALLBACK_AFTER);
 
   if (showFallback) {
     return (
-      <div data-no-card className="rounded-md border border-destructive/40 bg-destructive/5 p-3" role="group" aria-label="Human verification">
+      <div
+        data-no-card
+        className="rounded-md border border-destructive/40 bg-destructive/5 p-3"
+        role="group"
+        aria-label="Human verification"
+      >
         <p className="text-sm text-foreground font-medium">
           {loadFailed ? "Verification didn't load." : "Verification keeps failing."}
         </p>
         <p className="mt-1 text-xs text-muted-foreground">
-          This usually means a browser extension, ad-blocker, privacy browser (e.g. Brave Shields), or your network is blocking <span className="font-mono">challenges.cloudflare.com</span>. You can email yourself a one-time sign-in link instead.
+          This usually means a browser extension, ad-blocker, privacy browser (e.g. Brave Shields),
+          or your network is blocking <span className="font-mono">challenges.cloudflare.com</span>.
+          You can email yourself a one-time sign-in link instead.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <button
@@ -301,9 +369,11 @@ export function TurnstileChallenge({ action, onTokenChange, failureCount = 0, so
               disabled={magicLinkState === "sending" || magicLinkState === "sent"}
               className="inline-flex items-center justify-center rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              {magicLinkState === "sending" ? "Sending…"
-                : magicLinkState === "sent" ? "Link sent — check your inbox"
-                : "Email me a sign-in link"}
+              {magicLinkState === "sending"
+                ? "Sending…"
+                : magicLinkState === "sent"
+                  ? "Link sent — check your inbox"
+                  : "Email me a sign-in link"}
             </button>
           )}
         </div>
@@ -314,7 +384,8 @@ export function TurnstileChallenge({ action, onTokenChange, failureCount = 0, so
         )}
         {magicLinkState === "sent" && (
           <p className="mt-2 text-xs text-muted-foreground" role="status" aria-live="polite">
-            If an account exists for that email, we've sent a sign-in link. Please check your inbox (and spam folder).
+            If an account exists for that email, we've sent a sign-in link. Please check your inbox
+            (and spam folder).
           </p>
         )}
         {magicLinkState === "error" && (
@@ -327,9 +398,23 @@ export function TurnstileChallenge({ action, onTokenChange, failureCount = 0, so
   }
 
   return (
-    <div data-no-card className="rounded-md border border-border bg-muted/40 p-3" role="group" aria-label="Human verification">
-      <div ref={containerRef} className={retrySeconds > 0 ? "min-h-[65px] pointer-events-none opacity-60" : "min-h-[65px]"} />
-      {!scriptReady && <p className="text-sm text-muted-foreground" aria-live="polite">Loading verification…</p>}
+    <div
+      data-no-card
+      className="rounded-md border border-border bg-muted/40 p-3"
+      role="group"
+      aria-label="Human verification"
+    >
+      <div
+        ref={containerRef}
+        className={
+          retrySeconds > 0 ? "min-h-[65px] pointer-events-none opacity-60" : "min-h-[65px]"
+        }
+      />
+      {!scriptReady && (
+        <p className="text-sm text-muted-foreground" aria-live="polite">
+          Loading verification…
+        </p>
+      )}
       {errorMessage && (
         <p
           className={`mt-2 rounded-md px-3 py-2 text-sm ${retrySeconds > 0 ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"}`}
