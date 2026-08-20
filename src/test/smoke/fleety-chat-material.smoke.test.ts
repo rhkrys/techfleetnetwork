@@ -15,6 +15,7 @@ const read = (p: string) => readFileSync(resolve(root, p), "utf8");
 describe("in-chat material review is wired securely", () => {
   const shared = read("supabase/functions/_shared/material-fetch.ts");
   const chat = read("supabase/functions/techfleet-chat/index.ts");
+  const frame = read("supabase/functions/techfleet-chat/material-frame.ts");
   const reviewLib = read("supabase/functions/fleety-review/lib.ts");
 
   it("shared fetch enforces the SSRF controls (https, no-redirect, bounds)", () => {
@@ -31,9 +32,18 @@ describe("in-chat material review is wired securely", () => {
   });
 
   it("chat frames fetched material as UNTRUSTED DATA (prompt-injection defense)", () => {
-    expect(chat).toMatch(/MEMBER-SHARED MATERIAL UNDER REVIEW/);
-    expect(chat).toMatch(/UNTRUSTED DATA/);
-    expect(chat).toMatch(/do not comply/i);
+    // The framing lives in the pure, unit-tested helper (material-frame.ts); index.ts wires it in.
+    expect(frame).toMatch(/MEMBER-SHARED MATERIAL UNDER REVIEW/);
+    expect(frame).toMatch(/UNTRUSTED DATA/);
+    expect(frame).toMatch(/do not comply/i);
+    expect(chat).toMatch(/frameMaterialContext\(/);
+  });
+
+  it("forbids reviewing/inventing when NOTHING was readable (anti-fabrication guard)", () => {
+    // The FigJam hallucination fix: no readable text => the frame must forbid a review outright.
+    expect(frame).toMatch(/COULD NOT BE READ/);
+    expect(frame).toMatch(/strictly forbidden/);
+    expect(chat).toMatch(/gotAnyText/);
   });
 
   it("chat bypasses the caches + canned answers when material is present", () => {
