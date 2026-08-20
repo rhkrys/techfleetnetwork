@@ -15,8 +15,9 @@ Deno.test(
       !/what's strong, what's missing/.test(out),
       "no review instruction when nothing readable"
     );
-    // Must tell it to explain the sharing limitation + offer paste, not claim "text-only".
-    assertStringIncludes(out, "shared so you can access it");
+    // Must give the ACTIONABLE fix (verified: link-viewable boards ARE readable via the API),
+    // and offer paste, not claim "text-only".
+    assertStringIncludes(out, "Anyone with the link");
     assertStringIncludes(out, "paste the text");
     // The reason note is still included for the member-facing explanation.
     assertStringIncludes(out, "could not be opened");

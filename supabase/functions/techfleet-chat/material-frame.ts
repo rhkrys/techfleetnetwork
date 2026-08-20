@@ -35,9 +35,11 @@ export function frameMaterialContext(parts: string[], gotAnyText: boolean): stri
     `You have NOT seen its contents. Do NOT review, summarize, describe, quote, or guess what it ` +
     `contains — inventing a review of unseen material is a serious error and is strictly forbidden. ` +
     `Instead, in a warm and brief way: (1) tell the member you couldn't open it, (2) give the ` +
-    `specific reason below, and (3) explain that you can read a Figma/FigJam board or doc link ` +
-    `only when it's shared so you can access it — otherwise ask them to paste the text directly ` +
-    `and you'll review it. Do NOT claim to be "text-only" or unable to read links in general.\n` +
+    `specific reason below, and (3) tell them exactly how to let you in — for a Figma/FigJam ` +
+    `board, open Share and set "Anyone with the link" to "can view", then resend the link and ` +
+    `you'll read it; for anything else, or if they prefer, they can paste the text directly. Do ` +
+    `NOT claim to be "text-only" or unable to read links in general — you CAN read a board once ` +
+    `it is link-viewable.\n` +
     body +
     `\n=== END MATERIAL ===\n`
   );
