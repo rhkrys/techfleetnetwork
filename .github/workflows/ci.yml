@@ -337,6 +337,7 @@ jobs:
           - check-no-legacy-auth-service.mjs
           - check-legacy-auth-importers.mjs
           - check-email-architecture.mjs
+          - check-email-tier-registry.mjs
           - check-no-unsigned-jwt-auth.mjs
     steps:
       - name: Checkout
@@ -731,6 +732,7 @@ jobs:
             supabase/functions/_shared/confirm-role.test.ts \
             supabase/functions/_shared/translation-guard.test.ts \
             supabase/functions/_shared/escape-html.test.ts \
+            supabase/functions/_shared/email/domain/email-tiers.test.ts \
             supabase/functions/sync-airtable/ownership.test.ts \
             supabase/functions/_shared/client-ip.test.ts \
             supabase/functions/_shared/bounded-body.test.ts \
