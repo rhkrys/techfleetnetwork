@@ -339,6 +339,7 @@ jobs:
           - check-email-architecture.mjs
           - check-email-tier-registry.mjs
           - check-no-raw-email-enqueue.mjs
+          - check-no-tier0-preference-gate.mjs
           - check-no-unsigned-jwt-auth.mjs
     steps:
       - name: Checkout

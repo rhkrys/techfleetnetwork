@@ -283,15 +283,15 @@ serve(
       try {
         const { data: prof } = await admin
           .from("profiles")
-          .select("first_name, email, notify_announcements")
+          .select("first_name, email")
           .eq("user_id", user.id)
           .maybeSingle();
 
-        const wantsEmail = prof?.notify_announcements !== false; // default true
+        // observer-role-granted is Tier 0 (critical): always send, no preference gate.
         const firstName = (prof?.first_name as string | undefined) || undefined;
 
-        if (wantsEmail) {
-          // In-app notification (notification_preferences toggle = notify_announcements)
+        {
+          // In-app notification (always created alongside the Tier-0 grant email)
           await admin.from("notifications").insert({
             user_id: user.id,
             notification_type: "observer_role_granted",
