@@ -11,6 +11,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "../_shared/http.ts";
 import { authorizeServiceRoleRequest } from "../_shared/service-role-auth.ts";
+import { enqueueLegacyPayloadV2 } from "../_shared/email/enqueue-legacy-compat.ts";
 
 const MAX_REPLAY_GENERATION = 3;
 const BATCH = 25;
@@ -40,8 +41,8 @@ async function readArchive(supabase: SupabaseClient, lane: LaneName, limit: numb
 }
 
 async function reEnqueue(supabase: SupabaseClient, lane: LaneName, payload: unknown) {
-  const { error } = await supabase.rpc("enqueue_email", { queue_name: lane, payload });
-  if (error) throw error;
+  // v2: the raw pgmq path is retired — forward the legacy payload to the v2 outbox.
+  await enqueueLegacyPayloadV2(supabase, lane, (payload ?? {}) as Record<string, unknown>);
 }
 
 async function archiveDelete(supabase: SupabaseClient, lane: LaneName, msgId: number) {

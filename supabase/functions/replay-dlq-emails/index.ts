@@ -43,6 +43,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { z } from "npm:zod@3.23.8";
+import { enqueueLegacyPayloadV2 } from "../_shared/email/enqueue-legacy-compat.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -433,25 +434,21 @@ Deno.serve(async (req) => {
           },
         });
 
-        const { error: enqErr } = await admin.rpc("enqueue_email", {
-          queue_name: "transactional_emails",
-          payload: {
-            to: email,
-            subject,
-            html,
-            text,
-            from: `Tech Fleet <onboarding@techfleet.org>`,
-            sender_domain: "notify.techfleet.org",
-            label: "announcement",
-            message_id: newMessageId,
-            idempotency_key: newMessageId,
-            unsubscribe_token: unsubscribeToken,
-            queued_at: now,
-            purpose: "transactional",
-            bypass_frequency_cap: true,
-          },
+        await enqueueLegacyPayloadV2(admin, "transactional_emails", {
+          to: email,
+          subject,
+          html,
+          text,
+          from: `Tech Fleet <onboarding@techfleet.org>`,
+          sender_domain: "notify.techfleet.org",
+          label: "announcement",
+          message_id: newMessageId,
+          idempotency_key: newMessageId,
+          unsubscribe_token: unsubscribeToken,
+          queued_at: now,
+          purpose: "transactional",
+          bypass_frequency_cap: true,
         });
-        if (enqErr) throw enqErr;
 
         replayed++;
         replayedMessageIds.push(cand.message_id);

@@ -338,6 +338,7 @@ jobs:
           - check-legacy-auth-importers.mjs
           - check-email-architecture.mjs
           - check-email-tier-registry.mjs
+          - check-no-raw-email-enqueue.mjs
           - check-no-unsigned-jwt-auth.mjs
     steps:
       - name: Checkout
