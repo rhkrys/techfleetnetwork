@@ -2,6 +2,7 @@ import * as React from "npm:react@18.3.1";
 import { renderAsync } from "npm:@react-email/components@0.0.22";
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { TEMPLATES } from "./transactional-email-templates/registry.ts";
+import { isCriticalTransactional } from "./email/domain/email-tiers.ts";
 
 // Brand-aligned identity for inbox trust. From: header uses the root domain
 // (techfleet.org) so recipients see a real human-recognisable mailbox; DKIM
@@ -532,13 +533,19 @@ export async function queueTransactionalEmail({
   }
 
   // Bulk-sender headers required by Gmail/Yahoo (RFC 8058) + inbox-trust signals.
-  const unsubscribeUrl = `https://techfleet.network/unsubscribe?token=${unsubscribeToken}`;
   const isBulk = BULK_TEMPLATES.has(templateName);
   const customHeaders: Record<string, string> = {
-    "List-Unsubscribe": `<mailto:unsubscribe@techfleet.org?subject=unsubscribe>, <${unsubscribeUrl}>`,
-    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
     "X-Entity-Ref-ID": messageId,
   };
+  // Only Tier 1/2 email is unsubscribable. A Tier 0 (critical transactional) email carries NO
+  // List-Unsubscribe header — it must never appear unsubscribable in the mail client, and its
+  // one-click must never reach the unsubscribe endpoint. email-tiers.ts is the source of truth.
+  if (!isCriticalTransactional(templateName)) {
+    const unsubscribeUrl = `https://techfleet.network/unsubscribe?token=${unsubscribeToken}`;
+    customHeaders["List-Unsubscribe"] =
+      `<mailto:unsubscribe@techfleet.org?subject=unsubscribe>, <${unsubscribeUrl}>`;
+    customHeaders["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click";
+  }
   if (isBulk) {
     customHeaders["Precedence"] = "bulk";
   } else {
