@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-22T15:37:32.918Z",
+  "generated_at": "2026-08-22T15:38:31.555Z",
   "functions": [
     {
       "name": "admin-purge-auth-user",
@@ -181,7 +181,7 @@
       "verify_jwt": true,
       "kind": "auth",
       "critical": false,
-      "declared": false
+      "declared": true
     },
     {
       "name": "fetch-class-certifications",
