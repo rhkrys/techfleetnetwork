@@ -1,3 +1,4 @@
+// @edge-auth
 // Live per-user Email Octopus status read (ADR-0017). Returns the CALLER's own marketing
 // subscription status as EO (the source of truth) currently sees it, so the platform reflects
 // subscribes/unsubscribes made outside the platform (e.g. a blog newsletter signup) too.
