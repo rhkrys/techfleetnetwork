@@ -4638,6 +4638,7 @@ export type Database = {
           membership_updated_at: string | null
           notification_prefs: Json
           notify_announcements: boolean
+          notify_opportunities: boolean
           notify_training_opportunities: boolean
           onboarded_at: string | null
           portfolio_url: string
@@ -4690,6 +4691,7 @@ export type Database = {
           membership_updated_at?: string | null
           notification_prefs?: Json
           notify_announcements?: boolean
+          notify_opportunities?: boolean
           notify_training_opportunities?: boolean
           onboarded_at?: string | null
           portfolio_url?: string
@@ -4742,6 +4744,7 @@ export type Database = {
           membership_updated_at?: string | null
           notification_prefs?: Json
           notify_announcements?: boolean
+          notify_opportunities?: boolean
           notify_training_opportunities?: boolean
           onboarded_at?: string | null
           portfolio_url?: string
