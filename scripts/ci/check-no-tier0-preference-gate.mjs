@@ -10,8 +10,11 @@
 // legitimately still gate a non-Tier-0 email (removed as each is migrated).
 //
 // Allowlist (shrinks over the rollout):
-//   send-announcement-email - Tier 1 service announcement; its recipient query is re-gated from
-//                             notify_announcements to notify_opportunities in a later PR 5 slice.
+//   send-announcement-email - Tier 1 service announcement. Its recipient query stays on
+//                             notify_announcements until the re-gate to notify_opportunities lands
+//                             WITH the admin attestation (PR 7) and coordinated with the
+//                             deliverability ramp (PR 10). Re-gating alone would jump reach
+//                             ~163 -> ~1253 in one send with no warmed domain (release-safety).
 //   (quest-nudge was re-gated to notify_opportunities in PR 5, so it is no longer allowlisted.)
 //
 // Scope: supabase/functions/<name>/*.ts, excluding _shared (the tier registry documents these
