@@ -1,442 +1,295 @@
-# Email Rearchitecture: Requirements Document
+# Email Rearchitecture: Requirements & Plan (Revision 2)
 
-- **Status:** Approved design, ready to build
+- **Status:** Active build. Revision 2 (2026-08-20) reflects a major architecture simplification.
 - **Owner:** mdenner
-- **Date:** 2026-08-19
-- **Applies to:** Tech Fleet Network platform (Vite + React + Supabase), Ghost, Email Octopus
-- **Skills applied:** enterprise-architecture-standards, compliance-data-lifecycle,
-  owasp-secure-coding-bdd, bdd-comprehensive-testing, comprehensive-test-strategy,
-  release-deployment-safety, sre-operational-readiness, architectural-decision-records
+- **Applies to:** Tech Fleet Network platform (Vite + React + Supabase), Email Octopus, Resend.
 
-This is the single authoritative requirements document. It consolidates and supersedes the
-working files (master spec, consent and sync spec, tiering spec, decision table, UX build
-standard, threat model). Where this document and any earlier file disagree, this document wins.
+## Revision 2, what changed and why
+
+The original design kept a marketing **consent ledger inside the platform** and synced it two-way to
+**both Ghost and Email Octopus**. That machinery existed only to keep _two_ mailing systems in
+agreement.
+
+**Owner decision (2026-08-20):** stop sending email through Ghost. **Ghost becomes the blog/site
+only.** **Email Octopus (EO) is the one and only marketing email system, and the source of truth
+for the marketing list.** The platform no longer owns marketing subscription state; it just tells
+EO who opted in or out.
+
+With one downstream system there is nothing to reconcile, so this deletes a large amount of planned
+work (see §11). The transactional half of the program (PRs 1–3, already shipped) is unaffected.
+
+Superseded ADRs: **0013** (consent ledger as source of truth) and **0014** (Ghost/EO two-way sync)
+are superseded by a new **ADR-0017** (Email Octopus as the marketing source of truth) to be written
+with the next build step.
 
 ---
 
-## 1. Purpose
+## 1. The two halves
 
-Give Tech Fleet one clean, compliant email system with a single source of truth for who may be
-emailed, for what, on which channel. Fix the live problems that are silently dropping critical
-mail today, and unify three disconnected systems (Resend transactional, Ghost newsletter, Email
-Octopus marketing) behind one consent record on the platform.
+1. **Transactional / service email — the platform (Resend).** Account, application, opportunity,
+   and service email the platform sends itself. Governed by the tier model. **This half is built.**
+2. **Marketing email — Email Octopus.** All marketing/newsletter ("Marketing and news"). EO owns
+   the list, sends the email, and handles its own unsubscribes. The platform only calls EO's API to
+   add/remove a contact when someone opts in or out on the platform.
 
-## 2. Problem statement (evidence-backed, verified 2026-08-18)
+## 2. Goals
 
-1. **Critical email reaches only about 13 percent of people.** Interview invitations, application
-   status changes, observer role grants, and the training agreement offer are gated on the profile
-   flag `notify_announcements`, which is `NOT NULL DEFAULT false`. Only 163 of 1,253 accounts have
-   it on. The author intended it to default on, but the column default makes it a hard false, so
-   the safeguard never fires and time-critical mail is dropped for roughly 87 percent of people.
-2. **One flag does four jobs.** `notify_announcements` gates both marketing announcements and
-   genuinely transactional email, which is why de-overloading it is the core of this work.
-3. **Two emails have been delivering nothing since July.** `project_opening_alert` and
-   `feedback_alert` are emitted only by database triggers that still enqueue onto the retired raw
-   `enqueue_email` queue, which has no consumer after the July v2 cutover.
-4. **No real marketing consent exists.** There is no marketing opt-in anywhere today, and
-   "announcements" mixes operational and promotional content under one flag.
-5. **Three systems, no shared truth.** Ghost and Email Octopus lists are maintained by hand and
-   synced manually, so consent drifts and an unsubscribe in one place does not reach the others.
+- Every active account always receives critical transactional email; no preference can suppress it.
+- A clean three-tier model for platform email, purpose decides routing.
+- One marketing opt-in that adds/removes the person in Email Octopus. EO is the source of truth.
+- Ghost is blog-only; the platform never sends email through Ghost.
+- Defensible global-compliance posture (GDPR / CCPA / CASL) with the least machinery.
+- Scale cleanly to 100,000 users, zero regressions.
 
-## 3. Goals and non-goals
+## 3. Locked decisions
 
-**Goals**
+**Send model (platform email)**
 
-- Every active account always receives critical transactional email. No preference can suppress
-  it. Only a hard bounce or spam complaint can.
-- A clean three-tier model where the purpose of an email decides its routing.
-- One unified marketing opt-in, with the platform as the single source of truth, mirrored to both
-  Ghost and Email Octopus and kept in sync automatically.
-- A defensible, auditable, global-compliant consent posture.
-- Scale cleanly to 100,000 users. Zero regressions over time.
+- Three tiers, tier is a property of the email type in a central registry.
+  - **Tier 0 Critical transactional** — always send, no preference gate, only global suppression
+    (hard bounce / spam complaint) stops it.
+  - **Tier 1 Service / opportunity** — everyone by default, one opt-out (`notify_opportunities`).
+  - **Tier 2 Marketing** — not sent by the platform at all; handled by Email Octopus.
+- `notify_announcements` is retired as a gate and dropped after a bake-in.
 
-**Non-goals (this release)**
+**Marketing (Email Octopus)**
 
-- SMS or any non-email channel. The data model reserves room for it, but nothing is built.
-- Changing how the community or marketing teams author or send their emails. We sync audience
-  membership, not content. The teams keep Ghost and Email Octopus as their sending tools.
-- Rebuilding the Resend transactional subsystem, which is mature and stays.
+- One unified opt-in, "Marketing and news."
+- **Email Octopus is the source of truth for the marketing list.** The platform writes to EO (add /
+  remove contact) on opt-in/out; it does not hold authoritative marketing state.
+- Marketing unsubscribes are handled by EO's own unsubscribe link and list management. Nothing to
+  build in the platform for the marketing unsubscribe.
+- Ghost sends no email.
 
-## 4. Locked decisions
+**Consent receipt (recommended default, easily removed)**
 
-**Send model**
-
-- Three tiers, where tier is a property of the email type held in a central registry, not decided
-  per send.
-- `notify_announcements` is retired entirely and dropped after a bake-in.
-
-**Marketing consent**
-
-- One unified opt-in, "Marketing and news." Opting in adds the person to both Ghost and Email
-  Octopus. Unsubscribing anywhere removes them from both.
-- Ghost runs a single newsletter and sends nothing else, so all of Ghost is the one marketing
-  bucket.
-- Source of truth is `consent_current.marketing` in the platform database. Ghost and Email Octopus
-  are mirrors, driven by API on every change and reconciled nightly.
+- The platform keeps a **minimal local receipt** of the marketing opt-in: a `marketing_opt_in_at`
+  timestamp + source on the profile. It is **not** a source of truth and is **not** read to gate
+  any send. It exists only as (a) provable evidence of consent for global compliance, and (b) a
+  durable record so a failed EO API call can be retried. If the owner prefers to trust EO fully,
+  this is a one-column drop.
 
 **Compliance**
 
-- Global bar (GDPR, CCPA and CPRA, and CASL as the strictest). Marketing is express opt-in,
-  consent is provable, and every Tier 1 and Tier 2 email carries a working one-click unsubscribe,
-  a `List-Unsubscribe` header, and a physical postal address.
-- A short DPIA is written because the audience is genuinely global.
-
-**Migration**
-
-- The 163 current announcement opt-ins are grandfathered into the unified marketing consent, so
-  onto both lists.
-- Existing Ghost and Email Octopus subscribers are grandfathered by email match to platform users.
-  Unmatched subscribers are catalogued as platform-external.
-- Everyone else defaults to marketing opted-out. No auto-subscribe.
-- The Tier 1 preference defaults on and is backfilled on for all existing users.
-
-**Reconcile drift policy**
-
-- Unsubscribes always win and propagate instantly to all systems.
-- Additions only count as consent when they come from a real opt-in. A vendor contact with no
-  consent record is flagged for admin review, never auto-removed and never auto-trusted.
+- Marketing is express opt-in. EO provides the unsubscribe link, `List-Unsubscribe` header, physical
+  address, and consent/subscription records. The local receipt (above) is supplementary proof.
+- A short DPIA is still written (global audience), now much shorter, EO is a documented subprocessor.
 
 **Rollout**
 
-- Tier 0 fixes reach every triggered user immediately, since that is the urgent bug. The first
-  all-member service send is ramped in batches with bounce and complaint monitoring, and the auth
-  lane stays isolated so a marketing or service complaint spike can never throttle password resets.
-
-## 5. Users and stakeholders
-
-- **Members** (about 1,253 accounts, 887 active in 90 days, from 86 countries). They receive
-  email and control their own preferences.
-- **Community team.** Authors and sends the newsletter in Ghost.
-- **Marketing team.** Runs campaigns in Email Octopus.
-- **Admins and coordinators.** Send announcements, receive ops alerts, handle support.
-- **Compliance and the organization.** Need provable consent and honored unsubscribes globally.
-
-## 6. The three-tier model and full email inventory
-
-| Tier                      | Meaning                                       | Who receives                         | Member control                         |
-| ------------------------- | --------------------------------------------- | ------------------------------------ | -------------------------------------- |
-| 0 Critical transactional  | About the person's own account or application | The specific user, always            | None. Only global suppression stops it |
-| 1 Service and opportunity | Useful platform and opportunity updates       | All active members minus opt-outs    | One opt-out toggle, on by default      |
-| 2 Marketing               | The unified "Marketing and news"              | Opt-in only, from the consent ledger | The marketing opt-in                   |
-| Ops                       | Staff and admin internal                      | Staff recipient lists                | Not member-facing                      |
-
-### 6.1 Full inventory, code-verified
-
-**Tier 0, always send, no preference gate**
-
-- Auth: signup confirm, invite, magic link, password recovery, email change, reauthentication
-- Unconfirmed signup reminder, plus the safety-net resend
-- General application submitted, project application submitted
-- Support ticket reply
-- Teacher role confirmation, admin role confirmation (both render inline HTML today)
-- Class status change. Teacher (owner) + admins only (curriculum authoring workflow). The
-  "notify enrolled trainees" idea was dropped (2026-08-20): learners enrol in cohorts
-  (`cohort_registrations`), not classes, so class-status transitions are authoring-only and have
-  no enrolled learners to notify.
-- Interview invitation, applicant status change, observer role granted, community and training
-  agreement offer. These four currently carry the `notify_announcements` gate and must have it
-  removed. This is the core bug fix.
-- Resume application reminder. Owner decision: Tier 0.
-- Project blast. Owner decision: Tier 0.
-
-**Tier 1, everyone by default, single opt-out**
-
-- Project opening alert. Interest filter removed this release, so every active user gets it. Must
-  be migrated off the dead queue.
-- Quest re-engagement nudge
-- Service announcement (the announcement composer's "service" choice)
-
-**Tier 2, marketing, opt-in only**
-
-- Promotional announcement (the composer's "marketing" choice), recipients from the consent ledger
-- Community newsletter (Ghost, single newsletter)
-- Marketing campaigns (Email Octopus)
-
-**Ops, staff only**
-
-- Admin member status alert. Already targets the project coordinator, with a fallback to the
-  inviting admin. Keep.
-- New feedback admin alert. Goes to all admins. Must be migrated off the dead queue.
-- Fleety Coach weekly digest. Goes to all admins. Keep.
-- Daily error triage digest. Owner decision: remove the whole feature, email, Discord post, and
-  cron builder.
-
-### 6.2 Cleanups riding along
-
-- C1 Remove the dead `signup-confirmation-reminder` template (no caller).
-- C2 Fix old-domain unsubscribe links to `techfleet.network`, and wire the one-click unsubscribe to
-  set the correct preference.
-- C3, C5, C6, C7 Eradicate the retired raw `enqueue_email` queue: the two dead senders, the
-  reconciler, both DLQ replay paths, and the announcement legacy fallback.
-- C8 Bring the inline-HTML templates (`admin_promotion`, `teacher_promotion`, `announcement`) into
-  the template registry so tooling and the tier registry cannot skip them.
-- C4 Drop the `notify_announcements` column after the bake-in.
-
-## 7. Consent model and source of truth
-
-The single source of truth is the platform database. Ghost and Email Octopus are mirrors.
-
-- **`consent_event`** is an append-only log. Every opt-in and opt-out writes one row: subject, the
-  marketing state, when, the source (signup, preference center, Ghost unsubscribe, Email Octopus
-  unsubscribe, admin, import), the notice version, the actor, and the request IP. Nothing is ever
-  edited or deleted. This is the permanent, provable history and the compliance audit trail.
-- **`consent_current`** is the fast projection every send and every sync reads. With the unified
-  model it holds one marketing value per person: subscribed or unsubscribed.
-- Channel is `email` now, with `sms` reserved for a future opt-in.
-
-## 8. Functional requirements
-
-### 8.1 Signup
-
-- Two required consents remain: account and service notices, and agreement to the terms.
-- One optional, unticked checkbox: "Marketing and news." Nothing is pre-checked.
-- Opting in writes a marketing consent event and syncs the person to both vendors.
-
-### 8.2 Preference center (new page under the profile)
-
-- Section one, "Account and essential emails," shows the Tier 0 categories as read-only rows,
-  each marked "Always on" with a lock icon, for transparency. They cannot be turned off.
-- Section two, "Opportunities and platform updates," is a single toggle, on by default.
-- Section three, "Marketing and news," is a single toggle, off by default, that writes to the
-  consent ledger and syncs to both vendors.
-- Changes are logged. Saving uses the existing autosave pattern.
-
-### 8.3 Unsubscribe: three buckets
-
-Every unsubscribe belongs to exactly one bucket.
-
-1. **Marketing and news.** Off in the platform, removed from both Ghost and Email Octopus by API.
-2. **Opportunities and platform updates.** Sets the Tier 1 opt-out only. Does not touch marketing
-   or account email.
-3. **Critical account email.** No unsubscribe exists. Only a hard bounce or spam complaint stops it.
-
-One-click unsubscribe requirements:
-
-- Uses an opaque per-person, per-bucket token, never the email address, and never PII in the URL.
-- Implements RFC 8058: a GET shows a confirmation page and changes nothing, and the state change
-  happens only on POST, so mail scanners and link prefetchers cannot silently unsubscribe people.
-- Is idempotent and rate-limited.
-
-### 8.4 Announcement composer (admin)
-
-- The admin must pick a purpose. There is no default that silently sends marketing to everyone.
-- "Service update" reaches everyone minus the Tier 1 opt-outs.
-- "Marketing" reaches only people whose `consent_current.marketing` is subscribed, derived
-  server-side. The composer cannot supply its own recipient list.
-- The resolved audience and count are shown before send.
-- The purpose choice, the actor, and the time are written to the audit log.
-- Subject lines are stripped of CR and LF to prevent header injection. Body content is sanitized.
-
-### 8.5 Cross-system sync
-
-- **Outbound.** A consent change enqueues a job on the existing pgmq queue, with DLQ and replay,
-  that upserts or unsubscribes the person in Ghost and Email Octopus by API. Idempotent, so a retry
-  never double-adds. Rate-limited to each vendor's limits.
-- **Inbound.** Two webhook receivers, for Ghost `member.updated` and `member.deleted`, and for
-  Email Octopus unsubscribe events. Each verifies the signature on the raw body, rejects on
-  mismatch, and is replay-protected before writing a consent event.
-- **Reconcile.** A nightly job reads the actual state of both vendor lists, compares them to
-  `consent_current`, and issues the API calls needed so all three agree. It applies the drift
-  policy in section 4.
-- **Loop prevention.** An external unsubscribe updates the platform, which then pushes the removal
-  only to the other vendor, never back to the origin. Enforced by source tagging and by pushing
-  only when the target state actually differs.
-
-### 8.6 Migration and backfill
-
-- Runs as a safe data migration: dry-run first, row counts recorded, reversible, audit-logged.
-- Grandfather the 163 into the unified marketing consent.
-- Match existing Ghost and Email Octopus subscribers to platform users by normalized email and
-  write consent events for the matches. Catalogue unmatched subscribers as platform-external.
-- Everyone else defaults to marketing opted-out.
-- The Tier 1 preference is backfilled on for all existing users.
-
-### 8.7 Data-subject rights
-
-- Deletion propagates: deleting an account also removes the person from Ghost and Email Octopus.
-- Export includes the person's consent history.
-- Objection is honored: turning off a marketing or opportunities toggle propagates promptly.
-
-## 9. Data model
-
-- `consent_event` and `consent_current` as described in section 7. Projection indexed on
-  `(marketing, ...)` and by user for set-based recipient resolution.
-- A new Tier 1 preference on the profile, "Opportunities and platform updates," default on.
-- The email-type to tier registry: one central map keyed by template name holding tier, purpose,
-  lane, and unsubscribe behavior.
-- `notify_announcements` retained through the expand phase (dual-read), then dropped.
-
-## 10. Architecture
-
-- **Tier registry** is the one place tier is decided. Every sender resolves its tier from the
-  registry. No sender hard-codes a preference read.
-- **Consent ledger** is the source of truth, projected for fast reads, driving the vendors.
-- **Sync topology** is hub-and-spoke with the platform as the hub. It reuses the existing queue,
-  DLQ, replay, and cron. No new services, no message bus. This is sized for about 1,253 users, not
-  imagined scale, but the set-based recipient resolution and indexed projection are what make it
-  hold at 100,000.
-- **Suppression scopes** are independent: global (hard bounce and complaint, applies to all tiers
-  and always wins), Tier 1 opt-out, and the marketing consent. A marketing or opportunity opt-out
-  never writes a global suppression row.
-- **Sends** stay one-per-recipient through the v2 outbox and dispatcher, which are already batched
-  and idempotent. The bulk lane is throttled and the auth lane is physically isolated.
-
-## 11. Security requirements
-
-Full detail is in the threat model. The requirements:
-
-- One-click unsubscribe uses opaque scoped tokens, RFC 8058 POST semantics, no PII in URLs, rate
-  limiting, and idempotency.
-- Inbound webhooks verify the signature on the raw body with a constant-time compare, reject on
-  mismatch, and are replay-protected.
-- Consent and preference RPCs derive the subject from `auth.uid()`, never a client-supplied id, so
-  a member cannot change another member's consent. RLS limits rows to the owner. The server sets
-  provenance fields; the client cannot.
-- SECURITY DEFINER RPCs are `authenticated`-only, verified by pgTAP. No anon execute.
-- The announcement composer enforces server-side admin authorization and derives marketing
-  recipients only from consent.
-- No raw email addresses in worker or sync logs. Use a user id or a hash.
-- Outbound clients validate the vendor host, use https only, do not follow redirects, and keep
-  secrets out of logs and errors.
-- The unsigned-JWT service_role bypass is already fixed in code (audit C1). This release adds a CI
-  regression guard that fails the build if any function reintroduces the pattern.
-- The lockout and accidental-deletion safety check applies before any deletion or permission
-  change: DSAR propagation, dropping `notify_announcements`, reconcile removals, and new grants.
-  No bulk removal without a bounded, dry-run-verified set and an override for anything above a
-  threshold.
-
-## 12. Compliance requirements
-
-- Lawful basis per tier: Tier 0 contract or legitimate interest, Tier 1 legitimate interest with
-  opt-out, Tier 2 consent.
-- Consent is provable: every opt-in and opt-out is a ledger event with timestamp, source, notice
-  version, actor, and IP.
-- Unsubscribe is honored across all systems promptly.
-- Retention: consent events are retained 24 months past account deletion, pseudonymized, as proof
-  of prior consent. To be confirmed in the DPIA.
-- A DPIA is written this release.
-
-## 13. Testing requirements
-
-- Behavioral `@compliance`, `@security`, and `@critical` Gherkin scenarios wired into the existing
-  CI gate, covering: Tier 0 always sends with all preferences off; a marketing opt-out never stops
-  account email; an external unsubscribe propagates to the other vendor only, with no loop; a bad
-  webhook signature is rejected; the grandfather migration preserves counts with no auto-subscribe;
-  the announcement purpose picker is mandatory and audited; the unsubscribe link cannot be
-  triggered by a prefetch.
-- Structural fitness tests that fail the build if a Tier 0 email reads a preference, if any code
-  enqueues to the retired queue, if a template lacks a registry entry, or if a function
-  reintroduces the unsigned-role-claim auth pattern.
-- Contract tests for the Ghost and Email Octopus adapters. Idempotency and loop-prevention unit
-  tests. A reconciliation drift test.
-- A before-and-after send-log check proving Tier 0 reach goes from about 163 to 100 percent of
-  triggered users, and a reach-parity check that the Tier 1 audience equals active members minus
-  opt-outs.
-
-## 14. Release plan
-
-Expand, migrate, contract. Each PR is independently shippable, reversible, and gated by its tests.
-PRs 1 through 3 are the urgent core and can land first. Later PRs stack behind the
-`unified_consent_sync` flag.
-
-| PR  | Title                                                                                                                                                      | Wave |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
-| 1   | ADRs 0013 to 0016, the tier registry, CI fitness tests (including the service-role regression guard)                                                       | 0    |
-| 2   | Eradicate the retired raw queue: repoint the two dead senders, the reconciler, both DLQ replays, and the announcement fallback to v2; fix old-domain links | 0    |
-| 3   | Remove the Tier 0 preference gates, add the always-send invariant test                                                                                     | 0    |
-| 4   | Tier 1 preference, default on, backfill, profile UI, one-click unsubscribe to opt-out wiring, dual-read                                                    | 1    |
-| 5   | Re-gate Tier 1 emails to the toggle (project openings to all users, quest nudge, service announcement)                                                     | 1    |
-| 6   | Consent ledger, projection, RPCs, RLS, pgTAP, dark                                                                                                         | 2    |
-| 7   | Grandfather backfill, dry-run then live                                                                                                                    | 2    |
-| 8   | Outbound sync, Ghost and Email Octopus adapters, queue, idempotent, loop prevention, Vault secrets                                                         | 3    |
-| 9   | Inbound webhooks with signature verification, and the reconcile cron                                                                                       | 3    |
-| 10  | Signup marketing checkbox and the preference center, writing to the ledger                                                                                 | 4    |
-| 11  | Announcement purpose picker and Tier 2 routing from consent, with audience preview and audit                                                               | 4    |
-| 12  | DSAR: deletion and export propagation, and the DPIA                                                                                                        | 5    |
-| 13  | Remove the triage digest feature, bring inline templates into the registry, remove the dead template                                                       | 5    |
-| 14  | Observability, runbook, deliverability ramp, then drop `notify_announcements` after bake-in                                                                | 5    |
-
-Work happens in the isolated `feat/email-rearchitecture` branch, one worktree per PR.
-
-## 15. Observability and operational readiness
-
-- SLIs and SLOs: Tier 0 send success near 100 percent minus global suppression; consent change to
-  external propagation p95 under 5 minutes; webhook ingestion above 99 percent; reconciliation
-  drift trending to zero.
-- Symptom-based alerts: any Tier 0 template appearing suppressed by a preference, which should be
-  impossible and pages; sync DLQ depth above zero; webhook signature-failure spikes; complaint-rate
-  breach on the bulk lane; reconciliation drift above threshold.
-- A runbook at `docs/runbooks/email-consent-sync.md` covers service versus marketing sends,
-  audience-preview verification, DLQ replay, forcing a reconcile, rotating a webhook secret,
-  handling a Ghost or Email Octopus outage, and the deliverability ramp checklist.
-
-## 16. Deliverability
-
-- The reach fix lifts triggered Tier 0 volume from about 13 percent to 100 percent of triggered
-  users. Triggered emails are event-driven and low steady volume, so this is safe to ship at once.
-- The first all-member service announcement, about 1,253 people, is sent in throttled batches with
-  bounce and complaint monitoring before widening.
-- The auth lane stays isolated so a service or marketing complaint spike cannot throttle password
-  resets.
-
-## 17. UX and voice standard
-
-Full detail is in the UX build standard. Requirements: reuse the existing components (`Switch`,
-`Checkbox`, `RadioGroup`, `Card`, `Button`, `Badge`, `Alert`, `Separator`). Sentence case
-everywhere, no em dashes, buttons are verb plus noun, no internal tooling names in member copy
-(members never see "Ghost" or "Email Octopus"), and empathetic system states. Meet WCAG 2.2 AA,
-including never relying on color alone and full keyboard operability. The signup screen change ships
-with the full auth regression suite green because it touches the frozen auth area.
-
-## 18. Architecture Decision Records
-
-- ADR-0013 Consent ledger as the source of truth
-- ADR-0014 Ghost and Email Octopus sync topology
-- ADR-0015 Transactional and marketing scope separation and suppression scopes
-- ADR-0016 Email tiering and the retirement of `notify_announcements`
-
-Written as PR 1's first commits, per the repo convention.
-
-## 19. Secrets and configuration
-
-Set as Supabase Edge Function secrets, needed only at the sync wave (PRs 8 and 9):
-
-- Email Octopus: `EMAILOCTOPUS_API_KEY`, `EMAILOCTOPUS_LIST_ID`, `EMAILOCTOPUS_WEBHOOK_SECRET`
-- Ghost: `GHOST_ADMIN_API_URL`, `GHOST_ADMIN_API_KEY`, `GHOST_WEBHOOK_SECRET`
-
-The build fails closed if a secret is missing and surfaces it in the environment-readiness check.
-The owner sets these. Migrations are applied by hand to production, not auto-deployed.
-
-## 20. Acceptance criteria
-
-- Tier 0 reach proven to go from about 163 to 100 percent of triggered users, by BDD and a
-  before-and-after send-log check.
-- No sender reads `notify_announcements`, no code enqueues the raw queue, the registry is complete,
-  and all fitness tests pass.
-- `project_opening_alert` and `feedback_alert` deliver again, verified in the send log.
-- The Tier 1 toggle exists, defaults on, is backfilled, and Tier 1 emails are re-gated to it.
-- The consent ledger is live, the 163 are grandfathered, Ghost and Email Octopus subscribers are
-  matched, and there is no auto-subscribe.
-- Two-way sync is live, loop prevention and reconcile are proven, and DSAR propagation works.
-- The announcement purpose picker is enforced and audited, and marketing routes only from consent.
-- The triage digest is removed, inline templates are in the registry, the dead template is gone,
-  and links are fixed.
-- The DPIA is written, the global-compliance BDD is green, and the deliverability ramp completes
-  without a bounce or complaint breach.
-- `notify_announcements` is dropped after the bake-in.
-
-## 21. Open items
-
-1. Confirm the reconcile drift policy is flag-for-review, as recommended.
-2. Confirm the CI regression guard for the service-role pattern goes into PR 1.
-3. The go-ahead to start PR 1.
-4. Ghost and Email Octopus secrets, needed only when the sync wave begins.
-
-## 22. Glossary
-
-- **Tier 0, 1, 2** The three send tiers by purpose.
-- **Bucket** A thing a person can unsubscribe from: marketing, opportunities, or none for critical.
-- **Consent ledger** The append-only `consent_event` table plus the `consent_current` projection.
-- **Source of truth** The platform's `consent_current.marketing` value for a person.
-- **Mirror** Ghost or Email Octopus, kept matched to the source of truth by API.
-- **Dead queue** The retired raw `enqueue_email` pgmq queue with no consumer after the July cutover.
+- Tier-0 fixes reached every triggered user immediately (shipped). Any first large service send
+  ramps in batches; the auth lane stays isolated.
+
+## 4. Users and stakeholders
+
+- **Members** (~1,253 accounts, from 86 countries). Receive email; control their own preferences.
+- **Marketing team.** Runs campaigns in Email Octopus (the only marketing tool now).
+- **Community/site.** Ghost hosts the blog; no email.
+- **Admins/coordinators.** Send service announcements, receive ops alerts, handle support.
+
+## 5. Email inventory → tiers (platform email; code-verified 2026-08-18)
+
+Unchanged from Revision 1 except that **Tier 2 marketing is no longer a platform send**.
+
+**Tier 0, always send, no preference gate** — auth (signup/invite/magic-link/recovery/email-change/
+reauth), unconfirmed-signup reminder, both application-submitted, support-ticket reply, teacher/admin
+role confirmation, class status change (teacher + admins), interview invitation, applicant status
+change, observer role granted, community/training agreement offer, resume-application reminder,
+project blast. _(The four gated Tier-0 emails had their `notify_announcements` gate removed in PR 3.)_
+
+**Tier 1, everyone by default, single opt-out (`notify_opportunities`)** — project opening alert,
+quest re-engagement nudge, service announcement.
+
+**Tier 2, marketing** — handled entirely by **Email Octopus**. The platform does not send it.
+
+**Ops, staff only** — admin member-status alert (project coordinator), new-feedback admin alert (all
+admins), Fleety Coach weekly digest (all admins). _(Triage digest removed, PR 9.)_
+
+## 6. Marketing architecture (Email Octopus)
+
+- **Source of truth:** the EO list. A person is "subscribed to marketing" if and only if they are a
+  subscribed contact in EO.
+- **Signup:** the "Marketing and news" checkbox, when ticked, records the local receipt (§3) and
+  **enqueues** an EO add. See resilience below — signup never blocks on EO.
+- **Profile preference:** a "Marketing and news" toggle. On → enqueue EO subscribe; off → enqueue EO
+  unsubscribe. Current state is read from EO (or reflected from a lightweight EO unsubscribe webhook,
+  for display freshness).
+- **Unsubscribe from a marketing email:** handled by EO's own unsubscribe. An optional EO → platform
+  webhook updates the profile toggle's displayed state. No platform suppression is involved.
+- **No consent ledger, no two-way sync, no reconcile, no Ghost integration.**
+
+**Resilience — the EO sync is durable, not fire-and-forget (enterprise-arch, release-safety, SRE,
+compliance).** Every EO add/remove is written as a job (reuse the existing pgmq/outbox pattern) and
+processed by a worker with retry + backoff; it is NOT a synchronous call inside the request.
+
+- **Signup and profile-save must succeed even if EO is down.** The user's action commits locally (the
+  receipt / toggle state), the EO call is enqueued and retried. An EO outage can never block account
+  creation or a preference change (fail-open on the user path).
+- **A dropped opt-OUT is a compliance breach**, so the queue must guarantee eventual delivery of
+  unsubscribes; the retry-queue backlog is a paged SRE signal (§9).
+- **Idempotent** (add/remove by email); safe to retry. **Server-side only:** all EO calls run in an
+  edge function; the `EMAILOCTOPUS_API_KEY` never reaches the browser. A member can only subscribe or
+  unsubscribe **their own** email (derived from `auth.uid()`), never an arbitrary address.
+- Behind a **feature flag** (`email_octopus_sync`) for a safe rollout.
+
+## 7. Functional requirements
+
+### 7.1 Signup
+
+- Required account-notices consent (unchanged).
+- One optional, unticked "Marketing and news" checkbox. On submit, if ticked: call EO add-contact +
+  write the local receipt. If the EO call fails, the receipt lets a retry job complete it.
+
+### 7.2 Preference center (profile → notification settings)
+
+The member manages everything from the platform (opt in AND unsubscribe); they never log into Email
+Octopus. This lives in the profile's notification settings.
+
+- **Account and essential emails** (Tier 0) shown read-only, "Always on."
+- **Opportunities and platform updates** (Tier 1) — single toggle, on by default, writes
+  `notify_opportunities`.
+- **Marketing and news** (Tier 2) — single toggle. Turning it on calls Email Octopus (subscribe);
+  turning it off calls Email Octopus (unsubscribe). This is the in-platform way to unsubscribe from
+  marketing. Its displayed state reflects EO (via read-on-load or the optional EO unsubscribe
+  webhook), so it never disagrees with EO even if the person also used the unsubscribe link in an EO
+  email.
+
+### 7.3 Unsubscribe (platform service email only)
+
+- Applies to Tier 1 opportunity email the platform sends via Resend.
+- One-click, RFC 8058 (GET validates, POST performs), scope-aware: sets `notify_opportunities = false`
+  and, during the expand phase, dual-writes `notify_announcements = false`. **Never** writes a global
+  `suppressed_emails` row (that is reserved for hard bounce / spam complaint via the Resend webhook).
+- Fixes the live bug where unsubscribing from any email globally suppressed the address and blocked
+  critical account email (verified: `enqueue-email.ts:32` suppresses all lanes, auth included).
+- Old-domain `lovable.app` links are replaced with `techfleet.network`.
+- **Marketing unsubscribe is not a platform concern** — EO handles it.
+
+### 7.4 Announcement composer (admin)
+
+- The platform composer sends **service announcements only** (Tier 1), to all active members minus the
+  opportunities opt-out. There is no audience or purpose picker; marketing announcements are composed
+  and sent in Email Octopus by the marketing team.
+- Before sending, the admin must tick a **required confirmation**: _"I confirm this is not marketing,
+  and that any marketing is sent through the marketing platform (Email Octopus)."_ The send is blocked
+  until it is ticked. The attestation (admin + timestamp) is written to the **audit log** — the
+  evidence that the platform's all-member channel was not used for marketing. This replaces routing
+  logic with a human guardrail, so the platform never needs a "marketing" concept.
+- Only admins see this control (it lives in the admin composer, on create and edit).
+
+### 7.5 Data-subject rights
+
+- Account deletion removes the person's EO contact (one API call) and clears the local receipt.
+- Export includes the local receipt (opt-in timestamp/source). The EO subscription record is EO's.
+
+## 8. Data model (platform)
+
+- **`profiles.notify_opportunities boolean NOT NULL DEFAULT true`** — the Tier-1 opt-out. **(Shipped
+  as migration 4a.)**
+- **Minimal marketing receipt** (recommended): `profiles.marketing_opt_in_at timestamptz`,
+  `profiles.marketing_opt_in_source text`. Not authoritative; proof + retry only.
+- The email-type → tier registry (`_shared/email/domain/email-tiers.ts`). **(Shipped, PR 1.)**
+- `notify_announcements` retained through the expand phase (dual-read), dropped in the last PR.
+- **No consent ledger tables.**
+
+## 9. Architecture & security (platform)
+
+- **Tier registry** decides tier; CI guards enforce it (shipped): registry completeness, no Tier-0
+  preference read, no raw-queue enqueue, no unsigned-JWT auth.
+- **EO API client:** secrets in Vault (`EMAILOCTOPUS_API_KEY`, `EMAILOCTOPUS_LIST_ID`); server-side
+  only. Fails closed if missing; surfaced in environment-readiness. Rate-limited, idempotent, and
+  **durably queued with retry** (§6), never a synchronous call on the user path.
+- **Optional EO webhook** (unsubscribe) verified by HMAC (`EMAILOCTOPUS_WEBHOOK_SECRET`) for display
+  freshness only.
+- **Suppression scopes:** global (bounce/complaint, all tiers), Tier-1 opt-out (`notify_opportunities`).
+  A Tier-1 opt-out never writes global suppression.
+- No PII in worker logs (user id or hash). No Ghost secrets. Much smaller attack surface than Rev 1.
+
+**Operational readiness (SRE).**
+
+- **SLIs/SLOs:** EO sync success rate > 99%; opt-out → EO propagation p95 < 5 min; retry-queue depth
+  trends to ~0.
+- **Alerts (symptom-based):** the **EO sync retry-queue backlog** pages — a backlog of un-synced
+  **unsubscribes** means people are still being marketed to after opting out (a compliance breach in
+  progress). Also alert on an EO API error-rate spike and webhook signature-failure spikes.
+- **Runbook** (`docs/runbooks/email-octopus-sync.md`): replay failed EO syncs, handle an EO outage
+  (queue drains on recovery; user path stays up), rotate the EO key/webhook secret, and reconcile the
+  displayed toggle if it drifts from EO.
+
+**Compliance (data lifecycle).**
+
+- **Email Octopus is a named subprocessor.** It must appear in the privacy notice and the DPIA, with
+  the data shared listed (email address, first name, subscription state).
+- **International transfer:** EO is UK/EU-hosted, so sending a global (86-country) audience's contact
+  data there is a cross-border transfer; the DPIA documents the lawful mechanism.
+- **Consent proof:** the local receipt (§3) plus EO's own subscription record.
+- **Unsubscribe propagation** is guaranteed by the durable retry queue (§6), so an opt-out is honored
+  even across an EO outage.
+
+## 10. Testing
+
+- Structural CI guards (shipped). BDD `@compliance`/`@critical`: Tier-0 always sends with all prefs
+  off; a marketing/opportunity opt-out never stops account email; unsubscribe cannot be triggered by
+  a prefetch; EO add/remove is enqueued on opt-in/out; the announcement composer sends only to the
+  opportunities audience and requires the "not marketing" attestation. pgTAP for the Tier-1
+  preference + unsubscribe RPCs.
+- **Resilience / contract tests (comprehensive-test-strategy):** a consumer-driven contract test
+  against a mocked EO API (add/remove/error shapes); a **chaos test** proving that when EO is down,
+  signup still succeeds and the enqueued opt-in/opt-out is retried to completion (an opt-out is never
+  lost); idempotency test (re-running an EO sync job does not double-apply).
+
+## 11. Release plan (Revision 2)
+
+**Shipped (committed on `feat/email-rearchitecture`, not pushed):**
+
+| PR  | Title                                                                           | State        |
+| --- | ------------------------------------------------------------------------------- | ------------ |
+| 1   | Tier registry + CI fitness tests + ADRs 0013–0016                               | ✅ committed |
+| 2   | Route all raw `enqueue_email` callers to the v2 outbox (restores 2 dead emails) | ✅ committed |
+| 3   | Remove `notify_announcements` gate from Tier-0 critical email (the ~87% bug)    | ✅ committed |
+| —   | Drop class-status trainee notification (doesn't apply)                          | ✅ committed |
+
+**In progress / remaining (Revision 2 — simplified):**
+
+| PR  | Title                                                                                                                                                                                                                                                                    | Notes                                                                                                   |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| 4   | Tier-1 `notify_opportunities` preference (4a ✅ written) + scope-aware one-click unsubscribe for platform service email (4b) + preference-center UI (4c)                                                                                                                 | 4b now covers only the platform service email; marketing unsub is EO's. 4c's marketing toggle calls EO. |
+| 5   | Re-gate the Tier-1 senders (project openings, quest nudge, service announcement) to `notify_opportunities`                                                                                                                                                               | Removes their last `notify_announcements` reads.                                                        |
+| 6   | **Email Octopus integration** — server-side EO client behind a durable **retry queue** + feature flag; signup checkbox and profile toggle enqueue EO add/remove (fail-open, never block the user); minimal receipt; optional EO unsubscribe webhook; SLOs/alerts/runbook | Replaces old PRs 6–9 (ledger + two-way sync). Live (EO API ready).                                      |
+| 7   | Announcement composer → service-only + a required admin "not marketing" attestation checkbox (audited)                                                                                                                                                                   | Simplified from the old purpose-picker PR.                                                              |
+| 8   | DSAR: account deletion removes the EO contact + clears the receipt                                                                                                                                                                                                       | Simplified (EO only, no Ghost).                                                                         |
+| 9   | Transactional cleanup: remove triage-digest feature, inline templates → registry, dead template                                                                                                                                                                          | Unchanged.                                                                                              |
+| 10  | Observability + deliverability ramp; then drop `notify_announcements` after bake-in; short DPIA                                                                                                                                                                          | Unchanged in spirit; DPIA now shorter.                                                                  |
+
+**Documentation, alongside the build:** **ADR-0017** ("Email Octopus as the marketing source of
+truth," superseding 0013 and 0014) is written before PR 6. The **DPIA + privacy-notice subprocessor
+update** (EO named, data shared, UK transfer basis) lands with PR 6, when EO first receives member
+data.
+
+**One-time (not code):** import the current Ghost newsletter subscribers into Email Octopus (so EO is
+the complete list), and add the 163 platform announcement opt-ins to EO. Done in EO's own import UI.
+
+**Deleted from Revision 1** (no longer built): the consent ledger (`consent_event`/`consent_current`),
+the two-way sync workers, the nightly reconcile + loop-prevention, all Ghost integration, and the
+custom marketing unsubscribe endpoint/token. The scope-aware unsubscribe survives only for the
+platform's own service email.
+
+## 12. Acceptance criteria
+
+- Tier-0 reach 100% of triggered users (shipped, PR 3) — proven by guard + before/after send-log.
+- No sender reads `notify_announcements`; no raw-queue enqueue; registry complete (guards green).
+- The two dead emails deliver again (shipped, PR 2).
+- Tier-1 toggle exists (default on) and its senders are re-gated to it; unsubscribe is scope-aware and
+  never globally suppresses.
+- Signup + profile call Email Octopus; EO is the marketing source of truth; Ghost sends no email.
+- Account deletion removes the EO contact.
+- Triage digest removed; dead template gone; links fixed; `notify_announcements` dropped after bake-in;
+  DPIA written.
+
+## 13. Open items
+
+1. Confirm the minimal marketing receipt (recommended) vs trust EO fully (drop the two columns).
+2. Email Octopus API is READY (owner, 2026-08-20). Put the secrets (`EMAILOCTOPUS_API_KEY`,
+   `EMAILOCTOPUS_LIST_ID`, and `EMAILOCTOPUS_WEBHOOK_SECRET` if using the display webhook) in Supabase
+   Vault at PR 6 — PR 6 goes live, not dark.
+3. Commit 4a (written) and continue PR 4 (4b unsubscribe, 4c preference center).

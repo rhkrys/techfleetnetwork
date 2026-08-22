@@ -1,6 +1,8 @@
 # ADR-0014: Ghost and Email Octopus sync topology
 
-- **Status:** Accepted (2026-08-19)
+- **Status:** Superseded by [ADR-0017](0017-email-octopus-marketing-source-of-truth.md) (2026-08-20).
+  Ghost was dropped as an email sender, leaving one marketing system (Email Octopus); the two-way
+  sync described here is no longer built. Retained for history.
 - **Related:** [ADR-0013](0013-consent-ledger-source-of-truth.md) (the source of truth).
   Requirements: `docs/design/email-rearchitecture-requirements.md` §8.5. Threat model:
   `docs/security/email-rearchitecture-threat-model.md`.

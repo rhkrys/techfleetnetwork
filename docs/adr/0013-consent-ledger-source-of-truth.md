@@ -1,6 +1,8 @@
 # ADR-0013: Consent ledger as the single source of truth for marketing consent
 
-- **Status:** Accepted (2026-08-19)
+- **Status:** Superseded by [ADR-0017](0017-email-octopus-marketing-source-of-truth.md) (2026-08-20).
+  Email Octopus became the single marketing system and the source of truth; the platform-owned
+  consent ledger described here is no longer built. Retained for history.
 - **Related:** [ADR-0014](0014-ghost-email-octopus-sync-topology.md) (sync),
   [ADR-0015](0015-transactional-marketing-scope-separation.md) (scopes),
   [membership ledger re-architecture] (same event-sourced pattern). Requirements:
