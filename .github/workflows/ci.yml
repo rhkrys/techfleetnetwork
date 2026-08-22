@@ -746,7 +746,8 @@ jobs:
             supabase/functions/spf-sync/ \
             supabase/functions/_shared/spf/ \
             supabase/functions/_shared/llm/ \
-            supabase/functions/_shared/email-octopus/
+            supabase/functions/_shared/email-octopus/ \
+            supabase/functions/email-octopus-sync/
 
   dependency-review:
     runs-on: ubuntu-latest

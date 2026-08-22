@@ -344,3 +344,7 @@ project_id = "pzvqxdgoztbfikfuifix"
     verify_jwt = false
   [functions.fleety-review]
     verify_jwt = true
+  [functions.email-octopus-sync]
+    # Cron-poked marketing sync worker (@edge-cron). Validates the service-role bearer in code,
+    # so verify_jwt stays false (matches quest-nudge / reap-class-module-orphans).
+    verify_jwt = false
