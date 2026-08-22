@@ -164,5 +164,53 @@ export function components(mode: Mode, t: ModeTokens): Components<Theme> {
         },
       },
     },
+    // Phase-1 atoms
+    MuiOutlinedInput: {
+      styleOverrides: {
+        root: {
+          borderRadius: 6,
+          backgroundColor: t.background,
+          fontSize: "0.875rem",
+          "& .MuiOutlinedInput-notchedOutline": { borderColor: t.divider },
+          "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: t.divider },
+          "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
+            borderColor: t.ring,
+            borderWidth: 2,
+          },
+          "&.Mui-error .MuiOutlinedInput-notchedOutline": { borderColor: t.error.main },
+        },
+        input: { padding: "10px 12px" },
+      },
+    },
+    MuiCheckbox: {
+      defaultProps: { disableRipple: true },
+      styleOverrides: {
+        // shadcn checkbox shows a primary border unchecked; checked fills primary.
+        root: { color: t.primary.main, padding: 4, "&.Mui-checked": { color: t.primary.main } },
+      },
+    },
+    MuiSwitch: {
+      styleOverrides: {
+        switchBase: {
+          "&.Mui-checked": {
+            color: t.primary.contrastText,
+            "& + .MuiSwitch-track": { backgroundColor: t.primary.main, opacity: 1 },
+          },
+        },
+        track: { backgroundColor: t.divider, opacity: 1 },
+      },
+    },
+    MuiSkeleton: {
+      defaultProps: { animation: "pulse" },
+      styleOverrides: {
+        root: {
+          borderRadius: 6,
+          backgroundColor: mode === "dark" ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)",
+        },
+      },
+    },
+    MuiDivider: {
+      styleOverrides: { root: { borderColor: t.divider } },
+    },
   };
 }

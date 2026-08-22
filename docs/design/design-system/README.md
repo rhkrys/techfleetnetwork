@@ -52,24 +52,33 @@ This README's **Build log** below is the running record of what was done.
 
 Status: `planned` → `in progress` → `done`. Rows link to each component's doc as it's written.
 
-| Item                                                                       | Layer      | Action | Status  | Doc                                       |
-| -------------------------------------------------------------------------- | ---------- | ------ | ------- | ----------------------------------------- |
-| Theme: tokens + palette (concrete per-mode, mirrors index.css)             | foundation | BUILD  | done    | [spec §3a](architecture-spec.md)          |
-| Theme: typography (Poppins/Futura, no Roboto/mono)                         | foundation | BUILD  | done    | [typography-system](typography-system.md) |
-| Theme: MuiButton (9 variants, asymmetric radius, no ripple)                | foundation | BUILD  | done    | [Button](components/atoms/Button.md)      |
-| Theme: MuiCard (tf-card) / MuiPaper (excluded)                             | foundation | BUILD  | done    | [Card](components/molecules/Card.md)      |
-| DesignSystemProvider (MUI + Emotion injectFirst + mode bridge)             | foundation | BUILD  | done    | [spec §4](architecture-spec.md)           |
-| ESLint import guard (`no-direct-mui`)                                      | governance | BUILD  | done    | [spec §7](architecture-spec.md)           |
-| DS showcase page (`/admin/design-system`)                                  | tooling    | BUILD  | done    | —                                         |
-| Button                                                                     | atom       | WRAP   | done    | [Button](components/atoms/Button.md)      |
-| Text (typography)                                                          | atom       | WRAP   | done    | [typography-system](typography-system.md) |
-| Icon (`@mui/icons-material`)                                               | atom       | WRAP   | done    | [Icon](components/atoms/Icon.md)          |
-| Card (+ sub-parts)                                                         | molecule   | WRAP   | done    | [Card](components/molecules/Card.md)      |
-| Unit tests (Button/Text/Card)                                              | tests      | BUILD  | done    | —                                         |
-| Visual-regression stories (light+dark)                                     | tests      | —      | planned | —                                         |
-| _…remaining atoms/molecules/organisms per the [audit](component-audit.md)_ | —          | —      | planned | —                                         |
+| Item                                                                                                                                 | Layer      | Action | Status  | Doc                                        |
+| ------------------------------------------------------------------------------------------------------------------------------------ | ---------- | ------ | ------- | ------------------------------------------ |
+| Theme: tokens + palette (concrete per-mode, mirrors index.css)                                                                       | foundation | BUILD  | done    | [spec §3a](architecture-spec.md)           |
+| Theme: typography (Poppins/Futura, no Roboto/mono)                                                                                   | foundation | BUILD  | done    | [typography-system](typography-system.md)  |
+| Theme: MuiButton (9 variants, asymmetric radius, no ripple)                                                                          | foundation | BUILD  | done    | [Button](components/atoms/Button.md)       |
+| Theme: MuiCard (tf-card) / MuiPaper (excluded)                                                                                       | foundation | BUILD  | done    | [Card](components/molecules/Card.md)       |
+| DesignSystemProvider (MUI + Emotion injectFirst + mode bridge)                                                                       | foundation | BUILD  | done    | [spec §4](architecture-spec.md)            |
+| ESLint import guard (`no-direct-mui`)                                                                                                | governance | BUILD  | done    | [spec §7](architecture-spec.md)            |
+| DS showcase page (`/admin/design-system`)                                                                                            | tooling    | BUILD  | done    | —                                          |
+| Button                                                                                                                               | atom       | WRAP   | done    | [Button](components/atoms/Button.md)       |
+| Text (typography)                                                                                                                    | atom       | WRAP   | done    | [typography-system](typography-system.md)  |
+| Icon (`@mui/icons-material`)                                                                                                         | atom       | WRAP   | done    | [Icon](components/atoms/Icon.md)           |
+| Card (+ sub-parts)                                                                                                                   | molecule   | WRAP   | done    | [Card](components/molecules/Card.md)       |
+| Badge (Phase 1)                                                                                                                      | atom       | WRAP   | done    | [Badge](components/atoms/Badge.md)         |
+| Label (Phase 1)                                                                                                                      | atom       | WRAP   | done    | [Label](components/atoms/Label.md)         |
+| Input (Phase 1)                                                                                                                      | atom       | WRAP   | done    | [Input](components/atoms/Input.md)         |
+| Textarea (Phase 1)                                                                                                                   | atom       | WRAP   | done    | [Textarea](components/atoms/Textarea.md)   |
+| Checkbox (Phase 1)                                                                                                                   | atom       | WRAP   | done    | [Checkbox](components/atoms/Checkbox.md)   |
+| Switch (Phase 1)                                                                                                                     | atom       | WRAP   | done    | [Switch](components/atoms/Switch.md)       |
+| Skeleton (Phase 1)                                                                                                                   | atom       | WRAP   | done    | [Skeleton](components/atoms/Skeleton.md)   |
+| Separator (Phase 1)                                                                                                                  | atom       | WRAP   | done    | [Separator](components/atoms/Separator.md) |
+| Unit tests (Phase 0 + Phase 1 atoms)                                                                                                 | tests      | BUILD  | done    | —                                          |
+| Visual-regression stories (light+dark)                                                                                               | tests      | —      | planned | —                                          |
+| _…remaining atoms (avatar, progress, slider, radio, toggle, scroll-area), molecules & organisms per the [audit](component-audit.md)_ | —          | —      | planned | —                                          |
 
-> "done" = code written; green-check (typecheck/lint/test/size) verification runs at the end of Phase 0.
+> "done" = code written + verified (typecheck/lint/test/size green). Phase 0 shipped in PR #261; Phase 1
+> adds the high-use atoms (badge, label, input, textarea, checkbox, switch, skeleton, separator).
 
 ## Design tokens — the single source of truth
 

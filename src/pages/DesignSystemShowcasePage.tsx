@@ -14,9 +14,18 @@ import {
   CardDescription,
   Text,
   Icon,
+  Badge,
+  Label,
+  Input,
+  Textarea,
+  Checkbox,
+  Switch,
+  Skeleton,
+  Separator,
   type TfButtonVariant,
   type TfButtonSize,
   type TextBrand,
+  type BadgeVariant,
 } from "@/design-system";
 import Add from "@mui/icons-material/Add";
 import ArrowForward from "@mui/icons-material/ArrowForward";
@@ -33,6 +42,7 @@ const VARIANTS: TfButtonVariant[] = [
   "link",
 ];
 const SIZES: TfButtonSize[] = ["default", "sm", "lg", "xl", "icon"];
+const BADGE_VARIANTS: BadgeVariant[] = ["default", "secondary", "destructive", "outline"];
 const BRANDS: TextBrand[] = [
   "display",
   "pageTitle",
@@ -128,6 +138,52 @@ export default function DesignSystemShowcasePage() {
               </Text>
             </CardContent>
           </Card>
+        </div>
+      </Section>
+
+      <Section title="Badges">
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+          {BADGE_VARIANTS.map((v) => (
+            <Badge key={v} variant={v}>
+              {v}
+            </Badge>
+          ))}
+        </div>
+      </Section>
+
+      <Section title="Form atoms">
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem", maxWidth: 360 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
+            <Label htmlFor="dsr-name">Name</Label>
+            <Input id="dsr-name" placeholder="Ada Lovelace" />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
+            <Label htmlFor="dsr-email">Email (error state)</Label>
+            <Input id="dsr-email" placeholder="you@example.com" error defaultValue="not-an-email" />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
+            <Label htmlFor="dsr-bio">Bio</Label>
+            <Textarea id="dsr-bio" placeholder="A few words…" />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <Checkbox id="dsr-agree" defaultChecked />
+            <Label htmlFor="dsr-agree">I agree</Label>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <Switch id="dsr-notify" defaultChecked />
+            <Label htmlFor="dsr-notify">Notifications</Label>
+          </div>
+        </div>
+      </Section>
+
+      <Section title="Feedback">
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", maxWidth: 360 }}>
+          <Skeleton height={20} />
+          <Skeleton height={20} width="60%" />
+          <Separator />
+          <Text brand="bodySmall" color="muted">
+            A separator sits above this line.
+          </Text>
         </div>
       </Section>
     </div>
