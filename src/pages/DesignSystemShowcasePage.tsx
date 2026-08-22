@@ -4,6 +4,8 @@
  * in light + dark, and so reviewers can eyeball brand fidelity vs shadcn.
  * Route: /admin/design-system (admin-gated, non-critical).
  */
+import { useState } from "react";
+import { useForm } from "react-hook-form";
 import {
   Button,
   Card,
@@ -22,13 +24,68 @@ import {
   Switch,
   Skeleton,
   Separator,
+  Alert,
+  AlertTitle,
+  AlertDescription,
+  Tooltip,
+  Dialog,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogContent,
+  DialogFooter,
+  RHFTextField,
+  RHFCheckbox,
   type TfButtonVariant,
   type TfButtonSize,
   type TextBrand,
   type BadgeVariant,
+  type AlertVariant,
 } from "@/design-system";
 import Add from "@mui/icons-material/Add";
 import ArrowForward from "@mui/icons-material/ArrowForward";
+import InfoOutlined from "@mui/icons-material/InfoOutlined";
+
+const ALERT_VARIANTS: AlertVariant[] = ["default", "success", "warning", "destructive"];
+
+function RhfFormDemo() {
+  const { control } = useForm<{ email: string; agree: boolean }>({
+    defaultValues: { email: "", agree: false },
+  });
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "1rem", maxWidth: 360 }}>
+      <RHFTextField name="email" control={control} label="Email" placeholder="you@example.com" />
+      <RHFCheckbox name="agree" control={control} label="Subscribe to updates" />
+    </div>
+  );
+}
+
+function DialogDemo() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button variant="outline" onClick={() => setOpen(true)}>
+        Open dialog
+      </Button>
+      <Dialog open={open} onClose={() => setOpen(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete project?</DialogTitle>
+            <DialogDescription>This action cannot be undone.</DialogDescription>
+          </DialogHeader>
+        </DialogContent>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button variant="destructive" onClick={() => setOpen(false)}>
+            Delete
+          </Button>
+        </DialogFooter>
+      </Dialog>
+    </>
+  );
+}
 
 const VARIANTS: TfButtonVariant[] = [
   "default",
@@ -185,6 +242,33 @@ export default function DesignSystemShowcasePage() {
             A separator sits above this line.
           </Text>
         </div>
+      </Section>
+
+      <Section title="Alerts">
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", maxWidth: 480 }}>
+          {ALERT_VARIANTS.map((v) => (
+            <Alert key={v} variant={v}>
+              <AlertTitle>{v}</AlertTitle>
+              <AlertDescription>An {v} alert message.</AlertDescription>
+            </Alert>
+          ))}
+        </div>
+      </Section>
+
+      <Section title="Tooltip">
+        <Tooltip title="Extra context on hover">
+          <Button variant="outline">
+            <Icon icon={InfoOutlined} /> Hover me
+          </Button>
+        </Tooltip>
+      </Section>
+
+      <Section title="Form field layer (react-hook-form)">
+        <RhfFormDemo />
+      </Section>
+
+      <Section title="Dialog">
+        <DialogDemo />
       </Section>
     </div>
   );

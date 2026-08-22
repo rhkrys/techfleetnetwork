@@ -212,5 +212,20 @@ export function components(mode: Mode, t: ModeTokens): Components<Theme> {
     MuiDivider: {
       styleOverrides: { root: { borderColor: t.divider } },
     },
+    // Phase-2 molecules/organisms
+    MuiDialog: {
+      styleOverrides: {
+        paper: {
+          borderRadius: 8,
+          backgroundColor: t.paper,
+          backgroundImage: "none",
+          border: `1px solid ${t.divider}`,
+        },
+      },
+    },
+    MuiAlert: {
+      defaultProps: { variant: "outlined" },
+      styleOverrides: { root: { borderRadius: 8 } },
+    },
   };
 }
