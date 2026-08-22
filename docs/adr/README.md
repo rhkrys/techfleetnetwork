@@ -14,6 +14,7 @@ marked `Superseded by ADR-XXXX`, never deleted or rewritten.
 | [0005](0005-llm-model-capability-port.md)         | LLM provider/model behind a capability port                                        | Accepted |
 | [0006](0006-handoff-material-ingest.md)           | Hand-off material ingest — durable, checkpointed, hardened multi-format extraction | Accepted |
 | [0007](0007-handoff-load-on-demand-extraction.md) | Load-on-demand extraction to bound hand-off worker memory                          | Accepted |
+| [0015](0015-mui-owned-design-system-layer.md)     | TechFleet Design System as an owned layer on MUI Core (not a fork)                 | Proposed |
 
 These ADRs cover the **Hand-Off Production System + SPF data-layer migration** work. The full
 requirement specification (skills-vetted) lives in the approved plan; each ADR here records
