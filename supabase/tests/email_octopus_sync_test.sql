@@ -1,5 +1,5 @@
 -- pgTAP: Email Octopus desired-state sync (PR 6a, ADR-0017). Run: `supabase test db`. Rolled back.
--- Proves: (1) the member intent RPC is self-only via auth.uid() and records the local receipt;
+-- Proves: (1) the member intent RPC is self-only via auth.uid(), and the read RPC reports state;
 -- (2) re-opting bumps version and re-queues even after DLQ; (3) the worker settle honors optimistic
 -- concurrency (a stale version never marks synced); (4) the table is deny-all to anon/authenticated
 -- and the worker RPCs are service-role only.
@@ -37,9 +37,9 @@ SELECT is(
 SELECT is(
   (SELECT fields->>'first_name' FROM public.email_octopus_contact_sync WHERE email = 'eo-pgtap@example.com'),
   'Ada', 'personalization captured from the profile');
-SELECT isnt(
-  (SELECT marketing_opt_in_at FROM public.profiles WHERE user_id = 'a0000000-0000-0000-0000-000000000001'),
-  NULL, 'opt-in stamps the local receipt marketing_opt_in_at');
+SELECT is(
+  public.get_my_marketing_subscription(), 'subscribed',
+  'the self-only read RPC reports the caller''s current desired state (drives the toggle, no profiles receipt)');
 
 -- Simulate the row having gone to DLQ, then the member opts OUT: must re-queue with a bumped version.
 UPDATE public.email_octopus_contact_sync
@@ -54,8 +54,8 @@ SELECT is(
   'unsubscribed:pending:2:0',
   're-opting bumps version to 2, re-queues (pending), and resets attempts even from DLQ');
 SELECT is(
-  (SELECT marketing_opt_in_at FROM public.profiles WHERE user_id = 'a0000000-0000-0000-0000-000000000001'),
-  NULL, 'opt-out clears the local opt-in receipt');
+  public.get_my_marketing_subscription(), 'unsubscribed',
+  'the read RPC reflects the latest intent after opt-out');
 
 -- (3) Optimistic concurrency: settle with a STALE version must not mark synced.
 UPDATE public.email_octopus_contact_sync SET status = 'syncing' WHERE email = 'eo-pgtap@example.com';

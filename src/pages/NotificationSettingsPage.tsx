@@ -76,9 +76,12 @@ export default function NotificationSettingsPage() {
     (async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("notification_prefs, notify_opportunities, marketing_opt_in_at")
+        .select("notification_prefs, notify_opportunities")
         .eq("user_id", user.id)
         .maybeSingle();
+      // Marketing state is Email Octopus's, mirrored in the sync row; read it via the self-only RPC
+      // (no marketing column on profiles). Non-fatal if it fails — the rest of the page still loads.
+      const { data: marketing } = await supabase.rpc("get_my_marketing_subscription");
       if (cancelled) return;
       if (error) {
         toast.error("Could not load notification settings", {
@@ -87,7 +90,7 @@ export default function NotificationSettingsPage() {
       } else {
         setPrefs((data?.notification_prefs as Prefs | null) ?? {});
         setEmailOpportunities(data?.notify_opportunities ?? true);
-        setMarketingOptIn(Boolean(data?.marketing_opt_in_at));
+        setMarketingOptIn(marketing === "subscribed");
       }
       setLoading(false);
     })();

@@ -16,20 +16,12 @@
 -- Feature flag: there is no separate flag table; the sync is gated by the presence of the EO secrets
 -- (EMAILOCTOPUS_API_KEY / EMAILOCTOPUS_LIST_ID) in the worker — absent = fails closed, rows stay
 -- pending and surface as backlog. Intent is always recorded locally regardless.
+--
+-- No marketing state is stored on `profiles`. EO is the source of truth; the only local artifact is
+-- this queue row (an outbox that mirrors EO once synced), which also drives the toggle's displayed
+-- state via get_my_marketing_subscription().
 
--- 1. Minimal local receipt (compliance proof + retry support only; NOT authoritative, never gates a
---    send). EO holds the authoritative subscription state.
-ALTER TABLE public.profiles
-  ADD COLUMN IF NOT EXISTS marketing_opt_in_at     timestamptz,
-  ADD COLUMN IF NOT EXISTS marketing_opt_in_source text;
-
-COMMENT ON COLUMN public.profiles.marketing_opt_in_at IS
-  'When the member last opted in to marketing email (Email Octopus). Local receipt only; EO is the '
-  'source of truth (ADR-0017). Null when not currently opted in. Never read to gate a send.';
-COMMENT ON COLUMN public.profiles.marketing_opt_in_source IS
-  'Where the current marketing opt-in happened: signup | profile | import. Local receipt only.';
-
--- 2. Desired-state sync table: one row per contact email.
+-- 1. Desired-state sync table: one row per contact email.
 CREATE TABLE IF NOT EXISTS public.email_octopus_contact_sync (
   email            text PRIMARY KEY,                      -- lowercased contact email = EO identity
   user_id          uuid REFERENCES auth.users (id) ON DELETE SET NULL,
@@ -66,10 +58,11 @@ ALTER TABLE public.email_octopus_contact_sync ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "service manages eo sync" ON public.email_octopus_contact_sync
   FOR ALL TO service_role USING (true) WITH CHECK (true);
 
--- 3. Member intent RPC (self-only). Reads the caller's OWN email from their profile via auth.uid(),
---    so a member can never act on another person's contact — there is no email parameter. Records the
---    local receipt and marks the desired state for the worker. Returns as soon as the intent is
---    durably recorded; it never calls EO (fail-open).
+-- 2. Member intent RPC (self-only). Reads the caller's OWN email from their profile via auth.uid(),
+--    so a member can never act on another person's contact — there is no email parameter. Marks the
+--    desired state for the worker; no marketing state is written to profiles (EO is the source of
+--    truth). Returns as soon as the intent is durably recorded; it never calls EO (fail-open).
+--    p_source ('signup' | 'profile') is accepted and validated for telemetry; it is not persisted.
 CREATE OR REPLACE FUNCTION public.set_my_marketing_subscription(
   p_subscribed boolean,
   p_source text DEFAULT 'profile'
@@ -97,12 +90,6 @@ BEGIN
     RAISE EXCEPTION 'no email on profile' USING errcode = 'P0002';
   END IF;
 
-  -- Local receipt (proof only; not authoritative, never gates a send).
-  UPDATE public.profiles
-     SET marketing_opt_in_at = CASE WHEN p_subscribed THEN now() ELSE NULL END,
-         marketing_opt_in_source = CASE WHEN p_subscribed THEN p_source ELSE marketing_opt_in_source END
-   WHERE user_id = v_uid;
-
   -- Desired-state upsert: bump version and reset the worker's retry state so the latest intent wins,
   -- even if a prior attempt had gone to DLQ.
   INSERT INTO public.email_octopus_contact_sync AS s
@@ -129,7 +116,26 @@ $$;
 REVOKE ALL ON FUNCTION public.set_my_marketing_subscription(boolean, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.set_my_marketing_subscription(boolean, text) TO authenticated;
 
--- 4. Worker claim (service-only): atomically claim due rows for syncing. Returns the claimed version
+-- 2b. Member read (self-only): the caller's current desired marketing state, for the toggle's
+--     displayed value. Returns 'subscribed' | 'unsubscribed' | 'deleted', or NULL when the member has
+--     never opted in (no contact). This is the latest local intent, which mirrors EO once synced (and
+--     the optional EO webhook refreshes it after an EO-side unsubscribe). No profiles receipt needed.
+CREATE OR REPLACE FUNCTION public.get_my_marketing_subscription()
+RETURNS text
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT s.desired_status
+  FROM public.email_octopus_contact_sync s
+  JOIN public.profiles p ON lower(p.email) = s.email
+  WHERE p.user_id = auth.uid()
+  LIMIT 1;
+$$;
+REVOKE ALL ON FUNCTION public.get_my_marketing_subscription() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_my_marketing_subscription() TO authenticated;
+
+-- 3. Worker claim (service-only): atomically claim due rows for syncing. Returns the claimed version
 --    so settle can detect a newer intent that landed mid-flight.
 CREATE OR REPLACE FUNCTION public.claim_eo_sync(p_max integer DEFAULT 25)
 RETURNS TABLE (
@@ -165,7 +171,7 @@ $$;
 REVOKE ALL ON FUNCTION public.claim_eo_sync(integer) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.claim_eo_sync(integer) TO service_role;
 
--- 5. Worker settle (service-only): record the result of one EO push. Optimistic concurrency on the
+-- 4. Worker settle (service-only): record the result of one EO push. Optimistic concurrency on the
 --    claimed version — if a newer member intent bumped version while the push was in flight, DO NOT
 --    mark synced; return it to pending so the newer desired_status is pushed. Exponential backoff;
 --    DLQ after 8 attempts or on a permanent failure. A stuck unsubscribe/delete is a compliance
@@ -232,7 +238,7 @@ $$;
 REVOKE ALL ON FUNCTION public.record_eo_sync_result(text, bigint, text, integer, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.record_eo_sync_result(text, bigint, text, integer, text) TO service_role;
 
--- 6. SRE health snapshot (service-only): backlog + DLQ, with the unsubscribe/delete backlog broken
+-- 5. SRE health snapshot (service-only): backlog + DLQ, with the unsubscribe/delete backlog broken
 --    out — an un-synced opt-out means someone is still being marketed to after opting out, the paged
 --    compliance signal (requirements §9 SRE).
 CREATE OR REPLACE FUNCTION public.get_eo_sync_health()

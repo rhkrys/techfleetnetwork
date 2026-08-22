@@ -4637,8 +4637,6 @@ export type Database = {
           membership_tier: Database["public"]["Enums"]["membership_tier"]
           membership_updated_at: string | null
           notification_prefs: Json
-          marketing_opt_in_at: string | null
-          marketing_opt_in_source: string | null
           notify_announcements: boolean
           notify_opportunities: boolean
           notify_training_opportunities: boolean
@@ -4692,8 +4690,6 @@ export type Database = {
           membership_tier?: Database["public"]["Enums"]["membership_tier"]
           membership_updated_at?: string | null
           notification_prefs?: Json
-          marketing_opt_in_at?: string | null
-          marketing_opt_in_source?: string | null
           notify_announcements?: boolean
           notify_opportunities?: boolean
           notify_training_opportunities?: boolean
@@ -4747,8 +4743,6 @@ export type Database = {
           membership_tier?: Database["public"]["Enums"]["membership_tier"]
           membership_updated_at?: string | null
           notification_prefs?: Json
-          marketing_opt_in_at?: string | null
-          marketing_opt_in_source?: string | null
           notify_announcements?: boolean
           notify_opportunities?: boolean
           notify_training_opportunities?: boolean
@@ -7786,6 +7780,7 @@ export type Database = {
     }
     Functions: {
       _assert_class_editor: { Args: { _class_id: string }; Returns: undefined }
+      get_my_marketing_subscription: { Args: never; Returns: string }
       set_my_marketing_subscription: {
         Args: { p_subscribed: boolean; p_source?: string }
         Returns: undefined
