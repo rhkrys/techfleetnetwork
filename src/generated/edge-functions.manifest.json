@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-16T22:54:56.980Z",
+  "generated_at": "2026-08-22T14:38:31.813Z",
   "functions": [
     {
       "name": "admin-purge-auth-user",
@@ -150,6 +150,13 @@
     },
     {
       "name": "email-dispatcher",
+      "verify_jwt": false,
+      "kind": "cron",
+      "critical": false,
+      "declared": true
+    },
+    {
+      "name": "email-octopus-sync",
       "verify_jwt": false,
       "kind": "cron",
       "critical": false,
