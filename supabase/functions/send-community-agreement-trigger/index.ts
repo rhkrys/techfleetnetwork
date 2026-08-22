@@ -3,8 +3,8 @@
  * send-community-agreement-trigger
  *
  * Admin-only edge function that asks an active teammate to sign the
- * Community Contributor Terms. Sends an in-app notification always and
- * queues an email if the applicant has notify_training_opportunities = true.
+ * Community Contributor Terms. Sends an in-app notification and the Tier-0
+ * agreement email (always sent; no member preference gate).
  *
  * Used in two contexts:
  *  1. notify-applicant-status calls this internally when status flips to

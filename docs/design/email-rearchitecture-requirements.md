@@ -129,8 +129,10 @@ Octopus marketing) behind one consent record on the platform.
 - General application submitted, project application submitted
 - Support ticket reply
 - Teacher role confirmation, admin role confirmation (both render inline HTML today)
-- Class status change. New requirement: also notify the enrolled trainee, who is not notified
-  today. Keep the teacher and coordinator recipients.
+- Class status change. Teacher (owner) + admins only (curriculum authoring workflow). The
+  "notify enrolled trainees" idea was dropped (2026-08-20): learners enrol in cohorts
+  (`cohort_registrations`), not classes, so class-status transitions are authoring-only and have
+  no enrolled learners to notify.
 - Interview invitation, applicant status change, observer role granted, community and training
   agreement offer. These four currently carry the `notify_announcements` gate and must have it
   removed. This is the core bug fix.

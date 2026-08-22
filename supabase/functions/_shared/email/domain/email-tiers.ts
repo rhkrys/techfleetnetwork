@@ -62,7 +62,7 @@ export const EMAIL_TIERS: Record<string, EmailTypeSpec> = {
     tier: 0,
     lane: "transactional",
     bucket: "none",
-    note: "PR 3: also notify the enrolled trainee (today: teacher + coordinator only).",
+    note: "Teacher (owner) + admins — curriculum authoring workflow. Trainee/cohort notification dropped 2026-08-20: learners enrol in cohorts (cohort_registrations), not classes, so class-status transitions are authoring-only.",
   },
   "interview-invite": {
     tier: 0,
