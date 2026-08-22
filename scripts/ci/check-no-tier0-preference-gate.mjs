@@ -10,8 +10,9 @@
 // legitimately still gate a non-Tier-0 email (removed as each is migrated).
 //
 // Allowlist (shrinks over the rollout):
-//   quest-nudge            — Tier 1, re-gated to the opportunities opt-out in PR 5.
-//   send-announcement-email — Tier 2 marketing broadcast, routed from consent in PR 11.
+//   send-announcement-email - Tier 1 service announcement; its recipient query is re-gated from
+//                             notify_announcements to notify_opportunities in a later PR 5 slice.
+//   (quest-nudge was re-gated to notify_opportunities in PR 5, so it is no longer allowlisted.)
 //
 // Scope: supabase/functions/<name>/*.ts, excluding _shared (the tier registry documents these
 // column names in comments/notes and is not a sender).
@@ -20,7 +21,7 @@ import { join, relative } from "node:path";
 
 const ROOT = process.cwd();
 const DIR = join(ROOT, "supabase", "functions");
-const ALLOW = new Set(["quest-nudge", "send-announcement-email"]);
+const ALLOW = new Set(["send-announcement-email"]);
 const PREF = /\bnotify_announcements\b|\bnotify_training_opportunities\b/;
 
 // Remove block and line comments so a mention in a comment is not a "read".
