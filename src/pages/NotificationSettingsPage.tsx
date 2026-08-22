@@ -64,9 +64,11 @@ export default function NotificationSettingsPage() {
   const { user } = useAuth();
   const [prefs, setPrefs] = useState<Prefs>({});
   const [emailOpportunities, setEmailOpportunities] = useState(true);
+  const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [savingEmailOpps, setSavingEmailOpps] = useState(false);
+  const [savingMarketing, setSavingMarketing] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -74,7 +76,7 @@ export default function NotificationSettingsPage() {
     (async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("notification_prefs, notify_opportunities")
+        .select("notification_prefs, notify_opportunities, marketing_opt_in_at")
         .eq("user_id", user.id)
         .maybeSingle();
       if (cancelled) return;
@@ -85,6 +87,7 @@ export default function NotificationSettingsPage() {
       } else {
         setPrefs((data?.notification_prefs as Prefs | null) ?? {});
         setEmailOpportunities(data?.notify_opportunities ?? true);
+        setMarketingOptIn(Boolean(data?.marketing_opt_in_at));
       }
       setLoading(false);
     })();
@@ -132,6 +135,29 @@ export default function NotificationSettingsPage() {
     }
     toast.success(on ? "Turned on" : "Turned off", {
       description: "Opportunities and platform updates",
+    });
+  };
+
+  // Marketing/newsletter opt-in. Email Octopus is the source of truth (ADR-0017); the RPC records
+  // the intent locally (fail-open) and a background worker syncs it to EO. The toggle reflects the
+  // local receipt (marketing_opt_in_at); an EO unsubscribe propagates back via the optional webhook.
+  const toggleMarketing = async (on: boolean) => {
+    if (!user) return;
+    setSavingMarketing(true);
+    const previous = marketingOptIn;
+    setMarketingOptIn(on);
+    const { error } = await supabase.rpc("set_my_marketing_subscription", {
+      p_subscribed: on,
+      p_source: "profile",
+    });
+    setSavingMarketing(false);
+    if (error) {
+      setMarketingOptIn(previous);
+      toast.error("Could not save preference", { description: "Try again in a moment." });
+      return;
+    }
+    toast.success(on ? "Subscribed" : "Unsubscribed", {
+      description: "Newsletter and marketing emails",
     });
   };
 
@@ -199,6 +225,29 @@ export default function NotificationSettingsPage() {
                     checked={emailOpportunities}
                     onCheckedChange={toggleEmailOpportunities}
                     aria-label="Toggle opportunities and platform updates emails"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-start justify-between gap-4 rounded-lg border border-border p-4">
+                <div className="space-y-1">
+                  <Label htmlFor="pref-marketing" className="text-base font-medium">
+                    Newsletter and marketing emails
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    Stories, community news, and product updates from Tech Fleet. Optional and off
+                    by default. You can unsubscribe here or from any of these emails.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 pt-1">
+                  {savingMarketing && (
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  )}
+                  <Switch
+                    id="pref-marketing"
+                    checked={marketingOptIn}
+                    onCheckedChange={toggleMarketing}
+                    aria-label="Toggle newsletter and marketing emails"
                   />
                 </div>
               </div>
