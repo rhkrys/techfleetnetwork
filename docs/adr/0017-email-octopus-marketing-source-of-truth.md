@@ -62,5 +62,20 @@ authoritative marketing subscription state.
   the hardest machinery, gone. Far smaller attack and maintenance surface.
 - **Harder / accepted:** EO is now a subprocessor (privacy/DPIA/international-transfer work), and the
   platform depends on EO for marketing (mitigated by the durable retry queue and fail-open user path).
-  The marketing consent record lives primarily in EO; the minimal local receipt is the platform's
-  own proof. Leaving EO later means exporting that list first.
+  The marketing consent record lives in EO. Leaving EO later means exporting that list first.
+
+## Amendments (2026-08-22, during PR 6 build)
+
+1. **No local marketing receipt (decision 6 dropped).** Owner decision: do not store marketing state
+   on `profiles` at all — EO is the single source of truth. The only local artifact is the durable
+   sync row (`email_octopus_contact_sync`), which is an outbox/retry queue, not a parallel state
+   store; once synced it mirrors EO and also drives the preference toggle's displayed value (read via
+   the self-only `get_my_marketing_subscription()` RPC). Consent origin/timing is evidenced by EO's
+   own record plus the sync row's timestamps/`attempt_history`. The `profiles.marketing_opt_in_at` /
+   `marketing_opt_in_source` columns from the first PR-6a draft were removed before merge.
+2. **EO → platform unsubscribe webhook (decision 3): building to the confirmed contract.** The EO
+   **v2 API** documents no webhooks (verified against the v2 OpenAPI spec, 2026-08-22), but EO's
+   platform offers webhook configuration; the owner can set one up. The receiver (`handle-eo-webhook`)
+   will be built to the actual EO contract — payload shape, event types, and signing scheme — rather
+   than a guessed one. Until it ships, an EO-side unsubscribe shows a stale "subscribed" on the toggle
+   (display-only; the member is genuinely unsubscribed in EO and receives no marketing).
