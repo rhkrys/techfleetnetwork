@@ -1,7 +1,13 @@
 // Contract tests for the Email Octopus v2 client (PR 6b). No network — fetch is injected.
 // Run in CI via ci.yml deno-check "Edge unit gates".
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { contactId, eoConfigFromEnv, pushDesiredState, type EoConfig } from "./client.ts";
+import {
+  contactId,
+  eoConfigFromEnv,
+  fetchContactStatus,
+  pushDesiredState,
+  type EoConfig,
+} from "./client.ts";
 
 interface Captured {
   url: string;
@@ -166,6 +172,55 @@ Deno.test("network throw -> retry with null status code", async () => {
   assertEquals(r.statusCode, null);
   assert(r.error?.startsWith("network:"));
 });
+
+Deno.test("fetchContactStatus: GET by md5, maps EO status to the live value", async () => {
+  const sink: Captured[] = [];
+  const r = await fetchContactStatus(
+    cfg({}, sink, 200, { status: "subscribed" }),
+    "Ada@Example.com"
+  );
+  assertEquals(r.status, "subscribed");
+  assertEquals(sink[0].method, "GET");
+  assertEquals(
+    sink[0].url,
+    `https://api.emailoctopus.com/lists/list-123/contacts/${contactId("ada@example.com")}`
+  );
+});
+
+Deno.test("fetchContactStatus: 200 unsubscribed -> unsubscribed", async () => {
+  const sink: Captured[] = [];
+  const r = await fetchContactStatus(
+    cfg({}, sink, 200, { status: "unsubscribed" }),
+    "ada@example.com"
+  );
+  assertEquals(r.status, "unsubscribed");
+});
+
+Deno.test("fetchContactStatus: 404 -> not_found (contact not on the list)", async () => {
+  const sink: Captured[] = [];
+  const r = await fetchContactStatus(
+    cfg({}, sink, 404, { detail: "not found" }),
+    "ada@example.com"
+  );
+  assertEquals(r.status, "not_found");
+  assertEquals(r.statusCode, 404);
+});
+
+Deno.test(
+  "fetchContactStatus: server error / network -> unknown (caller falls back to cache)",
+  async () => {
+    const sink: Captured[] = [];
+    const r1 = await fetchContactStatus(cfg({}, sink, 500, { detail: "boom" }), "ada@example.com");
+    assertEquals(r1.status, "unknown");
+    const throwing = (() => Promise.reject(new Error("down"))) as unknown as typeof fetch;
+    const r2 = await fetchContactStatus(
+      { apiKey: "k", listId: "l", fetchImpl: throwing },
+      "ada@example.com"
+    );
+    assertEquals(r2.status, "unknown");
+    assertEquals(r2.statusCode, null);
+  }
+);
 
 Deno.test("eoConfigFromEnv returns null when secrets are absent (feature flag = presence)", () => {
   const empty = new Map<string, string>();

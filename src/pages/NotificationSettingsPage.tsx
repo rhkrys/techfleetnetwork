@@ -79,9 +79,23 @@ export default function NotificationSettingsPage() {
         .select("notification_prefs, notify_opportunities")
         .eq("user_id", user.id)
         .maybeSingle();
-      // Marketing state is Email Octopus's, mirrored in the sync row; read it via the self-only RPC
-      // (no marketing column on profiles). Non-fatal if it fails — the rest of the page still loads.
-      const { data: marketing } = await supabase.rpc("get_my_marketing_subscription");
+      // Marketing state is Email Octopus's (the source of truth). Read it LIVE per-user via the
+      // eo-contact-status edge function so we reflect subscribes/unsubscribes made outside the
+      // platform too. If EO is unavailable or disabled, fall back to the cached mirror.
+      let marketingOn = false;
+      try {
+        const { data: live, error: liveErr } = await supabase.functions.invoke("eo-contact-status");
+        const s = (live as { status?: string } | null)?.status;
+        if (!liveErr && (s === "subscribed" || s === "unsubscribed" || s === "not_found")) {
+          marketingOn = s === "subscribed";
+        } else {
+          const { data: cached } = await supabase.rpc("get_my_marketing_subscription");
+          marketingOn = cached === "subscribed";
+        }
+      } catch {
+        const { data: cached } = await supabase.rpc("get_my_marketing_subscription");
+        marketingOn = cached === "subscribed";
+      }
       if (cancelled) return;
       if (error) {
         toast.error("Could not load notification settings", {
@@ -90,7 +104,7 @@ export default function NotificationSettingsPage() {
       } else {
         setPrefs((data?.notification_prefs as Prefs | null) ?? {});
         setEmailOpportunities(data?.notify_opportunities ?? true);
-        setMarketingOptIn(marketing === "subscribed");
+        setMarketingOptIn(marketingOn);
       }
       setLoading(false);
     })();
@@ -142,8 +156,8 @@ export default function NotificationSettingsPage() {
   };
 
   // Marketing/newsletter opt-in. Email Octopus is the source of truth (ADR-0017); the RPC records
-  // the intent locally (fail-open) and a background worker syncs it to EO. The toggle reflects the
-  // local receipt (marketing_opt_in_at); an EO unsubscribe propagates back via the optional webhook.
+  // the intent (fail-open) and the background worker syncs it to EO. The displayed value comes from a
+  // live per-user EO read on load (eo-contact-status), so it reflects the true EO state.
   const toggleMarketing = async (on: boolean) => {
     if (!user) return;
     setSavingMarketing(true);

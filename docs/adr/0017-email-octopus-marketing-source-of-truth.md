@@ -73,9 +73,13 @@ authoritative marketing subscription state.
    the self-only `get_my_marketing_subscription()` RPC). Consent origin/timing is evidenced by EO's
    own record plus the sync row's timestamps/`attempt_history`. The `profiles.marketing_opt_in_at` /
    `marketing_opt_in_source` columns from the first PR-6a draft were removed before merge.
-2. **EO → platform unsubscribe webhook (decision 3): building to the confirmed contract.** The EO
-   **v2 API** documents no webhooks (verified against the v2 OpenAPI spec, 2026-08-22), but EO's
-   platform offers webhook configuration; the owner can set one up. The receiver (`handle-eo-webhook`)
-   will be built to the actual EO contract — payload shape, event types, and signing scheme — rather
-   than a guessed one. Until it ships, an EO-side unsubscribe shows a stale "subscribed" on the toggle
-   (display-only; the member is genuinely unsubscribed in EO and receives no marketing).
+2. **Display freshness via a live per-user read, not a webhook (decision 3 changed).** To reflect a
+   member's true EO state — including subscribes/unsubscribes made outside the platform (e.g. a blog
+   newsletter signup) — the preference page does a **live, self-only read of that one contact from EO**
+   on load (`eo-contact-status` edge function; email derived from the caller's identity, EO called
+   server-side). This is a _pull_ for one person on demand. We deliberately did **not** subscribe to
+   EO's Created/Updated webhooks: that is a _push_ of every contact change for the whole list, which
+   would recreate the marketing list in our DB (the thing this ADR avoids) and add noise. The live read
+   also covers the EO-side unsubscribe case, so the unsubscribe webhook is unnecessary and was dropped.
+   When EO is unavailable or disabled, the toggle falls back to the cached mirror
+   (`get_my_marketing_subscription`).

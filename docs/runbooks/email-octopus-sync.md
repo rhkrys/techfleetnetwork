@@ -68,7 +68,7 @@ select * from public.get_eo_sync_health();
 
 ## Reconcile a drifted toggle
 
-The preference toggle shows the local sync row's `desired_status` (mirrors EO once synced). If a member
-unsubscribed via an EO email footer, the toggle can show a stale "subscribed" until they re-toggle — a
-display-only gap (they are unsubscribed in EO and receive no marketing). If the EO webhook is
-configured, this self-corrects; otherwise it is cosmetic and resolves the next time the member sets it.
+The preference toggle displays a **live per-user read from EO** (`eo-contact-status`) on page load, so
+it reflects the true EO state — including subscribes/unsubscribes made outside the platform. If EO is
+unavailable, it falls back to the cached sync row (`get_my_marketing_subscription`), which may briefly
+lag an EO-side change until EO is reachable again. No webhook is used.

@@ -101,6 +101,45 @@ export async function pushDesiredState(cfg: EoConfig, input: EoPushInput): Promi
   return await classify(res, input.desiredStatus);
 }
 
+export type EoContactStatus = "subscribed" | "unsubscribed" | "pending" | "not_found" | "unknown";
+
+/**
+ * Live read of ONE contact's current status from EO (the source of truth), for display. Used to show
+ * a member's true subscription state even when they subscribed/unsubscribed outside the platform.
+ * Never throws: any error (network / non-2xx / bad body) maps to "unknown" so the caller can fall back
+ * to the cached mirror. 404 = the contact is not on the list ("not_found").
+ */
+export async function fetchContactStatus(
+  cfg: EoConfig,
+  email: string
+): Promise<{ status: EoContactStatus; statusCode: number | null }> {
+  const base = (cfg.baseUrl ?? DEFAULT_BASE).replace(/\/+$/, "");
+  const doFetch = cfg.fetchImpl ?? fetch;
+  const normalized = email.trim().toLowerCase();
+  let res: Response;
+  try {
+    res = await doFetch(
+      `${base}/lists/${encodeURIComponent(cfg.listId)}/contacts/${contactId(normalized)}`,
+      { method: "GET", headers: { Authorization: `Bearer ${cfg.apiKey}` } }
+    );
+  } catch {
+    return { status: "unknown", statusCode: null };
+  }
+  if (res.status === 404) return { status: "not_found", statusCode: 404 };
+  if (res.status < 200 || res.status >= 300) return { status: "unknown", statusCode: res.status };
+  let body: unknown;
+  try {
+    body = await res.json();
+  } catch {
+    return { status: "unknown", statusCode: res.status };
+  }
+  const s = String((body as { status?: unknown })?.status ?? "").toLowerCase();
+  if (s === "subscribed" || s === "unsubscribed" || s === "pending") {
+    return { status: s as EoContactStatus, statusCode: res.status };
+  }
+  return { status: "unknown", statusCode: res.status };
+}
+
 async function classify(res: Response, desired: EoDesiredStatus): Promise<EoResult> {
   const code = res.status;
   if (code >= 200 && code < 300) {

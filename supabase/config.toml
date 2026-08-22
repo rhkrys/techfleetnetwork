@@ -348,3 +348,5 @@ project_id = "pzvqxdgoztbfikfuifix"
     # Cron-poked marketing sync worker (@edge-cron). Validates the service-role bearer in code,
     # so verify_jwt stays false (matches quest-nudge / reap-class-module-orphans).
     verify_jwt = false
+  [functions.eo-contact-status]
+    verify_jwt = true
