@@ -10,15 +10,12 @@
 // legitimately still gate a non-Tier-0 email (removed as each is migrated).
 //
 // Allowlist (shrinks over the rollout):
-//   send-announcement-email - Tier 1 service announcement. Its recipient query stays on
-//                             notify_announcements until the re-gate to notify_opportunities lands
-//                             WITH the admin "this is not marketing" attestation (PR 7). The gate is
-//                             content governance, not domain warmth: techfleet.org is already warm on
-//                             Resend, but re-gating jumps reach ~163 -> ~1253, and ~1090 of those
-//                             never opted into announcements specifically (they are default-true on
-//                             notify_opportunities). The attestation must sit in front of that
-//                             expanded blast before the next admin send goes out.
-//   (quest-nudge was re-gated to notify_opportunities in PR 5, so it is no longer allowlisted.)
+//   (empty) - every Tier-1 sender now selects recipients by notify_opportunities.
+//   History: send-announcement-email and quest-nudge were both moved off notify_announcements to
+//   notify_opportunities in PR 5, so neither is allowlisted any longer. The announcement composer
+//   still gets a "this is not marketing" attestation in PR 7 to keep marketing in Email Octopus,
+//   but that is a content-governance gate, not a recipient-preference gate, so it is out of scope
+//   for this check.
 //
 // Scope: supabase/functions/<name>/*.ts, excluding _shared (the tier registry documents these
 // column names in comments/notes and is not a sender).
@@ -27,7 +24,7 @@ import { join, relative } from "node:path";
 
 const ROOT = process.cwd();
 const DIR = join(ROOT, "supabase", "functions");
-const ALLOW = new Set(["send-announcement-email"]);
+const ALLOW = new Set([]);
 const PREF = /\bnotify_announcements\b|\bnotify_training_opportunities\b/;
 
 // Remove block and line comments so a mention in a comment is not a "read".

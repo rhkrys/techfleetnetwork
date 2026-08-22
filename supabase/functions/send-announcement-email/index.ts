@@ -169,11 +169,16 @@ Deno.serve(
         });
       }
 
-      // Fetch opted-in profiles
+      // Recipients: every member with the Tier-1 opt-out ON. Members join the platform to train,
+      // and service announcements are training/platform updates, so the default-true
+      // notify_opportunities preference is the opt-in — one opt-out, honored here. (The retired
+      // notify_announcements flag defaulted false and silently reached only ~163 of ~1253 members.)
+      // This is NOT the marketing lane; a "this is not marketing" attestation gates the composer
+      // (PR 7) so marketing stays in Email Octopus.
       const { data: profiles, error: profError } = await adminClient
         .from("profiles")
         .select("email")
-        .eq("notify_announcements", true)
+        .eq("notify_opportunities", true)
         .neq("email", "");
 
       if (profError) {
