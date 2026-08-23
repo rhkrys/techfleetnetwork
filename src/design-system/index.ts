@@ -97,6 +97,38 @@ export {
 } from "./components/molecules/Collapsible";
 export { Pagination } from "./components/molecules/Pagination";
 export type { PaginationProps } from "./components/molecules/Pagination";
+export { Select, SelectItem } from "./components/molecules/Select";
+export type { SelectProps } from "./components/molecules/Select";
+export { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/molecules/Tabs";
+export type { TabsProps } from "./components/molecules/Tabs";
+export { Popover, PopoverTrigger, PopoverContent } from "./components/molecules/Popover";
+export {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "./components/molecules/DropdownMenu";
+export { Autocomplete, MultiSelect } from "./components/molecules/Autocomplete";
+export type { MultiSelectProps, MultiSelectOption } from "./components/molecules/Autocomplete";
+export { ConfirmDialog } from "./components/molecules/ConfirmDialog";
+export type { ConfirmDialogProps } from "./components/molecules/ConfirmDialog";
+export { CharCountTextarea } from "./components/molecules/CharCountTextarea";
+export type { CharCountTextareaProps } from "./components/molecules/CharCountTextarea";
+export {
+  ResponsiveTabs,
+  ResponsiveTabsList,
+  ResponsiveTabsTrigger,
+  ResponsiveTabsContent,
+} from "./components/molecules/ResponsiveTabs";
+export { HoverCard, HoverCardTrigger, HoverCardContent } from "./components/molecules/HoverCard";
+export { SaveStatus } from "./components/molecules/SaveStatus";
+export type { SaveStatusProps, SaveState } from "./components/molecules/SaveStatus";
+export { ValidatedField } from "./components/molecules/ValidatedField";
+export type { ValidatedFieldProps } from "./components/molecules/ValidatedField";
+// KEEP-LIB, re-exported (interim; rebuilt on raw libs at teardown)
+export * from "./components/atoms/InputOTP";
 
 // Molecules — react-hook-form field adapters
 export { RHFTextField } from "./components/molecules/form/RHFTextField";
@@ -118,5 +150,35 @@ export {
   DialogFooter,
 } from "./components/organisms/Dialog";
 export type { DialogProps } from "./components/organisms/Dialog";
+export {
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from "./components/organisms/AlertDialog";
+export type { AlertDialogProps } from "./components/organisms/AlertDialog";
+export {
+  Sheet,
+  SheetTrigger,
+  SheetContent,
+  SheetHeader,
+  SheetFooter,
+  SheetTitle,
+  SheetDescription,
+  SheetClose,
+} from "./components/organisms/Sheet";
+export type { SheetProps } from "./components/organisms/Sheet";
+export { Drawer } from "./components/organisms/Drawer";
+export type { DrawerProps } from "./components/organisms/Drawer";
 // AG Grid, re-exported unchanged (see DataTable.tsx). The DS table solution.
 export { DataTable, ThemedAgGrid } from "./components/organisms/DataTable";
+// KEEP-LIB organisms, re-exported (interim; rebuilt on raw libs at teardown)
+export * from "./components/organisms/Command";
+export * from "./components/organisms/Calendar";
+export * from "./components/organisms/Chart";
+export { Toaster, toast } from "./components/organisms/Toaster";
