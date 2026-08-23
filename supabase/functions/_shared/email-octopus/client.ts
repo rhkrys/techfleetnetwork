@@ -35,7 +35,12 @@ export interface EoPushInput {
 
 const DEFAULT_BASE = "https://api.emailoctopus.com";
 
-/** EO contact id for the delete endpoint: md5 of the lowercased, trimmed email. */
+/**
+ * EO contact id: md5 of the lowercased, trimmed email. This md5 is a NON-cryptographic third-party
+ * PROTOCOL identifier mandated by the Email Octopus API v2 (a contact is addressed as
+ * md5(lowercased email)); it is not a security/integrity hash and has no SHA-256 alternative EO
+ * accepts. The SAST weak-hash rule scopes its one allowed exception to exactly this file.
+ */
 export function contactId(email: string): string {
   return createHash("md5").update(email.trim().toLowerCase()).digest("hex");
 }
