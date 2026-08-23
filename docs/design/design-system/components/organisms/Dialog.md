@@ -4,6 +4,10 @@ MUI `Dialog` + sub-parts. **Replaces** `src/components/ui/dialog.tsx`.
 
 - **Layer:** organism · **Status:** WRAP · **Import:** `import { Dialog, DialogHeader, DialogTitle, DialogDescription, DialogContent, DialogFooter } from "@/design-system"`
 
+## Live demo
+
+<Demo name="Dialog" />
+
 ## API differs from shadcn (controlled, not trigger-based)
 
 The shadcn/Radix Dialog was trigger-driven (`DialogTrigger`/`DialogPortal`/`DialogClose`, `open`/`onOpenChange`).

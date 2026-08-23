@@ -182,3 +182,52 @@ export * from "./components/organisms/Command";
 export * from "./components/organisms/Calendar";
 export * from "./components/organisms/Chart";
 export { Toaster, toast } from "./components/organisms/Toaster";
+
+// ───────────────────────────────────────────────────────────────────────────
+// MUI Core catalog completion — every remaining @mui/material component, themed
+// and pulled into the DS surface (whether the app uses it today or not) so no
+// feature ever needs a direct `@mui/material` import. Grouped by atomic layer.
+// See docs/design/design-system/component-audit.md.
+// ───────────────────────────────────────────────────────────────────────────
+// Atoms
+export * from "./components/atoms/Chip";
+export * from "./components/atoms/Fab";
+export * from "./components/atoms/IconButton";
+export * from "./components/atoms/ButtonGroup";
+export * from "./components/atoms/Rating";
+export * from "./components/atoms/Link";
+export * from "./components/atoms/Paper";
+export * from "./components/atoms/Box";
+export * from "./components/atoms/CircularProgress";
+export * from "./components/atoms/Radio";
+export * from "./components/atoms/NotificationBadge";
+export * from "./components/atoms/AvatarGroup";
+export * from "./components/atoms/InputAdornment";
+export * from "./components/atoms/SvgIcon";
+// Molecules
+export * from "./components/molecules/List";
+export * from "./components/molecules/Menu";
+export * from "./components/molecules/Stepper";
+export * from "./components/molecules/MobileStepper";
+export * from "./components/molecules/BottomNavigation";
+export * from "./components/molecules/ImageList";
+export * from "./components/molecules/SpeedDial";
+export * from "./components/molecules/FormControl";
+export * from "./components/molecules/Snackbar";
+export * from "./components/molecules/TextField";
+export * from "./components/molecules/NativeSelect";
+// Organisms
+export * from "./components/organisms/AppBar";
+export * from "./components/organisms/Table";
+export * from "./components/organisms/Backdrop";
+// Primitives — low-level building blocks (Dialog/Drawer/Tooltip build on these)
+export * from "./components/primitives/Modal";
+export * from "./components/primitives/Popper";
+export * from "./components/primitives/Portal";
+export * from "./components/primitives/ClickAwayListener";
+export * from "./components/primitives/NoSsr";
+export * from "./components/primitives/SwipeableDrawer";
+export * from "./components/primitives/Transitions";
+export * from "./components/primitives/TextareaAutosize";
+// Hooks
+export * from "./hooks/useMediaQuery";

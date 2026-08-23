@@ -4,6 +4,10 @@ Bare text field on MUI `OutlinedInput`. **Replaces** `src/components/ui/input.ts
 
 - **Layer:** atom · **Status:** WRAP · **Import:** `import { Input } from "@/design-system"`
 
+## Live demo
+
+<Demo name="Input" />
+
 ## API
 
 Full MUI `OutlinedInputProps`. Defaults: `fullWidth` = true. `error` sets the destructive border +

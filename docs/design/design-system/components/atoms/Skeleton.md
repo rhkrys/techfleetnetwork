@@ -4,6 +4,10 @@ MUI `Skeleton` (rounded, pulse). **Replaces** `src/components/ui/skeleton.tsx`.
 
 - **Layer:** atom · **Status:** WRAP · **Import:** `import { Skeleton } from "@/design-system"`
 
+## Live demo
+
+<Demo name="Skeleton" />
+
 ## API
 
 Full MUI `SkeletonProps`. Default `variant` = `rounded`, `animation` = `pulse` (theme). Size via `width`/`height`.

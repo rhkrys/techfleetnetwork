@@ -4,6 +4,10 @@ MUI `Switch` themed to the Tech Fleet primary. **Replaces** `src/components/ui/s
 
 - **Layer:** atom · **Status:** WRAP · **Import:** `import { Switch } from "@/design-system"`
 
+## Live demo
+
+<Demo name="Switch" />
+
 ## API
 
 Full MUI `SwitchProps`.

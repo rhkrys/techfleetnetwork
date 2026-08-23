@@ -4,6 +4,10 @@ MUI `Alert`. **Replaces** `src/components/ui/alert.tsx`.
 
 - **Layer:** molecule · **Status:** WRAP · **Import:** `import { Alert, AlertTitle, AlertDescription } from "@/design-system"`
 
+## Live demo
+
+<Demo name="Alert" />
+
 ## API
 
 | Prop      | Type                                                   | Default   |

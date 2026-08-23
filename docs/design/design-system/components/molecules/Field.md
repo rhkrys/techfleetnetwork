@@ -5,6 +5,10 @@ Label + control + error/helper text — the presentational glue for forms. **Rep
 
 - **Layer:** molecule · **Status:** BUILD · **Import:** `import { Field } from "@/design-system"`
 
+## Live demo
+
+<Demo name="Field" />
+
 ## API
 
 | Prop         | Type        | Notes                                                           |

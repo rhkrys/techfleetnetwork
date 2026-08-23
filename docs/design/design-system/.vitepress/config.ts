@@ -1,4 +1,35 @@
 import { defineConfig } from "vitepress";
+import { fileURLToPath, URL } from "node:url";
+import { readdirSync, existsSync } from "node:fs";
+import { join } from "node:path";
+
+// The component sidebar is built by scanning the components/<layer>/*.md pages on
+// disk, so it ALWAYS matches what exists — it can never silently drift from the
+// code (a page is generated for every component via scripts/docs/gen-component-docs.mjs,
+// and the vitest docs-coverage guard fails CI if a component lacks a page/demo).
+const COMPONENTS_DIR = fileURLToPath(new URL("../components", import.meta.url));
+const LAYERS: { dir: string; label: string }[] = [
+  { dir: "atoms", label: "Components — Atoms" },
+  { dir: "molecules", label: "Components — Molecules" },
+  { dir: "organisms", label: "Components — Organisms" },
+  { dir: "primitives", label: "Components — Primitives" },
+  { dir: "layout", label: "Components — Layout" },
+  { dir: "hooks", label: "Components — Hooks" },
+];
+
+function componentGroups() {
+  return LAYERS.filter(({ dir }) => existsSync(join(COMPONENTS_DIR, dir))).map(({ dir, label }) => {
+    const items = readdirSync(join(COMPONENTS_DIR, dir))
+      .filter((f) => f.endsWith(".md"))
+      .map((f) => f.replace(/\.md$/, ""))
+      .sort()
+      .map((name) => ({ text: name, link: `/components/${dir}/${name}` }));
+    if (dir === "molecules" && existsSync(join(COMPONENTS_DIR, "molecules/form/README.md"))) {
+      items.push({ text: "Form field layer (RHF)", link: "/components/molecules/form/README" });
+    }
+    return { text: label, collapsed: dir !== "atoms", items };
+  });
+}
 
 // TechFleet Design System documentation site (VitePress).
 // srcDir is this folder, so it serves the DS spec + per-component docs we already
@@ -16,6 +47,23 @@ export default defineConfig({
   // don't fail the build on those cross-repo links.
   ignoreDeadLinks: true,
   cleanUrls: true,
+  // Live component demos are React islands (see .vitepress/theme/Demo.vue): the
+  // real DS components mounted client-side. VitePress runs on Vite, so we teach
+  // its Vite pipeline to (a) resolve the app's `@` alias so demos can
+  // `import { Button } from "@/design-system"`, and (b) transpile the demo .tsx
+  // with the React automatic JSX runtime via esbuild (no @vitejs/plugin-react
+  // needed — the demos never SSR; they mount only in the browser).
+  vite: {
+    resolve: {
+      alias: {
+        "@": fileURLToPath(new URL("../../../../src", import.meta.url)),
+      },
+    },
+    esbuild: {
+      jsx: "automatic",
+      jsxImportSource: "react",
+    },
+  },
   themeConfig: {
     nav: [
       { text: "Getting started", link: "/" },
@@ -40,38 +88,7 @@ export default defineConfig({
           { text: "Engineering requirements", link: "/engineering-requirements" },
         ],
       },
-      {
-        text: "Components — Atoms",
-        collapsed: false,
-        items: [
-          { text: "Button", link: "/components/atoms/Button" },
-          { text: "Icon", link: "/components/atoms/Icon" },
-          { text: "Badge", link: "/components/atoms/Badge" },
-          { text: "Label", link: "/components/atoms/Label" },
-          { text: "Input", link: "/components/atoms/Input" },
-          { text: "Textarea", link: "/components/atoms/Textarea" },
-          { text: "Checkbox", link: "/components/atoms/Checkbox" },
-          { text: "Switch", link: "/components/atoms/Switch" },
-          { text: "Skeleton", link: "/components/atoms/Skeleton" },
-          { text: "Separator", link: "/components/atoms/Separator" },
-        ],
-      },
-      {
-        text: "Components — Molecules",
-        collapsed: false,
-        items: [
-          { text: "Card", link: "/components/molecules/Card" },
-          { text: "Field", link: "/components/molecules/Field" },
-          { text: "Form field layer (RHF)", link: "/components/molecules/form/README" },
-          { text: "Alert", link: "/components/molecules/Alert" },
-          { text: "Tooltip", link: "/components/molecules/Tooltip" },
-        ],
-      },
-      {
-        text: "Components — Organisms",
-        collapsed: false,
-        items: [{ text: "Dialog", link: "/components/organisms/Dialog" }],
-      },
+      ...componentGroups(),
     ],
     outline: { level: [2, 3] },
     search: { provider: "local" },

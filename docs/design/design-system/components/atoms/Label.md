@@ -4,6 +4,10 @@ Form label (styled `<label>`). **Replaces** `src/components/ui/label.tsx`.
 
 - **Layer:** atom · **Status:** WRAP (styled) · **Import:** `import { Label } from "@/design-system"`
 
+## Live demo
+
+<Demo name="Label" />
+
 ## API
 
 Intrinsic `<label>` props — use `htmlFor` to bind to a field's `id`. Poppins 600 / 14px.

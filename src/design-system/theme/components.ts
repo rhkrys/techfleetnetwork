@@ -235,5 +235,54 @@ export function components(mode: Mode, t: ModeTokens): Components<Theme> {
       defaultProps: { variant: "outlined" },
       styleOverrides: { root: { borderRadius: 8 } },
     },
+    // Catalog-completion phase: brand the newly imported MUI Core components so
+    // they read as Tech Fleet, not default Material blue.
+    MuiLink: {
+      defaultProps: { underline: "hover" },
+      styleOverrides: {
+        root: {
+          color: t.primary.main,
+          textUnderlineOffset: "3px",
+          "&.Mui-focusVisible": { outline: `2px solid ${t.ring}`, outlineOffset: 2 },
+        },
+      },
+    },
+    MuiListItemButton: {
+      styleOverrides: {
+        root: {
+          borderRadius: 6,
+          "&.Mui-selected": {
+            backgroundColor: t.secondary.main,
+            color: t.secondary.contrastText,
+            "&:hover": { backgroundColor: t.secondary.main },
+          },
+        },
+      },
+    },
+    MuiAppBar: {
+      defaultProps: { elevation: 0, color: "default" },
+      styleOverrides: {
+        root: {
+          backgroundColor: t.paper,
+          color: t.textPrimary,
+          backgroundImage: "none",
+          borderBottom: `1px solid ${t.divider}`,
+        },
+      },
+    },
+    MuiStepIcon: {
+      styleOverrides: {
+        root: {
+          color: t.divider,
+          "&.Mui-active": { color: t.primary.main },
+          "&.Mui-completed": { color: t.primary.main },
+        },
+      },
+    },
+    MuiChip: {
+      styleOverrides: {
+        root: { borderRadius: 6 },
+      },
+    },
   };
 }

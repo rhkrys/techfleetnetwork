@@ -4,6 +4,10 @@ MUI `Checkbox` themed to the Tech Fleet primary. **Replaces** `src/components/ui
 
 - **Layer:** atom · **Status:** WRAP · **Import:** `import { Checkbox } from "@/design-system"`
 
+## Live demo
+
+<Demo name="Checkbox" />
+
 ## API
 
 Full MUI `CheckboxProps`. Default `size` = `small`. Ripple disabled (theme).

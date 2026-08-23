@@ -4,6 +4,10 @@ Small pill label, built with MUI `styled`. **Replaces** `src/components/ui/badge
 
 - **Layer:** atom · **Status:** WRAP (styled) · **Import:** `import { Badge } from "@/design-system"`
 
+## Live demo
+
+<Demo name="Badge" />
+
 ## API
 
 | Prop      | Type                                             | Default   |

@@ -5,6 +5,10 @@ Accessibility wrapper over **`@mui/icons-material`** (Material icons, owner-conf
 
 - **Layer:** atom · **Status:** WRAP · **Import:** `import { Icon } from "@/design-system"`
 
+## Live demo
+
+<Demo name="Icon" />
+
 ## API
 
 | Prop              | Type                        | Default | Notes                                                                           |

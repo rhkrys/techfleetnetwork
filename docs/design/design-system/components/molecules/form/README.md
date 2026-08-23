@@ -6,6 +6,10 @@ atom to **react-hook-form** via `useController` and renders through `Field` (lab
 
 - **Layer:** molecules · **Status:** BUILD · **Import:** `import { RHFTextField, RHFTextarea, RHFCheckbox, RHFSwitch } from "@/design-system"`
 
+## Live demo
+
+<Demo name="FormAdapters" />
+
 ## Components
 
 | Component      | Wraps                       | Notes                                                                      |

@@ -4,6 +4,10 @@ The Tech Fleet `.tf-card` surface + sub-parts, built on MUI `Card`. **Replaces**
 
 - **Layer:** molecule · **Status:** WRAP · **Import:** `import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/design-system"`
 
+## Live demo
+
+<Demo name="Card" />
+
 ## API
 
 | Export                                      | Notes                                                            |

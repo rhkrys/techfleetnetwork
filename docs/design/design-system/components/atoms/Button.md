@@ -4,6 +4,10 @@ Tech Fleet button, built on MUI `Button`. **Replaces** `src/components/ui/button
 
 - **Layer:** atom · **Status:** WRAP · **Import:** `import { Button } from "@/design-system"`
 
+## Live demo
+
+<Demo name="Button" />
+
 ## API
 
 | Prop                                                    | Type                                                                                                 | Default   | Notes                                                               |
