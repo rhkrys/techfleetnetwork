@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { getSessionSafe } from "@/lib/auth/session-port";
 import { Button } from "@/components/ui/button";
 
 import {
@@ -43,7 +44,8 @@ type Conversation = { id: string; title: string; updated_at: string };
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/techfleet-chat`;
 
-async function streamChat({
+// Exported for the auth regression test (asserts the session JWT is sent, not the anon key).
+export async function streamChat({
   messages,
   mode,
   attachment,
@@ -60,11 +62,18 @@ async function streamChat({
   onTurnId?: (id: string | null) => void;
   onDone: () => void;
 }) {
+  // ASVS V13.2.1: authenticate with the member's session-bound JWT, not the static publishable
+  // key. techfleet-chat validates via getUser(); the anon key yields no user and 401s
+  // ("Invalid or expired token"). Matches FleetyChatWidget / GuidanceEmbed / stream-chat.ts.
+  const session = await getSessionSafe();
+  const token = session?.access_token;
+  if (!token) throw new Error("Authentication required. Please sign in again.");
+
   const resp = await fetch(CHAT_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({ messages, mode, attachment }),
   });
