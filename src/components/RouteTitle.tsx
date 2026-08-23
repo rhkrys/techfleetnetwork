@@ -44,8 +44,9 @@ const ROUTE_TITLES: Array<{ pattern: string; title: string }> = [
 
   { pattern: "/events", title: "Events" },
   { pattern: "/resources", title: "Resources" },
-  { pattern: "/community/get-help", title: "Get help" },
+  { pattern: "/community/get-help", title: "Support" },
   { pattern: "/chat", title: "Chat with Fleety" },
+  { pattern: "/tal-9000", title: "TAL 9000" },
 
   { pattern: "/applications/projects/:applicationId/status", title: "Application status" },
   { pattern: "/applications/projects", title: "My project applications" },

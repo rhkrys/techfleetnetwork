@@ -95,6 +95,7 @@ const TrainingPage = lazy(() => import("./pages/TrainingPage"));
 const ResourcesPage = lazy(() => import("./pages/ResourcesPage"));
 
 const ChatPage = lazy(() => import("./pages/ChatPage"));
+const TAL9000Page = lazy(() => import("./pages/TAL9000Page"));
 const EventsPage = lazy(() => import("./pages/EventsPage"));
 const AdminIngestPage = lazy(() => import("./pages/AdminIngestPage"));
 const AdminPoliciesPage = lazy(() => import("./pages/admin/AdminPoliciesPage"));
@@ -704,6 +705,16 @@ const App = () => (
                         element={
                           <ProtectedRoute>
                             <AccessDeniedPage />
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route
+                        path="/tal-9000"
+                        element={
+                          <ProtectedRoute>
+                            <ScopedErrorBoundary label="TAL 9000">
+                              <TAL9000Page />
+                            </ScopedErrorBoundary>
                           </ProtectedRoute>
                         }
                       />

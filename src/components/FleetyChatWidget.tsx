@@ -36,6 +36,7 @@ import { useFleetyAttachment } from "@/hooks/useFleetyAttachment";
 import { FleetyAttachButton, FleetyAttachmentChip } from "@/components/fleety/FleetyAttach";
 import { FleetyMessageFeedback } from "@/components/fleety/FleetyFeedback";
 import { FleetySources } from "@/components/fleety/FleetySources";
+import { FleetyModeSwitch } from "@/components/fleety/FleetyModeSwitch";
 
 type ActionChip = { label: string; action_type: string; target_url?: string | null };
 type Msg = {
@@ -593,6 +594,10 @@ export function FleetyChatWidget() {
               </span>
             </SheetTitle>
           </SheetHeader>
+
+          <div className="flex justify-end border-b px-4 py-2 shrink-0">
+            <FleetyModeSwitch />
+          </div>
 
           {/* History panel */}
           {showHistory && (

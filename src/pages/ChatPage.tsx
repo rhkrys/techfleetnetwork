@@ -31,6 +31,7 @@ import { useFleetyAttachment } from "@/hooks/useFleetyAttachment";
 import { FleetyAttachButton, FleetyAttachmentChip } from "@/components/fleety/FleetyAttach";
 import { FleetyMessageFeedback } from "@/components/fleety/FleetyFeedback";
 import { FleetySources } from "@/components/fleety/FleetySources";
+import { FleetyModeSwitch } from "@/components/fleety/FleetyModeSwitch";
 
 type Msg = {
   role: "user" | "assistant";
@@ -493,16 +494,19 @@ export default function ChatPage() {
               Ask me anything about Tech Fleet, team practices, workshops, and onboarding.
             </p>
           </div>
-          {user && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="shrink-0 sm:hidden"
-              onClick={() => setShowSidebar(!showSidebar)}
-            >
-              History
-            </Button>
-          )}
+          <div className="flex shrink-0 items-center gap-2">
+            <FleetyModeSwitch />
+            {user && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="sm:hidden"
+                onClick={() => setShowSidebar(!showSidebar)}
+              >
+                History
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Chat messages */}
