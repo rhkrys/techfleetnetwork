@@ -12,7 +12,7 @@ against it and it's verified in CI.
   scale). Every padding/margin/gap steps in 4px units via `sx` (`p:2`=8px, `p:6`=24px). No off-grid magic
   numbers.
 - **12-column responsive `Grid`.** `import { Grid, Container, Stack } from "@/design-system"`. `Grid`
-  (MUI Grid v2) is a 12-column grid; column spans are set per breakpoint — `size={{ xs: 12, sm: 6, md: 4 }}`
+  (MUI Grid v2) is a 12-column grid; column spans are set per breakpoint via the `size` prop (e.g. `{ xs: 12, sm: 6, md: 4 }`)
   — and gutters use the 4px `spacing`. `Container` caps width responsively; `Stack` does 1-D layout with
   responsive `direction`/`spacing`.
 - **Breakpoints** (mobile-first): `xs 0 · sm 600 · md 900 · lg 1200 · xl 1536`. Add complexity upward from

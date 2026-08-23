@@ -27,6 +27,10 @@ test-results/
 coverage/
 sbom.json
 
+# VitePress design-system docs build output + cache
+docs/design/design-system/.vitepress/dist
+docs/design/design-system/.vitepress/cache
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

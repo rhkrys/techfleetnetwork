@@ -35,7 +35,10 @@
     "prepare": "node scripts/ci/setup-git-hooks.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "size": "size-limit"
+    "size": "size-limit",
+    "docs:dev": "vitepress dev docs/design/design-system",
+    "docs:build": "vitepress build docs/design/design-system",
+    "docs:preview": "vitepress preview docs/design/design-system"
   },
   "dependencies": {
     "@axe-core/playwright": "4.13.0",
@@ -169,6 +172,7 @@
     "typescript": "5.9.3",
     "typescript-eslint": "8.67.0",
     "vite": "^7.3.6",
+    "vitepress": "^1.6.3",
     "vitest": "4.1.10"
   },
   "overrides": {

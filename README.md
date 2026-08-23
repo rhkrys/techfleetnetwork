@@ -6,6 +6,8 @@
 [![BDD Gate](https://github.com/techfleetworks/techfleetnetwork/actions/workflows/bdd-gate.yml/badge.svg?branch=main)](https://github.com/techfleetworks/techfleetnetwork/actions/workflows/bdd-gate.yml)
 [![Accessibility](https://github.com/techfleetworks/techfleetnetwork/actions/workflows/a11y-audit.yml/badge.svg?branch=main)](https://github.com/techfleetworks/techfleetnetwork/actions/workflows/a11y-audit.yml)
 
+📐 **Design System:** [**TechFleet Design System docs**](https://techfleetworks.github.io/techfleetnetwork/) — the owned component library on MUI Core (atoms, molecules, organisms; 4px grid; WCAG 2.2 AA). Source + specs: [`docs/design/design-system/`](docs/design/design-system/). _(Published to GitHub Pages by [deploy-design-system-docs](.github/workflows/deploy-design-system-docs.yml); enable Settings → Pages → Source: GitHub Actions once.)_
+
 Tech Fleet Network is the member platform for **Tech Fleet**, a nonprofit workforce
 development organization. It is where trainees, teammates, coaches, and administrators
 come together to run the programs, projects, classes, and community that help people grow
