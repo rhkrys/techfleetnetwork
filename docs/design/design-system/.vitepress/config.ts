@@ -63,6 +63,16 @@ export default defineConfig({
       jsx: "automatic",
       jsxImportSource: "react",
     },
+    // The demos import the full `@/design-system` barrel, which transitively pulls
+    // in the app's Supabase client (DataTable → AgGrid → ScopedErrorBoundary → …).
+    // That client calls createClient() at import time and throws "supabaseUrl is
+    // required" when its env vars are absent — and the docs build has none. The
+    // demos never talk to Supabase, so inject harmless placeholders so the module
+    // loads and the React islands can mount. (The frozen client.ts is untouched.)
+    define: {
+      "import.meta.env.VITE_SUPABASE_URL": JSON.stringify("https://docs.placeholder.supabase.co"),
+      "import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY": JSON.stringify("docs-placeholder-key"),
+    },
   },
   themeConfig: {
     nav: [
