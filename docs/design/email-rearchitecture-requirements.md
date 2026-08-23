@@ -240,6 +240,15 @@ Octopus. This lives in the profile's notification settings.
 
 ## 11. Release plan (Revision 2)
 
+**BUILD STATUS (2026-08-23): PRs 1–9 are BUILT and committed on `feat/email-rearchitecture` (not
+merged). PR 10 is the post-launch phase — its substantive parts (DPIA, deliverability ramp via the
+bulk lane, the `get_eo_sync_health` RPC + runbook) are done; the paged backlog alert and the
+`notify_announcements` drop are deliberately deferred to post-bake (they must not ship before the new
+senders bake in / would false-alarm on rollout). The full go-live + post-bake sequence is in
+[docs/runbooks/email-rearchitecture-cutover.md](../runbooks/email-rearchitecture-cutover.md). Note: PR
+6 replaced the EO unsubscribe webhook with a live per-user EO read (`eo-contact-status`), and the
+minimal local receipt was dropped (EO is the sole source of truth) — see ADR-0017 amendments.**
+
 **Shipped (committed on `feat/email-rearchitecture`, not pushed):**
 
 | PR  | Title                                                                           | State        |
