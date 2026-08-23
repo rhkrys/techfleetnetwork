@@ -210,12 +210,18 @@ BEGIN
   v_attempt := v_row.attempts + 1;
 
   IF p_outcome = 'synced' THEN
-    UPDATE public.email_octopus_contact_sync
-       SET status = 'synced', synced_version = p_version, synced_at = v_now, attempts = v_attempt,
-           last_error = NULL, last_status_code = p_status_code, next_attempt_at = v_now,
-           updated_at = v_now,
-           attempt_history = attempt_history || jsonb_build_object('t', v_now, 'outcome', 'synced', 'code', p_status_code)
-     WHERE email = p_email;
+    IF v_row.desired_status = 'deleted' THEN
+      -- Erasure complete: EO confirmed the contact is gone (or was already absent). Purge the local
+      -- row so we do not retain a deleted user's email in the sync table (DSAR, PR 8).
+      DELETE FROM public.email_octopus_contact_sync WHERE email = p_email;
+    ELSE
+      UPDATE public.email_octopus_contact_sync
+         SET status = 'synced', synced_version = p_version, synced_at = v_now, attempts = v_attempt,
+             last_error = NULL, last_status_code = p_status_code, next_attempt_at = v_now,
+             updated_at = v_now,
+             attempt_history = attempt_history || jsonb_build_object('t', v_now, 'outcome', 'synced', 'code', p_status_code)
+       WHERE email = p_email;
+    END IF;
   ELSIF p_outcome = 'permanent_fail' OR v_attempt >= c_max THEN
     UPDATE public.email_octopus_contact_sync
        SET status = 'dlq',
