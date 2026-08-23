@@ -4,7 +4,7 @@
  * radius + --tf-btn shadows come from the theme (theme/components.ts).
  * See docs/design/design-system/components/atoms/Button.md
  */
-import { forwardRef } from "react";
+import { forwardRef, type ElementType } from "react";
 import MuiButton, { type ButtonProps as MuiButtonProps } from "@mui/material/Button";
 
 export type TfButtonVariant = NonNullable<MuiButtonProps["variant"]>;
@@ -12,6 +12,12 @@ export type TfButtonSize = "default" | "sm" | "lg" | "xl" | "icon";
 
 export interface ButtonProps extends Omit<MuiButtonProps, "size"> {
   size?: TfButtonSize;
+  /**
+   * Render as another element/component (polymorphic), e.g. a router Link:
+   * `<Button component={Link} to="/x">`. `to`/`href` pass through to it.
+   */
+  component?: ElementType;
+  to?: string;
 }
 
 // Sizes all share the 40px height; they differ by horizontal padding (and the
@@ -34,7 +40,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       ref={ref}
       variant={variant}
       sx={[SIZE_SX[size], ...(Array.isArray(sx) ? sx : [sx])]}
-      {...props}
+      // MUI Button is polymorphic (OverridableComponent); the wrapper is not, so
+      // cast the passthrough (incl. component/to) — MUI forwards them to the root.
+      {...(props as MuiButtonProps)}
     />
   );
 });
