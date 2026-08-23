@@ -60,42 +60,45 @@
   gap: 18px;
 }
 
-/* ---- responsive stage: CRT on top, TAL eye + control panel below ---- */
+/* ---- responsive stage: desktop = TAL eye+panel (left) + CRT (right); stacks below ---- */
 .tal9k__stage {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-areas: "monitor" "side";
+  gap: 18px;
+}
+
+.tal9k__monitor {
+  grid-area: monitor;
+}
+
+.tal9k__side {
+  grid-area: side;
   display: flex;
   flex-direction: column;
   gap: 18px;
 }
 
-.tal9k__console {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 18px;
-}
-
-/* XL: TAL eye and control panel side-by-side */
-@media (min-width: 1280px) {
-  .tal9k__console {
-    grid-template-columns: minmax(230px, 320px) 1fr;
-    align-items: stretch;
+@media (min-width: 1024px) {
+  .tal9k__stage {
+    grid-template-columns: minmax(240px, 340px) 1fr;
+    grid-template-areas: "side monitor";
+    align-items: start;
   }
 }
 
-/* ---------------- CRT monitor ---------------- */
-.tal9k__monitor {
-  background: linear-gradient(180deg, #4a4444, #2c2828);
-  border-radius: 22px;
-  padding: clamp(12px, 1.6vw, 20px);
-  box-shadow:
-    inset 0 2px 3px rgb(255, 255, 255, 0.15),
-    inset 0 -4px 12px rgb(0, 0, 0, 0.6),
-    0 6px 14px rgb(0, 0, 0, 0.4);
+/* ---------------- CRT monitor (exact computer.svg frame) ---------------- */
+.tal9k__crt {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
+/* the live terminal fills the foreignObject; the pillow shape comes from the SVG clip-path */
 .tal9k__screen {
   position: relative;
-  height: clamp(300px, 52vh, 520px);
-  border-radius: 8% / 11%;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   background: radial-gradient(
     120% 120% at 50% 44%,
@@ -130,6 +133,110 @@
   background:
     radial-gradient(125% 105% at 50% 48%, transparent 52%, rgb(0, 0, 0, 0.5) 100%),
     radial-gradient(55% 38% at 30% 15%, rgb(190, 255, 215, 0.06), transparent 72%);
+}
+
+/* ---------------- power states: OFF / boot / main screen ---------------- */
+.tal9k__off,
+.tal9k__boot,
+.tal9k__mainscreen {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 40px 46px;
+  color: var(--tal-phosphor);
+  font-family: var(--tal-font-screen);
+  text-align: center;
+  text-shadow: 0 0 6px rgb(77, 222, 151, 0.5);
+}
+
+.tal9k__off-label {
+  font-size: 22px;
+  letter-spacing: 0.3em;
+  color: var(--tal-phosphor-lo);
+  text-shadow: none;
+}
+
+.tal9k__powerbtn {
+  padding: 14px 22px;
+  border: none;
+  color: #100d26;
+  font-family: var(--tal-font-label);
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, #29ff97 0%, var(--tal-key-on) 62%, #00e878 100%);
+  box-shadow:
+    inset 0 2px 0 rgb(255, 255, 255, 0.5),
+    0 6px 0 var(--tal-key-on-lip),
+    0 10px 12px rgb(0, 0, 0, 0.5),
+    0 0 22px rgb(1, 255, 133, 0.6);
+  cursor: pointer;
+}
+
+.tal9k__powerbtn:active {
+  transform: translateY(6px);
+  box-shadow:
+    inset 0 2px 0 rgb(255, 255, 255, 0.4),
+    0 1px 0 var(--tal-key-on-lip),
+    0 2px 6px rgb(0, 0, 0, 0.5);
+}
+
+.tal9k__powerbtn:focus-visible {
+  outline: 2px solid #eafff4;
+  outline-offset: 3px;
+}
+
+.tal9k__ascii {
+  margin: 0;
+  color: var(--tal-phosphor-hi);
+  font-family: var(--tal-font-screen);
+  font-size: 15px;
+  line-height: 1.05;
+  white-space: pre;
+  text-shadow: 0 0 8px rgb(168, 255, 206, 0.6);
+}
+
+.tal9k__ascii--sm {
+  color: var(--tal-phosphor);
+  font-size: 12px;
+}
+
+.tal9k__bootlog {
+  min-height: 5em;
+  color: var(--tal-phosphor-lo);
+  font-size: 15px;
+  text-shadow: none;
+}
+
+.tal9k__bootbar {
+  width: 70%;
+  max-width: 360px;
+  height: 16px;
+  padding: 2px;
+  border: 1px solid var(--tal-phosphor-lo);
+  background: rgb(0, 0, 0, 0.4);
+}
+
+.tal9k__bootbar-fill {
+  height: 100%;
+  background: var(--tal-phosphor);
+  box-shadow: 0 0 10px rgb(77, 222, 151, 0.8);
+  transition: width 0.1s linear;
+}
+
+.tal9k__bootpct {
+  color: var(--tal-phosphor-hi);
+  font-size: 16px;
+  letter-spacing: 0.1em;
+}
+
+.tal9k__btn--power {
+  grid-column: 1 / -1;
 }
 
 /* ---------------- terminal output ---------------- */
@@ -311,36 +418,35 @@
 
 .tal9k__aura {
   position: absolute;
-  width: 140%;
-  height: 140%;
+  width: 116%;
+  height: 116%;
   border-radius: 50%;
   z-index: 0;
   pointer-events: none;
-  background: radial-gradient(circle, rgb(125, 255, 176, 0.62) 0%, rgb(125, 255, 176, 0) 60%);
-  filter: blur(16px);
-  opacity: 0.45;
+  background: radial-gradient(circle, rgb(125, 255, 176, 0.38) 0%, rgb(125, 255, 176, 0) 62%);
+  filter: blur(12px);
+  opacity: 0.28;
   will-change: opacity, transform;
-  animation: tal9k-aura 3.8s ease-in-out infinite;
+  animation: tal9k-aura 5s ease-in-out infinite;
 }
 
 .tal9k__bloom {
   position: absolute;
-  width: 74%;
-  height: 74%;
+  width: 56%;
+  height: 56%;
   border-radius: 50%;
   z-index: 2;
   pointer-events: none;
   background: radial-gradient(
     circle,
-    #c2ffdd 0%,
-    var(--tal-glow) 32%,
-    rgb(125, 255, 176, 0.45) 55%,
-    transparent 74%
+    var(--tal-glow) 0%,
+    rgb(125, 255, 176, 0.3) 42%,
+    transparent 70%
   );
-  filter: blur(16px);
-  opacity: 0.7;
+  filter: blur(14px);
+  opacity: 0.5;
   will-change: opacity, transform;
-  animation: tal9k-breathe 3.8s ease-in-out infinite;
+  animation: tal9k-breathe 5s ease-in-out infinite;
 }
 
 .tal9k__pupil {
@@ -370,11 +476,107 @@
   color: var(--tal-amber);
 }
 
+/* 2001-style backlit indicator array + speaker grille under the eye */
+.tal9k__indicators {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+  width: 100%;
+}
+
+.tal9k__cell {
+  height: 11px;
+  border: 1px solid #000;
+  background: var(--tal-chassis-2);
+  box-shadow: inset 0 0 3px rgb(0, 0, 0, 0.85);
+}
+
+.tal9k__cell.on.amber {
+  background: var(--tal-amber);
+  box-shadow: 0 0 7px rgb(255, 207, 106, 0.8);
+}
+
+.tal9k__cell.on.teal {
+  background: #63d6cf;
+  box-shadow: 0 0 7px rgb(99, 214, 207, 0.8);
+}
+
+.tal9k__cell.on.blue {
+  background: #5aa6dc;
+  box-shadow: 0 0 7px rgb(90, 166, 220, 0.8);
+}
+
+.tal9k__cell.on.green {
+  background: var(--tal-phosphor);
+  box-shadow: 0 0 7px rgb(77, 222, 151, 0.8);
+}
+
+.tal9k__cell.blink {
+  animation: tal9k-cellblink 3.2s steps(1) infinite;
+}
+
+.tal9k__cell:nth-child(2).blink {
+  animation-duration: 2.3s;
+}
+
+.tal9k__cell:nth-child(5).blink {
+  animation-duration: 4.1s;
+}
+
+.tal9k__cell:nth-child(9).blink {
+  animation-duration: 2.9s;
+}
+
+.tal9k__cell:nth-child(11).blink {
+  animation-duration: 3.7s;
+}
+
+.tal9k__grille {
+  width: 100%;
+  height: 22px;
+  border: 1px solid #000;
+  background: repeating-linear-gradient(to bottom, #000 0 2px, #262b20 2px 5px);
+  box-shadow: inset 0 0 7px rgb(0, 0, 0, 0.85);
+}
+
 /* ---------------- control panel ---------------- */
 .tal9k__panel {
-  background: linear-gradient(180deg, #232a1f, #12160f 62%, #0b0e08);
   border: 1px solid #05070a;
+  border-top-color: rgb(255, 255, 255, 0.12);
   padding: 15px 16px 17px;
+
+  /* four corner bolts (layered radial-gradients) + the plate gradient */
+  background:
+    radial-gradient(
+      circle at 11px 11px,
+      #e6eadd 0 1.5px,
+      #7b8369 2px 3.5px,
+      #262c20 4px 5px,
+      transparent 6px
+    ),
+    radial-gradient(
+      circle at calc(100% - 11px) 11px,
+      #e6eadd 0 1.5px,
+      #7b8369 2px 3.5px,
+      #262c20 4px 5px,
+      transparent 6px
+    ),
+    radial-gradient(
+      circle at 11px calc(100% - 11px),
+      #e6eadd 0 1.5px,
+      #7b8369 2px 3.5px,
+      #262c20 4px 5px,
+      transparent 6px
+    ),
+    radial-gradient(
+      circle at calc(100% - 11px) calc(100% - 11px),
+      #e6eadd 0 1.5px,
+      #7b8369 2px 3.5px,
+      #262c20 4px 5px,
+      transparent 6px
+    ),
+    linear-gradient(180deg, #232a1f 0%, #12160f 62%, #0b0e08 100%);
+  background-repeat: no-repeat;
   box-shadow:
     0 5px 10px rgb(0, 0, 0, 0.55),
     inset 0 1px 0 rgb(255, 255, 255, 0.15),
@@ -452,6 +654,28 @@
   outline-offset: 3px;
 }
 
+/* latched ON (e.g. the active CHAT/HISTORY view) — bright green like button.svg */
+.tal9k__btn.is-on {
+  color: #100d26;
+  text-shadow: none;
+  background: linear-gradient(180deg, #29ff97 0%, var(--tal-key-on) 62%, #00e878 100%);
+  box-shadow:
+    inset 0 2px 0 rgb(255, 255, 255, 0.5),
+    0 7px 0 var(--tal-key-on-lip),
+    0 11px 13px rgb(0, 0, 0, 0.5),
+    0 0 22px rgb(1, 255, 133, 0.6),
+    0 0 46px rgb(50, 156, 43, 0.42);
+}
+
+.tal9k__btn.is-on:active {
+  transform: translateY(7px);
+  box-shadow:
+    inset 0 2px 0 rgb(255, 255, 255, 0.4),
+    0 1px 0 var(--tal-key-on-lip),
+    0 2px 6px rgb(0, 0, 0, 0.5),
+    0 0 20px rgb(1, 255, 133, 0.55);
+}
+
 .tal9k__btn--go {
   color: #100d26;
   background: linear-gradient(180deg, #29ff97 0%, var(--tal-key-on) 62%, #00e878 100%);
@@ -484,13 +708,13 @@
 @keyframes tal9k-breathe {
   0%,
   100% {
-    opacity: 0.5;
+    opacity: 0.42;
     transform: scale(1);
   }
 
   50% {
-    opacity: 1;
-    transform: scale(1.15);
+    opacity: 0.66;
+    transform: scale(1.04);
   }
 }
 
@@ -502,8 +726,8 @@
   }
 
   50% {
-    opacity: 0.72;
-    transform: scale(1.18);
+    opacity: 0.4;
+    transform: scale(1.06);
   }
 }
 
@@ -526,20 +750,34 @@
   }
 }
 
+@keyframes tal9k-cellblink {
+  0%,
+  68%,
+  100% {
+    opacity: 1;
+  }
+
+  72%,
+  96% {
+    opacity: 0.28;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .tal9k__aura,
   .tal9k__bloom,
   .tal9k__pupil,
+  .tal9k__cell,
   .tal9k__caret::after {
     animation: none !important;
   }
 
   .tal9k__bloom {
-    opacity: 0.7;
+    opacity: 0.5;
   }
 
   .tal9k__aura {
-    opacity: 0.35;
+    opacity: 0.28;
   }
 }
 

@@ -427,7 +427,7 @@ export default function ChatPage() {
         <div
           className={`${
             showSidebar ? "flex" : "hidden sm:flex"
-          } flex-col w-full max-h-[35dvh] shrink-0 border rounded-lg bg-card overflow-hidden sm:w-56 sm:max-h-none`}
+          } flex-col w-full max-h-[35dvh] shrink-0 overflow-hidden sm:w-56 sm:max-h-none`}
         >
           <div className="p-3 border-b flex items-center justify-between">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
