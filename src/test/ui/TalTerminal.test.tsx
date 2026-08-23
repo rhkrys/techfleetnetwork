@@ -63,7 +63,7 @@ describe("TalTerminal — boot + history browser", () => {
       </MemoryRouter>
     );
     fireEvent.click(screen.getByRole("button", { name: /power on/i }));
-    expect(await screen.findByText("TAL 9000 ONLINE")).toBeInTheDocument();
+    expect(await screen.findByText(/TAL 9000 ONLINE/)).toBeInTheDocument();
   });
 
   it("browses history and loads a selected conversation", async () => {
@@ -73,7 +73,7 @@ describe("TalTerminal — boot + history browser", () => {
       </MemoryRouter>
     );
     fireEvent.click(screen.getByRole("button", { name: /power on/i }));
-    await screen.findByText("TAL 9000 ONLINE");
+    await screen.findByText(/TAL 9000 ONLINE/);
 
     fireEvent.click(screen.getByRole("button", { name: "History" }));
     expect(loadConversations).toHaveBeenCalled();

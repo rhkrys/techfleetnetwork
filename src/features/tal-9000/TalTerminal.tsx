@@ -28,6 +28,14 @@ const BOOT_LINES = [
 // Owner-provided Tech Fleet ASCII logo, printed line-by-line during the power-on boot.
 const TF_LOGO_LINES = TF_LOGO.split("\n");
 
+// Main screen, typed out one character at a time after boot.
+const MAIN_SCREEN =
+  "TAL 9000 ONLINE\n" +
+  "TECH FLEET NETWORK // TERMINAL v1.0\n" +
+  "\n" +
+  "▸ Select CHAT to consult Fleety\n" +
+  "▸ Select HISTORY for past sessions";
+
 export default function TalTerminal() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -52,6 +60,7 @@ export default function TalTerminal() {
   const [ratings, setRatings] = useState<Record<string, FeedbackRating>>({});
   const [power, setPower] = useState<"off" | "booting" | "on">("off");
   const [bootProgress, setBootProgress] = useState(0);
+  const [mainTyped, setMainTyped] = useState(0);
   const [view, setView] = useState<"main" | "chat" | "history">("main");
   const outRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -91,22 +100,52 @@ export default function TalTerminal() {
     }
     setBootProgress(0);
     const startedAt = performance.now();
-    // Deliberately slow (~5s total) so the logo prints line-by-line like a real 80s machine.
+    // 5s to print the logo line-by-line, then hold it 3s before the main screen (80s pacing).
     const DURATION = 5000;
+    const HOLD = 3000;
     let raf = 0;
+    let hold = 0;
     const tick = (now: number) => {
       const pct = Math.min(100, Math.round(((now - startedAt) / DURATION) * 100));
       setBootProgress(pct);
       if (pct < 100) {
         raf = requestAnimationFrame(tick);
       } else {
-        setPower("on");
-        setView("main");
+        hold = window.setTimeout(() => {
+          setPower("on");
+          setView("main");
+        }, HOLD);
       }
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(hold);
+    };
   }, [power]);
+
+  // Main screen prints one character at a time (fast) after boot, like an 80s terminal.
+  useEffect(() => {
+    if (power !== "on" || view !== "main") {
+      setMainTyped(0);
+      return;
+    }
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) {
+      setMainTyped(MAIN_SCREEN.length);
+      return;
+    }
+    setMainTyped(0);
+    const startedAt = performance.now();
+    const CPS = 90; // characters per second
+    let raf = 0;
+    const tick = (now: number) => {
+      const n = Math.floor(((now - startedAt) / 1000) * CPS);
+      setMainTyped(Math.min(n, MAIN_SCREEN.length));
+      if (n < MAIN_SCREEN.length) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [power, view]);
 
   const onSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -171,6 +210,12 @@ export default function TalTerminal() {
     setView("chat");
     inputRef.current?.focus();
   }, [reset]);
+
+  // Feedback console rates the most recent Fleety answer (last assistant turn with an id).
+  const lastRateable = [...messages].reverse().find((mm) => mm.role === "assistant" && !!mm.turnId);
+  const lastTurnId = lastRateable?.turnId ?? null;
+  const lastRating = lastTurnId ? ratings[lastTurnId] : undefined;
+  const canRate = power === "on" && !!lastTurnId;
 
   return (
     <div className="tal9k">
@@ -291,13 +336,10 @@ export default function TalTerminal() {
                   )}
                   {power === "on" && view === "main" && (
                     <div className="tal9k__mainscreen" data-no-translate translate="no">
-                      <p className="tal9k__line tal9k__line--user">TAL 9000 ONLINE</p>
-                      <p className="tal9k__line tal9k__line--sys">
-                        TECH FLEET NETWORK // TERMINAL v1.0
-                      </p>
-                      <p className="tal9k__line">&nbsp;</p>
-                      <p className="tal9k__line">&#9656; Select CHAT to consult Fleety</p>
-                      <p className="tal9k__line">&#9656; Select HISTORY for past sessions</p>
+                      <pre className="tal9k__maintype">
+                        {MAIN_SCREEN.slice(0, mainTyped)}
+                        <span className="tal9k__caret" />
+                      </pre>
                     </div>
                   )}
                   {power === "on" && view === "chat" && (
@@ -311,11 +353,12 @@ export default function TalTerminal() {
                         translate="no"
                         aria-label="TAL 9000 terminal output"
                       >
-                        {BOOT_LINES.map((l, i) => (
-                          <p key={`boot-${i}`} className="tal9k__line tal9k__line--sys">
-                            {l || " "}
-                          </p>
-                        ))}
+                        {messages.length === 0 &&
+                          BOOT_LINES.map((l, i) => (
+                            <p key={`boot-${i}`} className="tal9k__line tal9k__line--sys">
+                              {l || " "}
+                            </p>
+                          ))}
                         {messages.map((m, i) => (
                           <MessageBlock
                             key={i}
@@ -323,10 +366,16 @@ export default function TalTerminal() {
                             streaming={
                               i === messages.length - 1 && m.role === "assistant" && isLoading
                             }
-                            rating={m.turnId ? ratings[m.turnId] : undefined}
-                            onRate={rate}
                           />
                         ))}
+                        {isLoading &&
+                          (messages.length === 0 ||
+                            messages[messages.length - 1].role === "user") && (
+                            <p className="tal9k__line">
+                              LOADING
+                              <span className="tal9k__dots" />
+                            </p>
+                          )}
                         {error && (
                           <p className="tal9k__line tal9k__line--sys">
                             {"⚠"} {error}
@@ -405,10 +454,36 @@ export default function TalTerminal() {
                 </div>
               </foreignObject>
             </svg>
-            <span className="tal9k__screw tal9k__screw--tl" aria-hidden="true" />
-            <span className="tal9k__screw tal9k__screw--tr" aria-hidden="true" />
-            <span className="tal9k__screw tal9k__screw--bl" aria-hidden="true" />
-            <span className="tal9k__screw tal9k__screw--br" aria-hidden="true" />
+            <div className="tal9k__panel tal9k__panel--feedback">
+              <span className="tal9k__screw tal9k__screw--tl" aria-hidden="true" />
+              <span className="tal9k__screw tal9k__screw--tr" aria-hidden="true" />
+              <span className="tal9k__screw tal9k__screw--bl" aria-hidden="true" />
+              <span className="tal9k__screw tal9k__screw--br" aria-hidden="true" />
+              <div className="tal9k__panel-head">
+                <span>Feedback</span>
+                <span>RESP</span>
+              </div>
+              <div className="tal9k__panel-grid">
+                <button
+                  type="button"
+                  className={`tal9k__btn ${lastRating === 1 ? "is-on" : canRate ? "is-ready" : ""}`}
+                  aria-pressed={lastRating === 1}
+                  onClick={() => lastTurnId && rate(lastTurnId, 1)}
+                  disabled={!canRate}
+                >
+                  Good Response
+                </button>
+                <button
+                  type="button"
+                  className={`tal9k__btn ${lastRating === -1 ? "is-on" : canRate ? "is-ready" : ""}`}
+                  aria-pressed={lastRating === -1}
+                  onClick={() => lastTurnId && rate(lastTurnId, -1)}
+                  disabled={!canRate}
+                >
+                  Improve Response
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* TAL eye (left) + control panel — CRT sits on the right on desktop */}
@@ -532,14 +607,6 @@ export default function TalTerminal() {
                 >
                   {attachStatus === "extracting" ? "Reading…" : "Attach"}
                 </button>
-                <button
-                  type="button"
-                  className={`tal9k__btn ${power === "on" ? "is-ready" : ""}`}
-                  onClick={newChat}
-                  disabled={power !== "on"}
-                >
-                  New Chat
-                </button>
                 <button type="button" className="tal9k__btn is-ready" onClick={exit}>
                   Exit
                 </button>
@@ -561,17 +628,7 @@ export default function TalTerminal() {
   );
 }
 
-function MessageBlock({
-  m,
-  streaming,
-  rating,
-  onRate,
-}: {
-  m: FleetyMessage;
-  streaming: boolean;
-  rating: FeedbackRating | undefined;
-  onRate: (turnId: string, rating: FeedbackRating) => void;
-}) {
+function MessageBlock({ m, streaming }: { m: FleetyMessage; streaming: boolean }) {
   if (m.role === "user") {
     return <p className="tal9k__line tal9k__line--user">&gt; {m.content}</p>;
   }
@@ -582,41 +639,19 @@ function MessageBlock({
       <p className={"tal9k__line tal9k__line--fleety" + (streaming ? " tal9k__caret" : "")}>
         FLEETY: {m.content}
       </p>
-      {!streaming && (srcs.length > 0 || m.turnId) && (
+      {!streaming && srcs.length > 0 && (
         <div className="tal9k__meta">
-          {srcs.length > 0 && (
-            <div className="tal9k__srcs">
-              SOURCES:{" "}
-              {srcs.map((u, i) => (
-                <span key={u}>
-                  {i > 0 ? " · " : ""}
-                  <a href={u} target="_blank" rel="noopener noreferrer">
-                    {formatSourceLabel(u)}
-                  </a>
-                </span>
-              ))}
-            </div>
-          )}
-          {m.turnId && (
-            <div className="tal9k__fb">
-              <button
-                type="button"
-                aria-pressed={rating === 1}
-                aria-label="Helpful answer"
-                onClick={() => onRate(m.turnId as string, 1)}
-              >
-                {"▲"} YES
-              </button>
-              <button
-                type="button"
-                aria-pressed={rating === -1}
-                aria-label="Not helpful"
-                onClick={() => onRate(m.turnId as string, -1)}
-              >
-                {"▼"} NO
-              </button>
-            </div>
-          )}
+          <div className="tal9k__srcs">
+            SOURCES:{" "}
+            {srcs.map((u, i) => (
+              <span key={u}>
+                {i > 0 ? " · " : ""}
+                <a href={u} target="_blank" rel="noopener noreferrer">
+                  {formatSourceLabel(u)}
+                </a>
+              </span>
+            ))}
+          </div>
         </div>
       )}
     </div>
