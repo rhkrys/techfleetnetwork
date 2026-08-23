@@ -62,7 +62,7 @@ describe("TalTerminal — boot + history browser", () => {
         <TalTerminal />
       </MemoryRouter>
     );
-    fireEvent.click(screen.getByRole("button", { name: /press to power on/i }));
+    fireEvent.click(screen.getByRole("button", { name: /power on/i }));
     expect(await screen.findByText("TAL 9000 ONLINE")).toBeInTheDocument();
   });
 
@@ -72,7 +72,7 @@ describe("TalTerminal — boot + history browser", () => {
         <TalTerminal />
       </MemoryRouter>
     );
-    fireEvent.click(screen.getByRole("button", { name: /press to power on/i }));
+    fireEvent.click(screen.getByRole("button", { name: /power on/i }));
     await screen.findByText("TAL 9000 ONLINE");
 
     fireEvent.click(screen.getByRole("button", { name: "History" }));

@@ -265,9 +265,7 @@ export default function TalTerminal() {
                   {power === "off" && (
                     <div className="tal9k__off">
                       <p className="tal9k__off-label">&#9673; SYSTEM OFF</p>
-                      <button type="button" className="tal9k__powerbtn" onClick={powerOn}>
-                        PRESS TO POWER ON
-                      </button>
+                      <p className="tal9k__off-hint">Press POWER to begin</p>
                     </div>
                   )}
                   {power === "booting" && (
@@ -351,12 +349,20 @@ export default function TalTerminal() {
                           className="tal9k__input"
                           value={input}
                           onChange={(e) => setInput(e.target.value)}
+                          onBlur={(e) => {
+                            // Keep the terminal cursor in the "ask Fleety" prompt: if focus was
+                            // lost to nothing (a click on the screen body), pull it straight back.
+                            // Focus moving to an actual control (a panel button) is respected, so
+                            // the buttons and keyboard navigation still work.
+                            if (power === "on" && view === "chat" && !e.relatedTarget) {
+                              requestAnimationFrame(() => inputRef.current?.focus());
+                            }
+                          }}
                           placeholder={
                             attachment ? `attached: ${attachment.filename}` : "ask Fleety…"
                           }
                           aria-label="Message TAL 9000"
                           spellCheck={false}
-                          disabled={isLoading}
                         />
                       </form>
                     </>
@@ -498,7 +504,7 @@ export default function TalTerminal() {
                   onClick={power === "on" ? powerOff : powerOn}
                   disabled={power === "booting"}
                 >
-                  {power === "on" ? "◉ Power" : power === "booting" ? "Booting…" : "◉ Power On"}
+                  {power === "on" ? "Power" : power === "booting" ? "Booting…" : "Power On"}
                 </button>
                 <button
                   type="button"

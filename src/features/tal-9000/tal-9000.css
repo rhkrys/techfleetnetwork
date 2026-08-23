@@ -9,7 +9,19 @@
  * selector is scoped under `.tal9k`, and every keyframe is `tal9k-`-prefixed, so this
  * cannot leak into or collide with the app's design system. Retro faces load from Google
  * Fonts with a monospace fallback (degrades gracefully if a CSP blocks the request). */
-@import url("https://fonts.googleapis.com/css2?family=VT323&family=Michroma&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Michroma&display=swap");
+
+/* Perfect DOS VGA 437 — the authentic IBM-PC/DOS terminal face (More Perfect DOS VGA,
+   laemeur.sdf.org, "free for all use, commercial and non-commercial"). Self-hosted (not on
+   Google Fonts); CP437 includes the block cursor + box glyphs so ASCII renders crisp. Used ONLY
+   for the CRT screen text (--tal-font-screen), never the control-panel labels. */
+@font-face {
+  font-family: "More Perfect DOS VGA";
+  src: url("./fonts/MorePerfectDOSVGA.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
 
 .tal9k {
   --tal-room: #05070a;
@@ -17,15 +29,15 @@
   --tal-chassis-2: #0d100b;
   --tal-bezel-hi: #3a4132;
   --tal-screen: #013201;
-  --tal-phosphor: #4ade97;
-  --tal-phosphor-hi: #a8ffce;
+  --tal-phosphor: #56ffa1;
+  --tal-phosphor-hi: #c9ffe0;
   --tal-phosphor-lo: #2b8f5d;
   --tal-glow: #7dffb0;
   --tal-amber: #ffcf6a;
   --tal-key-off: #3a4132;
   --tal-key-on: #01ff85;
   --tal-key-on-lip: #0d6a08;
-  --tal-font-screen: "VT323", "Courier New", monospace;
+  --tal-font-screen: "More Perfect DOS VGA", "Courier New", monospace;
   --tal-font-label: "Eurostile Extended", "Eurostile", "Michroma", "Arial Narrow", sans-serif;
 
   position: fixed;
@@ -161,34 +173,13 @@
   text-shadow: none;
 }
 
-.tal9k__powerbtn {
-  padding: 14px 22px;
-  border: none;
-  color: #100d26;
+.tal9k__off-hint {
+  color: var(--tal-phosphor-lo);
   font-family: var(--tal-font-label);
-  font-size: 13px;
-  letter-spacing: 0.14em;
+  font-size: 11px;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
-  background: linear-gradient(180deg, #29ff97 0%, var(--tal-key-on) 62%, #00e878 100%);
-  box-shadow:
-    inset 0 2px 0 rgb(255, 255, 255, 0.5),
-    0 6px 0 var(--tal-key-on-lip),
-    0 10px 12px rgb(0, 0, 0, 0.5),
-    0 0 22px rgb(1, 255, 133, 0.6);
-  cursor: pointer;
-}
-
-.tal9k__powerbtn:active {
-  transform: translateY(6px);
-  box-shadow:
-    inset 0 2px 0 rgb(255, 255, 255, 0.4),
-    0 1px 0 var(--tal-key-on-lip),
-    0 2px 6px rgb(0, 0, 0, 0.5);
-}
-
-.tal9k__powerbtn:focus-visible {
-  outline: 2px solid #eafff4;
-  outline-offset: 3px;
+  text-shadow: none;
 }
 
 .tal9k__ascii {
@@ -246,8 +237,8 @@
   flex: 1 1 auto;
   overflow-y: auto;
   padding: 40px 46px 12px;
-  font-size: 20px;
-  line-height: 1.34;
+  font-size: 16px;
+  line-height: 1.5;
   color: var(--tal-phosphor);
   text-shadow: 0 0 5px rgb(77, 222, 151, 0.6);
   letter-spacing: 0.4px;
@@ -369,7 +360,7 @@
 
 .tal9k__prompt {
   color: var(--tal-phosphor-hi);
-  font-size: 21px;
+  font-size: 16px;
   text-shadow: 0 0 6px rgb(168, 255, 206, 0.7);
 }
 
@@ -381,7 +372,7 @@
   color: var(--tal-phosphor-hi);
   caret-color: var(--tal-phosphor-hi);
   font-family: var(--tal-font-screen);
-  font-size: 21px;
+  font-size: 16px;
   letter-spacing: 0.4px;
   text-shadow: 0 0 5px rgb(168, 255, 206, 0.6);
 }
@@ -423,11 +414,11 @@
   border-radius: 50%;
   z-index: 0;
   pointer-events: none;
-  background: radial-gradient(circle, rgb(125, 255, 176, 0.38) 0%, rgb(125, 255, 176, 0) 62%);
-  filter: blur(12px);
-  opacity: 0.28;
+  background: radial-gradient(circle, rgb(125, 255, 176, 0.22) 0%, rgb(125, 255, 176, 0) 64%);
+  filter: blur(13px);
+  opacity: 0.16;
   will-change: opacity, transform;
-  animation: tal9k-aura 5s ease-in-out infinite;
+  animation: tal9k-aura 6.5s ease-in-out infinite;
 }
 
 .tal9k__bloom {
@@ -444,9 +435,9 @@
     transparent 70%
   );
   filter: blur(14px);
-  opacity: 0.5;
+  opacity: 0.3;
   will-change: opacity, transform;
-  animation: tal9k-breathe 5s ease-in-out infinite;
+  animation: tal9k-breathe 6.5s ease-in-out infinite;
 }
 
 .tal9k__pupil {
@@ -708,26 +699,26 @@
 @keyframes tal9k-breathe {
   0%,
   100% {
-    opacity: 0.42;
+    opacity: 0.28;
     transform: scale(1);
   }
 
   50% {
-    opacity: 0.66;
-    transform: scale(1.04);
+    opacity: 0.42;
+    transform: scale(1.02);
   }
 }
 
 @keyframes tal9k-aura {
   0%,
   100% {
-    opacity: 0.3;
+    opacity: 0.14;
     transform: scale(1);
   }
 
   50% {
-    opacity: 0.4;
-    transform: scale(1.06);
+    opacity: 0.22;
+    transform: scale(1.03);
   }
 }
 
