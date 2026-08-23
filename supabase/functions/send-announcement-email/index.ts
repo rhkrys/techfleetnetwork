@@ -7,6 +7,7 @@ import { withAuditWrapper } from "../_shared/audit.ts";
 import { announcementMessageId } from "./message-id.ts";
 import { fetchWithTimeout } from "../_shared/fetch-timeout.ts";
 import { enqueueLegacyPayloadV2 } from "../_shared/email/enqueue-legacy-compat.ts";
+import { requireMarketingAttestation } from "./attestation.ts";
 
 const BodySchema = z.object({ announcement_id: z.string().optional() }).passthrough();
 const URL_RE = /\b((?:https?:\/\/|www\.)[^\s<>"'()]+[^\s<>"'(),.;:!?])/gi;
@@ -168,6 +169,26 @@ Deno.serve(
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+
+      // PR 7: refuse to email an un-attested announcement. The admin must confirm this is a
+      // service/platform update, not marketing (marketing goes through Email Octopus, ADR-0017).
+      // Enforced server-side so a direct edge-function call cannot bypass the composer checkbox.
+      const attestation = requireMarketingAttestation(_parsed.data);
+      if (!attestation.ok) {
+        return new Response(
+          JSON.stringify({
+            error:
+              "Marketing attestation required: confirm this announcement is not marketing before sending.",
+            code: attestation.error,
+          }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      // Record who attested + when (server-verified admin identity; the client cannot set these).
+      await adminClient
+        .from("announcements")
+        .update({ marketing_attested_at: new Date().toISOString(), marketing_attested_by: user.id })
+        .eq("id", announcement_id);
 
       // Recipients: every member with the Tier-1 opt-out ON. Members join the platform to train,
       // and service announcements are training/platform updates, so the default-true

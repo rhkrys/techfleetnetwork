@@ -294,6 +294,8 @@ export type Database = {
           created_at: string
           created_by: string
           id: string
+          marketing_attested_at: string | null
+          marketing_attested_by: string | null
           title: string
           updated_at: string
           video_url: string | null
@@ -304,6 +306,8 @@ export type Database = {
           created_at?: string
           created_by: string
           id?: string
+          marketing_attested_at?: string | null
+          marketing_attested_by?: string | null
           title: string
           updated_at?: string
           video_url?: string | null
@@ -314,6 +318,8 @@ export type Database = {
           created_at?: string
           created_by?: string
           id?: string
+          marketing_attested_at?: string | null
+          marketing_attested_by?: string | null
           title?: string
           updated_at?: string
           video_url?: string | null

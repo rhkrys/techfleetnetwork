@@ -4,30 +4,49 @@ import { sanitizeHtml } from "@/lib/security";
 import { linkifyHtml } from "@/lib/linkify";
 import { useSearchParams } from "react-router-dom";
 import { format } from "date-fns";
-import {
-  Megaphone, Plus, Trash2, LayoutList, LayoutGrid, Loader2, Video, Mic,
-} from "lucide-react";
+import { Megaphone, Plus, Trash2, LayoutList, LayoutGrid, Loader2, Video, Mic } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
 } from "@/components/ui/sheet";
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdmin } from "@/hooks/use-admin";
 import {
-  useAnnouncements, useCreateAnnouncement, useDeleteAnnouncement, useMarkAnnouncementRead,
-  useRecordAnnouncementView, useAnnouncementReadIds, useAnnouncementActions,
+  useAnnouncements,
+  useCreateAnnouncement,
+  useDeleteAnnouncement,
+  useMarkAnnouncementRead,
+  useRecordAnnouncementView,
+  useAnnouncementReadIds,
+  useAnnouncementActions,
   useRecordAnnouncementAction,
 } from "@/hooks/use-announcements";
 import { stripHtml, normalizeRichTextHtml } from "@/lib/html";
@@ -119,6 +138,7 @@ export default function UpdatesPage() {
   const [newBody, setNewBody] = useState("");
   const [newVideoUrl, setNewVideoUrl] = useState<string | null>(null);
   const [newAudioUrl, setNewAudioUrl] = useState<string | null>(null);
+  const [newAttested, setNewAttested] = useState(false);
   const [mediaBusy, setMediaBusy] = useState(false);
 
   const selectAndMarkRead = (a: Announcement) => {
@@ -128,18 +148,39 @@ export default function UpdatesPage() {
   };
 
   const handleCreate = async () => {
-    if (!newTitle.trim()) { toast.error("Add a title before posting."); return; }
-    if (!newBody.trim() || newBody === "<p></p>") { toast.error("Add a message before posting."); return; }
-    if (mediaBusy) { toast.error("Hang tight — your recording is still uploading."); return; }
+    if (!newTitle.trim()) {
+      toast.error("Add a title before posting.");
+      return;
+    }
+    if (!newBody.trim() || newBody === "<p></p>") {
+      toast.error("Add a message before posting.");
+      return;
+    }
+    if (mediaBusy) {
+      toast.error("Hang tight — your recording is still uploading.");
+      return;
+    }
+    if (!newAttested) {
+      toast.error("Please confirm this announcement is not marketing before posting.");
+      return;
+    }
     if (!user) return;
     try {
-      await createMutation.mutateAsync({ title: newTitle.trim(), bodyHtml: newBody, userId: user.id, videoUrl: newVideoUrl, audioUrl: newAudioUrl });
+      await createMutation.mutateAsync({
+        title: newTitle.trim(),
+        bodyHtml: newBody,
+        userId: user.id,
+        videoUrl: newVideoUrl,
+        audioUrl: newAudioUrl,
+        marketingAttested: newAttested,
+      });
       toast.success("Announcement posted — your team will see it next time they sign in.");
       setCreateOpen(false);
       setNewTitle("");
       setNewBody("");
       setNewVideoUrl(null);
       setNewAudioUrl(null);
+      setNewAttested(false);
     } catch {
       toast.error("We couldn't post that announcement. Please try again.");
     }
@@ -156,30 +197,34 @@ export default function UpdatesPage() {
     }
   };
 
-  const columnDefs = useMemo<ColDef<Announcement>[]>(() => [
-    {
-      headerName: "Title",
-      field: "title",
-      flex: 3,
-    },
-    {
-      headerName: "Preview",
-      flex: 2,
-      valueGetter: (params) => {
-        const plain = stripHtml(params.data?.body_html ?? "");
-        return plain.length > 80 ? plain.slice(0, 80) + "…" : plain;
+  const columnDefs = useMemo<ColDef<Announcement>[]>(
+    () => [
+      {
+        headerName: "Title",
+        field: "title",
+        flex: 3,
       },
-      sortable: false,
-      filter: false,
-    },
-    {
-      headerName: "Date",
-      field: "created_at",
-      flex: 1,
-      minWidth: 110,
-      valueFormatter: (params) => params.value ? format(new Date(params.value), "MMM d, yyyy") : "—",
-    },
-  ], []);
+      {
+        headerName: "Preview",
+        flex: 2,
+        valueGetter: (params) => {
+          const plain = stripHtml(params.data?.body_html ?? "");
+          return plain.length > 80 ? plain.slice(0, 80) + "…" : plain;
+        },
+        sortable: false,
+        filter: false,
+      },
+      {
+        headerName: "Date",
+        field: "created_at",
+        flex: 1,
+        minWidth: 110,
+        valueFormatter: (params) =>
+          params.value ? format(new Date(params.value), "MMM d, yyyy") : "—",
+      },
+    ],
+    []
+  );
 
   return (
     <div className="container-app py-8 sm:py-12 max-w-5xl">
@@ -269,7 +314,12 @@ export default function UpdatesPage() {
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <div className="flex items-center gap-2">
                     <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors line-clamp-2">
-                      <TranslatedContent entityTable="announcements" entityId={a.id} columnName="title" sourceText={a.title} />
+                      <TranslatedContent
+                        entityTable="announcements"
+                        entityId={a.id}
+                        columnName="title"
+                        sourceText={a.title}
+                      />
                     </h3>
                     {a.video_url && (
                       <Video className="h-4 w-4 text-primary shrink-0" aria-label="Has video" />
@@ -283,7 +333,10 @@ export default function UpdatesPage() {
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7 shrink-0 text-destructive hover:text-destructive"
-                      onClick={(e) => { e.stopPropagation(); setDeleteTarget(a); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteTarget(a);
+                      }}
                       aria-label={`Delete ${a.title}`}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -295,7 +348,9 @@ export default function UpdatesPage() {
                 </p>
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-2">
-                    <Badge variant={statusVariant} className="text-xs">{statusLabel}</Badge>
+                    <Badge variant={statusVariant} className="text-xs">
+                      {statusLabel}
+                    </Badge>
                     <Badge variant="secondary" className="text-xs">
                       {format(new Date(a.created_at), "MMM d, yyyy")}
                     </Badge>
@@ -309,19 +364,39 @@ export default function UpdatesPage() {
       )}
 
       {/* Detail side panel */}
-      <Sheet open={!!selectedAnnouncement} onOpenChange={(open) => !open && setSelectedAnnouncement(null)}>
-        <SheetContent side="right" resizeKey="updates-detail" className="w-full sm:max-w-xl flex flex-col p-0 overflow-hidden">
+      <Sheet
+        open={!!selectedAnnouncement}
+        onOpenChange={(open) => !open && setSelectedAnnouncement(null)}
+      >
+        <SheetContent
+          side="right"
+          resizeKey="updates-detail"
+          className="w-full sm:max-w-xl flex flex-col p-0 overflow-hidden"
+        >
           <SheetHeader className="px-6 pt-6 pb-4 border-b min-w-0">
-            <SheetTitle className="text-xl pr-8 break-words whitespace-normal overflow-hidden overflow-wrap-anywhere" style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}>
+            <SheetTitle
+              className="text-xl pr-8 break-words whitespace-normal overflow-hidden overflow-wrap-anywhere"
+              style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
+            >
               {selectedAnnouncement && (
-                <TranslatedContent entityTable="announcements" entityId={selectedAnnouncement.id} columnName="title" sourceText={selectedAnnouncement.title} />
+                <TranslatedContent
+                  entityTable="announcements"
+                  entityId={selectedAnnouncement.id}
+                  columnName="title"
+                  sourceText={selectedAnnouncement.title}
+                />
               )}
             </SheetTitle>
             <SheetDescription>
-              {selectedAnnouncement && format(new Date(selectedAnnouncement.created_at), "MMMM d, yyyy 'at' h:mm a")}
+              {selectedAnnouncement &&
+                format(new Date(selectedAnnouncement.created_at), "MMMM d, yyyy 'at' h:mm a")}
             </SheetDescription>
             {selectedAnnouncement && (
-              <AnnouncementViewStats announcementId={selectedAnnouncement.id} size="md" className="mt-2" />
+              <AnnouncementViewStats
+                announcementId={selectedAnnouncement.id}
+                size="md"
+                className="mt-2"
+              />
             )}
           </SheetHeader>
           <ScrollArea className="flex-1 min-h-0">
@@ -357,7 +432,10 @@ export default function UpdatesPage() {
                 </div>
               )}
               {selectedAnnouncement && (
-                <TranslatedAnnouncementBody id={selectedAnnouncement.id} html={selectedAnnouncement.body_html} />
+                <TranslatedAnnouncementBody
+                  id={selectedAnnouncement.id}
+                  html={selectedAnnouncement.body_html}
+                />
               )}
             </div>
           </ScrollArea>
@@ -385,17 +463,26 @@ export default function UpdatesPage() {
       </Sheet>
 
       {/* Create dialog */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <Dialog
+        open={createOpen}
+        onOpenChange={(open) => {
+          setCreateOpen(open);
+          if (!open) setNewAttested(false);
+        }}
+      >
         <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>New Announcement</DialogTitle>
             <DialogDescription>
-              Create an announcement that will be visible to all members. Opted-in members will receive an email.
+              Create an announcement that will be visible to all members. Opted-in members will
+              receive an email.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 flex-1 overflow-auto py-2">
             <div className="space-y-1.5">
-              <Label htmlFor="announcement-title">Title <span className="text-destructive">*</span></Label>
+              <Label htmlFor="announcement-title">
+                Title <span className="text-destructive">*</span>
+              </Label>
               <Input
                 id="announcement-title"
                 value={newTitle}
@@ -405,29 +492,72 @@ export default function UpdatesPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Content <span className="text-destructive">*</span></Label>
-              <RichTextEditor content={newBody} onChange={setNewBody} placeholder="Write your announcement here..." />
+              <Label>
+                Content <span className="text-destructive">*</span>
+              </Label>
+              <RichTextEditor
+                content={newBody}
+                onChange={setNewBody}
+                placeholder="Write your announcement here..."
+              />
             </div>
-            <Suspense fallback={<div className="h-20 flex items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}>
+            <Suspense
+              fallback={
+                <div className="h-20 flex items-center justify-center">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              }
+            >
               <MediaRecorder
                 onMediaReady={(url, type) => {
-                  if (type === "video") { setNewVideoUrl(url); setNewAudioUrl(null); }
-                  else if (type === "audio") { setNewAudioUrl(url); setNewVideoUrl(null); }
-                  else { setNewVideoUrl(null); setNewAudioUrl(null); }
+                  if (type === "video") {
+                    setNewVideoUrl(url);
+                    setNewAudioUrl(null);
+                  } else if (type === "audio") {
+                    setNewAudioUrl(url);
+                    setNewVideoUrl(null);
+                  } else {
+                    setNewVideoUrl(null);
+                    setNewAudioUrl(null);
+                  }
                 }}
                 onBusyChange={setMediaBusy}
               />
             </Suspense>
+            <div className="flex items-start gap-3 rounded-lg border border-border p-3">
+              <Checkbox
+                id="announcement-attest"
+                checked={newAttested}
+                onCheckedChange={(checked) => setNewAttested(!!checked)}
+                className="mt-0.5"
+              />
+              <Label
+                htmlFor="announcement-attest"
+                className="text-sm font-normal leading-relaxed cursor-pointer"
+              >
+                I confirm this is a service or platform update, not marketing. Marketing and
+                newsletters go through Email Octopus. This emails every member with opportunity
+                updates on.
+              </Label>
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreate} disabled={createMutation.isPending || mediaBusy}>
-              {createMutation.isPending ? "Posting…" : mediaBusy ? "Uploading media…" : "Post Announcement"}
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreate}
+              disabled={createMutation.isPending || mediaBusy || !newAttested}
+            >
+              {createMutation.isPending
+                ? "Posting…"
+                : mediaBusy
+                  ? "Uploading media…"
+                  : "Post Announcement"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
 
       {/* Delete confirm */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>

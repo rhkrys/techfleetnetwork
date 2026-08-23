@@ -729,6 +729,7 @@ jobs:
             supabase/functions/edge-deploy-smoke/alerts.test.ts \
             supabase/functions/gumroad-webhook/lifecycle.test.ts \
             supabase/functions/send-announcement-email/message-id.test.ts \
+            supabase/functions/send-announcement-email/attestation.test.ts \
             supabase/functions/process-freescout-events/auth.test.ts \
             supabase/functions/reap-class-module-orphans/lib.test.ts \
             supabase/functions/_shared/confirm-role.test.ts \
