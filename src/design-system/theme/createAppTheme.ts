@@ -25,6 +25,12 @@ export function createAppTheme(mode: Mode): Theme {
       divider: t.divider,
     },
     shape: { borderRadius: 6 },
+    // 4px spacing grid (Tech Fleet baseline, matches index.css --space-* scale).
+    // theme.spacing(1) = 4px, so sx values step in 4px units: p:2 = 8px, p:4 = 16px,
+    // p:6 = 24px. Every layout gutter and padding snaps to the 4px grid.
+    spacing: 4,
+    // MUI's default breakpoints (xs 0 / sm 600 / md 900 / lg 1200 / xl 1536) drive the
+    // 12-column Grid and all responsive `sx` — mobile-first, content-fluid.
     typography,
     components: components(mode, t),
   });

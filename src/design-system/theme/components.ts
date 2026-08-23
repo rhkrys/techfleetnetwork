@@ -33,6 +33,14 @@ export function components(mode: Mode, t: ModeTokens): Components<Theme> {
   return {
     MuiButtonBase: {
       defaultProps: { disableRipple: true },
+      styleOverrides: {
+        // WCAG 2.4.7 Focus Visible: every interactive element (Button, IconButton,
+        // MenuItem, Tab, …) shows a clearly visible keyboard focus ring at ≥3:1
+        // contrast (the brand `ring` token). :focus-visible = keyboard only.
+        root: {
+          "&.Mui-focusVisible": { outline: `2px solid ${t.ring}`, outlineOffset: 2 },
+        },
+      },
     },
     MuiButton: {
       defaultProps: { disableElevation: true, variant: "default" },

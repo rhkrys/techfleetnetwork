@@ -30,16 +30,17 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(function Card(
   );
 });
 
+// 4px grid: p:6 = 24px, gap:1.5 = 6px (theme.spacing base is 4px).
 export const CardHeader = (props: BoxProps) => (
-  <Box {...props} sx={{ display: "flex", flexDirection: "column", gap: 0.75, p: 3, ...props.sx }} />
+  <Box {...props} sx={{ display: "flex", flexDirection: "column", gap: 1.5, p: 6, ...props.sx }} />
 );
 
 export const CardContent = (props: BoxProps) => (
-  <Box {...props} sx={{ p: 3, pt: 0, ...props.sx }} />
+  <Box {...props} sx={{ p: 6, pt: 0, ...props.sx }} />
 );
 
 export const CardFooter = (props: BoxProps) => (
-  <Box {...props} sx={{ display: "flex", alignItems: "center", p: 3, pt: 0, ...props.sx }} />
+  <Box {...props} sx={{ display: "flex", alignItems: "center", p: 6, pt: 0, ...props.sx }} />
 );
 
 export const CardTitle = ({
