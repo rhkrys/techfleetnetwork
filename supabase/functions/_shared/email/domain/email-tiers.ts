@@ -157,12 +157,6 @@ export const EMAIL_TIERS: Record<string, EmailTypeSpec> = {
     bucket: "none",
     note: "🔴 On the retired raw queue (delivering nothing). PR 2 migrates to v2. All admins.",
   },
-  "triage-digest": {
-    tier: "ops",
-    lane: "transactional",
-    bucket: "none",
-    note: "PR 13: whole feature removed (email + Discord + cron), owner decision.",
-  },
 };
 
 /** Lookup, or undefined if the template is not registered. */

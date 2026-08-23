@@ -109,8 +109,6 @@ project_id = "pzvqxdgoztbfikfuifix"
     verify_jwt = false
   [functions.check-account-identity]
     verify_jwt = false
-  [functions.triage-digest-builder]
-    verify_jwt = false
   [functions.notify-critical-fix]
     verify_jwt = false
   [functions.triage-error]
