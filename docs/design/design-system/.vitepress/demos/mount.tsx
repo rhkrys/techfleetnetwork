@@ -1,31 +1,21 @@
 // React island mount point for the docs live demos.
 //
 // Each demo is a `*.demo.tsx` React component (auto-registered by filename in
-// ./registry). We mount it inside the same MUI theme the app uses — built from
-// `createAppTheme(mode)` — bridged to the docs site's light/dark toggle. We do
-// NOT reuse DesignSystemProvider because it reads the app's ThemeProvider
-// context, which does not exist in the docs site; the MUI providers below are
-// the exact, self-contained equivalent.
+// ./registry). We mount it through the app's REAL provider stack —
+// ThemeContext + DesignSystemProvider — so components that read the app theme
+// (e.g. the AG Grid DataTable) work exactly as they do in the app. We supply a
+// CONTROLLED ThemeContext value (bridged to the docs light/dark toggle) instead
+// of the full <ThemeProvider>, so there are no localStorage / document-class
+// side effects to fight VitePress's own theming.
 import { createElement, StrictMode, type ComponentType } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { StyledEngineProvider, ThemeProvider } from "@mui/material/styles";
-import GlobalStyles from "@mui/material/GlobalStyles";
-import { createAppTheme } from "@/design-system/theme/createAppTheme";
+import { ThemeContext } from "@/components/ThemeProvider";
+import { DesignSystemProvider } from "@/design-system";
 import { registry } from "./registry";
-
-const reducedMotion = {
-  "@media (prefers-reduced-motion: reduce)": {
-    "*, *::before, *::after": {
-      animationDuration: "0.01ms !important",
-      animationIterationCount: "1 !important",
-      transitionDuration: "0.01ms !important",
-    },
-  },
-} as const;
 
 function tree(name: string, dark: boolean) {
   const Comp = registry[name] as ComponentType | undefined;
-  const theme = createAppTheme(dark ? "dark" : "light");
+  const mode = dark ? "dark" : "light";
   const body = Comp
     ? createElement(Comp)
     : createElement(
@@ -37,14 +27,9 @@ function tree(name: string, dark: boolean) {
     StrictMode,
     null,
     createElement(
-      StyledEngineProvider,
-      { injectFirst: true },
-      createElement(
-        ThemeProvider,
-        { theme },
-        createElement(GlobalStyles, { styles: reducedMotion }),
-        body
-      )
+      ThemeContext.Provider,
+      { value: { theme: mode, resolvedTheme: mode, setTheme: () => {} } },
+      createElement(DesignSystemProvider, null, body)
     )
   );
 }
