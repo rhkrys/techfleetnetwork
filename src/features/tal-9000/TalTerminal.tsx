@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFleetyChat, type FleetyMessage } from "@/hooks/useFleetyChat";
 import { useFleetyAttachment } from "@/hooks/useFleetyAttachment";
@@ -7,6 +7,7 @@ import { toChatAttachment, ACCEPTED_FILE_TYPES } from "@/lib/fleety/attachment";
 import { submitRating, type FeedbackRating } from "@/lib/fleety/feedback";
 import { dedupeSources, formatSourceLabel } from "@/lib/fleety/sources";
 import { groupConversationsByDate } from "@/lib/fleety/history";
+import { TF_LOGO } from "./tf-logo";
 import "./tal-9000.css";
 
 /**
@@ -24,30 +25,11 @@ const BOOT_LINES = [
   "Ask me anything about Tech Fleet — workshops, projects, mentors, or membership.",
 ];
 
-// ASCII rendition of the circular Tech Fleet logo, shown during the power-on boot.
-const TECH_FLEET_ASCII = String.raw`
-         .-""""""""""""-.
-       .'                '.
-      /                    \
-     |       T E C H        |
-     |                      |
-     |      F L E E T       |
-      \                    /
-       '.                .'
-         '-............-'
-`;
-
-// Boot log lines revealed as the progress bar fills.
-const BOOT_STEPS = [
-  "TAL 9000 POWER-ON SELF TEST .......... OK",
-  "MEMORY ....................... 767 CREW",
-  "TECH FLEET NETWORK LINK .............. UP",
-  "LOADING FLEETY ASSISTANT ...",
-];
+// Owner-provided Tech Fleet ASCII logo, printed line-by-line during the power-on boot.
+const TF_LOGO_LINES = TF_LOGO.split("\n");
 
 export default function TalTerminal() {
   const navigate = useNavigate();
-  const [, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const {
     messages,
@@ -73,6 +55,7 @@ export default function TalTerminal() {
   const [view, setView] = useState<"main" | "chat" | "history">("main");
   const outRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const monitorRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -80,6 +63,20 @@ export default function TalTerminal() {
   }, [messages, isLoading]);
   useEffect(() => {
     if (power === "on" && view === "chat") inputRef.current?.focus();
+  }, [power, view]);
+  // Click anywhere on the monitor (bezel, empty screen, output) → cursor returns to the input,
+  // so typing never stops. Genuine controls (links/buttons/fields) are left alone.
+  useEffect(() => {
+    const el = monitorRef.current;
+    if (!el) return;
+    const focusInput = (e: MouseEvent) => {
+      if (power !== "on" || view !== "chat") return;
+      const t = e.target as HTMLElement;
+      if (t.closest?.("a, button, input, textarea")) return;
+      inputRef.current?.focus();
+    };
+    el.addEventListener("click", focusInput);
+    return () => el.removeEventListener("click", focusInput);
   }, [power, view]);
 
   // Power-on boot sequence: ASCII Tech Fleet logo + progress bar, then the main screen.
@@ -94,7 +91,8 @@ export default function TalTerminal() {
     }
     setBootProgress(0);
     const startedAt = performance.now();
-    const DURATION = 2600;
+    // Deliberately slow (~5s total) so the logo prints line-by-line like a real 80s machine.
+    const DURATION = 5000;
     let raf = 0;
     const tick = (now: number) => {
       const pct = Math.min(100, Math.round(((now - startedAt) / DURATION) * 100));
@@ -142,7 +140,6 @@ export default function TalTerminal() {
     [user]
   );
 
-  const toClassic = useCallback(() => setSearchParams({}), [setSearchParams]);
   const exit = useCallback(() => {
     if (window.history.length > 1) navigate(-1);
     else navigate("/dashboard");
@@ -181,7 +178,7 @@ export default function TalTerminal() {
         <div className="tal9k__stage">
           {/* CRT monitor — the exact computer.svg frame; the live terminal renders inside the
               screen path via <foreignObject>, clipped to the pillowy CRT shape. */}
-          <div className="tal9k__monitor">
+          <div className="tal9k__monitor" ref={monitorRef}>
             <svg
               className="tal9k__crt"
               viewBox="0 0 730 593"
@@ -270,14 +267,12 @@ export default function TalTerminal() {
                   )}
                   {power === "booting" && (
                     <div className="tal9k__boot" data-no-translate translate="no">
-                      <pre className="tal9k__ascii">{TECH_FLEET_ASCII}</pre>
-                      <div className="tal9k__bootlog">
-                        {BOOT_STEPS.filter((_, i) => bootProgress >= (i + 1) * 20).map((s) => (
-                          <p key={s} className="tal9k__line tal9k__line--sys">
-                            {s}
-                          </p>
-                        ))}
-                      </div>
+                      {/* Owner's Tech Fleet logo printed line-by-line, synced to boot progress. */}
+                      <pre className="tal9k__bootlogo">
+                        {TF_LOGO_LINES.map((line, i) =>
+                          i < Math.ceil((bootProgress / 100) * TF_LOGO_LINES.length) ? line : ""
+                        ).join("\n")}
+                      </pre>
                       <div
                         className="tal9k__bootbar"
                         role="progressbar"
@@ -296,7 +291,6 @@ export default function TalTerminal() {
                   )}
                   {power === "on" && view === "main" && (
                     <div className="tal9k__mainscreen" data-no-translate translate="no">
-                      <pre className="tal9k__ascii tal9k__ascii--sm">{TECH_FLEET_ASCII}</pre>
                       <p className="tal9k__line tal9k__line--user">TAL 9000 ONLINE</p>
                       <p className="tal9k__line tal9k__line--sys">
                         TECH FLEET NETWORK // TERMINAL v1.0
@@ -350,13 +344,13 @@ export default function TalTerminal() {
                           value={input}
                           onChange={(e) => setInput(e.target.value)}
                           onBlur={(e) => {
-                            // Keep the terminal cursor in the "ask Fleety" prompt: if focus was
-                            // lost to nothing (a click on the screen body), pull it straight back.
-                            // Focus moving to an actual control (a panel button) is respected, so
-                            // the buttons and keyboard navigation still work.
-                            if (power === "on" && view === "chat" && !e.relatedTarget) {
-                              requestAnimationFrame(() => inputRef.current?.focus());
-                            }
+                            // Keep the terminal cursor in the "ask Fleety" prompt no matter where
+                            // you click: refocus on any blur EXCEPT when focus moves to a genuine
+                            // control (link/button/field), so those still work.
+                            if (power !== "on" || view !== "chat") return;
+                            const to = e.relatedTarget as HTMLElement | null;
+                            if (to?.closest?.("a, button, input, textarea, [tabindex]")) return;
+                            requestAnimationFrame(() => inputRef.current?.focus());
                           }}
                           placeholder={
                             attachment ? `attached: ${attachment.filename}` : "ask Fleety…"
@@ -411,14 +405,15 @@ export default function TalTerminal() {
                 </div>
               </foreignObject>
             </svg>
+            <span className="tal9k__screw tal9k__screw--tl" aria-hidden="true" />
+            <span className="tal9k__screw tal9k__screw--tr" aria-hidden="true" />
+            <span className="tal9k__screw tal9k__screw--bl" aria-hidden="true" />
+            <span className="tal9k__screw tal9k__screw--br" aria-hidden="true" />
           </div>
 
           {/* TAL eye (left) + control panel — CRT sits on the right on desktop */}
           <div className="tal9k__side">
             <div className="tal9k__eyewrap">
-              <div className="tal9k__status">
-                TAL&middot;9000 {isLoading ? "…THINKING" : "READY"}
-              </div>
               <div className="tal9k__eye" aria-hidden="true">
                 <div className="tal9k__aura" />
                 <svg viewBox="0 0 250 250" role="img">
@@ -492,23 +487,28 @@ export default function TalTerminal() {
             </div>
 
             <div className="tal9k__panel">
+              <span className="tal9k__screw tal9k__screw--tl" aria-hidden="true" />
+              <span className="tal9k__screw tal9k__screw--tr" aria-hidden="true" />
+              <span className="tal9k__screw tal9k__screw--bl" aria-hidden="true" />
+              <span className="tal9k__screw tal9k__screw--br" aria-hidden="true" />
               <div className="tal9k__panel-head">
                 <span>Console</span>
                 <span>SYS</span>
               </div>
+              {/* Real-console button states: OFF (dark beige, not clickable) · READY (glowing
+                  white, clickable) · ON (glowing green, active). Never a greyed "disabled" look. */}
               <div className="tal9k__panel-grid">
                 <button
                   type="button"
-                  className={`tal9k__btn tal9k__btn--power${power === "on" ? " is-on" : ""}`}
+                  className={`tal9k__btn tal9k__btn--power ${power === "off" ? "is-ready" : "is-on"}`}
                   aria-pressed={power === "on"}
-                  onClick={power === "on" ? powerOff : powerOn}
-                  disabled={power === "booting"}
+                  onClick={power === "off" ? powerOn : powerOff}
                 >
                   {power === "on" ? "Power" : power === "booting" ? "Booting…" : "Power On"}
                 </button>
                 <button
                   type="button"
-                  className={`tal9k__btn${view === "chat" ? " is-on" : ""}`}
+                  className={`tal9k__btn ${power !== "on" ? "" : view === "chat" ? "is-on" : "is-ready"}`}
                   aria-pressed={view === "chat"}
                   onClick={showChatView}
                   disabled={power !== "on"}
@@ -517,7 +517,7 @@ export default function TalTerminal() {
                 </button>
                 <button
                   type="button"
-                  className={`tal9k__btn${view === "history" ? " is-on" : ""}`}
+                  className={`tal9k__btn ${power !== "on" ? "" : view === "history" ? "is-on" : "is-ready"}`}
                   aria-pressed={view === "history"}
                   onClick={showHistoryView}
                   disabled={power !== "on"}
@@ -526,7 +526,7 @@ export default function TalTerminal() {
                 </button>
                 <button
                   type="button"
-                  className="tal9k__btn"
+                  className={`tal9k__btn ${power === "on" ? "is-ready" : ""}`}
                   onClick={() => fileRef.current?.click()}
                   disabled={power !== "on" || attachStatus === "extracting"}
                 >
@@ -534,16 +534,13 @@ export default function TalTerminal() {
                 </button>
                 <button
                   type="button"
-                  className="tal9k__btn"
+                  className={`tal9k__btn ${power === "on" ? "is-ready" : ""}`}
                   onClick={newChat}
                   disabled={power !== "on"}
                 >
                   New Chat
                 </button>
-                <button type="button" className="tal9k__btn" onClick={toClassic}>
-                  Classic
-                </button>
-                <button type="button" className="tal9k__btn" onClick={exit}>
+                <button type="button" className="tal9k__btn is-ready" onClick={exit}>
                   Exit
                 </button>
               </div>
