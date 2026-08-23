@@ -4,7 +4,13 @@
  * radius + --tf-btn shadows come from the theme (theme/components.ts).
  * See docs/design/design-system/components/atoms/Button.md
  */
-import { forwardRef, type ElementType } from "react";
+import {
+  forwardRef,
+  isValidElement,
+  type ElementType,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import MuiButton, { type ButtonProps as MuiButtonProps } from "@mui/material/Button";
 
 export type TfButtonVariant = NonNullable<MuiButtonProps["variant"]>;
@@ -18,6 +24,14 @@ export interface ButtonProps extends Omit<MuiButtonProps, "size"> {
    */
   component?: ElementType;
   to?: string;
+  /**
+   * Radix-style slot compat: render AS the single child element (e.g. a router
+   * `<Link>` or an `<a>`), applying the button's styling to it. Shim for the
+   * shadcn `<Button asChild><Link/></Button>` pattern — mapped onto MUI's
+   * `component`, so `<Button asChild><Link to="/x">…</Link></Button>` renders a
+   * single styled anchor (never a `<button>` wrapping an `<a>`).
+   */
+  asChild?: boolean;
 }
 
 // Sizes all share the 40px height; they differ by horizontal padding (and the
@@ -32,17 +46,47 @@ const SIZE_SX: Record<TfButtonSize, object> = {
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { size = "default", sx, variant = "default", ...props },
+  { size = "default", sx, variant = "default", asChild, children, ...props },
   ref
 ) {
+  const sizeSx = [SIZE_SX[size], ...(Array.isArray(sx) ? sx : [sx])];
+
+  // asChild: adopt the single child's element type + props (to/href/…) and style
+  // it as the button via MUI's `component`. The button's own props win on
+  // conflict; className is merged so the child keeps any classes it had.
+  if (asChild && isValidElement(children)) {
+    const child = children as ReactElement<
+      { children?: ReactNode; className?: string } & Record<string, unknown>
+    >;
+    const { children: slotChildren, className: slotClassName, ...slotProps } = child.props;
+    const mergedClassName =
+      [slotClassName, (props as { className?: string }).className].filter(Boolean).join(" ") ||
+      undefined;
+    return (
+      <MuiButton
+        ref={ref}
+        variant={variant}
+        sx={sizeSx}
+        {...(slotProps as MuiButtonProps)}
+        {...(props as MuiButtonProps)}
+        component={child.type as ElementType}
+        className={mergedClassName}
+      >
+        {slotChildren}
+      </MuiButton>
+    );
+  }
+
   return (
     <MuiButton
       ref={ref}
       variant={variant}
-      sx={[SIZE_SX[size], ...(Array.isArray(sx) ? sx : [sx])]}
+      sx={sizeSx}
       // MUI Button is polymorphic (OverridableComponent); the wrapper is not, so
       // cast the passthrough (incl. component/to) — MUI forwards them to the root.
       {...(props as MuiButtonProps)}
-    />
+    >
+      {children}
+    </MuiButton>
   );
 });

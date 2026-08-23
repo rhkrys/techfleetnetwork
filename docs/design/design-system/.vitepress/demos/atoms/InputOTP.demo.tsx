@@ -1,4 +1,4 @@
-import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/design-system";
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/design-system/keep-lib";
 
 export default function InputOTPDemo() {
   return (

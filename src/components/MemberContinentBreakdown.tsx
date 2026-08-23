@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { safeRpc } from "@/lib/supabase/safe-rpc";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/design-system";
 
 interface ContinentRow {
   continent: string;
@@ -19,7 +19,7 @@ export function MemberContinentBreakdown() {
       const { data, error } = await safeRpc<ContinentRow[]>(
         "get_member_continent_distribution",
         undefined,
-        { source: "MemberContinentBreakdown.load", severity: "warn" },
+        { source: "MemberContinentBreakdown.load", severity: "warn" }
       );
       if (!active) return;
       if (!error && data) setRows(data);

@@ -1,5 +1,6 @@
 import { CalendarPlus, Copy, ExternalLink, Mail, MapPin, Video } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/design-system";
+
 import { toast } from "@/hooks/use-toast";
 import { sanitizeHtml } from "@/lib/security";
 import { linkifyHtml } from "@/lib/linkify";
@@ -36,12 +37,11 @@ export function CommunityEventCard({ event, timeZone }: Props) {
   const time = formatEventTime(event.startUtc, event.endUtc, timeZone, event.allDay);
   const addUrl = buildGoogleCalendarTemplateUrl(event);
   const meetingUrl = extractMeetingUrl(event);
-  const isVideoLink = meetingUrl && /(meet\.google|zoom\.us|teams\.microsoft|whereby|webex)/i.test(meetingUrl);
+  const isVideoLink =
+    meetingUrl && /(meet\.google|zoom\.us|teams\.microsoft|whereby|webex)/i.test(meetingUrl);
 
   // Description: escape via linkify (which html-escapes text) then sanitize.
-  const descriptionHtml = event.description
-    ? sanitizeHtml(linkifyHtml(event.description))
-    : "";
+  const descriptionHtml = event.description ? sanitizeHtml(linkifyHtml(event.description)) : "";
 
   const copyLink = async () => {
     if (!meetingUrl) return;

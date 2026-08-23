@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Calendar } from "@/design-system";
+import { Calendar } from "@/design-system/keep-lib";
 
 export default function CalendarDemo() {
   const [date, setDate] = useState<Date | undefined>(new Date());

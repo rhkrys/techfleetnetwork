@@ -1,4 +1,4 @@
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/design-system";
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/design-system/keep-lib";
 import { Bar, BarChart, CartesianGrid, XAxis } from "recharts";
 
 const data = [

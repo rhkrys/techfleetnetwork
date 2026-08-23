@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { getSessionSafe } from "@/lib/auth/session-port";
 import { MessageSquare, ExternalLink, Copy, Check, Loader2, RefreshCw } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/design-system";
+
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -58,7 +59,11 @@ export function DiscordInviteBanner() {
   };
 
   return (
-    <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 sm:p-5" role="region" aria-label="Discord invite">
+    <div
+      className="rounded-lg border border-primary/20 bg-primary/5 p-4 sm:p-5"
+      role="region"
+      aria-label="Discord invite"
+    >
       <div className="flex items-start gap-3">
         <div className="rounded-full bg-primary/10 p-2 flex-shrink-0" aria-hidden="true">
           <MessageSquare className="h-5 w-5 text-primary" />
@@ -66,8 +71,8 @@ export function DiscordInviteBanner() {
         <div className="flex-1 min-w-0 space-y-2">
           <h3 className="font-semibold text-foreground text-sm">Join Tech Fleet on Discord</h3>
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Tech Fleet's community lives on Discord. Get your personal invite link to join
-            and connect with other members, attend events, and collaborate on projects.
+            Tech Fleet's community lives on Discord. Get your personal invite link to join and
+            connect with other members, attend events, and collaborate on projects.
           </p>
 
           {inviteUrl ? (
@@ -81,12 +86,7 @@ export function DiscordInviteBanner() {
                 <ExternalLink className="h-4 w-4" />
                 Open Discord Invite
               </a>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={copyToClipboard}
-                className="gap-2"
-              >
+              <Button variant="outline" size="sm" onClick={copyToClipboard} className="gap-2">
                 {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                 {copied ? "Copied!" : "Copy Link"}
               </Button>
@@ -106,12 +106,7 @@ export function DiscordInviteBanner() {
               </Button>
             </div>
           ) : (
-            <Button
-              onClick={generateInvite}
-              disabled={generating}
-              size="sm"
-              className="gap-2 mt-1"
-            >
+            <Button onClick={generateInvite} disabled={generating} size="sm" className="gap-2 mt-1">
               {generating ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />

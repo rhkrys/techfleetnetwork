@@ -5,7 +5,8 @@
 import { useState } from "react";
 import { ThumbsDown, ThumbsUp } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/design-system";
+
 import { useAuth } from "@/contexts/AuthContext";
 import { FEEDBACK_REASONS, submitRating, submitReasons } from "@/lib/fleety/feedback";
 

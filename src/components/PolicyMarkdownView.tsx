@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/design-system";
+
 import { usePolicy } from "@/hooks/usePolicy";
 
 interface Props {
@@ -20,13 +21,23 @@ const urlCache = new Map<string, string>();
  * content is sourced from `policy_versions` (DB-first, versioned, no redeploy
  * needed to publish updates). `markdownUrl` is a legacy fallback path.
  */
-export function PolicyMarkdownView({ title, effective, contactEmail, policyKey, markdownUrl }: Props) {
+export function PolicyMarkdownView({
+  title,
+  effective,
+  contactEmail,
+  policyKey,
+  markdownUrl,
+}: Props) {
   const policyQuery = usePolicy(policyKey ?? "__none__");
   const usingDb = Boolean(policyKey);
 
   // Legacy URL fetch path (kept for any remaining callers).
-  const [urlMd, setUrlMd] = useState<string>(() => (markdownUrl ? urlCache.get(markdownUrl) ?? "" : ""));
-  const [urlLoading, setUrlLoading] = useState<boolean>(() => !!markdownUrl && !urlCache.has(markdownUrl));
+  const [urlMd, setUrlMd] = useState<string>(() =>
+    markdownUrl ? (urlCache.get(markdownUrl) ?? "") : ""
+  );
+  const [urlLoading, setUrlLoading] = useState<boolean>(
+    () => !!markdownUrl && !urlCache.has(markdownUrl)
+  );
   const [urlError, setUrlError] = useState(false);
 
   useEffect(() => {
@@ -60,7 +71,7 @@ export function PolicyMarkdownView({ title, effective, contactEmail, policyKey, 
     };
   }, [markdownUrl, usingDb]);
 
-  const md = usingDb ? policyQuery.data?.body_md ?? "" : urlMd;
+  const md = usingDb ? (policyQuery.data?.body_md ?? "") : urlMd;
   const loading = usingDb ? policyQuery.isLoading : urlLoading;
   const error = usingDb ? !!policyQuery.error : urlError;
 
@@ -87,7 +98,9 @@ export function PolicyMarkdownView({ title, effective, contactEmail, policyKey, 
         aria-labelledby="policy-text"
         className="prose prose-sm dark:prose-invert max-w-none"
       >
-        <h2 id="policy-text" className="sr-only">{title}</h2>
+        <h2 id="policy-text" className="sr-only">
+          {title}
+        </h2>
         {loading && (
           <div className="space-y-3" aria-label="Loading policy">
             <Skeleton className="h-5 w-2/3" />

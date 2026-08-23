@@ -1,9 +1,5 @@
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/design-system";
+
 import { MEMBERSHIP_FAQ } from "@/data/membership-faq";
 import { cn } from "@/lib/utils";
 
@@ -18,14 +14,8 @@ export interface MembershipFaqProps {
  */
 export function MembershipFaq({ className }: MembershipFaqProps) {
   return (
-    <section
-      aria-labelledby="membership-faq-heading"
-      className={cn("space-y-4", className)}
-    >
-      <h3
-        id="membership-faq-heading"
-        className="text-lg font-semibold text-foreground"
-      >
+    <section aria-labelledby="membership-faq-heading" className={cn("space-y-4", className)}>
+      <h3 id="membership-faq-heading" className="text-lg font-semibold text-foreground">
         Membership FAQ
       </h3>
       <Accordion type="single" collapsible className="w-full">

@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/design-system";
+
 import { Compass, Rocket, Search } from "lucide-react";
 import { useQuestPaths, useUserQuestSelections } from "@/hooks/use-quest";
 import { useQuestPathMaps } from "@/lib/quest/path-maps";
@@ -19,19 +20,12 @@ export function QuestOverview() {
   const [previewPathId, setPreviewPathId] = useState<string | null>(null);
   const [congratsPathId, setCongratsPathId] = useState<string | null>(null);
 
-  const selectedPathIds = useMemo(
-    () => selections?.map((s) => s.path_id) ?? [],
-    [selections],
-  );
+  const selectedPathIds = useMemo(() => selections?.map((s) => s.path_id) ?? [], [selections]);
 
   const completedPathSlugs = useMemo(() => {
     if (!selections || !paths) return new Set<string>();
-    const completedIds = new Set(
-      selections.filter((s) => s.completed_at).map((s) => s.path_id),
-    );
-    return new Set(
-      paths.filter((p) => completedIds.has(p.id)).map((p) => p.slug),
-    );
+    const completedIds = new Set(selections.filter((s) => s.completed_at).map((s) => s.path_id));
+    return new Set(paths.filter((p) => completedIds.has(p.id)).map((p) => p.slug));
   }, [selections, paths]);
 
   const hasActiveQuest = selectedPathIds.length > 0;
@@ -51,7 +45,11 @@ export function QuestOverview() {
 
   if (pathsLoading || selectionsLoading) {
     return (
-      <div className="flex items-center justify-center py-16" role="status" aria-label="Loading quests">
+      <div
+        className="flex items-center justify-center py-16"
+        role="status"
+        aria-label="Loading quests"
+      >
         <div className="h-8 w-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
@@ -91,15 +89,12 @@ export function QuestOverview() {
       ) : (
         <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
           <Compass className="h-10 w-10 text-muted-foreground mb-4" />
-          <h2 className="text-lg font-semibold text-foreground mb-1">
-            No quests yet
-          </h2>
+          <h2 className="text-lg font-semibold text-foreground mb-1">No quests yet</h2>
           <p className="text-sm text-muted-foreground max-w-sm mb-6">
-            Browse available quests, review what's involved, and subscribe to begin tracking your progress.
+            Browse available quests, review what's involved, and subscribe to begin tracking your
+            progress.
           </p>
-          <Button onClick={() => setPickerOpen(true)}>
-            Find Quests
-          </Button>
+          <Button onClick={() => setPickerOpen(true)}>Find Quests</Button>
         </div>
       )}
 
@@ -117,7 +112,9 @@ export function QuestOverview() {
       {previewPathId && (
         <QuestPreviewDialog
           open={!!previewPathId}
-          onOpenChange={(open) => { if (!open) setPreviewPathId(null); }}
+          onOpenChange={(open) => {
+            if (!open) setPreviewPathId(null);
+          }}
           pathId={previewPathId}
           completedPathSlugs={completedPathSlugs}
           onQuestSelected={handleQuestSelected}

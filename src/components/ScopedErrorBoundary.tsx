@@ -3,7 +3,7 @@ import { reportError } from "@/services/error-reporter.service";
 import { isChunkLoadMessage } from "@/lib/lazy-with-retry";
 import { isDomExtensionMutationError } from "@/lib/observability/classify";
 import { AlertCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/design-system";
 
 interface Props {
   label: string;
@@ -86,7 +86,11 @@ export class ScopedErrorBoundary extends Component<Props, State> {
     if (!this.state.hasError) {
       // `key` forces full remount of children when we recover, dropping any
       // half-mounted subtree left behind by the extension's DOM edit.
-      return <div key={this.state.resetKey} style={{ display: "contents" }}>{this.props.children}</div>;
+      return (
+        <div key={this.state.resetKey} style={{ display: "contents" }}>
+          {this.props.children}
+        </div>
+      );
     }
     if (this.props.fallback !== undefined) return this.props.fallback;
 
@@ -96,12 +100,10 @@ export class ScopedErrorBoundary extends Component<Props, State> {
         className="flex flex-col items-center justify-center gap-4 rounded-lg border border-border/40 bg-card p-8 text-center"
       >
         <AlertCircle className="h-10 w-10 text-destructive" aria-hidden />
-        <h2 className="text-lg font-semibold text-foreground">
-          {this.props.label} hit a snag
-        </h2>
+        <h2 className="text-lg font-semibold text-foreground">{this.props.label} hit a snag</h2>
         <p className="max-w-md text-sm text-muted-foreground">
-          We saved the details for the team. The rest of the page is still
-          working — try again or move on for now.
+          We saved the details for the team. The rest of the page is still working — try again or
+          move on for now.
         </p>
         <Button variant="outline" onClick={this.handleRetry}>
           Try again

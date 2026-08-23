@@ -1,4 +1,5 @@
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/design-system";
+
 import { SafeExternalLink } from "@/components/security/SafeExternalLink";
 import { TranslatedContent } from "@/components/i18n/TranslatedContent";
 import type { ReactNode } from "react";
@@ -21,16 +22,21 @@ interface ReadOnlyFieldProps {
  * into the viewer's locale (English passes through unchanged).
  */
 export function ReadOnlyField({
-  label, value, children,
-  entityTable, entityId, columnName, contentFormat = "plain",
+  label,
+  value,
+  children,
+  entityTable,
+  entityId,
+  columnName,
+  contentFormat = "plain",
 }: ReadOnlyFieldProps) {
   if (!children && (!value || !value.trim())) return null;
   const translatable = !children && entityTable && entityId && columnName;
   return (
     <div className="space-y-1">
       <p className="text-sm font-semibold text-foreground">{label}</p>
-      {children ?? (
-        translatable ? (
+      {children ??
+        (translatable ? (
           <TranslatedContent
             as="p"
             className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed pl-3"
@@ -41,9 +47,10 @@ export function ReadOnlyField({
             contentFormat={contentFormat}
           />
         ) : (
-          <p className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed pl-3">{value}</p>
-        )
-      )}
+          <p className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed pl-3">
+            {value}
+          </p>
+        ))}
     </div>
   );
 }
@@ -82,7 +89,9 @@ export function ReadOnlyArrayField({ label, items }: ReadOnlyArrayFieldProps) {
       <p className="text-sm font-semibold text-foreground">{label}</p>
       <div className="flex flex-wrap gap-1.5 pl-3">
         {items.map((item) => (
-          <Badge key={item} variant="outline" className="text-xs">{item}</Badge>
+          <Badge key={item} variant="outline" className="text-xs">
+            {item}
+          </Badge>
         ))}
       </div>
     </div>

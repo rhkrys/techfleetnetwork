@@ -1,4 +1,5 @@
-import { toast, Toaster, Button } from "@/design-system";
+import { Button } from "@/design-system";
+import { toast, Toaster } from "@/design-system/keep-lib";
 
 export default function ToasterDemo() {
   return (

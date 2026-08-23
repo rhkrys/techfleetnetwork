@@ -5,7 +5,7 @@ import {
   CommandEmpty,
   CommandGroup,
   CommandItem,
-} from "@/design-system";
+} from "@/design-system/keep-lib";
 
 export default function CommandDemo() {
   return (

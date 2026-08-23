@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/design-system";
+
 import { Camera, X, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -75,10 +76,22 @@ export function ClassImageUpload({ userId, value, onChange, className, classId }
             loading="lazy"
           />
           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-            <Button type="button" variant="secondary" size="sm" onClick={() => inputRef.current?.click()} disabled={uploading}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => inputRef.current?.click()}
+              disabled={uploading}
+            >
               <Camera className="h-4 w-4 mr-1" /> Replace
             </Button>
-            <Button type="button" variant="destructive" size="sm" onClick={handleRemove} disabled={uploading}>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={handleRemove}
+              disabled={uploading}
+            >
               <X className="h-4 w-4 mr-1" /> Remove
             </Button>
           </div>

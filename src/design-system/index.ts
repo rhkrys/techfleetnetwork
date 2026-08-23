@@ -127,8 +127,6 @@ export { SaveStatus } from "./components/molecules/SaveStatus";
 export type { SaveStatusProps, SaveState } from "./components/molecules/SaveStatus";
 export { ValidatedField } from "./components/molecules/ValidatedField";
 export type { ValidatedFieldProps } from "./components/molecules/ValidatedField";
-// KEEP-LIB, re-exported (interim; rebuilt on raw libs at teardown)
-export * from "./components/atoms/InputOTP";
 
 // Molecules — react-hook-form field adapters
 export { RHFTextField } from "./components/molecules/form/RHFTextField";
@@ -175,13 +173,12 @@ export {
 export type { SheetProps } from "./components/organisms/Sheet";
 export { Drawer } from "./components/organisms/Drawer";
 export type { DrawerProps } from "./components/organisms/Drawer";
-// AG Grid, re-exported unchanged (see DataTable.tsx). The DS table solution.
-export { DataTable, ThemedAgGrid } from "./components/organisms/DataTable";
-// KEEP-LIB organisms, re-exported (interim; rebuilt on raw libs at teardown)
-export * from "./components/organisms/Command";
-export * from "./components/organisms/Calendar";
-export * from "./components/organisms/Chart";
-export { Toaster, toast } from "./components/organisms/Toaster";
+// KEEP-LIBRARIES (AG Grid DataTable, recharts Chart, cmdk Command, react-day-picker
+// Calendar, sonner Toaster/toast, input-otp InputOTP) are deliberately NOT re-exported
+// from this barrel — they pull heavy third-party graphs (and the AG Grid →
+// error-reporter chain) that would bloat every `@/design-system` import and break
+// unrelated component tests. Import them from the subpath instead:
+//   import { DataTable, toast } from "@/design-system/keep-lib";
 
 // ───────────────────────────────────────────────────────────────────────────
 // MUI Core catalog completion — every remaining @mui/material component, themed

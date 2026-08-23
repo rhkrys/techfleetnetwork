@@ -3,7 +3,8 @@
 // only presentation so the three surfaces render the same control.
 import { useRef } from "react";
 import { FileText, Loader2, Paperclip, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/design-system";
+
 import { ACCEPTED_FILE_TYPES, type FleetyAttachment } from "@/lib/fleety/attachment";
 import type { AttachStatus } from "@/hooks/useFleetyAttachment";
 

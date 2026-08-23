@@ -7,7 +7,8 @@
 
 import { memo } from "react";
 import { ExternalLink, Globe } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/design-system";
+
 import { isSafeUrl } from "@/lib/security";
 
 export interface RecommendationData {
@@ -33,7 +34,10 @@ const ExploreRecommendationCard = memo(function ExploreRecommendationCard({
       {/* Title + type badge */}
       <div className="flex items-start justify-between gap-2">
         <h2 className="text-lg font-semibold text-foreground leading-snug">{title}</h2>
-        <Badge variant="outline" className="shrink-0 gap-1 text-xs border-primary/40 text-primary capitalize">
+        <Badge
+          variant="outline"
+          className="shrink-0 gap-1 text-xs border-primary/40 text-primary capitalize"
+        >
           {isWeb && <Globe className="h-3 w-3" />}
           {type}
         </Badge>
@@ -41,14 +45,18 @@ const ExploreRecommendationCard = memo(function ExploreRecommendationCard({
 
       {/* Description */}
       <div className="space-y-1">
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Description</p>
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Description
+        </p>
         <p className="text-sm text-muted-foreground leading-relaxed">{description}</p>
       </div>
 
       {/* Why we recommend - only for non-web */}
       {!isWeb && reason && (
         <div className="space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">🌟 Why We Recommend</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            🌟 Why We Recommend
+          </p>
           <p className="text-sm text-muted-foreground leading-relaxed">{reason}</p>
         </div>
       )}

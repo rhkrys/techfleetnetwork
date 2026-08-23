@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, memo } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/design-system";
+
 import { Check, Sparkles, ArrowRight } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -10,21 +11,53 @@ import { toast } from "sonner";
 import type { QuestPath } from "@/services/quest.service";
 
 const INTEREST_OPTIONS = [
-  { id: "Train on project teams", label: "Train on project teams", description: "Join real client project teams" },
+  {
+    id: "Train on project teams",
+    label: "Train on project teams",
+    description: "Join real client project teams",
+  },
   { id: "Take classes", label: "Take classes", description: "Enroll in masterclasses and courses" },
-  { id: "Get mentorship", label: "Get mentorship", description: "Learn from experienced practitioners" },
-  { id: "Volunteer for Tech Fleet's nonprofit organization", label: "Volunteer for Tech Fleet", description: "Contribute to our nonprofit mission" },
-  { id: "Join a community of practice", label: "Join a community of practice", description: "Connect with like-minded professionals" },
-  { id: "exploring", label: "I'm not sure yet, still exploring", description: "Browse all paths and discover what excites you" },
+  {
+    id: "Get mentorship",
+    label: "Get mentorship",
+    description: "Learn from experienced practitioners",
+  },
+  {
+    id: "Volunteer for Tech Fleet's nonprofit organization",
+    label: "Volunteer for Tech Fleet",
+    description: "Contribute to our nonprofit mission",
+  },
+  {
+    id: "Join a community of practice",
+    label: "Join a community of practice",
+    description: "Connect with like-minded professionals",
+  },
+  {
+    id: "exploring",
+    label: "I'm not sure yet, still exploring",
+    description: "Browse all paths and discover what excites you",
+  },
 ] as const;
 
 const INTEREST_PATH_MAP: Record<string, string[]> = {
-  "Train on project teams": ["plan", "observe", "service-leader", "agile-mindset", "client-projects"],
+  "Train on project teams": [
+    "plan",
+    "observe",
+    "service-leader",
+    "agile-mindset",
+    "client-projects",
+  ],
   "Take classes": ["plan", "learn-skills", "service-leader", "agile-mindset"],
   "Get mentorship": ["plan", "observe", "service-leader", "agile-mindset", "client-projects"],
-  "Volunteer for Tech Fleet's nonprofit organization": ["plan", "learn-skills", "service-leader", "agile-mindset", "volunteer"],
+  "Volunteer for Tech Fleet's nonprofit organization": [
+    "plan",
+    "learn-skills",
+    "service-leader",
+    "agile-mindset",
+    "volunteer",
+  ],
   "Join a community of practice": ["plan", "service-leader", "measure-practices"],
-  "exploring": [],
+  exploring: [],
 };
 
 interface QuestIntakeWizardProps {
@@ -42,7 +75,8 @@ export function QuestIntakeWizard({ onComplete }: QuestIntakeWizardProps) {
 
   const toggleInterest = useCallback((id: string) => {
     setSelectedInterests((prev) => {
-      if (id === "exploring") return prev.includes(id) ? prev.filter((i) => i !== id) : ["exploring"];
+      if (id === "exploring")
+        return prev.includes(id) ? prev.filter((i) => i !== id) : ["exploring"];
       const next = prev.filter((i) => i !== "exploring");
       return next.includes(id) ? next.filter((i) => i !== id) : [...next, id];
     });
@@ -69,7 +103,10 @@ export function QuestIntakeWizard({ onComplete }: QuestIntakeWizardProps) {
     if (!user) return;
     setSaving(true);
     try {
-      await supabase.from("profiles").update({ interests: selectedInterests.filter((i) => i !== "exploring") }).eq("user_id", user.id);
+      await supabase
+        .from("profiles")
+        .update({ interests: selectedInterests.filter((i) => i !== "exploring") })
+        .eq("user_id", user.id);
       await refreshProfile();
       setStep("recommendations");
     } catch {
@@ -108,7 +145,8 @@ export function QuestIntakeWizard({ onComplete }: QuestIntakeWizardProps) {
           <Sparkles className="h-10 w-10 text-primary mx-auto" />
           <h2 className="text-2xl font-bold text-foreground">What do you want to do?</h2>
           <p className="text-muted-foreground">
-            Select the activities that interest you most. We'll recommend a personalized learning path.
+            Select the activities that interest you most. We'll recommend a personalized learning
+            path.
           </p>
         </div>
 
@@ -142,7 +180,9 @@ export function QuestIntakeWizard({ onComplete }: QuestIntakeWizardProps) {
     <div className="max-w-2xl mx-auto space-y-8">
       <div className="text-center space-y-2">
         <h2 className="text-2xl font-bold text-foreground">
-          {selectedInterests.includes("exploring") ? "Explore These Paths" : "Your Recommended Paths"}
+          {selectedInterests.includes("exploring")
+            ? "Explore These Paths"
+            : "Your Recommended Paths"}
         </h2>
         <p className="text-muted-foreground">
           {selectedInterests.includes("exploring")
@@ -162,7 +202,12 @@ export function QuestIntakeWizard({ onComplete }: QuestIntakeWizardProps) {
           <p className="text-sm text-muted-foreground">
             Total estimated time: ~{getTotalWeeks(recommendedPaths)} weeks (paths can overlap)
           </p>
-          <Button onClick={handleStartJourney} disabled={saving} size="lg" className="w-full sm:w-auto sm:min-w-[200px]">
+          <Button
+            onClick={handleStartJourney}
+            disabled={saving}
+            size="lg"
+            className="w-full sm:w-auto sm:min-w-[200px]"
+          >
             {saving ? "Setting up..." : "Start Your Journey"}
             <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
@@ -238,10 +283,12 @@ const RecommendedPathCard = memo(function RecommendedPathCard({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <h3 className="font-semibold text-foreground truncate">{path.title}</h3>
-          <span className={cn(
-            "text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0",
-            prereqsMet ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"
-          )}>
+          <span
+            className={cn(
+              "text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0",
+              prereqsMet ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"
+            )}
+          >
             {prereqsMet ? "Ready" : "Locked"}
           </span>
         </div>

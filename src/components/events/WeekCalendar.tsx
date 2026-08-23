@@ -1,7 +1,8 @@
 import { useMemo, useState, useRef, useEffect } from "react";
 import { ChevronLeft, ChevronRight, AlertCircle } from "lucide-react";
 import { formatInTimeZone } from "date-fns-tz";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/design-system";
+
 import { useCommunityEventsWeek } from "@/hooks/useCommunityEventsWeek";
 import { addWeeks, formatWeekLabel, getWeekRange } from "@/lib/events/weekRange";
 import { formatTimeRangeWithZone, getTimezoneAbbreviation } from "@/lib/events/formatEventTime";
@@ -91,25 +92,22 @@ export function WeekCalendar({ timeZone, fallbackUrl }: Props) {
 
   const { start: weekStart, end: weekEnd } = useMemo(
     () => getWeekRange(refDate, timeZone),
-    [refDate, timeZone],
+    [refDate, timeZone]
   );
 
   // Bound week navigation: cannot go before the current week, cannot go more
   // than one year ahead. Keeps the view aligned with what the cache holds and
   // prevents users from ever seeing stale/historical data.
-  const { start: currentWeekStart } = useMemo(
-    () => getWeekRange(new Date(), timeZone),
-    [timeZone],
-  );
-  const maxWeekStart = useMemo(
-    () => addWeeks(currentWeekStart, 51),
-    [currentWeekStart],
-  );
+  const { start: currentWeekStart } = useMemo(() => getWeekRange(new Date(), timeZone), [timeZone]);
+  const maxWeekStart = useMemo(() => addWeeks(currentWeekStart, 51), [currentWeekStart]);
 
   // Defense-in-depth: if HMR / persisted state / hot reload ever leaves an
   // out-of-bounds refDate behind, snap back to "now" on mount + on TZ change.
   useEffect(() => {
-    if (weekStart.getTime() < currentWeekStart.getTime() || weekStart.getTime() > maxWeekStart.getTime()) {
+    if (
+      weekStart.getTime() < currentWeekStart.getTime() ||
+      weekStart.getTime() > maxWeekStart.getTime()
+    ) {
       setRefDate(new Date());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -147,7 +145,7 @@ export function WeekCalendar({ timeZone, fallbackUrl }: Props) {
     const allDay: { ev: CommunityEvent; dayIdx: number }[] = [];
     const perDay: { ev: CommunityEvent; topPx: number; heightPx: number }[][] = Array.from(
       { length: 7 },
-      () => [],
+      () => []
     );
     for (const ev of data ?? []) {
       const start = new Date(ev.startUtc);
@@ -216,10 +214,7 @@ export function WeekCalendar({ timeZone, fallbackUrl }: Props) {
               <ChevronRight className="h-4 w-4" aria-hidden="true" />
             </Button>
           </div>
-          <div
-            className="text-sm font-medium text-foreground"
-            aria-live="polite"
-          >
+          <div className="text-sm font-medium text-foreground" aria-live="polite">
             {formatWeekLabel(weekStart, timeZone)}
           </div>
           <div className="text-xs text-muted-foreground">{tzAbbr || timeZone}</div>
@@ -235,14 +230,14 @@ export function WeekCalendar({ timeZone, fallbackUrl }: Props) {
                 key={d.iso}
                 className={cn(
                   "px-1 py-2 text-center text-xs font-medium",
-                  isToday ? "text-primary" : "text-muted-foreground",
+                  isToday ? "text-primary" : "text-muted-foreground"
                 )}
               >
                 <div>{d.dayLabel}</div>
                 <div
                   className={cn(
                     "mx-auto mt-0.5 inline-flex h-7 w-7 items-center justify-center rounded-full text-sm",
-                    isToday ? "bg-primary text-primary-foreground font-semibold" : "",
+                    isToday ? "bg-primary text-primary-foreground font-semibold" : ""
                   )}
                 >
                   {d.dayNum}
@@ -284,7 +279,10 @@ export function WeekCalendar({ timeZone, fallbackUrl }: Props) {
           </div>
         )}
         {isError && (
-          <div role="alert" className="m-3 rounded border border-destructive/40 bg-destructive/5 p-3 text-sm">
+          <div
+            role="alert"
+            className="m-3 rounded border border-destructive/40 bg-destructive/5 p-3 text-sm"
+          >
             <div className="flex items-start gap-2">
               <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" aria-hidden="true" />
               <p>
@@ -327,13 +325,14 @@ export function WeekCalendar({ timeZone, fallbackUrl }: Props) {
                 return (
                   <div
                     key={d.iso}
-                    className={cn(
-                      "relative border-l",
-                      isToday && "bg-primary/[0.04]",
-                    )}
+                    className={cn("relative border-l", isToday && "bg-primary/[0.04]")}
                   >
                     {Array.from({ length: 24 }, (_, h) => (
-                      <div key={h} className="border-b border-border/50" style={{ height: HOUR_PX }} />
+                      <div
+                        key={h}
+                        className="border-b border-border/50"
+                        style={{ height: HOUR_PX }}
+                      />
                     ))}
                     {positioned
                       .filter((p) => p.dayIdx === dayIdx)

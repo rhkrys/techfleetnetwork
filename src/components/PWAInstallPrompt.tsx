@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { X, Download, Share } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/design-system";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -77,19 +77,12 @@ export function PWAInstallPrompt() {
       <div className="rounded-xl border border-border bg-card p-4 shadow-xl">
         <div className="flex items-start gap-3">
           <div className="flex-shrink-0 rounded-lg bg-primary/10 p-2">
-            <img
-              src="/tech-fleet-logo.svg"
-              alt=""
-              className="h-8 w-8"
-              aria-hidden="true"
-            />
+            <img src="/tech-fleet-logo.svg" alt="" className="h-8 w-8" aria-hidden="true" />
           </div>
 
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-foreground">
-                Install Tech Fleet Network
-              </h3>
+              <h3 className="text-sm font-semibold text-foreground">Install Tech Fleet Network</h3>
               <button
                 onClick={handleDismiss}
                 className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
@@ -115,11 +108,7 @@ export function PWAInstallPrompt() {
                   </span>
                 </div>
               ) : (
-                <Button
-                  size="sm"
-                  onClick={handleInstall}
-                  className="gap-1.5 text-xs"
-                >
+                <Button size="sm" onClick={handleInstall} className="gap-1.5 text-xs">
                   <Download className="h-3.5 w-3.5" />
                   Install App
                 </Button>
