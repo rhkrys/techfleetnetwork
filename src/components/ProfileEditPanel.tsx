@@ -1,23 +1,58 @@
 import { useState, useEffect, type FormEvent } from "react";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { AlertCircle, User, Globe, Check, ChevronsUpDown, Mail, Trash2, KeyRound, Clock, Search } from "lucide-react";
+import {
+  AlertCircle,
+  User,
+  Globe,
+  Check,
+  ChevronsUpDown,
+  Mail,
+  Trash2,
+  KeyRound,
+  Clock,
+  Search,
+} from "lucide-react";
 import { AvatarUpload } from "@/components/AvatarUpload";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { cn } from "@/lib/utils";
-import { profileSchema, ACTIVITY_OPTIONS, PROFILE_FIELD_LABELS, PROFILE_FIELD_GUIDANCE } from "@/lib/validators/profile";
+import {
+  profileSchema,
+  ACTIVITY_OPTIONS,
+  PROFILE_FIELD_LABELS,
+  PROFILE_FIELD_GUIDANCE,
+} from "@/lib/validators/profile";
 import { showFormErrors, scrollToFirstError } from "@/lib/form-validation";
 import { MultiSelect, type MultiSelectOption } from "@/components/ui/multi-select";
 import { EDUCATION_OPTIONS } from "@/lib/application-options";
 import { ExperienceAreasSelect } from "@/components/ExperienceAreasSelect";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
 import { ProfileService } from "@/services/profile.service";
 import { sessionPort } from "@/features/auth/ports/session.port";
 import { COUNTRIES } from "@/lib/countries";
@@ -39,11 +74,17 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
   const { user, profile, refreshProfile, signOut } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({
-    firstName: "", lastName: "", email: "", country: "", timezone: "",
-    discordUsername: "", interests: [] as string[],
-    portfolio_url: "", linkedin_url: "",
-    experience_areas: [] as string[], professional_goals: "",
-    notify_training_opportunities: false, notify_announcements: false,
+    firstName: "",
+    lastName: "",
+    email: "",
+    country: "",
+    timezone: "",
+    discordUsername: "",
+    interests: [] as string[],
+    portfolio_url: "",
+    linkedin_url: "",
+    experience_areas: [] as string[],
+    professional_goals: "",
     education_background: [] as string[],
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -56,7 +97,8 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
   const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
-  const isOAuth = user?.app_metadata?.provider === "google" || user?.app_metadata?.providers?.includes("google");
+  const isOAuth =
+    user?.app_metadata?.provider === "google" || user?.app_metadata?.providers?.includes("google");
 
   // Reset initialized flag when panel closes so it re-syncs on next open
   useEffect(() => {
@@ -77,8 +119,6 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
         linkedin_url: profile.linkedin_url || "",
         experience_areas: profile.experience_areas || [],
         professional_goals: profile.professional_goals || "",
-        notify_training_opportunities: profile.notify_training_opportunities || false,
-        notify_announcements: (profile as any).notify_announcements || false,
         education_background: profile.education_background || [],
       });
       setErrors({});
@@ -108,12 +148,14 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
       linkedin_url: form.linkedin_url,
       experience_areas: form.experience_areas,
       professional_goals: form.professional_goals,
-      notify_training_opportunities: form.notify_training_opportunities,
-      notify_announcements: form.notify_announcements,
       education_background: form.education_background,
     });
     if (!result.success) {
-      reportValidationRejection("profileSchema", result.error.issues, "ProfileEditPanel.handleSubmit");
+      reportValidationRejection(
+        "profileSchema",
+        result.error.issues,
+        "ProfileEditPanel.handleSubmit"
+      );
       const fieldErrors: Record<string, string> = {};
       result.error.issues.forEach((err) => {
         const field = err.path[0] as string;
@@ -203,18 +245,23 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" resizeKey="profile-edit" className="w-full sm:max-w-2xl flex flex-col p-0 overflow-hidden">
+      <SheetContent
+        side="right"
+        resizeKey="profile-edit"
+        className="w-full sm:max-w-2xl flex flex-col p-0 overflow-hidden"
+      >
         <SheetHeader className="px-6 pt-6 pb-4 border-b">
           <SheetTitle className="text-xl">Edit Profile</SheetTitle>
-          <SheetDescription>
-            Update your profile information below.
-          </SheetDescription>
+          <SheetDescription>Update your profile information below.</SheetDescription>
         </SheetHeader>
 
         <ScrollArea className="flex-1 px-6 py-4">
           <form id="profile-edit-form" onSubmit={handleSubmit} className="space-y-6" noValidate>
             {errors.general && (
-              <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm" role="alert">
+              <div
+                className="p-3 rounded-md bg-destructive/10 text-destructive text-sm"
+                role="alert"
+              >
                 {errors.general}
               </div>
             )}
@@ -225,7 +272,8 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
                 userId={user.id}
                 currentUrl={profile?.avatar_url || null}
                 initials={
-                  `${(form.firstName?.[0] || "").toUpperCase()}${(form.lastName?.[0] || "").toUpperCase()}` || "U"
+                  `${(form.firstName?.[0] || "").toUpperCase()}${(form.lastName?.[0] || "").toUpperCase()}` ||
+                  "U"
                 }
                 onUploaded={async () => {
                   await refreshProfile();
@@ -237,7 +285,10 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
             <div className="space-y-1.5">
               <Label htmlFor="edit-email">Email</Label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                <Mail
+                  className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
+                  aria-hidden="true"
+                />
                 <Input
                   id="edit-email"
                   type="email"
@@ -250,7 +301,9 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
                 />
               </div>
               {isOAuth ? (
-                <p className="text-xs text-muted-foreground">Email is managed by your Google account.</p>
+                <p className="text-xs text-muted-foreground">
+                  Email is managed by your Google account.
+                </p>
               ) : (
                 <p className="text-xs text-muted-foreground">Update your contact email address.</p>
               )}
@@ -264,7 +317,10 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
             <div className="space-y-1.5">
               <Label htmlFor="edit-firstName">First name</Label>
               <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                <User
+                  className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
+                  aria-hidden="true"
+                />
                 <Input
                   id="edit-firstName"
                   value={form.firstName}
@@ -285,7 +341,10 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
             <div className="space-y-1.5">
               <Label htmlFor="edit-lastName">Last name</Label>
               <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                <User
+                  className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
+                  aria-hidden="true"
+                />
                 <Input
                   id="edit-lastName"
                   value={form.lastName}
@@ -311,10 +370,16 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
                     variant="outline"
                     role="combobox"
                     aria-expanded={countryOpen}
-                    className={cn("w-full justify-between pl-10 relative font-normal", !form.country && "text-muted-foreground")}
+                    className={cn(
+                      "w-full justify-between pl-10 relative font-normal",
+                      !form.country && "text-muted-foreground"
+                    )}
                     aria-invalid={!!errors.country}
                   >
-                    <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                    <Globe
+                      className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
+                      aria-hidden="true"
+                    />
                     {form.country || "Search or select a country..."}
                     <Search className="ml-auto h-4 w-4 shrink-0 opacity-60" aria-hidden="true" />
                   </Button>
@@ -334,7 +399,12 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
                               setCountryOpen(false);
                             }}
                           >
-                            <Check className={cn("mr-2 h-4 w-4", form.country === c.name ? "opacity-100" : "opacity-0")} />
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                form.country === c.name ? "opacity-100" : "opacity-0"
+                              )}
+                            />
                             {c.name}
                           </CommandItem>
                         ))}
@@ -351,17 +421,25 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
             </div>
 
             <div className="space-y-1.5">
-              <Label>Timezone <span className="text-destructive">*</span></Label>
+              <Label>
+                Timezone <span className="text-destructive">*</span>
+              </Label>
               <Popover open={timezoneOpen} onOpenChange={setTimezoneOpen}>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
                     role="combobox"
                     aria-expanded={timezoneOpen}
-                    className={cn("w-full justify-between pl-10 relative font-normal", !form.timezone && "text-muted-foreground")}
+                    className={cn(
+                      "w-full justify-between pl-10 relative font-normal",
+                      !form.timezone && "text-muted-foreground"
+                    )}
                     aria-invalid={!!errors.timezone}
                   >
-                    <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                    <Clock
+                      className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
+                      aria-hidden="true"
+                    />
                     {form.timezone
                       ? TIMEZONES.find((tz) => tz.value === form.timezone)?.label || form.timezone
                       : "Search or select a timezone..."}
@@ -370,7 +448,10 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
                 </PopoverTrigger>
                 <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
                   <Command>
-                    <CommandInput placeholder="Type a city or region to search (e.g. New York, GMT)..." autoFocus />
+                    <CommandInput
+                      placeholder="Type a city or region to search (e.g. New York, GMT)..."
+                      autoFocus
+                    />
                     <CommandList>
                       <CommandEmpty>No timezone found.</CommandEmpty>
                       <CommandGroup>
@@ -383,7 +464,12 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
                               setTimezoneOpen(false);
                             }}
                           >
-                            <Check className={cn("mr-2 h-4 w-4", form.timezone === tz.value ? "opacity-100" : "opacity-0")} />
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                form.timezone === tz.value ? "opacity-100" : "opacity-0"
+                              )}
+                            />
                             {tz.label}
                           </CommandItem>
                         ))}
@@ -404,7 +490,9 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
             {/* Activity Interests */}
             <div className="space-y-3">
               <Label>Activity interests</Label>
-              <p className="text-xs text-muted-foreground">What kinds of activities do you want to do in Tech Fleet?</p>
+              <p className="text-xs text-muted-foreground">
+                What kinds of activities do you want to do in Tech Fleet?
+              </p>
               {ACTIVITY_OPTIONS.map((option) => (
                 <button
                   key={option}
@@ -426,9 +514,7 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
                     )}
                     aria-hidden="true"
                   >
-                    {form.interests.includes(option) && (
-                      <Check className="h-3 w-3" />
-                    )}
+                    {form.interests.includes(option) && <Check className="h-3 w-3" />}
                   </div>
                   <span className="text-sm text-foreground">{option}</span>
                 </button>
@@ -463,7 +549,9 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
             {/* Experience Areas */}
             <div className="space-y-1.5">
               <Label>Experience areas</Label>
-              <p className="text-xs text-muted-foreground">What areas do you want to gain experience in?</p>
+              <p className="text-xs text-muted-foreground">
+                What areas do you want to gain experience in?
+              </p>
               <ExperienceAreasSelect
                 selected={form.experience_areas}
                 onChange={(v) => setForm({ ...form, experience_areas: v })}
@@ -485,35 +573,10 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
               />
             </div>
 
-            {/* Notify training */}
-            <div className="flex items-start gap-3">
-              <Checkbox
-                id="edit-notify"
-                checked={form.notify_training_opportunities}
-                onCheckedChange={(checked) => setForm({ ...form, notify_training_opportunities: !!checked })}
-              />
-              <div>
-                <Label htmlFor="edit-notify" className="text-sm leading-relaxed cursor-pointer">
-                  Notify me about training opportunities that match my preferences
-                </Label>
-                <p className="text-xs text-muted-foreground mt-0.5">Receive in-app notifications when matching opportunities open or change status.</p>
-              </div>
-            </div>
-
-            {/* Notify announcements */}
-            <div className="flex items-start gap-3">
-              <Checkbox
-                id="edit-notify-announcements"
-                checked={form.notify_announcements}
-                onCheckedChange={(checked) => setForm({ ...form, notify_announcements: !!checked })}
-              />
-              <div>
-                <Label htmlFor="edit-notify-announcements" className="text-sm leading-relaxed cursor-pointer">
-                  Send me email notifications
-                </Label>
-                <p className="text-xs text-muted-foreground mt-0.5">Receive emails about announcements and, if combined with the above, training opportunity alerts.</p>
-              </div>
-            </div>
+            {/* Email + in-app notification preferences now live on the Notification settings page. */}
+            <p className="text-xs text-muted-foreground">
+              Manage your email and notification preferences in Notification settings.
+            </p>
 
             {/* Education */}
             <div className="space-y-1.5">
@@ -533,7 +596,8 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
               {isOAuth ? (
                 <div className="p-3 rounded-lg bg-muted/50 border border-border">
                   <p className="text-sm text-muted-foreground">
-                    You signed in with Google. Password management is handled by your Google account.
+                    You signed in with Google. Password management is handled by your Google
+                    account.
                   </p>
                 </div>
               ) : (
@@ -547,7 +611,9 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
                   >
                     {resetPasswordLoading ? "Sending…" : "Reset Password"}
                   </Button>
-                  <p className="text-xs text-muted-foreground">We'll send a reset link to your email.</p>
+                  <p className="text-xs text-muted-foreground">
+                    We'll send a reset link to your email.
+                  </p>
                 </div>
               )}
             </div>
@@ -562,7 +628,10 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
             type="button"
             variant="outline"
             className="w-full text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
-            onClick={() => { setDeleteConfirmText(""); setDeleteDialogOpen(true); }}
+            onClick={() => {
+              setDeleteConfirmText("");
+              setDeleteDialogOpen(true);
+            }}
           >
             <Trash2 className="h-4 w-4 mr-2" />
             Delete Account
@@ -576,7 +645,8 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
           <DialogHeader>
             <DialogTitle className="text-destructive">Delete Account</DialogTitle>
             <DialogDescription>
-              This action is permanent and cannot be undone. All of your data, including your profile, progress, and activity, will be permanently deleted.
+              This action is permanent and cannot be undone. All of your data, including your
+              profile, progress, and activity, will be permanently deleted.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5 py-2">
@@ -592,7 +662,11 @@ export function ProfileEditPanel({ open, onOpenChange }: ProfileEditPanelProps) 
             />
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={deleting}
+            >
               Cancel
             </Button>
             <Button

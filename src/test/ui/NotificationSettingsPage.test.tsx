@@ -21,6 +21,10 @@ vi.mock("@/integrations/supabase/client", () => ({
       select: () => ({ eq: () => ({ maybeSingle }) }),
       update: () => ({ eq: eqUpdate }),
     }),
+    // Email-rearchitecture additions: the load reads the marketing toggle's live EO status
+    // (eo-contact-status) and falls back to the cached mirror RPC (get_my_marketing_subscription).
+    functions: { invoke: vi.fn().mockResolvedValue({ data: { status: "not_found" }, error: null }) },
+    rpc: vi.fn().mockResolvedValue({ data: null, error: null }),
   },
 }));
 

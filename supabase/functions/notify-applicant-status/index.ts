@@ -461,20 +461,18 @@ Deno.serve(
       console.warn("Project lookup failed (non-critical)", e);
     }
 
-    // Look up applicant preferences + fallback contact info.
-    let applicantWantsEmail = true;
+    // Look up applicant fallback contact info. Interview invites and applicant
+    // status changes are Tier 0 (critical transactional): always sent, gated by
+    // no member preference (only global suppression can stop them).
     let resolvedFirstName = applicantFirstName;
     let resolvedEmail = applicantEmail;
     try {
       const { data: applicantProfile } = await supabase
         .from("profiles")
-        .select("first_name, email, notify_announcements")
+        .select("first_name, email")
         .eq("user_id", applicantUserId)
         .maybeSingle();
       if (applicantProfile) {
-        // notify_announcements is the master "send me emails" toggle. Default
-        // to true if missing so we never silently drop critical updates.
-        applicantWantsEmail = applicantProfile.notify_announcements !== false;
         resolvedFirstName = resolvedFirstName || (applicantProfile.first_name as string) || "";
         resolvedEmail = resolvedEmail || (applicantProfile.email as string) || "";
       }
@@ -533,12 +531,7 @@ Deno.serve(
 
     /* ---- 4a. Email — branded interview invite (non-blocking) ---- */
     let emailSent = false;
-    if (
-      newStatus === "invited_to_interview" &&
-      resolvedEmail &&
-      schedulingUrl &&
-      applicantWantsEmail
-    ) {
+    if (newStatus === "invited_to_interview" && resolvedEmail && schedulingUrl) {
       const idempotencyKey = `interview-invite-${applicationId}-${Date.now()}`;
       try {
         const emailResult = await queueTransactionalEmail({
@@ -573,7 +566,7 @@ Deno.serve(
       } catch (e) {
         console.error("Interview email send error", e);
       }
-    } else if (resolvedEmail && applicantWantsEmail) {
+    } else if (resolvedEmail) {
       /* ---- 4b. Email — generic status change (all other transitions) ---- */
       const idempotencyKey = `applicant-status-${applicationId}-${newStatus}-${Date.now()}`;
       try {
@@ -615,11 +608,6 @@ Deno.serve(
       } catch (e) {
         console.error("Status email send error", e);
       }
-    } else if (!applicantWantsEmail) {
-      console.info("Skipped status email — applicant has notify_announcements disabled", {
-        applicantUserId,
-        newStatus,
-      });
     }
 
     /* ---- 5. Discord role assignment for active_participant (non-blocking) ---- */

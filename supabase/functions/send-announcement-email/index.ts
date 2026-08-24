@@ -6,6 +6,8 @@ import { z } from "npm:zod@3.23.8";
 import { withAuditWrapper } from "../_shared/audit.ts";
 import { announcementMessageId } from "./message-id.ts";
 import { fetchWithTimeout } from "../_shared/fetch-timeout.ts";
+import { enqueueLegacyPayloadV2 } from "../_shared/email/enqueue-legacy-compat.ts";
+import { requireMarketingAttestation } from "./attestation.ts";
 
 const BodySchema = z.object({ announcement_id: z.string().optional() }).passthrough();
 const URL_RE = /\b((?:https?:\/\/|www\.)[^\s<>"'()]+[^\s<>"'(),.;:!?])/gi;
@@ -168,11 +170,36 @@ Deno.serve(
         });
       }
 
-      // Fetch opted-in profiles
+      // PR 7: refuse to email an un-attested announcement. The admin must confirm this is a
+      // service/platform update, not marketing (marketing goes through Email Octopus, ADR-0017).
+      // Enforced server-side so a direct edge-function call cannot bypass the composer checkbox.
+      const attestation = requireMarketingAttestation(_parsed.data);
+      if (!attestation.ok) {
+        return new Response(
+          JSON.stringify({
+            error:
+              "Marketing attestation required: confirm this announcement is not marketing before sending.",
+            code: attestation.error,
+          }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      // Record who attested + when (server-verified admin identity; the client cannot set these).
+      await adminClient
+        .from("announcements")
+        .update({ marketing_attested_at: new Date().toISOString(), marketing_attested_by: user.id })
+        .eq("id", announcement_id);
+
+      // Recipients: every member with the Tier-1 opt-out ON. Members join the platform to train,
+      // and service announcements are training/platform updates, so the default-true
+      // notify_opportunities preference is the opt-in — one opt-out, honored here. (The retired
+      // notify_announcements flag defaulted false and silently reached only ~163 of ~1253 members.)
+      // This is NOT the marketing lane; a "this is not marketing" attestation gates the composer
+      // (PR 7) so marketing stays in Email Octopus.
       const { data: profiles, error: profError } = await adminClient
         .from("profiles")
         .select("email")
-        .eq("notify_announcements", true)
+        .eq("notify_opportunities", true)
         .neq("email", "");
 
       if (profError) {
@@ -342,22 +369,19 @@ Deno.serve(
             metadata: { announcement_id, title: announcement.title },
           });
 
-          await adminClient.rpc("enqueue_email", {
-            queue_name: "bulk_emails",
-            payload: {
-              to: normalizedEmail,
-              subject: `[Tech Fleet] ${announcement.title}`,
-              html: emailHtml,
-              text: emailText,
-              from: `Tech Fleet <onboarding@techfleet.org>`,
-              sender_domain: "notify.techfleet.org",
-              label: "announcement",
-              message_id: messageId,
-              idempotency_key: messageId,
-              unsubscribe_token: unsubscribeToken,
-              queued_at: now,
-              purpose: "transactional",
-            },
+          await enqueueLegacyPayloadV2(adminClient, "bulk_emails", {
+            to: normalizedEmail,
+            subject: `[Tech Fleet] ${announcement.title}`,
+            html: emailHtml,
+            text: emailText,
+            from: `Tech Fleet <onboarding@techfleet.org>`,
+            sender_domain: "notify.techfleet.org",
+            label: "announcement",
+            message_id: messageId,
+            idempotency_key: messageId,
+            unsubscribe_token: unsubscribeToken,
+            queued_at: now,
+            purpose: "transactional",
           });
           enqueued++;
         } catch (e) {

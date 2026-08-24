@@ -51,7 +51,6 @@ export function useLatestAnnouncements(limit = 5) {
     retry: transientRetry,
     retryDelay: transientRetryDelay,
   });
-
 }
 
 export function useAnnouncementReadIds() {
@@ -96,10 +95,32 @@ export function useCreateAnnouncement() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ title, bodyHtml, userId, videoUrl, audioUrl }: { title: string; bodyHtml: string; userId: string; videoUrl?: string | null; audioUrl?: string | null }) => {
-      const announcement = await AnnouncementService.create(title, bodyHtml, userId, videoUrl, audioUrl);
-      // Fire-and-forget email notifications
-      AnnouncementService.sendNotifications(announcement.id).catch((e) => reportError(e, "useCreateAnnouncement.sendNotifications", { severity: "warn" }));
+    mutationFn: async ({
+      title,
+      bodyHtml,
+      userId,
+      videoUrl,
+      audioUrl,
+      marketingAttested,
+    }: {
+      title: string;
+      bodyHtml: string;
+      userId: string;
+      videoUrl?: string | null;
+      audioUrl?: string | null;
+      marketingAttested: boolean;
+    }) => {
+      const announcement = await AnnouncementService.create(
+        title,
+        bodyHtml,
+        userId,
+        videoUrl,
+        audioUrl
+      );
+      // Fire-and-forget email notifications; carries the admin's not-marketing attestation (PR 7).
+      AnnouncementService.sendNotifications(announcement.id, marketingAttested).catch((e) =>
+        reportError(e, "useCreateAnnouncement.sendNotifications", { severity: "warn" })
+      );
       return announcement;
     },
     onSuccess: () => {
@@ -173,22 +194,22 @@ export function useRecordAnnouncementAction() {
     mutationFn: ({
       announcementId,
       action,
-    }: { announcementId: string; action: "clicked_cta" | "dismissed" | "archived" }) => {
+    }: {
+      announcementId: string;
+      action: "clicked_cta" | "dismissed" | "archived";
+    }) => {
       if (!user) throw new Error("Not authenticated");
       return AnnouncementService.recordAction(user.id, announcementId, action);
     },
     onMutate: async ({ announcementId, action }) => {
       await queryClient.cancelQueries({ queryKey: ACTIONS_KEY });
-      queryClient.setQueryData<Map<string, Set<string>>>(
-        [...ACTIONS_KEY, user?.id],
-        (old) => {
-          const next = new Map(old ?? new Map());
-          const existing = new Set(next.get(announcementId) ?? []);
-          existing.add(action);
-          next.set(announcementId, existing);
-          return next;
-        },
-      );
+      queryClient.setQueryData<Map<string, Set<string>>>([...ACTIONS_KEY, user?.id], (old) => {
+        const next = new Map(old ?? new Map());
+        const existing = new Set(next.get(announcementId) ?? []);
+        existing.add(action);
+        next.set(announcementId, existing);
+        return next;
+      });
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ACTIONS_KEY });

@@ -66,7 +66,7 @@ Deno.serve(
       const userIds = rows.map((r) => r.user_id);
       const { data: profiles } = await supabase
         .from("profiles")
-        .select("user_id, email, first_name, display_name, notify_announcements")
+        .select("user_id, email, first_name, display_name")
         .in("user_id", userIds);
       const profileMap = new Map((profiles ?? []).map((p) => [p.user_id, p]));
 
@@ -84,7 +84,7 @@ Deno.serve(
         // T-F: functions.invoke resolves with { error } on non-2xx (it does NOT
         // throw), so a failed email must be detected via the returned error — the
         // try/catch only covers a thrown/network exception.
-        const emailAttempted = p.notify_announcements !== false;
+        const emailAttempted = true; // resume-application is Tier 0: always attempt, no preference gate.
         let emailOk = false;
         if (emailAttempted) {
           try {

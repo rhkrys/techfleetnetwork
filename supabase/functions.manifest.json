@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-19T05:18:08.852Z",
+  "generated_at": "2026-08-24T00:46:41.318Z",
   "functions": [
     {
       "name": "admin-purge-auth-user",
@@ -156,6 +156,13 @@
       "declared": true
     },
     {
+      "name": "email-octopus-sync",
+      "verify_jwt": false,
+      "kind": "cron",
+      "critical": false,
+      "declared": true
+    },
+    {
       "name": "email-pipeline-health",
       "verify_jwt": false,
       "kind": "cron",
@@ -167,6 +174,13 @@
       "verify_jwt": false,
       "kind": "auth",
       "critical": true,
+      "declared": true
+    },
+    {
+      "name": "eo-contact-status",
+      "verify_jwt": true,
+      "kind": "auth",
+      "critical": false,
       "declared": true
     },
     {
@@ -864,13 +878,6 @@
     },
     {
       "name": "translate-strings",
-      "verify_jwt": false,
-      "kind": "public",
-      "critical": false,
-      "declared": true
-    },
-    {
-      "name": "triage-digest-builder",
       "verify_jwt": false,
       "kind": "public",
       "critical": false,

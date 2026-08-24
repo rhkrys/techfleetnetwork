@@ -24,7 +24,7 @@ type Candidate = {
   email: string | null;
   first_name: string | null;
   display_name: string | null;
-  notify_announcements: boolean | null;
+  notify_opportunities: boolean | null;
 };
 
 Deno.serve(
@@ -88,7 +88,7 @@ Deno.serve(
         // T-F: functions.invoke resolves with { error } on non-2xx (does NOT
         // throw), so detect a failed email via the returned error, not only the
         // catch.
-        const emailAttempted = !!c.notify_announcements;
+        const emailAttempted = !!c.notify_opportunities;
         let emailOk = false;
         if (emailAttempted) {
           try {

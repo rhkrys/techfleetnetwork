@@ -337,6 +337,9 @@ jobs:
           - check-no-legacy-auth-service.mjs
           - check-legacy-auth-importers.mjs
           - check-email-architecture.mjs
+          - check-email-tier-registry.mjs
+          - check-no-raw-email-enqueue.mjs
+          - check-no-tier0-preference-gate.mjs
           - check-no-unsigned-jwt-auth.mjs
     steps:
       - name: Checkout
@@ -726,11 +729,13 @@ jobs:
             supabase/functions/edge-deploy-smoke/alerts.test.ts \
             supabase/functions/gumroad-webhook/lifecycle.test.ts \
             supabase/functions/send-announcement-email/message-id.test.ts \
+            supabase/functions/send-announcement-email/attestation.test.ts \
             supabase/functions/process-freescout-events/auth.test.ts \
             supabase/functions/reap-class-module-orphans/lib.test.ts \
             supabase/functions/_shared/confirm-role.test.ts \
             supabase/functions/_shared/translation-guard.test.ts \
             supabase/functions/_shared/escape-html.test.ts \
+            supabase/functions/_shared/email/domain/email-tiers.test.ts \
             supabase/functions/sync-airtable/ownership.test.ts \
             supabase/functions/_shared/client-ip.test.ts \
             supabase/functions/_shared/bounded-body.test.ts \
@@ -741,7 +746,10 @@ jobs:
             supabase/functions/handoff-download/ \
             supabase/functions/spf-sync/ \
             supabase/functions/_shared/spf/ \
-            supabase/functions/_shared/llm/
+            supabase/functions/_shared/llm/ \
+            supabase/functions/_shared/email-octopus/ \
+            supabase/functions/email-octopus-sync/ \
+            supabase/functions/eo-contact-status/
 
   dependency-review:
     runs-on: ubuntu-latest

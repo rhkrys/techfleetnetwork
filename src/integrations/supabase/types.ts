@@ -294,6 +294,8 @@ export type Database = {
           created_at: string
           created_by: string
           id: string
+          marketing_attested_at: string | null
+          marketing_attested_by: string | null
           title: string
           updated_at: string
           video_url: string | null
@@ -304,6 +306,8 @@ export type Database = {
           created_at?: string
           created_by: string
           id?: string
+          marketing_attested_at?: string | null
+          marketing_attested_by?: string | null
           title: string
           updated_at?: string
           video_url?: string | null
@@ -314,6 +318,8 @@ export type Database = {
           created_at?: string
           created_by?: string
           id?: string
+          marketing_attested_at?: string | null
+          marketing_attested_by?: string | null
           title?: string
           updated_at?: string
           video_url?: string | null
@@ -4638,6 +4644,7 @@ export type Database = {
           membership_updated_at: string | null
           notification_prefs: Json
           notify_announcements: boolean
+          notify_opportunities: boolean
           notify_training_opportunities: boolean
           onboarded_at: string | null
           portfolio_url: string
@@ -4690,6 +4697,7 @@ export type Database = {
           membership_updated_at?: string | null
           notification_prefs?: Json
           notify_announcements?: boolean
+          notify_opportunities?: boolean
           notify_training_opportunities?: boolean
           onboarded_at?: string | null
           portfolio_url?: string
@@ -4742,6 +4750,7 @@ export type Database = {
           membership_updated_at?: string | null
           notification_prefs?: Json
           notify_announcements?: boolean
+          notify_opportunities?: boolean
           notify_training_opportunities?: boolean
           onboarded_at?: string | null
           portfolio_url?: string
@@ -7777,6 +7786,11 @@ export type Database = {
     }
     Functions: {
       _assert_class_editor: { Args: { _class_id: string }; Returns: undefined }
+      get_my_marketing_subscription: { Args: never; Returns: string }
+      set_my_marketing_subscription: {
+        Args: { p_subscribed: boolean; p_source?: string }
+        Returns: undefined
+      }
       _consume_device_nonce: {
         Args: { _nonce: string; _purpose: string; _user_id: string }
         Returns: boolean

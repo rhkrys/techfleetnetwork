@@ -1,6 +1,10 @@
 import { supabase } from "@/integrations/supabase/client";
 import { createLogger } from "@/services/logger.service";
-import { safeHtmlSchema, safeRequiredTextSchema, safeUrlSchema } from "@/lib/validators/shared-input";
+import {
+  safeHtmlSchema,
+  safeRequiredTextSchema,
+  safeUrlSchema,
+} from "@/lib/validators/shared-input";
 import { handleServiceError } from "@/lib/service-result";
 import { linkifyHtml } from "@/lib/linkify";
 import { normalizeRichTextHtml } from "@/lib/html";
@@ -33,7 +37,8 @@ const lastKnownGood = new Map<number, Announcement[]>();
 
 function readLkgFromStorage(limit: number): Announcement[] | null {
   try {
-    const raw = typeof window !== "undefined" ? window.localStorage.getItem(LKG_LS_PREFIX + limit) : null;
+    const raw =
+      typeof window !== "undefined" ? window.localStorage.getItem(LKG_LS_PREFIX + limit) : null;
     if (!raw) return null;
     const parsed = JSON.parse(raw) as { savedAt: number; rows: Announcement[] };
     if (!parsed?.savedAt || Date.now() - parsed.savedAt > LKG_TTL_MS) return null;
@@ -48,7 +53,7 @@ function writeLkgToStorage(limit: number, rows: Announcement[]): void {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(
       LKG_LS_PREFIX + limit,
-      JSON.stringify({ savedAt: Date.now(), rows }),
+      JSON.stringify({ savedAt: Date.now(), rows })
     );
   } catch {
     /* quota or private-mode — non-fatal */
@@ -65,7 +70,7 @@ export const AnnouncementService = {
         .from("announcements")
         .select("id, title, body_html, video_url, audio_url, created_by, created_at, updated_at")
         .order("created_at", { ascending: false })
-        .limit(limit),
+        .limit(limit)
     );
 
     if (error) {
@@ -101,9 +106,19 @@ export const AnnouncementService = {
     return this.list(limit);
   },
 
-  async create(title: string, bodyHtml: string, userId: string, videoUrl?: string | null, audioUrl?: string | null): Promise<Announcement> {
+  async create(
+    title: string,
+    bodyHtml: string,
+    userId: string,
+    videoUrl?: string | null,
+    audioUrl?: string | null
+  ): Promise<Announcement> {
     const linkified = linkifyHtml(normalizeRichTextHtml(bodyHtml));
-    const row: Record<string, unknown> = { title: announcementTitleSchema.parse(title), body_html: announcementBodySchema.parse(linkified), created_by: userId };
+    const row: Record<string, unknown> = {
+      title: announcementTitleSchema.parse(title),
+      body_html: announcementBodySchema.parse(linkified),
+      created_by: userId,
+    };
     const safeVideoUrl = mediaUrlSchema.parse(videoUrl);
     const safeAudioUrl = mediaUrlSchema.parse(audioUrl);
     if (safeVideoUrl) row.video_url = safeVideoUrl;
@@ -114,27 +129,41 @@ export const AnnouncementService = {
       .select()
       // single-required: insert returns exactly one row
       .single();
-    handleServiceError(error, { logger: log, action: "create", message: `Failed to create announcement: ${error?.message ?? "Unknown error"}`, throwMessage: "We couldn't post that announcement. Please try again." });
+    handleServiceError(error, {
+      logger: log,
+      action: "create",
+      message: `Failed to create announcement: ${error?.message ?? "Unknown error"}`,
+      throwMessage: "We couldn't post that announcement. Please try again.",
+    });
     return data as unknown as Announcement;
   },
 
   async remove(id: string): Promise<void> {
-    const { error } = await supabase
-      .from("announcements")
-      .delete()
-      .eq("id", id);
-    handleServiceError(error, { logger: log, action: "remove", message: `Failed to delete announcement: ${error?.message ?? "Unknown error"}`, throwMessage: "We couldn't delete that announcement. Please try again." });
+    const { error } = await supabase.from("announcements").delete().eq("id", id);
+    handleServiceError(error, {
+      logger: log,
+      action: "remove",
+      message: `Failed to delete announcement: ${error?.message ?? "Unknown error"}`,
+      throwMessage: "We couldn't delete that announcement. Please try again.",
+    });
   },
 
-  async sendNotifications(announcementId: string): Promise<void> {
+  async sendNotifications(announcementId: string, marketingAttested: boolean): Promise<void> {
     const { getCachedSession } = await import("@/lib/cached-session");
     const session = await getCachedSession();
     if (!session) throw new Error("Not authenticated");
+    // marketing_attested is the admin's per-send "this is not marketing" confirmation; the edge
+    // function refuses to send without it (PR 7, ADR-0017).
     const { error } = await supabase.functions.invoke("send-announcement-email", {
       headers: { Authorization: `Bearer ${session.access_token}` },
-      body: { announcement_id: announcementId },
+      body: { announcement_id: announcementId, marketing_attested: marketingAttested },
     });
-    handleServiceError(error, { logger: log, action: "sendNotifications", message: `Email notification failed: ${error?.message ?? "Unknown error"}`, level: "warn" });
+    handleServiceError(error, {
+      logger: log,
+      action: "sendNotifications",
+      message: `Email notification failed: ${error?.message ?? "Unknown error"}`,
+      level: "warn",
+    });
   },
 
   async getReadIds(userId: string): Promise<Set<string>> {
@@ -142,7 +171,14 @@ export const AnnouncementService = {
       .from("announcement_reads")
       .select("announcement_id")
       .eq("user_id", userId);
-    if (handleServiceError(error, { logger: log, action: "getReadIds", message: `Failed to fetch read IDs: ${error?.message ?? "Unknown error"}` })) return new Set();
+    if (
+      handleServiceError(error, {
+        logger: log,
+        action: "getReadIds",
+        message: `Failed to fetch read IDs: ${error?.message ?? "Unknown error"}`,
+      })
+    )
+      return new Set();
     return new Set((data ?? []).map((r: any) => r.announcement_id));
   },
 
@@ -152,7 +188,12 @@ export const AnnouncementService = {
       .insert({ user_id: userId, announcement_id: announcementId } as any)
       .select()
       .maybeSingle();
-    if (error && !error.message.includes("duplicate")) handleServiceError(error, { logger: log, action: "markRead", message: `Failed to mark read: ${error.message}` });
+    if (error && !error.message.includes("duplicate"))
+      handleServiceError(error, {
+        logger: log,
+        action: "markRead",
+        message: `Failed to mark read: ${error.message}`,
+      });
   },
 
   /** Record a view (every click counts toward total views) */
@@ -160,16 +201,36 @@ export const AnnouncementService = {
     const { error } = await supabase
       .from("announcement_views")
       .insert({ user_id: userId, announcement_id: announcementId } as any);
-    handleServiceError(error, { logger: log, action: "recordView", message: `Failed to record view: ${error?.message ?? "Unknown error"}`, level: "warn" });
+    handleServiceError(error, {
+      logger: log,
+      action: "recordView",
+      message: `Failed to record view: ${error?.message ?? "Unknown error"}`,
+      level: "warn",
+    });
   },
 
   /** Aggregated view counts (total + unique) for all announcements */
   async getViewCounts(): Promise<Map<string, { total: number; unique: number }>> {
     const { data, error } = await supabase.rpc("get_announcement_view_counts");
-    if (handleServiceError(error, { logger: log, action: "getViewCounts", message: `Failed to fetch view counts: ${error?.message ?? "Unknown error"}`, level: "warn" })) return new Map();
+    if (
+      handleServiceError(error, {
+        logger: log,
+        action: "getViewCounts",
+        message: `Failed to fetch view counts: ${error?.message ?? "Unknown error"}`,
+        level: "warn",
+      })
+    )
+      return new Map();
     const map = new Map<string, { total: number; unique: number }>();
-    for (const row of (data ?? []) as Array<{ announcement_id: string; total_views: number; unique_views: number }>) {
-      map.set(row.announcement_id, { total: Number(row.total_views), unique: Number(row.unique_views) });
+    for (const row of (data ?? []) as Array<{
+      announcement_id: string;
+      total_views: number;
+      unique_views: number;
+    }>) {
+      map.set(row.announcement_id, {
+        total: Number(row.total_views),
+        unique: Number(row.unique_views),
+      });
     }
     return map;
   },
@@ -183,7 +244,7 @@ export const AnnouncementService = {
   async recordAction(
     userId: string,
     announcementId: string,
-    action: "clicked_cta" | "dismissed" | "archived",
+    action: "clicked_cta" | "dismissed" | "archived"
   ): Promise<void> {
     const { error } = await supabase
       .from("announcement_actions")
@@ -204,12 +265,15 @@ export const AnnouncementService = {
       .from("announcement_actions")
       .select("announcement_id, action")
       .eq("user_id", userId);
-    if (handleServiceError(error, {
-      logger: log,
-      action: "getActionMap",
-      message: `Failed to fetch announcement actions: ${error?.message ?? "Unknown error"}`,
-      level: "warn",
-    })) return new Map();
+    if (
+      handleServiceError(error, {
+        logger: log,
+        action: "getActionMap",
+        message: `Failed to fetch announcement actions: ${error?.message ?? "Unknown error"}`,
+        level: "warn",
+      })
+    )
+      return new Map();
     const map = new Map<string, Set<string>>();
     for (const r of (data ?? []) as Array<{ announcement_id: string; action: string }>) {
       const existing = map.get(r.announcement_id) ?? new Set<string>();

@@ -13,7 +13,6 @@
 //   supabase/functions/fleety-embed
 //   supabase/functions/fleety-learning-digest
 //   supabase/functions/notify-critical-fix
-//   supabase/functions/triage-digest-builder
 //   supabase/functions/refresh-community-events
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { authorizeServiceRoleRequest, __test } from "../_shared/service-role-auth.ts";
