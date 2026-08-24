@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button, Card, CardContent, CardHeader, CardTitle } from "@/design-system";
+
 import { Loader2, CheckCircle2, AlertCircle, MailX } from "lucide-react";
 
 type State = "loading" | "valid" | "already_unsubscribed" | "invalid" | "success" | "error";
@@ -77,7 +77,9 @@ export default function UnsubscribePage() {
           {state === "valid" && (
             <div className="flex flex-col items-center gap-4 py-4">
               <MailX className="h-10 w-10 text-muted-foreground" />
-              <p className="text-foreground">Would you like to unsubscribe from Tech Fleet Network emails?</p>
+              <p className="text-foreground">
+                Would you like to unsubscribe from Tech Fleet Network emails?
+              </p>
               <Button onClick={handleUnsubscribe} disabled={processing} className="gap-2">
                 {processing && <Loader2 className="h-4 w-4 animate-spin" />}
                 Confirm Unsubscribe
@@ -89,7 +91,9 @@ export default function UnsubscribePage() {
             <div className="flex flex-col items-center gap-3 py-4">
               <CheckCircle2 className="h-10 w-10 text-success" />
               <p className="text-foreground font-medium">You've been unsubscribed</p>
-              <p className="text-sm text-muted-foreground">You will no longer receive transactional emails from Tech Fleet Network.</p>
+              <p className="text-sm text-muted-foreground">
+                You will no longer receive transactional emails from Tech Fleet Network.
+              </p>
             </div>
           )}
 
@@ -97,7 +101,9 @@ export default function UnsubscribePage() {
             <div className="flex flex-col items-center gap-3 py-4">
               <CheckCircle2 className="h-10 w-10 text-muted-foreground" />
               <p className="text-foreground font-medium">Already unsubscribed</p>
-              <p className="text-sm text-muted-foreground">You have already been unsubscribed from these emails.</p>
+              <p className="text-sm text-muted-foreground">
+                You have already been unsubscribed from these emails.
+              </p>
             </div>
           )}
 

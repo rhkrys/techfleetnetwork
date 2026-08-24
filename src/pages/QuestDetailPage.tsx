@@ -1,6 +1,7 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useMemo } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/design-system";
+
 import { ArrowLeft } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -42,9 +43,9 @@ export default function QuestDetailPage() {
     const set = new Set<string>();
     for (const p of paths) {
       const steps = allSteps.filter((s) => s.path_id === p.id);
-      const allDone = steps.length > 0 && steps.every((s) =>
-        isStepCompleted(s, allProgress, selfReportProgress, profile)
-      );
+      const allDone =
+        steps.length > 0 &&
+        steps.every((s) => isStepCompleted(s, allProgress, selfReportProgress, profile));
       if (allDone) set.add(p.slug);
     }
     return set;
@@ -68,7 +69,9 @@ export default function QuestDetailPage() {
         </Button>
         <div className="text-center py-12">
           <h2 className="text-xl font-semibold text-foreground">Quest not found</h2>
-          <p className="text-muted-foreground mt-2">This quest may have been removed or doesn't exist.</p>
+          <p className="text-muted-foreground mt-2">
+            This quest may have been removed or doesn't exist.
+          </p>
         </div>
       </div>
     );

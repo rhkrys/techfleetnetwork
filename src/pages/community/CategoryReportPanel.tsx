@@ -1,11 +1,15 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@/lib/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/design-system";
+
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 
-interface Row { month: string; category: string; ticket_count: number }
+interface Row {
+  month: string;
+  category: string;
+  ticket_count: number;
+}
 
 /** Support tickets grouped by category over the last 12 months — surfaces the
  *  trending / most-common support topics the PRD asks admins to measure. */
@@ -52,23 +56,39 @@ export default function CategoryReportPanel() {
           <CardDescription>Most common support topics over the last 12 months.</CardDescription>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setRefresh((k) => k + 1)}>Refresh</Button>
-          <Button variant="outline" size="sm" onClick={exportCsv} disabled={!rows.length}>Export CSV</Button>
+          <Button variant="outline" size="sm" onClick={() => setRefresh((k) => k + 1)}>
+            Refresh
+          </Button>
+          <Button variant="outline" size="sm" onClick={exportCsv} disabled={!rows.length}>
+            Export CSV
+          </Button>
         </div>
       </CardHeader>
       <CardContent>
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading report…</p>
         ) : !chartData.length ? (
-          <p className="text-sm text-muted-foreground">No categorized tickets yet. Tag tickets to populate this report.</p>
+          <p className="text-sm text-muted-foreground">
+            No categorized tickets yet. Tag tickets to populate this report.
+          </p>
         ) : (
           <div style={{ width: "100%", height: 360 }}>
             <ResponsiveContainer>
               <BarChart data={chartData} layout="vertical" margin={{ left: 24 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis type="number" stroke="hsl(var(--muted-foreground))" allowDecimals={false} />
-                <YAxis type="category" dataKey="category" width={140} stroke="hsl(var(--muted-foreground))" />
-                <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))" }} />
+                <YAxis
+                  type="category"
+                  dataKey="category"
+                  width={140}
+                  stroke="hsl(var(--muted-foreground))"
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: "hsl(var(--popover))",
+                    border: "1px solid hsl(var(--border))",
+                  }}
+                />
                 <Bar dataKey="ticket_count" fill="hsl(var(--primary))" />
               </BarChart>
             </ResponsiveContainer>

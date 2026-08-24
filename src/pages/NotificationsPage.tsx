@@ -10,7 +10,8 @@ import { useEffect, useMemo, useCallback } from "react";
 import { format } from "date-fns";
 import { CheckCheck, ExternalLink } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/design-system";
+
 import { ThemedAgGrid } from "@/components/AgGrid";
 import { usePageHeader } from "@/contexts/PageHeaderContext";
 import {
@@ -22,7 +23,11 @@ import {
 import { stripHtml } from "@/lib/html";
 import type { ColDef, ICellRendererParams } from "ag-grid-community";
 import type { AppNotification } from "@/services/notification.service";
-import { collapseNotificationsToDigest, isStack, type DigestRow } from "@/lib/notifications/collapseDigest";
+import {
+  collapseNotificationsToDigest,
+  isStack,
+  type DigestRow,
+} from "@/lib/notifications/collapseDigest";
 
 /** Friendly label for notification_type values */
 function typeLabel(type: string): string {
@@ -42,7 +47,7 @@ export default function NotificationsPage() {
   const { data: notifications = [], isLoading } = useNotifications(500);
   const digestRows = useMemo<DigestRow[]>(
     () => collapseNotificationsToDigest(notifications),
-    [notifications],
+    [notifications]
   );
   const unreadCount = useUnreadNotificationCount();
   const markRead = useMarkNotificationRead();
@@ -51,10 +56,7 @@ export default function NotificationsPage() {
   useEffect(() => {
     setHeader({
       title: "Notifications",
-      breadcrumbs: [
-        { label: "Profile", href: "/profile/edit" },
-        { label: "Notifications" },
-      ],
+      breadcrumbs: [{ label: "Profile", href: "/profile/edit" }, { label: "Notifications" }],
     });
     return () => setHeader(null);
   }, [setHeader]);
@@ -63,105 +65,110 @@ export default function NotificationsPage() {
     markAllRead.mutate();
   }, [markAllRead]);
 
-  const columnDefs = useMemo<ColDef<DigestRow>[]>(() => [
-    {
-      headerName: "Status",
-      field: "read",
-      width: 100,
-      cellRenderer: (params: ICellRendererParams<AppNotification>) => {
-        if (!params.data) return null;
-        return params.data.read
-          ? <span className="text-xs text-muted-foreground">Read</span>
-          : <span className="inline-flex items-center gap-1 text-xs font-medium text-primary">
+  const columnDefs = useMemo<ColDef<DigestRow>[]>(
+    () => [
+      {
+        headerName: "Status",
+        field: "read",
+        width: 100,
+        cellRenderer: (params: ICellRendererParams<AppNotification>) => {
+          if (!params.data) return null;
+          return params.data.read ? (
+            <span className="text-xs text-muted-foreground">Read</span>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-primary">
               <span className="h-2 w-2 rounded-full bg-primary" />
               Unread
-            </span>;
+            </span>
+          );
+        },
+        filter: true,
       },
-      filter: true,
-    },
-    {
-      headerName: "Type",
-      field: "notification_type",
-      width: 150,
-      valueFormatter: (params) => typeLabel(params.value || ""),
-      filter: true,
-    },
-    {
-      headerName: "Title",
-      field: "title",
-      flex: 1,
-      minWidth: 200,
-      filter: true,
-    },
-    {
-      headerName: "Message",
-      field: "body_html",
-      flex: 2,
-      minWidth: 250,
-      valueFormatter: (params) => stripHtml(params.value || "").slice(0, 200),
-      filter: true,
-    },
-    {
-      headerName: "Date",
-      field: "created_at",
-      width: 170,
-      valueFormatter: (params) =>
-        params.value ? format(new Date(params.value), "MMM d, yyyy h:mm a") : "",
-      sort: "desc",
-      filter: "agDateColumnFilter",
-    },
-    {
-      headerName: "Actions",
-      width: 180,
-      pinned: "right",
-      sortable: false,
-      filter: false,
-      cellRenderer: (params: ICellRendererParams<DigestRow>) => {
-        if (!params.data) return null;
-        const row = params.data;
-        if (isStack(row)) {
+      {
+        headerName: "Type",
+        field: "notification_type",
+        width: 150,
+        valueFormatter: (params) => typeLabel(params.value || ""),
+        filter: true,
+      },
+      {
+        headerName: "Title",
+        field: "title",
+        flex: 1,
+        minWidth: 200,
+        filter: true,
+      },
+      {
+        headerName: "Message",
+        field: "body_html",
+        flex: 2,
+        minWidth: 250,
+        valueFormatter: (params) => stripHtml(params.value || "").slice(0, 200),
+        filter: true,
+      },
+      {
+        headerName: "Date",
+        field: "created_at",
+        width: 170,
+        valueFormatter: (params) =>
+          params.value ? format(new Date(params.value), "MMM d, yyyy h:mm a") : "",
+        sort: "desc",
+        filter: "agDateColumnFilter",
+      },
+      {
+        headerName: "Actions",
+        width: 180,
+        pinned: "right",
+        sortable: false,
+        filter: false,
+        cellRenderer: (params: ICellRendererParams<DigestRow>) => {
+          if (!params.data) return null;
+          const row = params.data;
+          if (isStack(row)) {
+            return (
+              <div className="flex items-center gap-1 h-full">
+                <span className="text-xs text-muted-foreground">{row.stackCount} grouped</span>
+              </div>
+            );
+          }
+          const notif = row;
           return (
             <div className="flex items-center gap-1 h-full">
-              <span className="text-xs text-muted-foreground">{row.stackCount} grouped</span>
+              {!notif.read && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs gap-1"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    markRead.mutate(notif.id);
+                  }}
+                >
+                  <CheckCheck className="h-3 w-3" />
+                  Mark Read
+                </Button>
+              )}
+              {notif.link_url && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs gap-1"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(notif.link_url);
+                  }}
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  View
+                </Button>
+              )}
             </div>
           );
-        }
-        const notif = row;
-        return (
-          <div className="flex items-center gap-1 h-full">
-            {!notif.read && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 text-xs gap-1"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  markRead.mutate(notif.id);
-                }}
-              >
-                <CheckCheck className="h-3 w-3" />
-                Mark Read
-              </Button>
-            )}
-            {notif.link_url && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 text-xs gap-1"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigate(notif.link_url);
-                }}
-              >
-                <ExternalLink className="h-3 w-3" />
-                View
-              </Button>
-            )}
-          </div>
-        );
+        },
       },
-    },
-  ], [markRead, navigate]);
+    ],
+    [markRead, navigate]
+  );
 
   return (
     <div className="space-y-4">

@@ -3,8 +3,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { Plus, GraduationCap, Loader2, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 import type { ColDef, ICellRendererParams } from "ag-grid-community";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Badge, Button } from "@/design-system";
+
 import { ThemedAgGrid } from "@/components/AgGrid";
 import { useMyClasses } from "@/hooks/use-classes";
 import { ClassService, type ClassRow } from "@/services/class.service";
@@ -48,12 +48,16 @@ function ChangesRequestedChip({ classId }: { classId: string }) {
 export default function MyClassesPage() {
   const { data: classes = [], isLoading } = useMyClasses();
   const navigate = useNavigate();
-  const [status, setStatus] = useState<typeof STATUS_FILTERS[number]["value"]>("attention");
+  const [status, setStatus] = useState<(typeof STATUS_FILTERS)[number]["value"]>("attention");
   const [submitTarget, setSubmitTarget] = useState<ClassRow | null>(null);
 
   const counts = useMemo(() => {
     const c: Record<string, number> = {
-      all: classes.length, pending_review: 0, published: 0, archived: 0, attention: 0,
+      all: classes.length,
+      pending_review: 0,
+      published: 0,
+      archived: 0,
+      attention: 0,
     };
     for (const cls of classes) {
       c[cls.status] = (c[cls.status] ?? 0) + 1;
@@ -70,91 +74,110 @@ export default function MyClassesPage() {
     });
   }, [classes, status]);
 
-  const columnDefs = useMemo<ColDef<ClassRow>[]>(() => [
-    {
-      headerName: "Title",
-      field: "title",
-      flex: 2,
-      minWidth: 200,
-      cellRenderer: (p: ICellRendererParams<ClassRow>) => {
-        if (!p.data) return null;
-        return (
-          <div className="flex items-center gap-2">
-            <a
-              href={`/teach/classes/${p.data.id}`}
-              onClick={(e) => { e.preventDefault(); navigate(`/teach/classes/${p.data!.id}`); }}
-              className="text-primary hover:underline font-medium truncate"
-            >
-              {p.data.title}
-            </a>
-            {p.data.status === "draft" && <ChangesRequestedChip classId={p.data.id} />}
-          </div>
-        );
+  const columnDefs = useMemo<ColDef<ClassRow>[]>(
+    () => [
+      {
+        headerName: "Title",
+        field: "title",
+        flex: 2,
+        minWidth: 200,
+        cellRenderer: (p: ICellRendererParams<ClassRow>) => {
+          if (!p.data) return null;
+          return (
+            <div className="flex items-center gap-2">
+              <a
+                href={`/teach/classes/${p.data.id}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigate(`/teach/classes/${p.data!.id}`);
+                }}
+                className="text-primary hover:underline font-medium truncate"
+              >
+                {p.data.title}
+              </a>
+              {p.data.status === "draft" && <ChangesRequestedChip classId={p.data.id} />}
+            </div>
+          );
+        },
       },
-    },
-    {
-      headerName: "Track",
-      field: "track",
-      minWidth: 130,
-      valueFormatter: (p) => (p.value === "basic_training" ? "Basic" : "Advanced"),
-    },
-    {
-      headerName: "Status",
-      field: "status",
-      minWidth: 140,
-      cellRenderer: (p: ICellRendererParams<ClassRow>) => {
-        const s = p.value as string;
-        return (
-          <Badge variant="outline" className={STATUS_PILL[s] ?? ""}>
-            {s.replace("_", " ")}
-          </Badge>
-        );
+      {
+        headerName: "Track",
+        field: "track",
+        minWidth: 130,
+        valueFormatter: (p) => (p.value === "basic_training" ? "Basic" : "Advanced"),
       },
-    },
-    {
-      headerName: "Submitted",
-      field: "submitted_at",
-      minWidth: 140,
-      valueFormatter: (p) => (p.value ? format(new Date(p.value), "MMM d, yyyy") : "—"),
-    },
-    {
-      headerName: "Published",
-      field: "published_at",
-      minWidth: 140,
-      valueFormatter: (p) => (p.value ? format(new Date(p.value), "MMM d, yyyy") : "—"),
-    },
-    {
-      headerName: "Updated",
-      field: "updated_at",
-      minWidth: 130,
-      sort: "desc",
-      valueFormatter: (p) => format(new Date(p.value), "MMM d, yyyy"),
-    },
-    {
-      headerName: "Actions",
-      colId: "actions",
-      sortable: false,
-      filter: false,
-      resizable: false,
-      minWidth: 220,
-      cellRenderer: (p: ICellRendererParams<ClassRow>) => {
-        if (!p.data) return null;
-        const c = p.data;
-        return (
-          <div className="flex items-center gap-1.5">
-            <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); navigate(`/teach/classes/${c.id}/edit`); }}>
-              Edit
-            </Button>
-            {c.status === "draft" && (
-              <Button size="sm" onClick={(e) => { e.stopPropagation(); setSubmitTarget(c); }}>
-                Submit
+      {
+        headerName: "Status",
+        field: "status",
+        minWidth: 140,
+        cellRenderer: (p: ICellRendererParams<ClassRow>) => {
+          const s = p.value as string;
+          return (
+            <Badge variant="outline" className={STATUS_PILL[s] ?? ""}>
+              {s.replace("_", " ")}
+            </Badge>
+          );
+        },
+      },
+      {
+        headerName: "Submitted",
+        field: "submitted_at",
+        minWidth: 140,
+        valueFormatter: (p) => (p.value ? format(new Date(p.value), "MMM d, yyyy") : "—"),
+      },
+      {
+        headerName: "Published",
+        field: "published_at",
+        minWidth: 140,
+        valueFormatter: (p) => (p.value ? format(new Date(p.value), "MMM d, yyyy") : "—"),
+      },
+      {
+        headerName: "Updated",
+        field: "updated_at",
+        minWidth: 130,
+        sort: "desc",
+        valueFormatter: (p) => format(new Date(p.value), "MMM d, yyyy"),
+      },
+      {
+        headerName: "Actions",
+        colId: "actions",
+        sortable: false,
+        filter: false,
+        resizable: false,
+        minWidth: 220,
+        cellRenderer: (p: ICellRendererParams<ClassRow>) => {
+          if (!p.data) return null;
+          const c = p.data;
+          return (
+            <div className="flex items-center gap-1.5">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/teach/classes/${c.id}/edit`);
+                }}
+              >
+                Edit
               </Button>
-            )}
-          </div>
-        );
+              {c.status === "draft" && (
+                <Button
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSubmitTarget(c);
+                  }}
+                >
+                  Submit
+                </Button>
+              )}
+            </div>
+          );
+        },
       },
-    },
-  ], [navigate]);
+    ],
+    [navigate]
+  );
 
   return (
     <div className="container-app py-8 sm:py-12 space-y-6">
@@ -166,12 +189,19 @@ export default function MyClassesPage() {
           </p>
         </div>
         <Button asChild>
-          <Link to="/teach/classes/new"><Plus className="h-4 w-4 mr-2" aria-hidden="true" />New Class</Link>
+          <Link to="/teach/classes/new">
+            <Plus className="h-4 w-4 mr-2" aria-hidden="true" />
+            New Class
+          </Link>
         </Button>
       </div>
 
       {classes.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Filter your classes">
+        <div
+          className="flex flex-wrap items-center gap-2"
+          role="tablist"
+          aria-label="Filter your classes"
+        >
           {STATUS_FILTERS.map((f) => {
             const active = status === f.value;
             const n = counts[f.value] ?? 0;
@@ -188,7 +218,11 @@ export default function MyClassesPage() {
                 }`}
               >
                 {f.label}
-                <span className={`ml-1.5 text-xs ${active ? "opacity-90" : "text-muted-foreground"}`}>({n})</span>
+                <span
+                  className={`ml-1.5 text-xs ${active ? "opacity-90" : "text-muted-foreground"}`}
+                >
+                  ({n})
+                </span>
               </button>
             );
           })}
@@ -201,7 +235,10 @@ export default function MyClassesPage() {
         </div>
       ) : classes.length === 0 ? (
         <div className="rounded-lg border bg-card p-10 text-center">
-          <GraduationCap className="h-10 w-10 mx-auto text-muted-foreground mb-3" aria-hidden="true" />
+          <GraduationCap
+            className="h-10 w-10 mx-auto text-muted-foreground mb-3"
+            aria-hidden="true"
+          />
           <p className="text-muted-foreground">You have not created any classes yet.</p>
           <Button asChild className="mt-4">
             <Link to="/teach/classes/new">Create your first class</Link>

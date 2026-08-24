@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/design-system";
+
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Loader2, CheckCircle2, AlertCircle } from "lucide-react";
@@ -29,7 +30,9 @@ const CSV_DATASETS = [
   { file: "handbooks-detailed.csv", name: "Handbooks (Detailed)" },
 ];
 
-async function fetchCsvFromBucket(filename: string): Promise<{ csv_text: string; checksum: string }> {
+async function fetchCsvFromBucket(
+  filename: string
+): Promise<{ csv_text: string; checksum: string }> {
   const { data, error } = await supabase.functions.invoke("framework-csv-fetch", {
     body: { filename },
   });
@@ -78,9 +81,9 @@ export default function AdminIngestPage() {
   };
 
   // ---- Reference table sync (structured DB) ----
-  const [refStatuses, setRefStatuses] = useState<Record<string, { status: Status; detail?: string }>>(
-    Object.fromEntries(CSV_DATASETS.map((d) => [d.name, { status: "idle" as Status }]))
-  );
+  const [refStatuses, setRefStatuses] = useState<
+    Record<string, { status: Status; detail?: string }>
+  >(Object.fromEntries(CSV_DATASETS.map((d) => [d.name, { status: "idle" as Status }])));
   const [refRunning, setRefRunning] = useState(false);
 
   const syncReferenceOne = async (file: string, name: string) => {
@@ -98,8 +101,10 @@ export default function AdminIngestPage() {
       if (error) throw new Error(error.message);
       const parts = [`${data.upserted} rows → ${data.table}`];
       if (typeof data.edges_inserted === "number") parts.push(`${data.edges_inserted} edges`);
-      if (typeof data.replay_resolved === "number" && data.replay_resolved > 0) parts.push(`+${data.replay_resolved} promoted`);
-      if (typeof data.staging_remaining === "number" && data.staging_remaining > 0) parts.push(`${data.staging_remaining} unresolved`);
+      if (typeof data.replay_resolved === "number" && data.replay_resolved > 0)
+        parts.push(`+${data.replay_resolved} promoted`);
+      if (typeof data.staging_remaining === "number" && data.staging_remaining > 0)
+        parts.push(`${data.staging_remaining} unresolved`);
       setRefStatuses((prev) => ({
         ...prev,
         [name]: { status: "done", detail: parts.join(" • ") },
@@ -156,10 +161,21 @@ export default function AdminIngestPage() {
             const st = statuses[ds.name];
             return (
               <div key={ds.name} className="flex items-center gap-3 p-3 border rounded-lg">
-                {st.status === "idle" && <div className="h-5 w-5 rounded-full border-2 border-muted-foreground/30" aria-hidden="true" />}
-                {st.status === "loading" && <Loader2 className="h-5 w-5 animate-spin text-primary" aria-hidden="true" />}
-                {st.status === "done" && <CheckCircle2 className="h-5 w-5 text-success" aria-hidden="true" />}
-                {st.status === "error" && <AlertCircle className="h-5 w-5 text-destructive" aria-hidden="true" />}
+                {st.status === "idle" && (
+                  <div
+                    className="h-5 w-5 rounded-full border-2 border-muted-foreground/30"
+                    aria-hidden="true"
+                  />
+                )}
+                {st.status === "loading" && (
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" aria-hidden="true" />
+                )}
+                {st.status === "done" && (
+                  <CheckCircle2 className="h-5 w-5 text-success" aria-hidden="true" />
+                )}
+                {st.status === "error" && (
+                  <AlertCircle className="h-5 w-5 text-destructive" aria-hidden="true" />
+                )}
                 <div className="flex-1">
                   <p className="text-sm font-medium">{ds.name}</p>
                   {st.detail && <p className="text-xs text-muted-foreground">{st.detail}</p>}
@@ -182,8 +198,8 @@ export default function AdminIngestPage() {
         <div>
           <h2 className="text-xl font-bold">Reference Tables (Structured DB)</h2>
           <p className="text-sm text-muted-foreground">
-            Load the same CSVs into normalized <code>reference_*</code> tables for fast in-app lookup
-            (skills picker, milestones, activities, etc.). Idempotent — safe to re-run.
+            Load the same CSVs into normalized <code>reference_*</code> tables for fast in-app
+            lookup (skills picker, milestones, activities, etc.). Idempotent — safe to re-run.
           </p>
         </div>
 
@@ -203,10 +219,21 @@ export default function AdminIngestPage() {
             const st = refStatuses[ds.name];
             return (
               <div key={`ref-${ds.name}`} className="flex items-center gap-3 p-3 border rounded-lg">
-                {st.status === "idle" && <div className="h-5 w-5 rounded-full border-2 border-muted-foreground/30" aria-hidden="true" />}
-                {st.status === "loading" && <Loader2 className="h-5 w-5 animate-spin text-primary" aria-hidden="true" />}
-                {st.status === "done" && <CheckCircle2 className="h-5 w-5 text-success" aria-hidden="true" />}
-                {st.status === "error" && <AlertCircle className="h-5 w-5 text-destructive" aria-hidden="true" />}
+                {st.status === "idle" && (
+                  <div
+                    className="h-5 w-5 rounded-full border-2 border-muted-foreground/30"
+                    aria-hidden="true"
+                  />
+                )}
+                {st.status === "loading" && (
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" aria-hidden="true" />
+                )}
+                {st.status === "done" && (
+                  <CheckCircle2 className="h-5 w-5 text-success" aria-hidden="true" />
+                )}
+                {st.status === "error" && (
+                  <AlertCircle className="h-5 w-5 text-destructive" aria-hidden="true" />
+                )}
                 <div className="flex-1">
                   <p className="text-sm font-medium">{ds.name}</p>
                   {st.detail && <p className="text-xs text-muted-foreground">{st.detail}</p>}

@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useSearchParams, Link, useLocation } from "react-router-dom";
 import { CheckCircle2, XCircle, Loader2, ShieldCheck } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Button, Card, CardContent } from "@/design-system";
+
 import { invokeEdge } from "@/lib/edge/invokeEdge";
 import { EdgeInvokeError } from "@/lib/errors/AppError";
 import { useAuth } from "@/contexts/AuthContext";

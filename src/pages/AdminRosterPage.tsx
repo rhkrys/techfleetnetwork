@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "@/lib/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/design-system";
+
 import { Loader2, Target, Users, FolderKanban, BarChart3, ArrowRight } from "lucide-react";
 import { PROJECT_TYPES, PROJECT_PHASES } from "@/data/project-constants";
 
@@ -31,7 +32,9 @@ export default function AdminRosterPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("projects")
-        .select("id, project_type, phase, project_status, team_hats, client_id, friendly_name, clients(name)")
+        .select(
+          "id, project_type, phase, project_status, team_hats, client_id, friendly_name, clients(name)"
+        )
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data ?? []) as unknown as ProjectWithClient[];
@@ -76,8 +79,7 @@ export default function AdminRosterPage() {
   return (
     <div className="container-app py-8 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">Recruiting Center
-        </h1>
+        <h1 className="text-2xl font-bold flex items-center gap-2">Recruiting Center</h1>
         <p className="text-muted-foreground mt-1">
           Select a project to view application analysis and manage the team roster.
         </p>
@@ -87,7 +89,9 @@ export default function AdminRosterPage() {
         <div className="text-center py-16 text-muted-foreground">
           <FolderKanban className="h-12 w-12 mx-auto mb-4 opacity-40" aria-hidden="true" />
           <p className="text-lg font-medium">No projects yet</p>
-          <p className="text-sm mt-1">Create projects from Clients and Projects to see them here.</p>
+          <p className="text-sm mt-1">
+            Create projects from Clients and Projects to see them here.
+          </p>
         </div>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -119,7 +123,10 @@ export default function AdminRosterPage() {
                 <h3 className="text-base font-semibold text-foreground mb-1">
                   {project.clients?.name ?? "Unknown Client"}
                   {project.friendly_name?.trim() && (
-                    <span className="text-muted-foreground font-medium"> — {project.friendly_name}</span>
+                    <span className="text-muted-foreground font-medium">
+                      {" "}
+                      — {project.friendly_name}
+                    </span>
                   )}
                 </h3>
                 <p className="text-sm text-muted-foreground mb-3">

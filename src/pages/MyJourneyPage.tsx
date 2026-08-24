@@ -1,23 +1,24 @@
 import { lazy, Suspense } from "react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton, Tabs, TabsContent, TabsList, TabsTrigger } from "@/design-system";
 
 // Wave 1 UX-W1-016: each tab body lazy-loaded behind a Suspense skeleton so
 // tab switches paint a fallback within 16ms and code splits cleanly.
 const QuestOverview = lazy(() =>
-  import("@/components/quest/QuestOverview").then((m) => ({ default: m.QuestOverview })),
+  import("@/components/quest/QuestOverview").then((m) => ({ default: m.QuestOverview }))
 );
 const MyProjectsTab = lazy(() =>
-  import("@/components/MyProjectsTab").then((m) => ({ default: m.MyProjectsTab })),
+  import("@/components/MyProjectsTab").then((m) => ({ default: m.MyProjectsTab }))
 );
 const MyRegisteredClassesTab = lazy(() =>
-  import("@/components/MyRegisteredClassesTab").then((m) => ({ default: m.MyRegisteredClassesTab })),
+  import("@/components/MyRegisteredClassesTab").then((m) => ({ default: m.MyRegisteredClassesTab }))
 );
 const ClassCertificationsTab = lazy(() =>
-  import("@/components/ClassCertificationsTab").then((m) => ({ default: m.ClassCertificationsTab })),
+  import("@/components/ClassCertificationsTab").then((m) => ({ default: m.ClassCertificationsTab }))
 );
 const ProjectCertificationsTab = lazy(() =>
-  import("@/components/ProjectCertificationsTab").then((m) => ({ default: m.ProjectCertificationsTab })),
+  import("@/components/ProjectCertificationsTab").then((m) => ({
+    default: m.ProjectCertificationsTab,
+  }))
 );
 
 function TabFallback() {
@@ -50,19 +51,29 @@ export default function MyJourneyPage() {
         </TabsList>
 
         <TabsContent value="overview">
-          <Suspense fallback={<TabFallback />}><QuestOverview /></Suspense>
+          <Suspense fallback={<TabFallback />}>
+            <QuestOverview />
+          </Suspense>
         </TabsContent>
         <TabsContent value="my-projects">
-          <Suspense fallback={<TabFallback />}><MyProjectsTab /></Suspense>
+          <Suspense fallback={<TabFallback />}>
+            <MyProjectsTab />
+          </Suspense>
         </TabsContent>
         <TabsContent value="my-classes">
-          <Suspense fallback={<TabFallback />}><MyRegisteredClassesTab /></Suspense>
+          <Suspense fallback={<TabFallback />}>
+            <MyRegisteredClassesTab />
+          </Suspense>
         </TabsContent>
         <TabsContent value="certifications">
-          <Suspense fallback={<TabFallback />}><ClassCertificationsTab /></Suspense>
+          <Suspense fallback={<TabFallback />}>
+            <ClassCertificationsTab />
+          </Suspense>
         </TabsContent>
         <TabsContent value="project-certifications">
-          <Suspense fallback={<TabFallback />}><ProjectCertificationsTab /></Suspense>
+          <Suspense fallback={<TabFallback />}>
+            <ProjectCertificationsTab />
+          </Suspense>
         </TabsContent>
       </Tabs>
     </div>

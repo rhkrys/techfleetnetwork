@@ -1,10 +1,18 @@
 import { Link, useParams } from "react-router-dom";
-import { Loader2, Plus, ArrowLeft, Pencil, ExternalLink, History, AlertTriangle } from "lucide-react";
+import {
+  Loader2,
+  Plus,
+  ArrowLeft,
+  Pencil,
+  ExternalLink,
+  History,
+  AlertTriangle,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useState } from "react";
 import { format } from "date-fns";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Badge, Button, Tabs, TabsContent, TabsList, TabsTrigger } from "@/design-system";
+
 import { useClassById } from "@/hooks/use-classes";
 import { useCohortsByClass } from "@/hooks/use-cohorts";
 import { CohortService } from "@/services/cohort.service";
@@ -15,7 +23,7 @@ import { ApprovalActions } from "@/components/classes/ApprovalActions";
 import { ClassAuditHistory } from "@/components/classes/ClassAuditHistory";
 import { ClassService } from "@/services/class.service";
 import { sanitizeHtml } from "@/lib/security";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 import { CurriculumEditor, LearnerCurriculumView } from "@/features/class-curriculum";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -92,7 +100,8 @@ export default function ClassDetailPage() {
     <div className="container-app py-8 sm:py-12 space-y-6 max-w-4xl">
       <Button asChild variant="ghost" size="sm">
         <Link to={isAdmin ? "/admin/classes" : "/teach/classes"}>
-          <ArrowLeft className="h-4 w-4 mr-1" aria-hidden="true" />Back
+          <ArrowLeft className="h-4 w-4 mr-1" aria-hidden="true" />
+          Back
         </Link>
       </Button>
 
@@ -103,7 +112,8 @@ export default function ClassDetailPage() {
         >
           <Button asChild variant="outline" size="sm">
             <Link to={`/teach/classes/${cls.id}/edit`}>
-              <Pencil className="h-4 w-4 mr-1" aria-hidden="true" />Edit
+              <Pencil className="h-4 w-4 mr-1" aria-hidden="true" />
+              Edit
             </Link>
           </Button>
           <ApprovalActions cls={cls} isOwner={isOwner} isAdmin={isAdmin} />
@@ -120,12 +130,17 @@ export default function ClassDetailPage() {
       )}
 
       {isOwner && latestChangesReason && (
-        <div role="alert" className="rounded-md border border-warning/30 bg-warning/10 p-4 flex gap-3">
+        <div
+          role="alert"
+          className="rounded-md border border-warning/30 bg-warning/10 p-4 flex gap-3"
+        >
           <AlertTriangle className="h-5 w-5 text-warning shrink-0 mt-0.5" aria-hidden="true" />
           <div className="space-y-1">
             <div className="font-medium text-foreground">Changes were requested</div>
             <div className="text-sm text-foreground whitespace-pre-wrap">{latestChangesReason}</div>
-            <div className="text-xs text-muted-foreground">Edit your class and resubmit when ready.</div>
+            <div className="text-xs text-muted-foreground">
+              Edit your class and resubmit when ready.
+            </div>
           </div>
         </div>
       )}
@@ -143,53 +158,89 @@ export default function ClassDetailPage() {
         )}
       </div>
 
-
       {cls.description && (
         <section>
           <h2 className="font-semibold text-base mb-2">About this class</h2>
-          <div className="prose prose-invert max-w-none text-sm text-foreground" dangerouslySetInnerHTML={{ __html: sanitizeHtml(cls.description) }} />
+          <div
+            className="prose prose-invert max-w-none text-sm text-foreground"
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(cls.description) }}
+          />
         </section>
       )}
 
       {cls.why_take && (
         <section>
           <h2 className="font-semibold text-base mb-2">Why take this course?</h2>
-          <div className="prose prose-invert max-w-none text-sm text-foreground" dangerouslySetInnerHTML={{ __html: sanitizeHtml(cls.why_take) }} />
+          <div
+            className="prose prose-invert max-w-none text-sm text-foreground"
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(cls.why_take) }}
+          />
         </section>
       )}
 
       {cls.outcomes && (
         <section>
           <h2 className="font-semibold text-base mb-2">Outcomes</h2>
-          <div className="prose prose-invert max-w-none text-sm text-foreground" dangerouslySetInnerHTML={{ __html: sanitizeHtml(cls.outcomes) }} />
+          <div
+            className="prose prose-invert max-w-none text-sm text-foreground"
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(cls.outcomes) }}
+          />
         </section>
       )}
 
       {cls.audiences && (
         <section>
           <h2 className="font-semibold text-base mb-2">Audiences</h2>
-          <div className="prose prose-invert max-w-none text-sm text-foreground" dangerouslySetInnerHTML={{ __html: sanitizeHtml(cls.audiences) }} />
+          <div
+            className="prose prose-invert max-w-none text-sm text-foreground"
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(cls.audiences) }}
+          />
         </section>
       )}
 
       {(cls as { curriculum?: string }).curriculum?.trim() && (
         <section aria-labelledby="class-curriculum-heading">
-          <h2 id="class-curriculum-heading" className="font-semibold text-base mb-2">Curriculum</h2>
-          <div className="prose prose-invert max-w-none text-sm text-foreground" dangerouslySetInnerHTML={{ __html: sanitizeHtml((cls as { curriculum?: string }).curriculum ?? "") }} />
+          <h2 id="class-curriculum-heading" className="font-semibold text-base mb-2">
+            Curriculum
+          </h2>
+          <div
+            className="prose prose-invert max-w-none text-sm text-foreground"
+            dangerouslySetInnerHTML={{
+              __html: sanitizeHtml((cls as { curriculum?: string }).curriculum ?? ""),
+            }}
+          />
         </section>
       )}
 
       {(cls as { reading_assignments?: string }).reading_assignments?.trim() && (
         <section aria-labelledby="class-reading-heading">
-          <h2 id="class-reading-heading" className="font-semibold text-base mb-2">Reading Assignments</h2>
-          <div className="prose prose-invert max-w-none text-sm text-foreground" dangerouslySetInnerHTML={{ __html: sanitizeHtml((cls as { reading_assignments?: string }).reading_assignments ?? "") }} />
+          <h2 id="class-reading-heading" className="font-semibold text-base mb-2">
+            Reading Assignments
+          </h2>
+          <div
+            className="prose prose-invert max-w-none text-sm text-foreground"
+            dangerouslySetInnerHTML={{
+              __html: sanitizeHtml(
+                (cls as { reading_assignments?: string }).reading_assignments ?? ""
+              ),
+            }}
+          />
         </section>
       )}
 
       {(cls as { class_expectations?: string }).class_expectations?.trim() && (
         <section aria-labelledby="class-expectations-heading">
-          <h2 id="class-expectations-heading" className="font-semibold text-base mb-2">Class Expectations</h2>
-          <div className="prose prose-invert max-w-none text-sm text-foreground" dangerouslySetInnerHTML={{ __html: sanitizeHtml((cls as { class_expectations?: string }).class_expectations ?? "") }} />
+          <h2 id="class-expectations-heading" className="font-semibold text-base mb-2">
+            Class Expectations
+          </h2>
+          <div
+            className="prose prose-invert max-w-none text-sm text-foreground"
+            dangerouslySetInnerHTML={{
+              __html: sanitizeHtml(
+                (cls as { class_expectations?: string }).class_expectations ?? ""
+              ),
+            }}
+          />
         </section>
       )}
 
@@ -197,7 +248,11 @@ export default function ClassDetailPage() {
         <div>
           <h3 className="font-semibold text-sm mb-2">Skills</h3>
           <div className="flex flex-wrap gap-1.5">
-            {cls.skills.map((s) => <Badge key={s} variant="secondary">{s}</Badge>)}
+            {cls.skills.map((s) => (
+              <Badge key={s} variant="secondary">
+                {s}
+              </Badge>
+            ))}
           </div>
         </div>
       )}
@@ -225,7 +280,8 @@ export default function ClassDetailPage() {
               {canEdit && (
                 <Button asChild size="sm">
                   <Link to={`/teach/classes/${cls.id}/cohorts/new`}>
-                    <Plus className="h-4 w-4 mr-1" aria-hidden="true" />New cohort
+                    <Plus className="h-4 w-4 mr-1" aria-hidden="true" />
+                    New cohort
                   </Link>
                 </Button>
               )}
@@ -240,7 +296,8 @@ export default function ClassDetailPage() {
                       <div>
                         <div className="font-medium text-foreground">{c.label}</div>
                         <div className="text-xs text-muted-foreground">
-                          {format(new Date(c.start_date), "MMM d")} – {format(new Date(c.end_date), "MMM d, yyyy")} · {c.timezone}
+                          {format(new Date(c.start_date), "MMM d")} –{" "}
+                          {format(new Date(c.end_date), "MMM d, yyyy")} · {c.timezone}
                         </div>
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
@@ -249,20 +306,27 @@ export default function ClassDetailPage() {
                           <Button
                             asChild
                             size="sm"
-                            onClick={() => CohortService.recordRegistrationClick(c.id).catch(() => undefined)}
+                            onClick={() =>
+                              CohortService.recordRegistrationClick(c.id).catch(() => undefined)
+                            }
                           >
                             <a href={c.registration_url} target="_blank" rel="noopener noreferrer">
                               Register <ExternalLink className="h-3 w-3 ml-1" aria-hidden="true" />
                             </a>
                           </Button>
                         )}
-                        {canEdit && (isAdmin || c.status === "draft" || c.status === "pending_review") && (
-                          <Button asChild size="sm" variant="outline">
-                            <Link to={`/teach/classes/${cls.id}/cohorts/${c.id}/edit`} aria-label={`Edit cohort ${c.label}`}>
-                              <Pencil className="h-4 w-4 mr-1" aria-hidden="true" />Edit
-                            </Link>
-                          </Button>
-                        )}
+                        {canEdit &&
+                          (isAdmin || c.status === "draft" || c.status === "pending_review") && (
+                            <Button asChild size="sm" variant="outline">
+                              <Link
+                                to={`/teach/classes/${cls.id}/cohorts/${c.id}/edit`}
+                                aria-label={`Edit cohort ${c.label}`}
+                              >
+                                <Pencil className="h-4 w-4 mr-1" aria-hidden="true" />
+                                Edit
+                              </Link>
+                            </Button>
+                          )}
                         {canEdit && c.status === "draft" && (
                           <Button size="sm" variant="outline" onClick={() => submitCohort(c.id)}>
                             Submit
@@ -272,10 +336,14 @@ export default function ClassDetailPage() {
                     </div>
                     {(c as { schedule?: string }).schedule?.trim() && (
                       <div className="border-t border-border pt-2">
-                        <div className="text-xs font-semibold text-muted-foreground mb-1">Schedule of Classes</div>
+                        <div className="text-xs font-semibold text-muted-foreground mb-1">
+                          Schedule of Classes
+                        </div>
                         <div
                           className="prose prose-invert max-w-none text-sm text-foreground"
-                          dangerouslySetInnerHTML={{ __html: sanitizeHtml((c as { schedule?: string }).schedule ?? "") }}
+                          dangerouslySetInnerHTML={{
+                            __html: sanitizeHtml((c as { schedule?: string }).schedule ?? ""),
+                          }}
                         />
                       </div>
                     )}
