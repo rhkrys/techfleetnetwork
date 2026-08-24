@@ -58,7 +58,7 @@ export default function TalTerminal() {
 
   const [input, setInput] = useState("");
   const [ratings, setRatings] = useState<Record<string, FeedbackRating>>({});
-  const [power, setPower] = useState<"off" | "booting" | "on">("off");
+  const [power, setPower] = useState<"off" | "booting" | "on" | "shutting-down">("off");
   const [bootProgress, setBootProgress] = useState(0);
   const [mainTyped, setMainTyped] = useState(0);
   const [view, setView] = useState<"main" | "chat" | "history">("main");
@@ -147,6 +147,21 @@ export default function TalTerminal() {
     return () => cancelAnimationFrame(raf);
   }, [power, view]);
 
+  // Power-off plays a brief shutdown screen, then the terminal goes dark.
+  useEffect(() => {
+    if (power !== "shutting-down") return;
+    const finish = () => {
+      setPower("off");
+      setView("main");
+    };
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) {
+      finish();
+      return;
+    }
+    const t = window.setTimeout(finish, 2000);
+    return () => clearTimeout(t);
+  }, [power]);
+
   const onSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
@@ -184,10 +199,10 @@ export default function TalTerminal() {
     else navigate("/dashboard");
   }, [navigate]);
 
-  const powerOn = useCallback(() => setPower("booting"), []);
-  const powerOff = useCallback(() => {
-    setPower("off");
+  // POWER is a real toggle: off → boot, on → power-off sequence, mid-sequence → cancel to off.
+  const togglePower = useCallback(() => {
     setView("main");
+    setPower((p) => (p === "off" ? "booting" : p === "on" ? "shutting-down" : "off"));
   }, []);
   const showChatView = useCallback(() => {
     setView("chat");
@@ -332,6 +347,15 @@ export default function TalTerminal() {
                         />
                       </div>
                       <p className="tal9k__bootpct">LOADING {bootProgress}%</p>
+                    </div>
+                  )}
+                  {power === "shutting-down" && (
+                    <div className="tal9k__boot" data-no-translate translate="no">
+                      <p className="tal9k__off-label">POWERING DOWN</p>
+                      <p className="tal9k__bootpct">
+                        SAVING SESSION
+                        <span className="tal9k__dots" />
+                      </p>
                     </div>
                   )}
                   {power === "on" && view === "main" && (
@@ -577,9 +601,9 @@ export default function TalTerminal() {
                   type="button"
                   className={`tal9k__btn tal9k__btn--power ${power === "off" ? "is-ready" : "is-on"}`}
                   aria-pressed={power === "on"}
-                  onClick={power === "off" ? powerOn : powerOff}
+                  onClick={togglePower}
                 >
-                  {power === "on" ? "Power" : power === "booting" ? "Booting…" : "Power On"}
+                  Power
                 </button>
                 <button
                   type="button"
