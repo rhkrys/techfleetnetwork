@@ -11,8 +11,8 @@ INSERT INTO auth.users (id, email) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 -- Profile opted into everything; note the MIXED-CASE email to exercise the case-insensitive match.
-INSERT INTO public.profiles (user_id, email, notify_opportunities, notify_announcements) VALUES
-  ('11111111-1111-1111-1111-111111111111', 'Unsub-PgTAP@Example.com', true, true)
+INSERT INTO public.profiles (user_id, email, first_name, display_name, notify_opportunities, notify_announcements) VALUES
+  ('11111111-1111-1111-1111-111111111111', 'Unsub-PgTAP@Example.com', 'Unsub', 'Unsub PgTAP', true, true)
 ON CONFLICT (user_id) DO UPDATE
   SET email = 'Unsub-PgTAP@Example.com', notify_opportunities = true, notify_announcements = true;
 

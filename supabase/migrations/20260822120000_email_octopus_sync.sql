@@ -51,6 +51,10 @@ CREATE INDEX IF NOT EXISTS eo_sync_user_idx
   ON public.email_octopus_contact_sync (user_id);
 
 GRANT ALL ON public.email_octopus_contact_sync TO service_role;
+-- Deny-all to members at the GRANT layer too (not just RLS): Supabase's default privileges auto-grant
+-- SELECT to anon/authenticated on new tables, so revoke it explicitly — the sync table is service-role
+-- only, reached by members solely through the SECURITY DEFINER RPCs.
+REVOKE ALL ON public.email_octopus_contact_sync FROM anon, authenticated;
 ALTER TABLE public.email_octopus_contact_sync ENABLE ROW LEVEL SECURITY;
 -- Deny-all: only service_role (the worker) and the SECURITY DEFINER RPCs below touch this table.
 -- Members never read or write it directly; they act only through set_my_marketing_subscription,
