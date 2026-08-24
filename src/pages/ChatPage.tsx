@@ -430,7 +430,7 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="container-app py-4 sm:py-8 max-w-4xl flex min-h-0 flex-col gap-3 sm:flex-row sm:gap-4 h-[calc(100dvh-4rem)] sm:h-[calc(100dvh-8rem)]">
+    <div className="container-app py-3 sm:py-4 max-w-6xl flex min-h-0 flex-col gap-3 sm:flex-row sm:gap-4 h-[calc(100dvh-4rem)] sm:h-[calc(100dvh-5rem)]">
       {/* Conversation sidebar */}
       {user && (
         <div
@@ -495,7 +495,7 @@ export default function ChatPage() {
       )}
 
       {/* Main chat area */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">Fleety</h1>
@@ -521,7 +521,7 @@ export default function ChatPage() {
         {/* Chat messages */}
         <div
           ref={scrollRef}
-          className="flex-1 overflow-y-auto rounded-lg border bg-muted/20 p-4 space-y-5 mb-4"
+          className="flex-1 min-h-0 overflow-y-auto rounded-lg border bg-muted/20 p-4 space-y-5 mb-4"
           role="log"
           aria-label="Chat conversation"
           aria-live="polite"
