@@ -1,22 +1,48 @@
 import { memo } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@/lib/react-query";
-import { Activity, AlertTriangle, CheckCircle2, RefreshCw, ShieldAlert, Wrench } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  CheckCircle2,
+  RefreshCw,
+  ShieldAlert,
+  Wrench,
+} from "lucide-react";
 import { useAdmin } from "@/hooks/use-admin";
 import { useSystemHealthRealtime } from "@/hooks/use-system-health-realtime";
-import { SystemHealthService, type SystemHealthState, type ErrorFingerprint, type RemediationRule } from "@/services/system-health.service";
+import {
+  SystemHealthService,
+  type SystemHealthState,
+  type ErrorFingerprint,
+  type RemediationRule,
+} from "@/services/system-health.service";
 import { supabase } from "@/integrations/supabase/client";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge, Button, Skeleton } from "@/design-system";
+
 import { toast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
 
 function StatusPill({ status }: { status: SystemHealthState["status"] }) {
-  const map: Record<SystemHealthState["status"], { label: string; cls: string; Icon: typeof CheckCircle2 }> = {
-    healthy: { label: "Healthy", cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30", Icon: CheckCircle2 },
-    degraded: { label: "Degraded", cls: "bg-amber-500/15 text-amber-400 border-amber-500/30", Icon: AlertTriangle },
-    overloaded: { label: "Overloaded", cls: "bg-destructive/15 text-destructive border-destructive/30", Icon: ShieldAlert },
+  const map: Record<
+    SystemHealthState["status"],
+    { label: string; cls: string; Icon: typeof CheckCircle2 }
+  > = {
+    healthy: {
+      label: "Healthy",
+      cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+      Icon: CheckCircle2,
+    },
+    degraded: {
+      label: "Degraded",
+      cls: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+      Icon: AlertTriangle,
+    },
+    overloaded: {
+      label: "Overloaded",
+      cls: "bg-destructive/15 text-destructive border-destructive/30",
+      Icon: ShieldAlert,
+    },
   };
   const { label, cls, Icon } = map[status];
   return (
@@ -110,10 +136,7 @@ export const SystemHealthWidget = memo(function SystemHealthWidget() {
   };
 
   return (
-    <section
-      aria-labelledby="system-health-heading"
-      className="card-elevated p-5 space-y-4"
-    >
+    <section aria-labelledby="system-health-heading" className="card-elevated p-5 space-y-4">
       <header className="flex items-start justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2">
           <Activity className="h-5 w-5 text-primary" aria-hidden />
@@ -157,8 +180,8 @@ export const SystemHealthWidget = memo(function SystemHealthWidget() {
             health.status === "overloaded"
               ? "border-destructive/30 bg-destructive/10"
               : health.status === "degraded"
-              ? "border-amber-500/30 bg-amber-500/10"
-              : "border-emerald-500/20 bg-emerald-500/5"
+                ? "border-amber-500/30 bg-amber-500/10"
+                : "border-emerald-500/20 bg-emerald-500/5"
           }`}
         >
           <p className="font-medium">{health.reason}</p>
@@ -177,7 +200,8 @@ export const SystemHealthWidget = memo(function SystemHealthWidget() {
             </h3>
             {errorsQuery.dataUpdatedAt > 0 && (
               <span className="text-[10px] text-muted-foreground">
-                Updated {formatDistanceToNow(new Date(errorsQuery.dataUpdatedAt), { addSuffix: true })}
+                Updated{" "}
+                {formatDistanceToNow(new Date(errorsQuery.dataUpdatedAt), { addSuffix: true })}
               </span>
             )}
           </div>
@@ -219,7 +243,10 @@ export const SystemHealthWidget = memo(function SystemHealthWidget() {
             </h3>
             {remediationsQuery.dataUpdatedAt > 0 && (
               <span className="text-[10px] text-muted-foreground">
-                Updated {formatDistanceToNow(new Date(remediationsQuery.dataUpdatedAt), { addSuffix: true })}
+                Updated{" "}
+                {formatDistanceToNow(new Date(remediationsQuery.dataUpdatedAt), {
+                  addSuffix: true,
+                })}
               </span>
             )}
           </div>
@@ -230,16 +257,12 @@ export const SystemHealthWidget = memo(function SystemHealthWidget() {
           ) : (
             <ul className="space-y-2 max-h-64 overflow-y-auto pr-1">
               {remediations.map((r) => (
-                <li
-                  key={r.id}
-                  className="rounded-md border border-border/50 bg-muted/30 p-2.5"
-                >
+                <li key={r.id} className="rounded-md border border-border/50 bg-muted/30 p-2.5">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <span className="text-sm font-medium">{r.description || r.remediation_function}</span>
-                    <Badge
-                      variant={r.enabled ? "secondary" : "outline"}
-                      className="text-xs"
-                    >
+                    <span className="text-sm font-medium">
+                      {r.description || r.remediation_function}
+                    </span>
+                    <Badge variant={r.enabled ? "secondary" : "outline"} className="text-xs">
                       {r.enabled ? "Enabled" : "Off"}
                     </Badge>
                   </div>

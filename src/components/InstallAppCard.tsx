@@ -10,8 +10,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Download, Share, Monitor, Smartphone, CheckCircle2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
+import { Button, Label } from "@/design-system";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -90,7 +89,8 @@ export function InstallAppCard() {
         <div>
           <Label className="text-sm leading-relaxed">App installed</Label>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Tech Fleet Network is installed on this {getDeviceLabel()}. You're getting the best experience!
+            Tech Fleet Network is installed on this {getDeviceLabel()}. You're getting the best
+            experience!
           </p>
         </div>
       </div>
@@ -105,13 +105,14 @@ export function InstallAppCard() {
         <div className="flex-1">
           <Label className="text-sm leading-relaxed">Install as an app</Label>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Add Tech Fleet Network to your Home Screen for quick access, offline support, and a native app experience.
+            Add Tech Fleet Network to your Home Screen for quick access, offline support, and a
+            native app experience.
           </p>
           <div className="mt-2 flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
             <Share className="h-4 w-4 flex-shrink-0 text-primary" aria-hidden="true" />
             <span>
-              Tap the <strong className="text-foreground">Share</strong> button in Safari, then select{" "}
-              <strong className="text-foreground">Add to Home Screen</strong>
+              Tap the <strong className="text-foreground">Share</strong> button in Safari, then
+              select <strong className="text-foreground">Add to Home Screen</strong>
             </span>
           </div>
         </div>
@@ -126,7 +127,8 @@ export function InstallAppCard() {
       <div className="flex-1">
         <Label className="text-sm leading-relaxed">Install as an app</Label>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Install Tech Fleet Network on your {getDeviceLabel()} for quick access, offline support, and a native app experience.
+          Install Tech Fleet Network on your {getDeviceLabel()} for quick access, offline support,
+          and a native app experience.
         </p>
         <Button
           variant="default"

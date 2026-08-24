@@ -1,5 +1,5 @@
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Label, Textarea } from "@/design-system";
+
 import { AlertCircle } from "lucide-react";
 
 interface LongFormQuestionProps {
@@ -12,7 +12,14 @@ interface LongFormQuestionProps {
 }
 
 /** Reusable long-form text question with character count and validation */
-export function LongFormQuestion({ id, label, value, onChange, error, required }: LongFormQuestionProps) {
+export function LongFormQuestion({
+  id,
+  label,
+  value,
+  onChange,
+  error,
+  required,
+}: LongFormQuestionProps) {
   return (
     <div className="space-y-1.5">
       <Label htmlFor={id} className="text-base font-semibold leading-relaxed">

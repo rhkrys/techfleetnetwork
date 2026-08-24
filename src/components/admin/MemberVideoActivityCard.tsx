@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Badge, Card, CardContent, CardHeader, CardTitle } from "@/design-system";
 
 interface Row {
   id: string;
@@ -30,7 +29,13 @@ function fmtPos(s: number | null) {
   return `${m}:${sec.toString().padStart(2, "0")}`;
 }
 
-export function MemberVideoActivityCard({ userId, limit = 25 }: { userId: string; limit?: number }) {
+export function MemberVideoActivityCard({
+  userId,
+  limit = 25,
+}: {
+  userId: string;
+  limit?: number;
+}) {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,7 +44,9 @@ export function MemberVideoActivityCard({ userId, limit = 25 }: { userId: string
     (async () => {
       const { data, error } = await supabase
         .from("lesson_video_events")
-        .select("id,created_at,event,lesson_id,lesson_title,youtube_id,position_seconds,course_slug")
+        .select(
+          "id,created_at,event,lesson_id,lesson_title,youtube_id,position_seconds,course_slug"
+        )
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
         .limit(limit);
@@ -47,7 +54,9 @@ export function MemberVideoActivityCard({ userId, limit = 25 }: { userId: string
       if (error) setError(error.message);
       else setRows(data as Row[]);
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [userId, limit]);
 
   return (
@@ -71,7 +80,9 @@ export function MemberVideoActivityCard({ userId, limit = 25 }: { userId: string
                     {new Date(r.created_at).toLocaleString()} · {fmtPos(r.position_seconds)}
                   </p>
                 </div>
-                <Badge variant={tone[r.event] ?? "outline"} className="shrink-0">{r.event}</Badge>
+                <Badge variant={tone[r.event] ?? "outline"} className="shrink-0">
+                  {r.event}
+                </Badge>
               </li>
             ))}
           </ul>

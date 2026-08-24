@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Check, Sparkles, Star, ExternalLink } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Badge, Button } from "@/design-system";
+
 import { cn } from "@/lib/utils";
 import {
   MEMBERSHIP_TIERS,

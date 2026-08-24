@@ -1,5 +1,5 @@
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
+import { Input, Label } from "@/design-system";
+
 import { AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AppFormData } from "@/lib/validators/general-application";
@@ -16,10 +16,10 @@ export function SectionBasicInfo({ form, errors, updateField }: Props) {
     <div className="space-y-6">
       <div className="space-y-3">
         <Label className="text-base font-medium">
-          Tech Fleet project trainees are expected to commit 15 to 20 hours on project team training.
-          This is flexible, and your team builds the schedule together based on their availability.
-          Are you committed to contribute 15 to 20 hours a week during project training?{" "}
-          <span className="text-destructive">*</span>
+          Tech Fleet project trainees are expected to commit 15 to 20 hours on project team
+          training. This is flexible, and your team builds the schedule together based on their
+          availability. Are you committed to contribute 15 to 20 hours a week during project
+          training? <span className="text-destructive">*</span>
         </Label>
         <div className="flex flex-col gap-2">
           {["yes", "no", "not_sure"].map((val) => (

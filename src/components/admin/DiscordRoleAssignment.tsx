@@ -1,9 +1,16 @@
 import { useState, useCallback } from "react";
 import { getSessionSafe } from "@/lib/auth/session-port";
-import { MessageSquare, UserPlus, UserMinus, Loader2, AlertTriangle, CheckCircle2, ExternalLink } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import {
+  MessageSquare,
+  UserPlus,
+  UserMinus,
+  Loader2,
+  AlertTriangle,
+  CheckCircle2,
+  ExternalLink,
+} from "lucide-react";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from "@/design-system";
+
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -88,8 +95,7 @@ export function DiscordRoleAssignment({
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-lg">Discord Role Management
-        </CardTitle>
+        <CardTitle className="flex items-center gap-2 text-lg">Discord Role Management</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Applicant Discord info */}
@@ -177,7 +183,8 @@ export function DiscordRoleAssignment({
           <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/5 p-3 text-sm">
             <AlertTriangle className="h-4 w-4 text-warning shrink-0 mt-0.5" />
             <p className="text-muted-foreground">
-              This applicant's Discord account hasn't been verified yet. They need to verify their Discord on the platform before roles can be assigned.
+              This applicant's Discord account hasn't been verified yet. They need to verify their
+              Discord on the platform before roles can be assigned.
             </p>
           </div>
         )}

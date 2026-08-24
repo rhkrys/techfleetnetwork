@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage, Button } from "@/design-system";
+
 import { Camera, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -19,7 +19,13 @@ interface AvatarUploadProps {
   className?: string;
 }
 
-export function AvatarUpload({ userId, currentUrl, initials, onUploaded, className }: AvatarUploadProps) {
+export function AvatarUpload({
+  userId,
+  currentUrl,
+  initials,
+  onUploaded,
+  className,
+}: AvatarUploadProps) {
   const [uploading, setUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(currentUrl);
   const [cropSrc, setCropSrc] = useState<string | null>(null);
@@ -151,7 +157,9 @@ export function AvatarUpload({ userId, currentUrl, initials, onUploaded, classNa
           </Button>
         )}
       </div>
-      <p className="text-xs text-muted-foreground">PNG, JPG, or WEBP, max 5MB. Cropped to a 512×512 square.</p>
+      <p className="text-xs text-muted-foreground">
+        PNG, JPG, or WEBP, max 5MB. Cropped to a 512×512 square.
+      </p>
 
       <AvatarCropperDialog
         open={Boolean(cropSrc)}

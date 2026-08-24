@@ -7,8 +7,8 @@
 
 import { memo, useMemo } from "react";
 import { Sparkles, Globe, RotateCcw } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge, Button } from "@/design-system";
+
 import ExploreRecommendationCard, { type RecommendationData } from "./ExploreRecommendationCard";
 import { sanitizeText } from "@/lib/security";
 
@@ -44,13 +44,13 @@ const ExploreResultsSection = memo(function ExploreResultsSection({
         reason: "",
         link: r.url,
       })),
-    [webResults],
+    [webResults]
   );
 
   // Sort recommendations alphabetically (stable)
   const sortedRecs = useMemo(
     () => [...recommendations].sort((a, b) => a.title.localeCompare(b.title)),
-    [recommendations],
+    [recommendations]
   );
 
   const totalCount = recommendations.length + onlineCards.length;
@@ -67,7 +67,8 @@ const ExploreResultsSection = memo(function ExploreResultsSection({
         </div>
         <p className="text-lg font-medium text-foreground leading-snug">&ldquo;{query}&rdquo;</p>
         <p className="text-sm text-muted-foreground">
-          {totalCount} {totalCount === 1 ? "resource" : "resources"} found — here are the most relevant picks for you.
+          {totalCount} {totalCount === 1 ? "resource" : "resources"} found — here are the most
+          relevant picks for you.
         </p>
         {onReset && (
           <Button

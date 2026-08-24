@@ -1,8 +1,15 @@
 import { useQuery } from "@/lib/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Badge,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Skeleton,
+} from "@/design-system";
+
 import { AlertTriangle, CheckCircle2, ShieldAlert } from "lucide-react";
 
 interface DomainHealthRow {
@@ -39,7 +46,9 @@ export function EmailDeliverabilityCard() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("email_domain_health" as any)
-        .select("recipient_domain, window_start, window_end, sent_count, bounced_count, complained_count, bounce_rate, complaint_rate, created_at")
+        .select(
+          "recipient_domain, window_start, window_end, sent_count, bounced_count, complained_count, bounce_rate, complaint_rate, created_at"
+        )
         .order("sent_count", { ascending: false })
         .limit(10);
       if (error) throw error;
@@ -53,7 +62,9 @@ export function EmailDeliverabilityCard() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("email_send_state" as any)
-        .select("bulk_hourly_cap, bulk_paused, bulk_warmup_started_at, auth_retry_after_until, transactional_retry_after_until, auth_consecutive_rate_limits, transactional_consecutive_rate_limits, updated_at")
+        .select(
+          "bulk_hourly_cap, bulk_paused, bulk_warmup_started_at, auth_retry_after_until, transactional_retry_after_until, auth_consecutive_rate_limits, transactional_consecutive_rate_limits, updated_at"
+        )
         .limit(1)
         .maybeSingle();
       if (error) throw error;
@@ -114,31 +125,45 @@ export function EmailDeliverabilityCard() {
       <Card className={paused ? "border-destructive/40" : "border-success/40"}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            {paused ? <ShieldAlert className="h-5 w-5 text-destructive" /> : <CheckCircle2 className="h-5 w-5 text-success" />}
+            {paused ? (
+              <ShieldAlert className="h-5 w-5 text-destructive" />
+            ) : (
+              <CheckCircle2 className="h-5 w-5 text-success" />
+            )}
             Bulk send warm-up
             <Badge variant={paused ? "destructive" : "secondary"}>
               {paused ? "Paused" : "Active"}
             </Badge>
           </CardTitle>
           <CardDescription>
-            Current cap: <strong>{cap}/hour</strong> · Domain age: <strong>{warmDays} day{warmDays === 1 ? "" : "s"}</strong>
+            Current cap: <strong>{cap}/hour</strong> · Domain age:{" "}
+            <strong>
+              {warmDays} day{warmDays === 1 ? "" : "s"}
+            </strong>
             {paused && " · Auto-paused due to complaint or bounce threshold breach"}
           </CardDescription>
         </CardHeader>
-        {sLoading && <CardContent><Skeleton className="h-4 w-48" /></CardContent>}
+        {sLoading && (
+          <CardContent>
+            <Skeleton className="h-4 w-48" />
+          </CardContent>
+        )}
       </Card>
 
       <Card className={anyCooldown ? "border-warning/40" : undefined}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <AlertTriangle className={anyCooldown ? "h-5 w-5 text-warning" : "h-5 w-5 text-muted-foreground"} />
+            <AlertTriangle
+              className={anyCooldown ? "h-5 w-5 text-warning" : "h-5 w-5 text-muted-foreground"}
+            />
             Rate-limit cooldowns
             <Badge variant={anyCooldown ? "destructive" : "secondary"}>
               {anyCooldown ? "Active" : "Clear"}
             </Badge>
           </CardTitle>
           <CardDescription>
-            Per-queue cooldowns triggered by provider 429s. Each queue backs off independently so auth emails keep flowing during transactional bursts.
+            Per-queue cooldowns triggered by provider 429s. Each queue backs off independently so
+            auth emails keep flowing during transactional bursts.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-1 text-sm">
@@ -149,8 +174,8 @@ export function EmailDeliverabilityCard() {
                 {c.activeSecs > 0
                   ? `Cooling down ${c.activeSecs}s (consecutive 429s: ${c.count})`
                   : c.count > 0
-                  ? `Recovering · consecutive 429s: ${c.count}`
-                  : "Clear"}
+                    ? `Recovering · consecutive 429s: ${c.count}`
+                    : "Clear"}
               </span>
             </div>
           ))}
@@ -160,12 +185,15 @@ export function EmailDeliverabilityCard() {
       <Card className={cappedTotal > 0 ? "border-warning/40" : undefined}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <AlertTriangle className={cappedTotal > 0 ? "h-5 w-5 text-warning" : "h-5 w-5 text-muted-foreground"} />
+            <AlertTriangle
+              className={cappedTotal > 0 ? "h-5 w-5 text-warning" : "h-5 w-5 text-muted-foreground"}
+            />
             Frequency-capped sends (last 24h)
             <Badge variant={cappedTotal > 0 ? "destructive" : "secondary"}>{cappedTotal}</Badge>
           </CardTitle>
           <CardDescription>
-            Recipients dropped by the per-recipient cap on project-blast and fleety-coach-digest. Announcements are exempt.
+            Recipients dropped by the per-recipient cap on project-blast and fleety-coach-digest.
+            Announcements are exempt.
           </CardDescription>
         </CardHeader>
         {cappedEntries.length > 0 && (
@@ -180,7 +208,6 @@ export function EmailDeliverabilityCard() {
         )}
       </Card>
 
-
       <Card>
         <CardHeader>
           <CardTitle>Recipient domain health (7-day rolling)</CardTitle>
@@ -192,7 +219,10 @@ export function EmailDeliverabilityCard() {
           {hLoading ? (
             <Skeleton className="h-32 w-full" />
           ) : !health || health.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No domain health data yet. The first snapshot will appear after the next 15-minute refresh.</p>
+            <p className="text-sm text-muted-foreground">
+              No domain health data yet. The first snapshot will appear after the next 15-minute
+              refresh.
+            </p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

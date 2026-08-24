@@ -1,9 +1,21 @@
 import { useMemo, useState, useCallback, memo } from "react";
-import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
+import { Button, Progress } from "@/design-system";
+
 import {
-  CheckCircle2, Circle, Lock, ArrowRight, Plus, Eye, BookOpen,
-  Rocket, Map as MapIcon, Shield, BarChart2, Zap, Briefcase, Heart,
+  CheckCircle2,
+  Circle,
+  Lock,
+  ArrowRight,
+  Plus,
+  Eye,
+  BookOpen,
+  Rocket,
+  Map as MapIcon,
+  Shield,
+  BarChart2,
+  Zap,
+  Briefcase,
+  Heart,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -21,9 +33,16 @@ import type { QuestPath, QuestPathStep, SystemVerificationData } from "@/service
 import { useQuestPathMaps } from "@/lib/quest/path-maps";
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
-  rocket: Rocket, map: MapIcon, eye: Eye, "book-open": BookOpen,
-  shield: Shield, "bar-chart-2": BarChart2, zap: Zap,
-  briefcase: Briefcase, heart: Heart, circle: Circle,
+  rocket: Rocket,
+  map: MapIcon,
+  eye: Eye,
+  "book-open": BookOpen,
+  shield: Shield,
+  "bar-chart-2": BarChart2,
+  zap: Zap,
+  briefcase: Briefcase,
+  heart: Heart,
+  circle: Circle,
 };
 
 interface QuestRoadmapProps {
@@ -61,7 +80,10 @@ export function QuestRoadmap({ onNeedIntake }: QuestRoadmapProps) {
     const empty = new Map<string, { completed: number; total: number; nextStep?: QuestPathStep }>();
     if (!paths || !allSteps || !selections) return empty;
 
-    const result = new Map<string, { completed: number; total: number; nextStep?: QuestPathStep }>();
+    const result = new Map<
+      string,
+      { completed: number; total: number; nextStep?: QuestPathStep }
+    >();
     for (const path of paths) {
       const steps = allSteps.filter((s) => s.path_id === path.id);
       let completed = 0;
@@ -97,7 +119,11 @@ export function QuestRoadmap({ onNeedIntake }: QuestRoadmapProps) {
 
   if (pathsLoading || selectionsLoading) {
     return (
-      <div className="flex items-center justify-center py-12" role="status" aria-label="Loading journey roadmap">
+      <div
+        className="flex items-center justify-center py-12"
+        role="status"
+        aria-label="Loading journey roadmap"
+      >
         <div className="h-8 w-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
@@ -109,9 +135,9 @@ export function QuestRoadmap({ onNeedIntake }: QuestRoadmapProps) {
   }
 
   const selectedPathIdSet = new Set(selections.map((s) => s.path_id));
-  const selectedPaths = paths
-    ?.filter((p) => selectedPathIdSet.has(p.id))
-    .sort((a, b) => a.sort_order - b.sort_order) ?? [];
+  const selectedPaths =
+    paths?.filter((p) => selectedPathIdSet.has(p.id)).sort((a, b) => a.sort_order - b.sort_order) ??
+    [];
 
   const unselectedCount = (paths?.length ?? 0) - selectedPaths.length;
 
@@ -203,18 +229,20 @@ const PathCard = memo(function PathCard({
           isCompleted
             ? "border-success/30 bg-success/5"
             : isLocked
-            ? "opacity-60 cursor-not-allowed"
-            : "hover:shadow-md hover:border-primary/30 cursor-pointer"
+              ? "opacity-60 cursor-not-allowed"
+              : "hover:shadow-md hover:border-primary/30 cursor-pointer"
         )}
         aria-label={`${path.title}: ${progress?.completed ?? 0} of ${progress?.total ?? 0} steps completed, ${
           isCompleted ? "completed" : isLocked ? "locked" : "in progress"
         }`}
       >
         <div className="flex items-start gap-4">
-          <div className={cn(
-            "flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center",
-            isCompleted ? "bg-success/10" : isLocked ? "bg-muted" : "bg-primary/10"
-          )}>
+          <div
+            className={cn(
+              "flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center",
+              isCompleted ? "bg-success/10" : isLocked ? "bg-muted" : "bg-primary/10"
+            )}
+          >
             {isCompleted ? (
               <CheckCircle2 className="h-5 w-5 text-success" />
             ) : isLocked ? (
@@ -227,23 +255,32 @@ const PathCard = memo(function PathCard({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               <h3 className="font-semibold text-foreground">{path.title}</h3>
-              <span className={cn(
-                "text-xs font-medium px-2 py-0.5 rounded-full",
-                isCompleted
-                  ? "bg-success/10 text-success"
+              <span
+                className={cn(
+                  "text-xs font-medium px-2 py-0.5 rounded-full",
+                  isCompleted
+                    ? "bg-success/10 text-success"
+                    : isLocked
+                      ? "bg-muted text-muted-foreground"
+                      : progress && progress.completed > 0
+                        ? "bg-primary/10 text-primary"
+                        : "bg-muted text-muted-foreground"
+                )}
+              >
+                {isCompleted
+                  ? "Completed"
                   : isLocked
-                  ? "bg-muted text-muted-foreground"
-                  : progress && progress.completed > 0
-                  ? "bg-primary/10 text-primary"
-                  : "bg-muted text-muted-foreground"
-              )}>
-                {isCompleted ? "Completed" : isLocked ? "Locked" : progress && progress.completed > 0 ? "In Progress" : "Not Started"}
+                    ? "Locked"
+                    : progress && progress.completed > 0
+                      ? "In Progress"
+                      : "Not Started"}
               </span>
             </div>
 
             {isLocked ? (
               <p className="text-sm text-muted-foreground">
-                Requires: {path.prerequisites.map((slug) => pathBySlug.get(slug)?.title ?? slug).join(", ")}
+                Requires:{" "}
+                {path.prerequisites.map((slug) => pathBySlug.get(slug)?.title ?? slug).join(", ")}
               </p>
             ) : isCompleted ? (
               <p className="text-sm text-muted-foreground">All steps complete</p>
@@ -302,7 +339,7 @@ export function isStepCompleted(
   courseProgress: Map<string, { completed: number; total: number }>,
   selfReportProgress: Map<string, boolean> | undefined,
   profile: { discord_username?: string; profile_completed?: boolean } | null,
-  sysVerification?: SystemVerificationData | null,
+  sysVerification?: SystemVerificationData | null
 ): boolean {
   switch (step.step_type) {
     case "course": {
@@ -316,7 +353,8 @@ export function isStepCompleted(
       const filter = step.linked_filter as Record<string, unknown> | null;
       if (step.linked_table === "profiles") {
         if (filter?.field === "profile_completed") return !!profile?.profile_completed;
-        if (filter?.field === "discord_username" && filter?.not_empty) return !!profile?.discord_username;
+        if (filter?.field === "discord_username" && filter?.not_empty)
+          return !!profile?.discord_username;
         if (filter?.auto_after_step) return false;
       }
       if (step.linked_table === "class_certifications" && sysVerification) {
@@ -341,7 +379,8 @@ export function isStepCompleted(
         return sysVerification.generalApplications.some((ga) => {
           if (field === "status") {
             // "submitted" matches both "submitted" and "completed" statuses
-            if (value === "submitted") return ga.status === "submitted" || ga.status === "completed";
+            if (value === "submitted")
+              return ga.status === "submitted" || ga.status === "completed";
             return ga.status === value;
           }
           return false;
@@ -352,7 +391,8 @@ export function isStepCompleted(
         const value = filter.value as string;
         return sysVerification.projectApplications.some((pa) => {
           if (field === "status") {
-            if (value === "submitted") return pa.status === "submitted" || pa.status === "completed";
+            if (value === "submitted")
+              return pa.status === "submitted" || pa.status === "completed";
             return pa.status === value;
           }
           return false;

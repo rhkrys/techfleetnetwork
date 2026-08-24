@@ -1,9 +1,16 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@/lib/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/design-system";
+
 import { toast } from "sonner";
 
 interface ProvRow {
@@ -17,7 +24,11 @@ interface ProvRow {
   created_at: string;
 }
 
-interface MonthlyRow { month: string; status: string; ticket_count: number }
+interface MonthlyRow {
+  month: string;
+  status: string;
+  ticket_count: number;
+}
 
 export function HelpDeskTab() {
   const qc = useQueryClient();
@@ -63,7 +74,13 @@ export function HelpDeskTab() {
   });
 
   const tone = (s: string) =>
-    s === "success" ? "default" : s === "failed" ? "destructive" : s === "retry" ? "secondary" : "outline";
+    s === "success"
+      ? "default"
+      : s === "failed"
+        ? "destructive"
+        : s === "retry"
+          ? "secondary"
+          : "outline";
 
   const failuresCsv = () => {
     const rows = (provLog.data ?? []).filter((r) => r.status === "failed");
@@ -74,7 +91,14 @@ export function HelpDeskTab() {
     const header = "user_id,kind,freescout_id,attempts,last_error,created_at\n";
     const body = rows
       .map((r) =>
-        [r.user_id, r.kind, r.freescout_id ?? "", r.attempts, JSON.stringify(r.last_error ?? ""), r.created_at].join(","),
+        [
+          r.user_id,
+          r.kind,
+          r.freescout_id ?? "",
+          r.attempts,
+          JSON.stringify(r.last_error ?? ""),
+          r.created_at,
+        ].join(",")
       )
       .join("\n");
     const blob = new Blob([header + body], { type: "text/csv" });
@@ -89,10 +113,11 @@ export function HelpDeskTab() {
   const rows = provLog.data ?? [];
   const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
   const pending24 = rows.filter(
-    (r) => (r.status === "pending" || r.status === "retry") && new Date(r.created_at).getTime() > dayAgo,
+    (r) =>
+      (r.status === "pending" || r.status === "retry") && new Date(r.created_at).getTime() > dayAgo
   ).length;
   const failed24 = rows.filter(
-    (r) => r.status === "failed" && new Date(r.created_at).getTime() > dayAgo,
+    (r) => r.status === "failed" && new Date(r.created_at).getTime() > dayAgo
   ).length;
   const retryRow = useMutation({
     mutationFn: async (id: number) => {
@@ -133,17 +158,24 @@ export function HelpDeskTab() {
         <CardHeader>
           <CardTitle>Help Desk — Freescout provisioning</CardTitle>
           <CardDescription>
-            New members and admins are provisioned automatically via DB triggers. Use the buttons below to backfill anyone the triggers missed.
+            New members and admins are provisioned automatically via DB triggers. Use the buttons
+            below to backfill anyone the triggers missed.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
           <Button onClick={() => backfill.mutate("admins")} disabled={running !== null}>
             {running === "admins" ? "Running backfill…" : "Backfill admins"}
           </Button>
-          <Button variant="outline" onClick={() => backfill.mutate("members")} disabled={running !== null}>
+          <Button
+            variant="outline"
+            onClick={() => backfill.mutate("members")}
+            disabled={running !== null}
+          >
             {running === "members" ? "Resolving members…" : "Resolve existing members"}
           </Button>
-          <Button variant="outline" onClick={failuresCsv}>Export failures (CSV)</Button>
+          <Button variant="outline" onClick={failuresCsv}>
+            Export failures (CSV)
+          </Button>
         </CardContent>
       </Card>
 
@@ -173,17 +205,29 @@ export function HelpDeskTab() {
               <tbody>
                 {(provLog.data ?? []).map((r) => (
                   <tr key={r.id} className="border-b last:border-b-0">
-                    <td className="py-2 pr-2 whitespace-nowrap">{new Date(r.created_at).toLocaleString()}</td>
+                    <td className="py-2 pr-2 whitespace-nowrap">
+                      {new Date(r.created_at).toLocaleString()}
+                    </td>
                     <td className="py-2 pr-2">{r.kind}</td>
-                    <td className="py-2 pr-2"><Badge variant={tone(r.status) as any}>{r.status}</Badge></td>
+                    <td className="py-2 pr-2">
+                      <Badge variant={tone(r.status) as any}>{r.status}</Badge>
+                    </td>
                     <td className="py-2 pr-2">{r.attempts}</td>
                     <td className="py-2 pr-2 font-mono text-xs">{r.freescout_id ?? "—"}</td>
-                    <td className="py-2 pr-2 text-muted-foreground text-xs max-w-[24rem] truncate" title={r.last_error ?? ""}>
+                    <td
+                      className="py-2 pr-2 text-muted-foreground text-xs max-w-[24rem] truncate"
+                      title={r.last_error ?? ""}
+                    >
                       {r.last_error ?? "—"}
                     </td>
                     <td className="py-2 pr-2">
                       {r.status === "failed" && (
-                        <Button size="sm" variant="outline" onClick={() => retryRow.mutate(r.id)} disabled={retryRow.isPending}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => retryRow.mutate(r.id)}
+                          disabled={retryRow.isPending}
+                        >
                           Retry now
                         </Button>
                       )}
@@ -199,7 +243,9 @@ export function HelpDeskTab() {
       <Card>
         <CardHeader>
           <CardTitle>Monthly tickets</CardTitle>
-          <CardDescription>Counts grouped by month and status. Updated every 4 hours.</CardDescription>
+          <CardDescription>
+            Counts grouped by month and status. Updated every 4 hours.
+          </CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           {monthly.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
@@ -218,9 +264,16 @@ export function HelpDeskTab() {
               <tbody>
                 {(monthly.data ?? []).map((r, i) => (
                   <tr key={`${r.month}-${r.status}-${i}`} className="border-b last:border-b-0">
-                    <td className="py-2 pr-2">{new Date(r.month).toLocaleDateString(undefined, { month: "long", year: "numeric" })}</td>
+                    <td className="py-2 pr-2">
+                      {new Date(r.month).toLocaleDateString(undefined, {
+                        month: "long",
+                        year: "numeric",
+                      })}
+                    </td>
                     <td className="py-2 pr-2 capitalize">{r.status}</td>
-                    <td className="py-2 pr-2 font-medium">{Number(r.ticket_count).toLocaleString()}</td>
+                    <td className="py-2 pr-2 font-medium">
+                      {Number(r.ticket_count).toLocaleString()}
+                    </td>
                   </tr>
                 ))}
               </tbody>

@@ -30,8 +30,8 @@ import {
   MessageSquare,
   RefreshCw,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Badge, Button } from "@/design-system";
+
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionSafe } from "@/lib/auth/session-port";

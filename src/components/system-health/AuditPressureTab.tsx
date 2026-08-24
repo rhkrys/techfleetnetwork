@@ -10,9 +10,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Badge, Card, CardContent, CardHeader, CardTitle, Skeleton } from "@/design-system";
 
 type Pressure = "none" | "soft" | "medium" | "hard";
 
@@ -100,7 +98,10 @@ export function AuditPressureTab() {
             <div className="grid gap-3 sm:grid-cols-3">
               <Stat label="Writes (last 5 min)" value={writes5m.toLocaleString()} />
               <Stat label="Projected / 24h" value={projected.toLocaleString()} />
-              <Stat label="Last evaluated" value={updated ? new Date(updated).toLocaleString() : "—"} />
+              <Stat
+                label="Last evaluated"
+                value={updated ? new Date(updated).toLocaleString() : "—"}
+              />
             </div>
           )}
           <p className="text-xs text-muted-foreground mt-4">{THRESHOLDS[pressure]}</p>
@@ -122,10 +123,15 @@ export function AuditPressureTab() {
           ) : (
             <ul className="divide-y divide-border">
               {top.map((row) => (
-                <li key={row.fingerprint} className="py-2 text-sm flex items-start justify-between gap-3">
+                <li
+                  key={row.fingerprint}
+                  className="py-2 text-sm flex items-start justify-between gap-3"
+                >
                   <div className="min-w-0">
                     <p className="font-mono text-xs truncate">{row.event_type ?? "—"}</p>
-                    <p className="text-muted-foreground truncate">{row.sample_message ?? row.fingerprint}</p>
+                    <p className="text-muted-foreground truncate">
+                      {row.sample_message ?? row.fingerprint}
+                    </p>
                   </div>
                   <div className="flex-shrink-0 text-right">
                     <div className="font-medium">{row.occurrences.toLocaleString()}×</div>

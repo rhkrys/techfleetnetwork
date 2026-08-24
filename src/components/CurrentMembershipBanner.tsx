@@ -1,6 +1,6 @@
 import { Sparkles, BadgeCheck, ExternalLink } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge, Button } from "@/design-system";
+
 import { FOUNDING_PROMO, MEMBERSHIP_TIERS, type TierId } from "@/config/membership-tiers";
 import { cn } from "@/lib/utils";
 
@@ -35,10 +35,10 @@ export function CurrentMembershipBanner({
     currentTier === "community" && billingPeriod === "yearly" && isFoundingMember
       ? `${FOUNDING_PROMO.yearlyPriceDisplay} USD per year`
       : currentTier === "community" && billingPeriod === "yearly"
-      ? `${FOUNDING_PROMO.yearlyOriginalDisplay} USD per year`
-      : tier.priceDisplay === "FREE"
-      ? tier.priceDisplay
-      : `${tier.priceDisplay} ${tier.priceSubtitle.replace(/^USD\s*/, "")}`;
+        ? `${FOUNDING_PROMO.yearlyOriginalDisplay} USD per year`
+        : tier.priceDisplay === "FREE"
+          ? tier.priceDisplay
+          : `${tier.priceDisplay} ${tier.priceSubtitle.replace(/^USD\s*/, "")}`;
 
   const sinceLabel = membershipUpdatedAt
     ? new Date(membershipUpdatedAt).toLocaleDateString(undefined, {
@@ -54,7 +54,7 @@ export function CurrentMembershipBanner({
       className={cn(
         "rounded-lg border border-primary/40 bg-primary/5 p-5 sm:p-6",
         "flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4",
-        className,
+        className
       )}
     >
       <div className="flex items-start gap-3 min-w-0">
@@ -70,9 +70,7 @@ export function CurrentMembershipBanner({
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <h3 className="text-xl font-bold text-foreground">{tier.name}</h3>
-            <span className="text-sm text-muted-foreground">
-              · {priceLabel}
-            </span>
+            <span className="text-sm text-muted-foreground">· {priceLabel}</span>
             {isFoundingMember && (
               <Badge
                 variant="secondary"
@@ -83,9 +81,7 @@ export function CurrentMembershipBanner({
               </Badge>
             )}
           </div>
-          <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
-            {tier.tagline}
-          </p>
+          <p className="mt-1 text-sm text-muted-foreground line-clamp-2">{tier.tagline}</p>
           {currentTier !== "starter" && (
             <dl className="mt-3 grid gap-1 text-sm sm:grid-cols-[auto_1fr] sm:gap-x-2">
               <dt className="font-medium text-muted-foreground">Billing period</dt>
@@ -93,20 +89,13 @@ export function CurrentMembershipBanner({
             </dl>
           )}
           {sinceLabel && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Active since {sinceLabel}
-            </p>
+            <p className="mt-1 text-xs text-muted-foreground">Active since {sinceLabel}</p>
           )}
         </div>
       </div>
       {isPaid && manageUrl && (
         <div className="shrink-0 sm:self-center">
-          <Button
-            asChild
-            variant="outline"
-            size="sm"
-            className="gap-2"
-          >
+          <Button asChild variant="outline" size="sm" className="gap-2">
             <a
               href={manageUrl}
               target="_blank"

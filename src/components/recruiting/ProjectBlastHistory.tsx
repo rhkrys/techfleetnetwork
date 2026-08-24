@@ -1,8 +1,8 @@
 import React from "react";
 import { useQuery } from "@/lib/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge, Card, CardContent, CardHeader, CardTitle } from "@/design-system";
+
 import { Loader2, Mail } from "lucide-react";
 import { formatDateTime } from "@/lib/format/date";
 
@@ -47,8 +47,7 @@ export default function ProjectBlastHistory({ projectId }: { projectId: string }
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">Blast history
-        </CardTitle>
+        <CardTitle className="flex items-center gap-2 text-base">Blast history</CardTitle>
       </CardHeader>
       <CardContent>
         {isLoading && (
@@ -56,11 +55,11 @@ export default function ProjectBlastHistory({ projectId }: { projectId: string }
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-label="Loading" />
           </div>
         )}
-        {error && (
-          <p className="text-sm text-destructive">Could not load blast history.</p>
-        )}
+        {error && <p className="text-sm text-destructive">Could not load blast history.</p>}
         {!isLoading && !error && (data?.length ?? 0) === 0 && (
-          <p className="text-sm text-muted-foreground">No blasts have been sent for this project yet.</p>
+          <p className="text-sm text-muted-foreground">
+            No blasts have been sent for this project yet.
+          </p>
         )}
         {!isLoading && (data?.length ?? 0) > 0 && (
           <ul className="divide-y divide-border" role="list">
@@ -75,7 +74,10 @@ export default function ProjectBlastHistory({ projectId }: { projectId: string }
                     {" · "}
                     {b.email_sent_count ?? 0} sent
                     {(b.email_failed_count ?? 0) > 0 && (
-                      <> · <span className="text-destructive">{b.email_failed_count} failed</span></>
+                      <>
+                        {" "}
+                        · <span className="text-destructive">{b.email_failed_count} failed</span>
+                      </>
                     )}
                   </p>
                 </div>

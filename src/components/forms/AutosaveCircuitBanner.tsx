@@ -1,6 +1,6 @@
 import { AlertTriangle, RotateCcw, RefreshCw } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription, AlertTitle, Button } from "@/design-system";
+
 import type { AutosaveCircuitReason } from "@/hooks/use-autosave";
 
 interface Props {
@@ -74,7 +74,11 @@ export function AutosaveCircuitBanner({ open, reason, onRetry, onReload }: Props
             <RotateCcw className="h-3.5 w-3.5 mr-1.5" aria-hidden /> {copy.retryLabel}
           </Button>
           {copy.showReload && (
-            <Button size="sm" variant="outline" onClick={onReload ?? (() => window.location.reload())}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onReload ?? (() => window.location.reload())}
+            >
               <RefreshCw className="h-3.5 w-3.5 mr-1.5" aria-hidden /> Reload form
             </Button>
           )}

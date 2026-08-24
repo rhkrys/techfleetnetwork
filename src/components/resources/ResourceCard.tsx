@@ -1,5 +1,5 @@
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge, Button } from "@/design-system";
+
 import { Eye } from "lucide-react";
 
 interface ResourceCardProps {
@@ -27,16 +27,11 @@ export default function ResourceCard({
       </div>
 
       <div className="p-4 flex flex-col flex-1 gap-3">
-        <Badge
-          variant="outline"
-          className={`w-fit text-xs ${categoryColorClass}`}
-        >
+        <Badge variant="outline" className={`w-fit text-xs ${categoryColorClass}`}>
           {category}
         </Badge>
 
-        <p className="text-sm text-muted-foreground line-clamp-2 flex-1">
-          {description}
-        </p>
+        <p className="text-sm text-muted-foreground line-clamp-2 flex-1">{description}</p>
 
         <Button size="sm" variant="outline" className="w-full mt-auto" onClick={onView}>
           View

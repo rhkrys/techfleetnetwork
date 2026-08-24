@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/design-system";
+
 import { toast } from "@/hooks/use-toast";
 import { Loader2, RefreshCw, ScanSearch } from "lucide-react";
 import { useQueryClient } from "@/lib/react-query";
@@ -32,9 +32,17 @@ export function StatsControlsCard() {
       if (error) throw error;
       await qc.invalidateQueries({ queryKey: ["network-stats"] });
       setLastReport(`Recomputed at ${new Date().toLocaleString()}`);
-      toast({ title: "Stats recomputed", description: "Network activity numbers rebuilt from source.", variant: "default" });
+      toast({
+        title: "Stats recomputed",
+        description: "Network activity numbers rebuilt from source.",
+        variant: "default",
+      });
     } catch (err) {
-      toast({ title: "Recompute failed", description: (err as Error)?.message ?? "Unknown error", variant: "destructive" });
+      toast({
+        title: "Recompute failed",
+        description: (err as Error)?.message ?? "Unknown error",
+        variant: "destructive",
+      });
     } finally {
       setRecomputing(false);
     }
@@ -49,14 +57,28 @@ export function StatsControlsCard() {
       const drift = report?.drift_count ?? 0;
       if (drift === 0) {
         setLastReport(`Parity verified at ${new Date().toLocaleString()} — no drift.`);
-        toast({ title: "Parity verified", description: "Course completions, badges, and snapshots all agree.", variant: "default" });
+        toast({
+          title: "Parity verified",
+          description: "Course completions, badges, and snapshots all agree.",
+          variant: "default",
+        });
       } else {
         await qc.invalidateQueries({ queryKey: ["network-stats"] });
-        setLastReport(`Drift detected (${drift}) and auto-corrected at ${new Date().toLocaleString()}.`);
-        toast({ title: "Drift corrected", description: `${drift} check(s) failed — snapshots rebuilt.`, variant: "default" });
+        setLastReport(
+          `Drift detected (${drift}) and auto-corrected at ${new Date().toLocaleString()}.`
+        );
+        toast({
+          title: "Drift corrected",
+          description: `${drift} check(s) failed — snapshots rebuilt.`,
+          variant: "default",
+        });
       }
     } catch (err) {
-      toast({ title: "Reconcile failed", description: (err as Error)?.message ?? "Unknown error", variant: "destructive" });
+      toast({
+        title: "Reconcile failed",
+        description: (err as Error)?.message ?? "Unknown error",
+        variant: "destructive",
+      });
     } finally {
       setReconciling(false);
     }
@@ -67,20 +89,31 @@ export function StatsControlsCard() {
       <CardHeader>
         <CardTitle>Network stats controls</CardTitle>
         <CardDescription>
-          Rebuild snapshot totals or verify the per-course / badge ledger parity. Both run server-side; safe to invoke on demand.
+          Rebuild snapshot totals or verify the per-course / badge ledger parity. Both run
+          server-side; safe to invoke on demand.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:flex-wrap">
         <Button onClick={handleRecompute} disabled={recomputing} variant="outline">
-          {recomputing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+          {recomputing ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="mr-2 h-4 w-4" />
+          )}
           Recompute stats now
         </Button>
         <Button onClick={handleReconcile} disabled={reconciling} variant="outline">
-          {reconciling ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanSearch className="mr-2 h-4 w-4" />}
+          {reconciling ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <ScanSearch className="mr-2 h-4 w-4" />
+          )}
           Reconcile course ↔ badge parity
         </Button>
         {lastReport ? (
-          <p className="text-xs text-muted-foreground sm:ml-2" aria-live="polite">{lastReport}</p>
+          <p className="text-xs text-muted-foreground sm:ml-2" aria-live="polite">
+            {lastReport}
+          </p>
         ) : null}
       </CardContent>
     </Card>
