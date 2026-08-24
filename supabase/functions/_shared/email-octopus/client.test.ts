@@ -222,6 +222,42 @@ Deno.test(
   }
 );
 
+Deno.test(
+  "double opt-in: subscribe is sent as status 'pending' (EO sends the confirmation)",
+  async () => {
+    const sink: Captured[] = [];
+    await pushDesiredState(cfg({ doubleOptIn: true }, sink), {
+      email: "ada@example.com",
+      desiredStatus: "subscribed",
+    });
+    assertEquals((sink[0].body as { status?: string }).status, "pending");
+  }
+);
+
+Deno.test("double opt-in: unsubscribe stays 'unsubscribed'", async () => {
+  const sink: Captured[] = [];
+  await pushDesiredState(cfg({ doubleOptIn: true }, sink), {
+    email: "ada@example.com",
+    desiredStatus: "unsubscribed",
+  });
+  assertEquals((sink[0].body as { status?: string }).status, "unsubscribed");
+});
+
+Deno.test("single opt-in (default): subscribe is sent as 'subscribed'", async () => {
+  const sink: Captured[] = [];
+  await pushDesiredState(cfg({}, sink), { email: "ada@example.com", desiredStatus: "subscribed" });
+  assertEquals((sink[0].body as { status?: string }).status, "subscribed");
+});
+
+Deno.test("eoConfigFromEnv parses EMAILOCTOPUS_DOUBLE_OPT_IN", () => {
+  const set = new Map([
+    ["EMAILOCTOPUS_API_KEY", "key"],
+    ["EMAILOCTOPUS_LIST_ID", "list"],
+    ["EMAILOCTOPUS_DOUBLE_OPT_IN", "true"],
+  ]);
+  assertEquals(eoConfigFromEnv({ get: (k) => set.get(k) })?.doubleOptIn, true);
+});
+
 Deno.test("eoConfigFromEnv returns null when secrets are absent (feature flag = presence)", () => {
   const empty = new Map<string, string>();
   assertEquals(eoConfigFromEnv({ get: (k) => empty.get(k) }), null);

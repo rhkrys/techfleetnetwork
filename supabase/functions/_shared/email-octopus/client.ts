@@ -24,6 +24,7 @@ export interface EoConfig {
   listId: string;
   baseUrl?: string; // default https://api.emailoctopus.com
   firstNameField?: string | null; // EO field tag for first name; unset => send no custom fields
+  doubleOptIn?: boolean; // list has double opt-in => subscribe is sent as "pending" (EO confirms)
   fetchImpl?: typeof fetch; // injectable for tests
 }
 
@@ -57,6 +58,9 @@ export function eoConfigFromEnv(env: { get(k: string): string | undefined }): Eo
     apiKey,
     listId,
     firstNameField: env.get("EMAILOCTOPUS_FIRSTNAME_FIELD") ?? null,
+    // Set EMAILOCTOPUS_DOUBLE_OPT_IN=true when the EO list has double opt-in enabled — subscribes are
+    // then sent as "pending" so EO emails the confirmation link instead of returning "Bad request."
+    doubleOptIn: env.get("EMAILOCTOPUS_DOUBLE_OPT_IN") === "true",
   };
 }
 
@@ -84,7 +88,12 @@ export async function pushDesiredState(cfg: EoConfig, input: EoPushInput): Promi
     } else {
       const body: Record<string, unknown> = {
         email_address: email,
-        status: input.desiredStatus,
+        // On a DOUBLE opt-in list, EO rejects a direct "subscribed" via the API ("Bad request"); it
+        // must be created as "pending" so EO sends its confirmation email (the member confirms → EO
+        // marks them subscribed). On a single opt-in list we set "subscribed" directly. Unsubscribe
+        // is always "unsubscribed" regardless.
+        status:
+          input.desiredStatus === "subscribed" && cfg.doubleOptIn ? "pending" : input.desiredStatus,
       };
       // Only send custom fields when a field tag is configured — a list without that tag returns 422,
       // which would loop to DLQ forever. Personalization is optional; the subscription is not.
