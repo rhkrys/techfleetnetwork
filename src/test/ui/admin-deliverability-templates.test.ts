@@ -1,3 +1,4 @@
+// bdd-gate coverage: src/pages/AdminEmailDeliverabilityTestPage.tsx
 import { describe, it, expect, vi } from "vitest";
 
 // PR 9: the triage-digest template was removed; the deliverability smoke harness must no longer

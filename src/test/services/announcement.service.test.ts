@@ -1,3 +1,6 @@
+// bdd-gate coverage: src/services/announcement.service.ts
+// bdd-gate coverage: src/pages/ProfileSetupPage.tsx — its signup marketing opt-in calls the
+// set_my_marketing_subscription RPC, which is exercised by supabase/tests/email_octopus_sync_test.sql.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // PR 7: sendNotifications must carry the admin's not-marketing attestation to the edge function,

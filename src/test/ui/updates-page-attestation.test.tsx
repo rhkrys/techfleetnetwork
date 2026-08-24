@@ -1,3 +1,4 @@
+// bdd-gate coverage: src/pages/UpdatesPage.tsx
 import { describe, it, expect, vi } from "vitest";
 import { screen, fireEvent } from "@testing-library/react";
 import { renderWithRouter } from "./test-utils";

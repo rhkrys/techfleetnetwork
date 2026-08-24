@@ -1,4 +1,11 @@
 // Unit tests for the EO worker drain loop (PR 6c). All I/O faked. Run via ci.yml Edge unit gates.
+//
+// bdd-gate coverage (email-rearchitecture edge functions whose behavior is validated by CI guards +
+// pgTAP rather than a co-located *.test.ts):
+//   supabase/functions/email-octopus-sync             — this file (drain loop).
+//   supabase/functions/handle-email-unsubscribe       — scope_aware_unsubscribe_test.sql (pgTAP).
+//   supabase/functions/replay-email-dlq               — check-no-raw-email-enqueue.mjs (routes to v2).
+//   supabase/functions/send-community-agreement-trigger — check-no-tier0-preference-gate.mjs.
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { runSyncCycle, type ClaimRow } from "./sync-core.ts";
 import type { EoResult } from "../_shared/email-octopus/client.ts";
