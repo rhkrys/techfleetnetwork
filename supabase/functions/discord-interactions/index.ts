@@ -65,17 +65,20 @@ const SB_ANON_KEY =
 async function underRateLimit(discordUserId: string): Promise<boolean> {
   try {
     const sb = createClient(SB_URL, SB_SERVICE_ROLE_KEY);
-    const { data, error } = await sb.rpc("check_rate_limit", {
+    // Use the GENERIC edge limiter (check_edge_rate_limit), NOT the auth-only check_rate_limit.
+    // check_rate_limit is hardened to auth flows: it rejects any identifier that isn't a 64-char
+    // SHA-256 hash AND any action outside its login/signup/reset whitelist — so calling it with
+    // `discord:<id>` + "fleety" returned {allowed:false} on EVERY call, silently killing /fleety
+    // (members only ever saw "you've asked a lot in the last hour"). check_edge_rate_limit hashes
+    // the identifier itself, accepts any action, and is a clean sliding window (no stuck block).
+    const { data, error } = await sb.rpc("check_edge_rate_limit", {
       p_identifier: `discord:${discordUserId}`,
       p_action: "fleety",
-      p_max_attempts: 10,
+      p_max: 20,
       p_window_minutes: 60,
-      p_block_minutes: 15,
     });
-    if (error) return true; // fail open
-    return typeof data === "object" && data !== null
-      ? (data as { allowed?: boolean }).allowed !== false
-      : data !== false;
+    if (error) return true; // fail open — a limiter error must never block a real question
+    return (data as { allowed?: boolean } | null)?.allowed !== false;
   } catch {
     return true;
   }

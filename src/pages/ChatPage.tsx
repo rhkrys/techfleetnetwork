@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { getSessionSafe } from "@/lib/auth/session-port";
 import { Button } from "@/components/ui/button";
 
 import {
@@ -26,32 +27,55 @@ import {
   storeMode,
 } from "@/lib/fleety/modes";
 import { groupConversationsByDate } from "@/lib/fleety/history";
+import { toChatAttachment } from "@/lib/fleety/attachment";
+import { useFleetyAttachment } from "@/hooks/useFleetyAttachment";
+import { FleetyAttachButton, FleetyAttachmentChip } from "@/components/fleety/FleetyAttach";
+import { FleetyMessageFeedback } from "@/components/fleety/FleetyFeedback";
+import { FleetySources } from "@/components/fleety/FleetySources";
+import { FleetyModeSwitch } from "@/components/fleety/FleetyModeSwitch";
 
-type Msg = { role: "user" | "assistant"; content: string; sources?: string[] };
+type Msg = {
+  role: "user" | "assistant";
+  content: string;
+  sources?: string[];
+  turnId?: string | null;
+};
 type Conversation = { id: string; title: string; updated_at: string };
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/techfleet-chat`;
 
-async function streamChat({
+// Exported for the auth regression test (asserts the session JWT is sent, not the anon key).
+export async function streamChat({
   messages,
   mode,
+  attachment,
   onDelta,
   onSources,
+  onTurnId,
   onDone,
 }: {
   messages: Msg[];
   mode: FleetyMode;
+  attachment?: { filename: string; text: string };
   onDelta: (deltaText: string) => void;
   onSources?: (urls: string[]) => void;
+  onTurnId?: (id: string | null) => void;
   onDone: () => void;
 }) {
+  // ASVS V13.2.1: authenticate with the member's session-bound JWT, not the static publishable
+  // key. techfleet-chat validates via getUser(); the anon key yields no user and 401s
+  // ("Invalid or expired token"). Matches FleetyChatWidget / GuidanceEmbed / stream-chat.ts.
+  const session = await getSessionSafe();
+  const token = session?.access_token;
+  if (!token) throw new Error("Authentication required. Please sign in again.");
+
   const resp = await fetch(CHAT_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+      Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ messages, mode }),
+    body: JSON.stringify({ messages, mode, attachment }),
   });
 
   if (!resp.ok) {
@@ -62,6 +86,9 @@ async function streamChat({
   // D-08: structural citations. The server GUARANTEES the source URLs (navigable
   // guide/SPF links from the retrieved KB entries) in the X-Fleety-Sources header,
   // independent of whatever the model wrote. Render these — never rely on the LLM.
+  // Turn id ties a member's 👍/👎 back to this exact answer (feeds the learning loop).
+  if (onTurnId) onTurnId(resp.headers.get("X-Fleety-Turn-Id"));
+
   const srcHeader = resp.headers.get("X-Fleety-Sources");
   if (srcHeader && onSources) {
     try {
@@ -150,16 +177,6 @@ function stripMarkdown(md: string): string {
     .trim();
 }
 
-/** Readable label for a source link (host + path, no protocol/trailing slash). */
-function prettyUrl(url: string): string {
-  try {
-    const u = new URL(url);
-    return (u.hostname + u.pathname).replace(/\/$/, "");
-  } catch {
-    return url;
-  }
-}
-
 export default function ChatPage() {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -171,6 +188,13 @@ export default function ChatPage() {
   const [activeConvoId, setActiveConvoId] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
   const [mode, setMode] = useState<FleetyMode>(() => loadStoredMode());
+  const {
+    attachment,
+    status: attachStatus,
+    error: attachError,
+    attach,
+    clear: clearAttachment,
+  } = useFleetyAttachment();
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const activeMode = fleetyModeMeta(mode);
@@ -314,11 +338,18 @@ export default function ChatPage() {
 
   const send = async (e: React.FormEvent) => {
     e.preventDefault();
-    const text = input.trim();
-    if (!text || isLoading) return;
+    const typed = input.trim();
+    // An attachment alone is enough to send — fall back to a default review prompt so the turn
+    // always has a user message (techfleet-chat requires non-empty content).
+    const hasAttachment = !!attachment?.text;
+    if ((!typed && !hasAttachment) || isLoading) return;
+    const text =
+      typed || (attachment ? `Please review my uploaded file: ${attachment.filename}` : "");
 
+    const chatAttachment = toChatAttachment(attachment);
     const userMsg: Msg = { role: "user", content: text };
     setInput("");
+    clearAttachment();
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
 
@@ -337,16 +368,32 @@ export default function ChatPage() {
 
     let assistantSoFar = "";
     let assistantSources: string[] = [];
+    let assistantTurnId: string | null = null;
     const upsertAssistant = (nextChunk: string) => {
       assistantSoFar += nextChunk;
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last?.role === "assistant") {
           return prev.map((m, i) =>
-            i === prev.length - 1 ? { ...m, content: assistantSoFar, sources: assistantSources } : m
+            i === prev.length - 1
+              ? {
+                  ...m,
+                  content: assistantSoFar,
+                  sources: assistantSources,
+                  turnId: assistantTurnId,
+                }
+              : m
           );
         }
-        return [...prev, { role: "assistant", content: assistantSoFar, sources: assistantSources }];
+        return [
+          ...prev,
+          {
+            role: "assistant",
+            content: assistantSoFar,
+            sources: assistantSources,
+            turnId: assistantTurnId,
+          },
+        ];
       });
     };
 
@@ -354,9 +401,18 @@ export default function ChatPage() {
       await streamChat({
         messages: [...messages, userMsg],
         mode,
+        attachment: chatAttachment,
         onDelta: (chunk) => upsertAssistant(chunk),
         onSources: (urls) => {
           assistantSources = urls;
+        },
+        onTurnId: (id) => {
+          assistantTurnId = id;
+          setMessages((prev) =>
+            prev.map((m, i) =>
+              i === prev.length - 1 && m.role === "assistant" ? { ...m, turnId: id } : m
+            )
+          );
         },
         onDone: async () => {
           setIsLoading(false);
@@ -380,7 +436,7 @@ export default function ChatPage() {
         <div
           className={`${
             showSidebar ? "flex" : "hidden sm:flex"
-          } flex-col w-full max-h-[35dvh] shrink-0 border rounded-lg bg-card overflow-hidden sm:w-56 sm:max-h-none`}
+          } flex-col w-full max-h-[35dvh] shrink-0 overflow-hidden sm:w-56 sm:max-h-none`}
         >
           <div className="p-3 border-b flex items-center justify-between">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
@@ -447,16 +503,19 @@ export default function ChatPage() {
               Ask me anything about Tech Fleet, team practices, workshops, and onboarding.
             </p>
           </div>
-          {user && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="shrink-0 sm:hidden"
-              onClick={() => setShowSidebar(!showSidebar)}
-            >
-              History
-            </Button>
-          )}
+          <div className="flex shrink-0 items-center gap-2">
+            <FleetyModeSwitch />
+            {user && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="sm:hidden"
+                onClick={() => setShowSidebar(!showSidebar)}
+              >
+                History
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Chat messages */}
@@ -519,27 +578,9 @@ export default function ChatPage() {
                     <div className="fleety-prose">
                       <SafeMarkdown>{msg.content}</SafeMarkdown>
                     </div>
-                    {msg.sources && msg.sources.length > 0 && (
-                      <div className="mt-3 pt-2 border-t border-border/50">
-                        <p className="text-xs font-semibold text-muted-foreground mb-1">
-                          📚 Sources
-                        </p>
-                        <ul className="space-y-0.5">
-                          {msg.sources.map((url) => (
-                            <li key={url}>
-                              <a
-                                href={url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs text-primary hover:underline break-all"
-                              >
-                                {prettyUrl(url)}
-                              </a>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
+                    {/* Sources are collapsed + only shown once the answer has content, so the
+                        member always sees the ANSWER first — never a link block that hides it. */}
+                    {msg.content.length > 0 && <FleetySources urls={msg.sources} />}
                     {!isLoading && msg.content.length > 0 && (
                       <div className="mt-3 pt-2 border-t border-border/50 flex items-center gap-1">
                         <Button
@@ -580,6 +621,7 @@ export default function ChatPage() {
                             </>
                           )}
                         </Button>
+                        <FleetyMessageFeedback turnId={msg.turnId} />
                       </div>
                     )}
                   </div>
@@ -630,8 +672,21 @@ export default function ChatPage() {
           ))}
         </div>
 
+        {/* Attached-file status chip (2.2-F) */}
+        <FleetyAttachmentChip
+          attachment={attachment}
+          status={attachStatus}
+          error={attachError}
+          onClear={clearAttachment}
+        />
+
         {/* Input */}
         <form onSubmit={send} className="flex gap-2 items-end">
+          <FleetyAttachButton
+            onPick={(f) => attach(f)}
+            disabled={isLoading}
+            busy={attachStatus === "extracting"}
+          />
           <div className="flex-1 relative">
             <textarea
               ref={inputRef as React.RefObject<HTMLTextAreaElement>}
@@ -667,7 +722,7 @@ export default function ChatPage() {
           </div>
           <Button
             type="submit"
-            disabled={isLoading || !input.trim()}
+            disabled={isLoading || (!input.trim() && !attachment?.text)}
             size="icon"
             aria-label="Send message"
           >

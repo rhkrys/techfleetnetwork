@@ -3,7 +3,7 @@
 - **Status:** Accepted (2026-08-20)
 - **Supersedes:** [ADR-0013](0013-consent-ledger-source-of-truth.md) (platform consent ledger),
   [ADR-0014](0014-ghost-email-octopus-sync-topology.md) (Ghost + Email Octopus two-way sync).
-- **Related (still in force):** [ADR-0015](0015-transactional-marketing-scope-separation.md)
+- **Related (still in force):** [ADR-0018](0018-transactional-marketing-scope-separation.md)
   (suppression scopes), [ADR-0016](0016-email-tiering-and-notify-announcements-retirement.md)
   (tiering). Requirements: `docs/design/email-rearchitecture-requirements.md` (Revision 2).
 
@@ -30,7 +30,7 @@ authoritative marketing subscription state.
 3. **Marketing unsubscribe is EO's.** EO's own unsubscribe link handles unsubscribes from marketing
    emails; an optional EO → platform webhook keeps the profile toggle's display fresh. The platform
    builds no marketing unsubscribe endpoint. (The platform's _own_ Tier-1 service email keeps its
-   own scope-aware unsubscribe, per ADR-0015.)
+   own scope-aware unsubscribe, per ADR-0018.)
 4. **The EO sync is durable, not fire-and-forget.** Every add/remove is enqueued (existing pgmq /
    outbox pattern) and retried with backoff by a worker; it is never a synchronous call on the user
    path. Signup and profile-save commit locally and **fail open** if EO is down. A dropped opt-out

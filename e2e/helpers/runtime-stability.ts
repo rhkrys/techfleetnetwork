@@ -32,7 +32,7 @@ export interface RuntimeIssueCollector {
   dispose: () => void;
 }
 
-function isIgnored(message: string) {
+export function isIgnorableRuntimeNoise(message: string) {
   return IGNORED_CONSOLE_PATTERNS.some((pattern) => pattern.test(message));
 }
 
@@ -41,13 +41,13 @@ export function collectRuntimeIssues(page: Page): RuntimeIssueCollector {
 
   const onPageError = (error: Error) => {
     const message = error.message || String(error);
-    if (!isIgnored(message)) errors.push(`pageerror: ${message}`);
+    if (!isIgnorableRuntimeNoise(message)) errors.push(`pageerror: ${message}`);
   };
 
   const onConsole = (message: ConsoleMessage) => {
     if (message.type() !== "error") return;
     const text = message.text();
-    if (isIgnored(text)) return;
+    if (isIgnorableRuntimeNoise(text)) return;
     if (FATAL_CONSOLE_PATTERNS.some((pattern) => pattern.test(text))) {
       errors.push(`console error: ${text}`);
     }

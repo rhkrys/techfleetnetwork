@@ -9,7 +9,8 @@
 
 import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/design-system";
+
 import { useDashboardOverview } from "@/hooks/use-dashboard-overview";
 import { formatDate } from "@/lib/format/date";
 
@@ -47,7 +48,8 @@ export function ResumeApplicationBanner() {
           Pick up where you left off
         </h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Your general application is saved as a draft on <span className="font-medium text-foreground">{sectionLabel}</span>
+          Your general application is saved as a draft on{" "}
+          <span className="font-medium text-foreground">{sectionLabel}</span>
           {updatedLabel ? <> · last updated {updatedLabel}</> : null}.
         </p>
       </div>

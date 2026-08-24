@@ -1,9 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, Lock } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
+// TFDS migration (design-system): UI comes from the owned design system instead of
+// @/components/ui. See docs/design/design-system/.
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Switch,
+  Label,
+  Skeleton,
+  Text,
+} from "@/design-system";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -181,10 +190,12 @@ export default function NotificationSettingsPage() {
   return (
     <div className="container max-w-3xl py-8 space-y-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Notification preferences</h1>
-        <p className="text-sm text-muted-foreground">
+        <Text brand="pageTitle" as="h1">
+          Notification preferences
+        </Text>
+        <Text brand="bodySmall" color="muted">
           Choose which alerts reach you in-app and by email.
-        </p>
+        </Text>
       </header>
 
       <Card>
@@ -240,7 +251,7 @@ export default function NotificationSettingsPage() {
                   <Switch
                     id="pref-opportunities"
                     checked={emailOpportunities}
-                    onCheckedChange={toggleEmailOpportunities}
+                    onChange={(_, v) => toggleEmailOpportunities(v)}
                     aria-label="Toggle opportunities and platform updates emails"
                   />
                 </div>
@@ -263,7 +274,7 @@ export default function NotificationSettingsPage() {
                   <Switch
                     id="pref-marketing"
                     checked={marketingOptIn}
-                    onCheckedChange={toggleMarketing}
+                    onChange={(_, v) => toggleMarketing(v)}
                     aria-label="Toggle newsletter and marketing emails"
                   />
                 </div>
@@ -307,7 +318,7 @@ export default function NotificationSettingsPage() {
                   <Switch
                     id={`pref-${k.key}`}
                     checked={isOn(k.key)}
-                    onCheckedChange={(v) => toggle(k.key, v)}
+                    onChange={(_, v) => toggle(k.key, v)}
                     aria-label={`Toggle ${k.label}`}
                   />
                 </div>

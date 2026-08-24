@@ -10,7 +10,8 @@
 
 import { useState, useCallback } from "react";
 import { X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/design-system";
+
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery, useQueryClient } from "@/lib/react-query";
 import { sanitizeHtml } from "@/lib/security";
@@ -23,7 +24,6 @@ import {
   dismissBanner,
   type AdminBanner,
 } from "@/services/banner.service";
-
 
 function SingleBanner({
   banner,
@@ -67,14 +67,14 @@ function SingleBanner({
     >
       <div className="mx-auto flex w-full max-w-[1200px] items-start gap-3 px-4 py-3 sm:items-center sm:py-2.5">
         <div className="flex-1 min-w-0 space-y-0.5">
-          <p className="text-sm font-semibold leading-snug break-words" data-no-translate>{translatedTitle}</p>
+          <p className="text-sm font-semibold leading-snug break-words" data-no-translate>
+            {translatedTitle}
+          </p>
           <div
             className="text-xs leading-relaxed opacity-90 prose prose-xs prose-invert max-w-none break-words [overflow-wrap:anywhere] [&_a]:text-blue-300 [&_a]:underline [&_*]:max-w-full"
             data-no-translate
             dangerouslySetInnerHTML={{
-              __html: sanitizeHtml(
-                linkifyHtml(normalizeRichTextHtml(translatedBody || "")),
-              ),
+              __html: sanitizeHtml(linkifyHtml(normalizeRichTextHtml(translatedBody || ""))),
             }}
           />
         </div>
@@ -91,7 +91,6 @@ function SingleBanner({
     </div>
   );
 }
-
 
 export function AnnouncementBanner() {
   const { user } = useAuth();
@@ -116,15 +115,12 @@ export function AnnouncementBanner() {
       if (!user) return;
       try {
         await dismissBanner(bannerId, user.id);
-        queryClient.setQueryData(
-          ["banner-dismissals", user.id],
-          [...dismissedIds, bannerId],
-        );
+        queryClient.setQueryData(["banner-dismissals", user.id], [...dismissedIds, bannerId]);
       } catch {
         /* degrade gracefully */
       }
     },
-    [user, dismissedIds, queryClient],
+    [user, dismissedIds, queryClient]
   );
 
   // CLS guard: while banner data is loading, if the previous session saw a
@@ -138,14 +134,14 @@ export function AnnouncementBanner() {
   })();
 
   if (!user || isLoading) {
-    return reservedHeight > 0
-      ? <div aria-hidden="true" style={{ height: reservedHeight }} />
-      : null;
+    return reservedHeight > 0 ? (
+      <div aria-hidden="true" style={{ height: reservedHeight }} />
+    ) : null;
   }
 
   // Filter: show banners not dismissed, OR banners with reopen_after_dismiss
   const visibleBanners = banners.filter(
-    (b) => !dismissedIds.includes(b.id) || b.reopen_after_dismiss,
+    (b) => !dismissedIds.includes(b.id) || b.reopen_after_dismiss
   );
 
   if (visibleBanners.length === 0) {
@@ -161,7 +157,10 @@ export function AnnouncementBanner() {
       ref={(el) => {
         // Persist measured height so next cold load can reserve the same space.
         if (el && typeof window !== "undefined") {
-          window.localStorage.setItem(LAST_HEIGHT_KEY, String(Math.round(el.getBoundingClientRect().height)));
+          window.localStorage.setItem(
+            LAST_HEIGHT_KEY,
+            String(Math.round(el.getBoundingClientRect().height))
+          );
         }
       }}
     >

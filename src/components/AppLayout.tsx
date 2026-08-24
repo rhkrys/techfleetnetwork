@@ -10,7 +10,7 @@ import {
   LogIn,
   LogOut,
   UserPen,
-  MessageCircle,
+  Bot,
   CalendarDays,
   Megaphone,
   ClipboardList,
@@ -53,8 +53,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList,
-  BreadcrumbPage, BreadcrumbSeparator,
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import techFleetLogo from "@/assets/tech-fleet-logo.svg";
 import { UniversalSearch } from "./UniversalSearch";
@@ -67,7 +71,7 @@ import { PrivacyFooterLinks } from "./PrivacyFooterLinks";
 import { AppFooter } from "./AppFooter";
 // Heavy chat widget — lazy-loaded and skipped on save-data / 2g connections
 const FleetyChatWidget = lazy(() =>
-  import("./FleetyChatWidget").then((m) => ({ default: m.FleetyChatWidget })),
+  import("./FleetyChatWidget").then((m) => ({ default: m.FleetyChatWidget }))
 );
 
 import { useNetworkQuality } from "@/hooks/use-network-quality";
@@ -86,7 +90,8 @@ function ProfileDropdown({
 }) {
   const navigate = useNavigate();
   const avatarInitials = profile
-    ? `${(profile.first_name?.[0] || "").toUpperCase()}${(profile.last_name?.[0] || "").toUpperCase()}` || "U"
+    ? `${(profile.first_name?.[0] || "").toUpperCase()}${(profile.last_name?.[0] || "").toUpperCase()}` ||
+      "U"
     : (user?.user_metadata?.full_name?.[0] || "U").toUpperCase();
 
   return (
@@ -209,11 +214,7 @@ function DesktopHeader({
         <LanguageSwitcher />
         <NotificationBell />
         <div className="ml-1">
-          <ProfileDropdown
-            profile={profile}
-            user={user}
-            onSignOut={onSignOut}
-          />
+          <ProfileDropdown profile={profile} user={user} onSignOut={onSignOut} />
         </div>
       </div>
     </header>
@@ -231,7 +232,7 @@ const mobileNavLinks = [
   { label: "Courses", href: "/courses", icon: GraduationCap },
   { label: "Events", href: "/events", icon: CalendarDays },
   { label: "Feedback", href: "/feedback", icon: MessageSquarePlus },
-  { label: "Guidance", href: "/resources?tab=guidance", icon: MessageCircle },
+  { label: "TAL 9000", href: "/tal-9000", icon: Bot },
   { label: "My Journey", href: "/my-journey", icon: Map },
   { label: "Project Openings", href: "/project-openings", icon: Handshake },
   { label: "Resources", href: "/resources", icon: BookOpen },
@@ -255,7 +256,9 @@ export function AppLayout({ children }: AppLayoutProps) {
   const isMobile = useIsMobile();
   const { isSlow } = useNetworkQuality();
   const fleetyWidget = isSlow ? null : (
-    <Suspense fallback={null}><FleetyChatWidget /></Suspense>
+    <Suspense fallback={null}>
+      <FleetyChatWidget />
+    </Suspense>
   );
   useAnnouncementRealtime();
   useNotificationRealtime();
@@ -271,12 +274,45 @@ export function AppLayout({ children }: AppLayoutProps) {
     setMobileMenuOpen(false);
   };
 
+  // TAL 9000 "Future Mode" — full-screen terminal takeover: no header, sidebar,
+  // footer, or floating widget. Auth guards (MFA / profile / 2FA grace) are kept so
+  // the takeover never weakens security. Classic mode (/tal-9000 with no ?mode=future)
+  // keeps normal chrome and falls through to the authenticated layout below.
+  const isTalFullscreen =
+    !!user &&
+    location.pathname === "/tal-9000" &&
+    new URLSearchParams(location.search).get("mode") === "future";
+
+  if (isTalFullscreen) {
+    return (
+      <PageHeaderProvider>
+        <div className="min-h-dvh bg-background text-foreground">
+          <a href="#main-content" className="skip-link">
+            Skip to main content
+          </a>
+          <main id="main-content" role="main" tabIndex={-1}>
+            {children}
+          </main>
+          <ProfileSetupDialog />
+          <MfaEnforcementGuard />
+          <AdminTwoFactorGraceDialog />
+          <LiveAnnouncer />
+        </div>
+      </PageHeaderProvider>
+    );
+  }
+
   // Public pages (no sidebar)
   const isPublicPage =
     !user ||
-    ["/", "/login", "/register", "/forgot-password", "/reset-password", "/reset-password/confirm"].includes(
-      location.pathname
-    );
+    [
+      "/",
+      "/login",
+      "/register",
+      "/forgot-password",
+      "/reset-password",
+      "/reset-password/confirm",
+    ].includes(location.pathname);
 
   if (isPublicPage) {
     return (
@@ -333,200 +369,187 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   // Authenticated: sidebar on desktop, hamburger on mobile
   const authenticatedLayout = isMobile ? (
-      <div className="min-h-dvh flex flex-col bg-background text-foreground">
+    <div className="min-h-dvh flex flex-col bg-background text-foreground">
+      <a href="#main-content" className="skip-link">
+        Skip to main content
+      </a>
+      <header
+        className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 pt-safe pl-safe pr-safe"
+        role="banner"
+      >
+        <nav
+          className="container-app flex h-14 items-center justify-between"
+          aria-label="Main navigation"
+        >
+          <Link
+            to="/dashboard"
+            className="flex min-w-0 items-center gap-2 font-bold text-base"
+            aria-label="Tech Fleet Home"
+          >
+            <img
+              src={techFleetLogo}
+              alt="Tech Fleet"
+              className="h-7 w-7 dark:invert"
+              width={28}
+              height={28}
+            />
+            <span className="truncate min-[360px]:inline hidden" data-no-translate>
+              Tech Fleet
+            </span>
+          </Link>
+          <div className="flex shrink-0 items-center gap-1">
+            <UniversalSearch />
+            <ThemeToggle />
+            <LanguageSwitcher />
+            <NotificationBell />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-expanded={mobileMenuOpen}
+              aria-controls="mobile-menu"
+              aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+            >
+              {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </Button>
+          </div>
+        </nav>
+        {mobileMenuOpen && (
+          <div
+            id="mobile-menu"
+            className="border-t animate-fade-in max-h-[calc(100dvh-4rem)] overflow-y-auto"
+            role="menu"
+          >
+            <div className="container-app py-4 space-y-1">
+              {mobileNavLinks.map(({ label, href, icon: Icon }) => (
+                <Link
+                  key={href}
+                  to={href}
+                  className={`flex items-center gap-3 px-3 py-3 rounded-md text-sm font-medium transition-colors ${
+                    isActive(href)
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                  }`}
+                  onClick={() => setMobileMenuOpen(false)}
+                  aria-current={isActive(href) ? "page" : undefined}
+                  role="menuitem"
+                >
+                  <Icon className="h-4 w-4" />
+                  {label}
+                </Link>
+              ))}
+              {isAdmin && (
+                <>
+                  <div className="pt-3 border-t">
+                    <p className="px-3 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      Admin
+                    </p>
+                  </div>
+                  {mobileAdminLinks.map(({ label, href, icon: Icon }) => (
+                    <Link
+                      key={href}
+                      to={href}
+                      className={`flex items-center gap-3 px-3 py-3 rounded-md text-sm font-medium transition-colors ${
+                        isActive(href)
+                          ? "bg-primary/10 text-primary"
+                          : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                      }`}
+                      onClick={() => setMobileMenuOpen(false)}
+                      aria-current={isActive(href) ? "page" : undefined}
+                      role="menuitem"
+                    >
+                      <Icon className="h-4 w-4" />
+                      {label}
+                    </Link>
+                  ))}
+                </>
+              )}
+              <div className="pt-3 border-t space-y-2">
+                <Button
+                  variant="outline"
+                  className="w-full justify-start"
+                  onClick={() => {
+                    navigate("/profile/edit?tab=basic-info");
+                    setMobileMenuOpen(false);
+                  }}
+                >
+                  <UserPen className="h-4 w-4 mr-2" />
+                  Basic Info
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full justify-start"
+                  onClick={() => {
+                    navigate("/profile/edit?tab=preferences");
+                    setMobileMenuOpen(false);
+                  }}
+                >
+                  <Settings className="h-4 w-4 mr-2" />
+                  Preferences
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full justify-start"
+                  onClick={() => {
+                    navigate("/profile/edit?tab=account");
+                    setMobileMenuOpen(false);
+                  }}
+                >
+                  <KeyRound className="h-4 w-4 mr-2" />
+                  Account
+                </Button>
+                <Button variant="outline" className="w-full justify-start" onClick={handleSignOut}>
+                  Sign Out
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </header>
+      <AnnouncementBanner />
+      <main id="main-content" className="flex-1" role="main" tabIndex={-1}>
+        {children}
+      </main>
+      <AppFooter />
+      <ProfileSetupDialog />
+      <MfaEnforcementGuard />
+      <LiveAnnouncer />
+      <CookieConsentBanner />
+      <UpdateAvailableBanner />
+      <AdminTwoFactorGraceDialog />
+      <ShortcutCheatsheet />
+      <Suspense fallback={null}>
+        <FleetyChatWidget />
+      </Suspense>
+    </div>
+  ) : (
+    <SidebarProvider defaultOpen={true}>
+      <div className="min-h-dvh flex w-full bg-background text-foreground">
         <a href="#main-content" className="skip-link">
           Skip to main content
         </a>
-        <header
-          className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 pt-safe pl-safe pr-safe"
-          role="banner"
-        >
-          <nav
-            className="container-app flex h-14 items-center justify-between"
-            aria-label="Main navigation"
-          >
-            <Link
-              to="/dashboard"
-              className="flex min-w-0 items-center gap-2 font-bold text-base"
-              aria-label="Tech Fleet Home"
-            >
-              <img
-                src={techFleetLogo}
-                alt="Tech Fleet"
-                className="h-7 w-7 dark:invert"
-                width={28}
-                height={28}
-              />
-              <span className="truncate min-[360px]:inline hidden" data-no-translate>Tech Fleet</span>
-            </Link>
-            <div className="flex shrink-0 items-center gap-1">
-              <UniversalSearch />
-              <ThemeToggle />
-              <LanguageSwitcher />
-              <NotificationBell />
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                aria-expanded={mobileMenuOpen}
-                aria-controls="mobile-menu"
-                aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
-              >
-                {mobileMenuOpen ? (
-                  <X className="h-5 w-5" />
-                ) : (
-                  <Menu className="h-5 w-5" />
-                )}
-              </Button>
-            </div>
-          </nav>
-          {mobileMenuOpen && (
-            <div
-              id="mobile-menu"
-              className="border-t animate-fade-in max-h-[calc(100dvh-4rem)] overflow-y-auto"
-              role="menu"
-            >
-              <div className="container-app py-4 space-y-1">
-                {mobileNavLinks.map(({ label, href, icon: Icon }) => (
-                  <Link
-                    key={href}
-                    to={href}
-                    className={`flex items-center gap-3 px-3 py-3 rounded-md text-sm font-medium transition-colors ${
-                      isActive(href)
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                    }`}
-                    onClick={() => setMobileMenuOpen(false)}
-                    aria-current={isActive(href) ? "page" : undefined}
-                    role="menuitem"
-                  >
-                    <Icon className="h-4 w-4" />
-                    {label}
-                  </Link>
-                ))}
-                {isAdmin && (
-                  <>
-                    <div className="pt-3 border-t">
-                      <p className="px-3 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Admin</p>
-                    </div>
-                    {mobileAdminLinks.map(({ label, href, icon: Icon }) => (
-                      <Link
-                        key={href}
-                        to={href}
-                        className={`flex items-center gap-3 px-3 py-3 rounded-md text-sm font-medium transition-colors ${
-                          isActive(href)
-                            ? "bg-primary/10 text-primary"
-                            : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                        }`}
-                        onClick={() => setMobileMenuOpen(false)}
-                        aria-current={isActive(href) ? "page" : undefined}
-                        role="menuitem"
-                      >
-                        <Icon className="h-4 w-4" />
-                        {label}
-                      </Link>
-                    ))}
-                  </>
-                )}
-                <div className="pt-3 border-t space-y-2">
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start"
-                    onClick={() => {
-                      navigate("/profile/edit?tab=basic-info");
-                      setMobileMenuOpen(false);
-                    }}
-                  >
-                    <UserPen className="h-4 w-4 mr-2" />
-                    Basic Info
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start"
-                    onClick={() => {
-                      navigate("/profile/edit?tab=preferences");
-                      setMobileMenuOpen(false);
-                    }}
-                  >
-                    <Settings className="h-4 w-4 mr-2" />
-                    Preferences
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start"
-                    onClick={() => {
-                      navigate("/profile/edit?tab=account");
-                      setMobileMenuOpen(false);
-                    }}
-                  >
-                    <KeyRound className="h-4 w-4 mr-2" />
-                    Account
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start"
-                    onClick={handleSignOut}
-                  >
-                    Sign Out
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-        </header>
-        <AnnouncementBanner />
-        <main id="main-content" className="flex-1" role="main" tabIndex={-1}>
-          {children}
-        </main>
-        <AppFooter />
-        <ProfileSetupDialog />
-        <MfaEnforcementGuard />
-        <LiveAnnouncer />
-        <CookieConsentBanner />
-        <UpdateAvailableBanner />
-        <AdminTwoFactorGraceDialog />
-        <ShortcutCheatsheet />
-        <Suspense fallback={null}><FleetyChatWidget /></Suspense>
-      </div>
-    ) : (
-      <SidebarProvider defaultOpen={true}>
-        <div className="min-h-dvh flex w-full bg-background text-foreground">
-          <a href="#main-content" className="skip-link">
-            Skip to main content
-          </a>
-          <AppSidebar />
-          <div className="flex-1 flex flex-col min-w-0">
-            <DesktopHeader
-              profile={profile}
-              user={user}
-              onSignOut={handleSignOut}
-            />
-            <AnnouncementBanner />
-            <main
-              id="main-content"
-              className="flex-1"
-              role="main"
-              tabIndex={-1}
-            >
-              {children}
-            </main>
-            <AppFooter />
-          </div>
+        <AppSidebar />
+        <div className="flex-1 flex flex-col min-w-0">
+          <DesktopHeader profile={profile} user={user} onSignOut={handleSignOut} />
+          <AnnouncementBanner />
+          <main id="main-content" className="flex-1" role="main" tabIndex={-1}>
+            {children}
+          </main>
+          <AppFooter />
         </div>
-        <ProfileSetupDialog />
-        <MfaEnforcementGuard />
-        <LiveAnnouncer />
-        <CookieConsentBanner />
-        <UpdateAvailableBanner />
-        <AdminTwoFactorGraceDialog />
-        <Suspense fallback={null}><FleetyChatWidget /></Suspense>
-        <ShortcutCheatsheet />
-      </SidebarProvider>
-    );
-
-  return (
-    <PageHeaderProvider>
-      {authenticatedLayout}
-    </PageHeaderProvider>
+      </div>
+      <ProfileSetupDialog />
+      <MfaEnforcementGuard />
+      <LiveAnnouncer />
+      <CookieConsentBanner />
+      <UpdateAvailableBanner />
+      <AdminTwoFactorGraceDialog />
+      <Suspense fallback={null}>
+        <FleetyChatWidget />
+      </Suspense>
+      <ShortcutCheatsheet />
+    </SidebarProvider>
   );
+
+  return <PageHeaderProvider>{authenticatedLayout}</PageHeaderProvider>;
 }

@@ -1,4 +1,4 @@
--- pgTAP: the Tier-1 unsubscribe sets the opt-out, never a global suppression (PR 4b, ADR-0015).
+-- pgTAP: the Tier-1 unsubscribe sets the opt-out, never a global suppression (PR 4b, ADR-0018).
 -- Run: `supabase test db` against a migrated DB. Rolled back at the end.
 -- Proves set_email_opportunities_unsubscribed(): turns off notify_opportunities (+ the expand-phase
 -- notify_announcements) and NEVER writes suppressed_emails, so critical account email still sends.
@@ -36,7 +36,7 @@ SELECT is(
 
 SELECT ok(
   NOT EXISTS (SELECT 1 FROM public.suppressed_emails WHERE lower(email) = 'unsub-pgtap@example.com'),
-  'unsubscribe NEVER writes a global suppressed_emails row — critical account email still sends (ADR-0015)');
+  'unsubscribe NEVER writes a global suppressed_emails row — critical account email still sends (ADR-0018)');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/design-system";
+
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Loader2, Send } from "lucide-react";
@@ -24,7 +25,9 @@ export function AgreementResendButton({ applicationId, disabled, size = "sm" }: 
         description: "We notified the contributor in app and by email (if opted in).",
       });
     } catch (e: any) {
-      toast.error("Couldn't resend the request.", { description: e?.message ?? "Try again shortly." });
+      toast.error("Couldn't resend the request.", {
+        description: e?.message ?? "Try again shortly.",
+      });
     } finally {
       setLoading(false);
     }
@@ -39,7 +42,11 @@ export function AgreementResendButton({ applicationId, disabled, size = "sm" }: 
       className="gap-1.5"
       aria-label="Resend community agreement request"
     >
-      {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+      {loading ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : (
+        <Send className="h-3.5 w-3.5" />
+      )}
       Resend
     </Button>
   );

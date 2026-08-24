@@ -1,7 +1,7 @@
 # ADR-0016: Email tiering and retirement of `notify_announcements`
 
 - **Status:** Accepted (2026-08-19)
-- **Related:** [ADR-0015](0015-transactional-marketing-scope-separation.md) (suppression scopes),
+- **Related:** [ADR-0018](0018-transactional-marketing-scope-separation.md) (suppression scopes),
   [ADR-0013](0013-consent-ledger-source-of-truth.md) (marketing consent). Requirements:
   `docs/design/email-rearchitecture-requirements.md`.
 

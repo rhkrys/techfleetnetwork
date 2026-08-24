@@ -1,16 +1,19 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { BookOpen, Wrench, Loader2, Sparkles, Puzzle } from "lucide-react";
-import { ResponsiveTabs, ResponsiveTabsList, ResponsiveTabsContent, type TabItem } from "@/components/ui/responsive-tabs";
+import {
+  ResponsiveTabs,
+  ResponsiveTabsList,
+  ResponsiveTabsContent,
+  type TabItem,
+} from "@/components/ui/responsive-tabs";
 import ExploreTab from "@/components/resources/ExploreTab";
-import GuidanceEmbed from "@/components/resources/GuidanceEmbed";
 import ResourceCard from "@/components/resources/ResourceCard";
 import ResourceDetailPanel from "@/components/resources/ResourceDetailPanel";
 import SkillsPracticesTab from "@/components/resources/SkillsPracticesTab";
 import { fetchHandbooks, handbookCategoryColors, type Handbook } from "@/data/handbooks";
 import { fetchWorkshops, workshopCategoryColors, type Workshop } from "@/data/workshops";
 import { toast } from "@/hooks/use-toast";
-import fleetyIcon from "@/assets/fleety-icon.png";
 
 export default function ResourcesPage() {
   const [handbooks, setHandbooks] = useState<Handbook[]>([]);
@@ -19,7 +22,7 @@ export default function ResourcesPage() {
   const [selectedHandbook, setSelectedHandbook] = useState<Handbook | null>(null);
   const [selectedWorkshop, setSelectedWorkshop] = useState<Workshop | null>(null);
   const [searchParams] = useSearchParams();
-  const initialTab = searchParams.get("tab") || "guidance";
+  const initialTab = searchParams.get("tab") || "explore";
   const [tab, setTab] = useState(initialTab);
 
   useEffect(() => {
@@ -48,9 +51,7 @@ export default function ResourcesPage() {
   const countBadge = (count: number) => (
     <span
       className={`ml-1.5 inline-flex items-center justify-center rounded-full px-2 py-0.5 text-xs font-bold leading-none ${
-        count > 0
-          ? "bg-primary text-primary-foreground"
-          : "bg-muted text-muted-foreground"
+        count > 0 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
       }`}
     >
       {count}
@@ -58,11 +59,6 @@ export default function ResourcesPage() {
   );
 
   const resourceTabs: TabItem[] = [
-    {
-      value: "guidance",
-      icon: <img src={fleetyIcon} alt="" className="h-4 w-4 rounded-full" width={16} height={16} aria-hidden="true" />,
-      label: "Guidance",
-    },
     {
       value: "explore",
       icon: <Sparkles className="h-4 w-4" />,
@@ -81,16 +77,16 @@ export default function ResourcesPage() {
     {
       value: "workshops",
       icon: <Wrench className="h-4 w-4" />,
-      label: <span className="flex items-center">Workshop Templates{countBadge(workshops.length)}</span>,
+      label: (
+        <span className="flex items-center">Workshop Templates{countBadge(workshops.length)}</span>
+      ),
     },
   ];
 
   return (
     <div className="container-app py-8 sm:py-12">
       <div className="mb-8">
-        <h1 className="text-2xl sm:text-3xl font-bold text-foreground">
-          Resources
-        </h1>
+        <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Resources</h1>
         <p className="text-muted-foreground mt-1">
           Handbooks, workshop templates, and reference materials for your Tech Fleet journey.
         </p>
@@ -98,10 +94,6 @@ export default function ResourcesPage() {
 
       <ResponsiveTabs value={tab} onValueChange={setTab} className="space-y-6">
         <ResponsiveTabsList tabs={resourceTabs} value={tab} onValueChange={setTab} />
-
-        <ResponsiveTabsContent value="guidance">
-          <GuidanceEmbed initialQuery={searchParams.get("q") || undefined} />
-        </ResponsiveTabsContent>
 
         <ResponsiveTabsContent value="explore">
           <ExploreTab />

@@ -15,12 +15,18 @@ import {
   storeMode,
 } from "@/lib/fleety/modes";
 import { groupConversationsByDate } from "@/lib/fleety/history";
+import { toChatAttachment } from "@/lib/fleety/attachment";
+import { useFleetyAttachment } from "@/hooks/useFleetyAttachment";
+import { FleetyAttachButton, FleetyAttachmentChip } from "@/components/fleety/FleetyAttach";
+import { FleetyMessageFeedback } from "@/components/fleety/FleetyFeedback";
+import { FleetySources } from "@/components/fleety/FleetySources";
 
 type Msg = {
   role: "user" | "assistant";
   content: string;
   followups?: string[];
   sources?: string[];
+  turnId?: string | null;
 };
 
 type Conversation = { id: string; title: string; updated_at: string };
@@ -29,29 +35,23 @@ const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/techfleet-ch
 
 const MAX_INPUT_LENGTH = 4000;
 
-/** Readable label for a source link (host + path, no protocol/trailing slash). */
-function prettyUrl(url: string): string {
-  try {
-    const u = new URL(url);
-    return (u.hostname + u.pathname).replace(/\/$/, "");
-  } catch {
-    return url;
-  }
-}
-
 async function streamChat({
   messages,
   mode,
+  attachment,
   onDelta,
   onFollowups,
   onSources,
+  onTurnId,
   onDone,
 }: {
   messages: Msg[];
   mode: FleetyMode;
+  attachment?: { filename: string; text: string };
   onDelta: (deltaText: string) => void;
   onFollowups: (followups: string[]) => void;
   onSources: (urls: string[]) => void;
+  onTurnId: (id: string | null) => void;
   onDone: () => void;
 }) {
   // ASVS V13.2.1: Use session-bound JWT, not static publishable key
@@ -70,13 +70,16 @@ async function streamChat({
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ messages: sanitizedMessages, mode }),
+    body: JSON.stringify({ messages: sanitizedMessages, mode, attachment }),
   });
 
   if (!resp.ok) {
     const errData = await resp.json().catch(() => ({}));
     throw new Error(errData.error || `Request failed (${resp.status})`);
   }
+
+  // Turn id ties a member's 👍/👎 back to this exact answer (feeds the learning loop).
+  onTurnId(resp.headers.get("X-Fleety-Turn-Id"));
 
   // D-08: structural citations guaranteed by the server (navigable guide/SPF links from the
   // retrieved KB entries), independent of what the model wrote.
@@ -175,6 +178,13 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [speakingIdx, setSpeakingIdx] = useState<number | null>(null);
   const [mode, setMode] = useState<FleetyMode>(() => loadStoredMode());
+  const {
+    attachment,
+    status: attachStatus,
+    error: attachError,
+    attach,
+    clear: clearAttachment,
+  } = useFleetyAttachment();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvoId, setActiveConvoId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
@@ -290,7 +300,11 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
 
   const sendText = async (text: string) => {
     text = text.trim();
-    if (!text || isLoading) return;
+    // An attachment alone can be sent; capture + clear it for this turn.
+    const chatAttachment = toChatAttachment(attachment);
+    if ((!text && !chatAttachment) || isLoading) return;
+    if (!text && attachment) text = `Please review my uploaded file: ${attachment.filename}`;
+    clearAttachment();
 
     const userMsg: Msg = { role: "user", content: text };
     setMessages((prev) => [
@@ -327,6 +341,7 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
       await streamChat({
         messages: [...messages, userMsg],
         mode,
+        attachment: chatAttachment,
         onDelta: (chunk) => upsertAssistant(chunk),
         onFollowups: (followups) => {
           setMessages((prev) => {
@@ -344,6 +359,15 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
               return prev.map((m, i) => (i === prev.length - 1 ? { ...m, sources: urls } : m));
             }
             return [...prev, { role: "assistant", content: "", sources: urls }];
+          });
+        },
+        onTurnId: (id) => {
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last?.role === "assistant") {
+              return prev.map((m, i) => (i === prev.length - 1 ? { ...m, turnId: id } : m));
+            }
+            return [...prev, { role: "assistant", content: "", turnId: id }];
           });
         },
         onDone: async () => {
@@ -525,27 +549,11 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
                   <div className="fleety-prose">
                     <SafeMarkdown>{msg.content}</SafeMarkdown>
                   </div>
-                  {msg.sources && msg.sources.length > 0 && (
-                    <div className="mt-3 pt-2 border-t border-border/50">
-                      <p className="text-xs font-semibold text-muted-foreground mb-1">📚 Sources</p>
-                      <ul className="space-y-0.5">
-                        {msg.sources.map((url) => (
-                          <li key={url}>
-                            <a
-                              href={url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs text-primary hover:underline break-all"
-                            >
-                              {prettyUrl(url)}
-                            </a>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
+                  {/* Sources are collapsed + only shown once the answer has content, so a member
+                      always sees the ANSWER first — never a block of links that hides it. */}
+                  {msg.content.length > 0 && <FleetySources urls={msg.sources} />}
                   {!isLoading && msg.content.length > 0 && (
-                    <div className="mt-3 pt-2 border-t border-border/50">
+                    <div className="mt-3 pt-2 border-t border-border/50 flex items-center gap-1">
                       <Button
                         variant="ghost"
                         size="sm"
@@ -560,6 +568,7 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
                         )}
                         {speakingIdx === i ? "Stop reading" : "Read aloud"}
                       </Button>
+                      <FleetyMessageFeedback turnId={msg.turnId} />
                     </div>
                   )}
                   {msg.followups && msg.followups.length > 0 && (
@@ -643,8 +652,25 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
         ))}
       </div>
 
+      {/* Attached-file status chip (2.2-F) */}
+      {attachStatus !== "idle" && (
+        <div className="px-4">
+          <FleetyAttachmentChip
+            attachment={attachment}
+            status={attachStatus}
+            error={attachError}
+            onClear={clearAttachment}
+          />
+        </div>
+      )}
+
       {/* Input */}
       <form onSubmit={send} className="p-4 pt-2 flex gap-2 items-end shrink-0">
+        <FleetyAttachButton
+          onPick={(f) => attach(f)}
+          disabled={isLoading}
+          busy={attachStatus === "extracting"}
+        />
         <div className="flex-1 relative">
           <textarea
             ref={inputRef as React.RefObject<HTMLTextAreaElement>}
@@ -655,7 +681,7 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                if (input.trim() && !isLoading) send(e);
+                if ((input.trim() || attachment?.text) && !isLoading) send(e);
               }
             }}
             placeholder={activeMode.placeholder}
@@ -680,7 +706,7 @@ export default function GuidanceEmbed({ initialQuery }: GuidanceEmbedProps) {
         </div>
         <Button
           type="submit"
-          disabled={isLoading || !input.trim()}
+          disabled={isLoading || (!input.trim() && !attachment?.text)}
           size="icon"
           aria-label="Send message"
         >

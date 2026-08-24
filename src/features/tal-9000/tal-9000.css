@@ -1,0 +1,931 @@
+/* stylelint-disable plugin/no-unsupported-browser-features --
+   TAL 9000 is an opt-in retro terminal; its gradients, custom scrollbar,
+   text-indent and cursor styles are cosmetic and degrade gracefully. This
+   mirrors the project's src/index.css exemption from the same rule. */
+
+/* TAL 9000 "Future Mode" — fully isolated retro-CRT styling.
+ *
+ * Sealed costume: every token lives on the `.tal9k` root class (never :root), every
+ * selector is scoped under `.tal9k`, and every keyframe is `tal9k-`-prefixed, so this
+ * cannot leak into or collide with the app's design system. Retro faces load from Google
+ * Fonts with a monospace fallback (degrades gracefully if a CSP blocks the request). */
+@import url("https://fonts.googleapis.com/css2?family=Michroma&display=swap");
+
+/* Perfect DOS VGA 437 — the authentic IBM-PC/DOS terminal face (More Perfect DOS VGA,
+   laemeur.sdf.org, "free for all use, commercial and non-commercial"). Self-hosted (not on
+   Google Fonts); CP437 includes the block cursor + box glyphs so ASCII renders crisp. Used ONLY
+   for the CRT screen text (--tal-font-screen), never the control-panel labels. */
+@font-face {
+  font-family: "More Perfect DOS VGA";
+  src: url("./fonts/MorePerfectDOSVGA.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+.tal9k {
+  --tal-room: #05070a;
+  --tal-chassis: #171b14;
+  --tal-chassis-2: #0d100b;
+  --tal-bezel-hi: #3a4132;
+  --tal-screen: #041d04;
+
+  /* 80s monochrome: ONE phosphor green everywhere on the CRT (hi/lo kept as aliases so every
+     existing reference resolves to the same green — no white, no lighter/darker shades). */
+  --tal-phosphor: #4ad98a;
+  --tal-phosphor-hi: #4ad98a;
+  --tal-phosphor-lo: #4ad98a;
+  --tal-glow: #7dffb0;
+  --tal-amber: #ffcf6a;
+  --tal-key-off: #3a4132;
+  --tal-key-on: #01ff85;
+  --tal-key-on-lip: #0d6a08;
+  --tal-font-screen: "More Perfect DOS VGA", "Courier New", monospace;
+  --tal-font-label: "Eurostile Extended", "Eurostile", "Michroma", "Arial Narrow", sans-serif;
+
+  position: fixed;
+  inset: 0;
+  overflow: auto;
+  background: radial-gradient(130% 100% at 50% 0%, #232a1f 0%, #141810 62%, #0b0e08 100%);
+  color: var(--tal-phosphor);
+  font-family: var(--tal-font-label);
+  -webkit-font-smoothing: antialiased;
+  display: flex;
+  justify-content: center;
+  padding: clamp(12px, 3vw, 40px);
+}
+
+.tal9k *,
+.tal9k *::before,
+.tal9k *::after {
+  box-sizing: border-box;
+}
+
+.tal9k__frame {
+  width: 100%;
+  max-width: 1200px;
+
+  /* No distinct chassis rectangle: the whole screen is one continuous control-panel surface
+     (set on .tal9k), so the CRT + button panel never look like they spill past a frame. */
+  background: transparent;
+  border: none;
+  padding: clamp(14px, 2.2vw, 28px);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* ---- responsive stage: desktop = TAL eye+panel (left) + CRT (right); stacks below ---- */
+.tal9k__stage {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-areas: "monitor" "side";
+  gap: 18px;
+}
+
+.tal9k__monitor {
+  grid-area: monitor;
+  position: relative;
+}
+
+.tal9k__side {
+  grid-area: side;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+@media (min-width: 1024px) {
+  .tal9k__stage {
+    grid-template-columns: minmax(240px, 340px) 1fr;
+    grid-template-areas: "side monitor";
+    align-items: start;
+  }
+}
+
+/* ---------------- CRT monitor (exact computer.svg frame) ---------------- */
+.tal9k__crt {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* the live terminal fills the foreignObject; the pillow shape comes from the SVG clip-path */
+.tal9k__screen {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: radial-gradient(
+    120% 120% at 50% 45%,
+    #07300a 0%,
+    var(--tal-screen) 52%,
+    #010a01 100%
+  );
+  box-shadow:
+    inset 0 0 70px rgb(0, 0, 0, 0.78),
+    inset 0 0 22px rgb(125, 255, 176, 0.14);
+  display: flex;
+  flex-direction: column;
+  font-family: var(--tal-font-screen);
+}
+
+.tal9k__scanlines,
+.tal9k__vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.tal9k__scanlines {
+  background: repeating-linear-gradient(to bottom, rgb(0, 0, 0, 0.26) 0 1px, transparent 1px 3px);
+  opacity: 0.5;
+  mix-blend-mode: multiply;
+}
+
+.tal9k__vignette {
+  z-index: 5;
+  background:
+    radial-gradient(125% 105% at 50% 48%, transparent 52%, rgb(0, 0, 0, 0.5) 100%),
+    radial-gradient(55% 38% at 30% 15%, rgb(190, 255, 215, 0.06), transparent 72%);
+}
+
+/* ---------------- power states: OFF / boot / main screen ---------------- */
+.tal9k__off,
+.tal9k__boot,
+.tal9k__mainscreen {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 40px 46px;
+  color: var(--tal-phosphor);
+  font-family: var(--tal-font-screen);
+  text-align: center;
+  text-shadow: 0 0 6px rgb(77, 222, 151, 0.5);
+}
+
+.tal9k__off-label {
+  font-size: 22px;
+  letter-spacing: 0.3em;
+  color: var(--tal-phosphor-lo);
+  text-shadow: none;
+}
+
+.tal9k__off-hint {
+  color: var(--tal-phosphor-lo);
+  font-family: var(--tal-font-label);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  text-shadow: none;
+}
+
+.tal9k__ascii {
+  margin: 0;
+  color: var(--tal-phosphor-hi);
+  font-family: var(--tal-font-screen);
+  font-size: 15px;
+  line-height: 1.05;
+  white-space: pre;
+  text-shadow: 0 0 8px rgb(168, 255, 206, 0.6);
+}
+
+.tal9k__ascii--sm {
+  color: var(--tal-phosphor);
+  font-size: 12px;
+}
+
+.tal9k__bootlog {
+  min-height: 5em;
+  color: var(--tal-phosphor-lo);
+  font-size: 15px;
+  text-shadow: none;
+}
+
+.tal9k__bootbar {
+  width: 70%;
+  max-width: 360px;
+  height: 16px;
+  padding: 2px;
+  border: 1px solid var(--tal-phosphor-lo);
+  background: rgb(0, 0, 0, 0.4);
+}
+
+.tal9k__bootbar-fill {
+  height: 100%;
+  background: var(--tal-phosphor);
+  box-shadow: 0 0 10px rgb(77, 222, 151, 0.8);
+  transition: width 0.1s linear;
+}
+
+.tal9k__bootpct {
+  color: var(--tal-phosphor);
+  font-size: 16px;
+  letter-spacing: 0.1em;
+}
+
+/* Boot: owner's Tech Fleet logo printed line-by-line. Small enough that all 55 rows fit inside
+   the CRT; fixed line-slots (blank until revealed) keep it from jumping as it prints. */
+.tal9k__bootlogo {
+  margin: 0;
+  color: var(--tal-phosphor);
+  font-family: var(--tal-font-screen);
+  font-size: 7px;
+  line-height: 1;
+  white-space: pre;
+  text-shadow: 0 0 5px rgb(86, 255, 161, 0.5);
+}
+
+.tal9k__boot {
+  gap: 8px;
+  padding: 10px 16px;
+}
+
+.tal9k__btn--power {
+  grid-column: 1 / -1;
+}
+
+/* ---------------- terminal output ---------------- */
+.tal9k__out {
+  position: relative;
+  z-index: 2;
+  flex: 0 1 auto;
+  overflow: hidden auto;
+  padding: 44px 52px 14px;
+  font-size: 20px;
+  line-height: 1.5;
+  color: var(--tal-phosphor);
+  text-shadow: 0 0 2px rgb(86, 255, 161, 0.3);
+  letter-spacing: 0.4px;
+  overflow-wrap: break-word;
+  scrollbar-width: thin;
+  scrollbar-color: var(--tal-phosphor-lo) transparent;
+}
+
+.tal9k__out::-webkit-scrollbar {
+  width: 8px;
+}
+
+.tal9k__out::-webkit-scrollbar-thumb {
+  background: var(--tal-phosphor-lo);
+  border-radius: 4px;
+}
+
+.tal9k__line {
+  white-space: pre-wrap;
+  margin: 0 0 0.35em;
+}
+
+.tal9k__line--user {
+  color: var(--tal-phosphor-hi);
+}
+
+.tal9k__line--sys {
+  color: var(--tal-phosphor-lo);
+  text-shadow: none;
+}
+
+.tal9k__line--fleety {
+  padding-left: 0;
+  text-indent: 0;
+}
+
+.tal9k__caret::after {
+  content: "\2588";
+  margin-left: 2px;
+  animation: tal9k-blink 1s steps(1) infinite;
+}
+
+/* main screen typewriter — prints one char at a time; wraps, never scrolls sideways */
+.tal9k__maintype {
+  margin: 0;
+  align-self: stretch;
+  color: var(--tal-phosphor);
+  font-family: var(--tal-font-screen);
+  font-size: 20px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  text-align: left;
+  text-shadow: 0 0 2px rgb(74, 217, 138, 0.3);
+}
+
+/* animated "LOADING . . ." while awaiting Fleety's first token */
+.tal9k__dots::after {
+  content: "";
+  animation: tal9k-dots 1.2s steps(1) infinite;
+}
+
+@keyframes tal9k-dots {
+  0% {
+    content: "";
+  }
+
+  25% {
+    content: " .";
+  }
+
+  50% {
+    content: " . .";
+  }
+
+  75% {
+    content: " . . .";
+  }
+}
+
+/* feedback console sits under the CRT */
+.tal9k__panel--feedback {
+  margin-top: 18px;
+}
+
+/* sources + feedback under an answer */
+.tal9k__meta {
+  margin: 0.2em 0 0.8em;
+  padding-left: 0;
+  font-size: 0.8em;
+}
+
+.tal9k__srcs {
+  color: var(--tal-phosphor-lo);
+}
+
+.tal9k__srcs a {
+  color: var(--tal-phosphor-hi);
+  text-decoration: underline;
+  word-break: break-all;
+}
+
+.tal9k__fb {
+  display: inline-flex;
+  gap: 10px;
+  margin-top: 0.4em;
+}
+
+/* mini control-panel keycaps — grey when off, latch bright green when selected */
+.tal9k__fb button {
+  font-family: var(--tal-font-label);
+  font-size: 0.68em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8b937f;
+  border: none;
+  cursor: pointer;
+  padding: 5px 11px;
+  background: linear-gradient(180deg, #474e40 0%, #363d30 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255, 255, 255, 0.18),
+    0 3px 0 #191e16,
+    0 5px 6px rgb(0, 0, 0, 0.5);
+  transition:
+    transform 0.05s ease,
+    box-shadow 0.05s ease,
+    color 0.12s ease,
+    background 0.12s ease;
+}
+
+.tal9k__fb button:active {
+  transform: translateY(3px);
+  box-shadow:
+    inset 0 1px 0 rgb(255, 255, 255, 0.12),
+    0 1px 0 #191e16;
+}
+
+.tal9k__fb button:focus-visible {
+  outline: 2px solid var(--tal-glow);
+  outline-offset: 2px;
+}
+
+.tal9k__fb button[aria-pressed="true"] {
+  color: #100d26;
+  background: linear-gradient(180deg, #29ff97, var(--tal-key-on) 62%, #00e878);
+  box-shadow:
+    inset 0 1px 0 rgb(255, 255, 255, 0.4),
+    0 3px 0 var(--tal-key-on-lip),
+    0 0 14px rgb(1, 255, 133, 0.5);
+}
+
+/* ---------------- input line ---------------- */
+.tal9k__inputline {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 52px 38px;
+  font-family: var(--tal-font-screen);
+}
+
+.tal9k__prompt {
+  color: var(--tal-phosphor);
+  font-size: 20px;
+  text-shadow: 0 0 2px rgb(74, 217, 138, 0.35);
+}
+
+.tal9k__input {
+  flex: 1 1 auto;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--tal-phosphor);
+  caret-color: var(--tal-phosphor);
+  font-family: var(--tal-font-screen);
+  font-size: 20px;
+  font-weight: normal;
+  font-style: normal;
+  letter-spacing: 0.4px;
+  text-shadow: 0 0 2px rgb(74, 217, 138, 0.3);
+}
+
+/* the "ask Fleety" prompt: same bright green, never bold or italic */
+.tal9k__input::placeholder {
+  color: var(--tal-phosphor);
+  font-weight: normal;
+  font-style: normal;
+  opacity: 0.85;
+}
+
+/* ---------------- TAL eye ---------------- */
+.tal9k__eyewrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  background: linear-gradient(180deg, var(--tal-chassis) 0%, var(--tal-chassis-2) 100%);
+  border: 1px solid #000;
+  padding: 16px 14px;
+  box-shadow:
+    inset 0 1px 0 var(--tal-bezel-hi),
+    inset 0 -6px 18px rgb(0, 0, 0, 0.7);
+}
+
+.tal9k__eye {
+  position: relative;
+  width: clamp(120px, 15vw, 168px);
+  aspect-ratio: 1/1;
+  display: grid;
+  place-items: center;
+}
+
+.tal9k__eye svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  position: relative;
+  z-index: 1;
+}
+
+.tal9k__aura {
+  position: absolute;
+  width: 116%;
+  height: 116%;
+  border-radius: 50%;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(circle, rgb(125, 255, 176, 0.22) 0%, rgb(125, 255, 176, 0) 64%);
+  filter: blur(13px);
+  opacity: 0.16;
+  will-change: opacity, transform;
+  animation: tal9k-aura 6.5s ease-in-out infinite;
+}
+
+.tal9k__bloom {
+  position: absolute;
+  width: 56%;
+  height: 56%;
+  border-radius: 50%;
+  z-index: 2;
+  pointer-events: none;
+  background: radial-gradient(
+    circle,
+    var(--tal-glow) 0%,
+    rgb(125, 255, 176, 0.3) 42%,
+    transparent 70%
+  );
+  filter: blur(14px);
+  opacity: 0.3;
+  will-change: opacity, transform;
+  animation: tal9k-breathe 6.5s ease-in-out infinite;
+}
+
+.tal9k__pupil {
+  position: absolute;
+  width: 9%;
+  height: 9%;
+  border-radius: 50%;
+  z-index: 3;
+  pointer-events: none;
+  background: radial-gradient(circle, #fff 0%, #ffff8a 45%, rgb(255, 255, 138, 0) 80%);
+  filter: blur(1px);
+  animation: tal9k-shimmer 5.5s ease-in-out infinite;
+}
+
+.tal9k__eyelabel {
+  font-family: var(--tal-font-label);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  color: #cdd4c4;
+  text-shadow: 0 0 6px rgb(120, 255, 176, 0.25);
+}
+
+/* 2001-style backlit indicator array + speaker grille under the eye */
+.tal9k__indicators {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+  width: 100%;
+}
+
+.tal9k__cell {
+  height: 11px;
+  border: 1px solid #000;
+  background: var(--tal-chassis-2);
+  box-shadow: inset 0 0 3px rgb(0, 0, 0, 0.85);
+}
+
+.tal9k__cell.on.amber {
+  background: var(--tal-amber);
+  box-shadow: 0 0 7px rgb(255, 207, 106, 0.8);
+}
+
+.tal9k__cell.on.teal {
+  background: #63d6cf;
+  box-shadow: 0 0 7px rgb(99, 214, 207, 0.8);
+}
+
+.tal9k__cell.on.blue {
+  background: #5aa6dc;
+  box-shadow: 0 0 7px rgb(90, 166, 220, 0.8);
+}
+
+.tal9k__cell.on.green {
+  background: var(--tal-phosphor);
+  box-shadow: 0 0 7px rgb(77, 222, 151, 0.8);
+}
+
+.tal9k__cell.blink {
+  animation: tal9k-cellblink 3.2s steps(1) infinite;
+}
+
+.tal9k__cell:nth-child(2).blink {
+  animation-duration: 2.3s;
+}
+
+.tal9k__cell:nth-child(5).blink {
+  animation-duration: 4.1s;
+}
+
+.tal9k__cell:nth-child(9).blink {
+  animation-duration: 2.9s;
+}
+
+.tal9k__cell:nth-child(11).blink {
+  animation-duration: 3.7s;
+}
+
+.tal9k__grille {
+  width: 100%;
+  height: 22px;
+  border: 1px solid #000;
+  background: repeating-linear-gradient(to bottom, #000 0 2px, #262b20 2px 5px);
+  box-shadow: inset 0 0 7px rgb(0, 0, 0, 0.85);
+}
+
+/* ---------------- control panel ---------------- */
+.tal9k__panel {
+  border: 1px solid #05070a;
+  border-top-color: rgb(255, 255, 255, 0.12);
+  position: relative;
+
+  /* generous padding so the corner screws have consistent breathing room from the buttons */
+  padding: 50px 34px 40px;
+  background: linear-gradient(180deg, #232a1f 0%, #12160f 62%, #0b0e08 100%);
+  box-shadow:
+    0 5px 10px rgb(0, 0, 0, 0.55),
+    inset 0 1px 0 rgb(255, 255, 255, 0.15),
+    inset 0 -3px 9px rgb(0, 0, 0, 0.55);
+}
+
+/* Owner-designed corner screws (screw.svg), bolted into the button panel + the CRT bezel. */
+.tal9k__screw {
+  position: absolute;
+  z-index: 6;
+  width: 18px;
+  height: 18px;
+  background: url("./screw.svg") center / contain no-repeat;
+  pointer-events: none;
+}
+
+.tal9k__screw--tl {
+  top: 12px;
+  left: 12px;
+}
+
+.tal9k__screw--tr {
+  top: 12px;
+  right: 12px;
+}
+
+.tal9k__screw--bl {
+  bottom: 12px;
+  left: 12px;
+}
+
+.tal9k__screw--br {
+  bottom: 12px;
+  right: 12px;
+}
+
+.tal9k__panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--tal-font-label);
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: #aeb6a3;
+  padding: 2px 2px 9px;
+  border-bottom: 1px solid #000;
+  box-shadow: 0 1px 0 rgb(255, 255, 255, 0.07);
+  margin-bottom: 12px;
+}
+
+.tal9k__panel-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 640px) {
+  .tal9k__panel-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* physical pushbuttons: grey when off, bright green when active (button.svg) */
+.tal9k__btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 14px;
+  border: none;
+  border-radius: 0;
+  cursor: pointer;
+  font-family: var(--tal-font-label);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fff;
+  text-shadow: 0 1px 2px rgb(0, 0, 0, 0.75);
+  background: linear-gradient(180deg, #474e40 0%, #363d30 100%);
+  box-shadow:
+    inset 0 2px 0 rgb(255, 255, 255, 0.18),
+    0 7px 0 #191e16,
+    0 11px 13px rgb(0, 0, 0, 0.6);
+  transition:
+    transform 0.05s ease,
+    box-shadow 0.06s ease,
+    color 0.12s ease,
+    background 0.12s ease;
+}
+
+.tal9k__btn:active {
+  transform: translateY(7px);
+  color: #100d26;
+  background: linear-gradient(180deg, #29ff97 0%, var(--tal-key-on) 62%, #00e878 100%);
+  box-shadow:
+    inset 0 2px 0 rgb(255, 255, 255, 0.4),
+    0 1px 0 var(--tal-key-on-lip),
+    0 2px 6px rgb(0, 0, 0, 0.5),
+    0 0 20px rgb(1, 255, 133, 0.55);
+}
+
+.tal9k__btn:focus-visible {
+  outline: 2px solid var(--tal-glow);
+  outline-offset: 3px;
+}
+
+/* latched ON (e.g. the active CHAT/HISTORY view) — bright green like button.svg */
+.tal9k__btn.is-on {
+  color: #0e120b;
+  text-shadow: none;
+  background: linear-gradient(180deg, #29ff97 0%, var(--tal-key-on) 62%, #00e878 100%);
+  box-shadow:
+    inset 0 2px 0 rgb(255, 255, 255, 0.5),
+    0 7px 0 var(--tal-key-on-lip),
+    0 11px 13px rgb(0, 0, 0, 0.5),
+    0 0 22px rgb(1, 255, 133, 0.6),
+    0 0 46px rgb(50, 156, 43, 0.42);
+}
+
+.tal9k__btn.is-on:active {
+  transform: translateY(7px);
+  box-shadow:
+    inset 0 2px 0 rgb(255, 255, 255, 0.4),
+    0 1px 0 var(--tal-key-on-lip),
+    0 2px 6px rgb(0, 0, 0, 0.5),
+    0 0 20px rgb(1, 255, 133, 0.55);
+}
+
+/* READY — clickable: glowing white keycap with a black legend (>=7:1 contrast) */
+.tal9k__btn.is-ready {
+  color: #0e120b;
+  text-shadow: none;
+  background: linear-gradient(180deg, #fff 0%, #eef2ea 55%, #d5ddce 100%);
+  box-shadow:
+    inset 0 2px 0 rgb(255, 255, 255, 0.85),
+    0 7px 0 #828b78,
+    0 11px 13px rgb(0, 0, 0, 0.5),
+    0 0 22px rgb(240, 248, 242, 0.7),
+    0 0 46px rgb(205, 230, 215, 0.4);
+}
+
+.tal9k__btn.is-ready:active {
+  transform: translateY(7px);
+  color: #0e120b;
+  background: linear-gradient(180deg, #eef2ea 0%, #d5ddce 100%);
+  box-shadow:
+    inset 0 2px 0 rgb(255, 255, 255, 0.6),
+    0 1px 0 #828b78,
+    0 2px 6px rgb(0, 0, 0, 0.5),
+    0 0 18px rgb(240, 248, 242, 0.6);
+}
+
+.tal9k__btn--go {
+  color: #100d26;
+  background: linear-gradient(180deg, #29ff97 0%, var(--tal-key-on) 62%, #00e878 100%);
+  box-shadow:
+    inset 0 2px 0 rgb(255, 255, 255, 0.5),
+    0 7px 0 var(--tal-key-on-lip),
+    0 11px 13px rgb(0, 0, 0, 0.5),
+    0 0 22px rgb(1, 255, 133, 0.6),
+    0 0 46px rgb(50, 156, 43, 0.42);
+}
+
+.tal9k__btn--go:active {
+  transform: translateY(7px);
+  box-shadow:
+    inset 0 2px 0 rgb(255, 255, 255, 0.4),
+    0 1px 0 var(--tal-key-on-lip),
+    0 2px 6px rgb(0, 0, 0, 0.5),
+    0 0 20px rgb(1, 255, 133, 0.55);
+}
+
+/* OFF — not clickable: shows the plain dark beige keycap (never a faded "disabled" look) */
+.tal9k__btn[disabled] {
+  cursor: not-allowed;
+}
+
+.tal9k__file {
+  display: none;
+}
+
+@keyframes tal9k-breathe {
+  0%,
+  100% {
+    opacity: 0.28;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.42;
+    transform: scale(1.02);
+  }
+}
+
+@keyframes tal9k-aura {
+  0%,
+  100% {
+    opacity: 0.14;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.22;
+    transform: scale(1.03);
+  }
+}
+
+@keyframes tal9k-shimmer {
+  0%,
+  100% {
+    opacity: 0.8;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.25);
+  }
+}
+
+@keyframes tal9k-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes tal9k-cellblink {
+  0%,
+  68%,
+  100% {
+    opacity: 1;
+  }
+
+  72%,
+  96% {
+    opacity: 0.28;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tal9k__aura,
+  .tal9k__bloom,
+  .tal9k__pupil,
+  .tal9k__cell,
+  .tal9k__dots::after,
+  .tal9k__caret::after {
+    animation: none !important;
+  }
+
+  .tal9k__bloom {
+    opacity: 0.5;
+  }
+
+  .tal9k__aura {
+    opacity: 0.28;
+  }
+}
+
+/* ---------------- history browser (LOG) ---------------- */
+.tal9k__log {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  padding: 40px 52px;
+  background: rgb(1, 24, 6, 0.97);
+  font-family: var(--tal-font-screen);
+}
+
+.tal9k__log-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  color: var(--tal-phosphor-hi);
+  font-size: 20px;
+  text-shadow: 0 0 6px rgb(168, 255, 206, 0.6);
+}
+
+.tal9k__log-list {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--tal-phosphor-lo) transparent;
+}
+
+.tal9k__log-group {
+  margin: 10px 0 4px;
+  color: var(--tal-phosphor-lo);
+  font-size: 15px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.tal9k__log-row {
+  padding: 6px 8px;
+  border: none;
+  background: transparent;
+  color: var(--tal-phosphor);
+  font-family: var(--tal-font-screen);
+  font-size: 18px;
+  text-align: left;
+  overflow-wrap: break-word;
+  text-shadow: 0 0 2px rgb(86, 255, 161, 0.3);
+  cursor: pointer;
+}
+
+.tal9k__log-row:hover,
+.tal9k__log-row:focus-visible {
+  background: rgb(77, 222, 151, 0.15);
+  color: var(--tal-phosphor-hi);
+  outline: none;
+}
+
+.tal9k__btn--sm {
+  padding: 6px 12px;
+}

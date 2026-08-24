@@ -4,7 +4,7 @@
 -- must set the per-scope opt-out, NOT a global suppressed_emails row. Global suppression is checked
 -- on EVERY lane including auth (enqueue-email.ts:32, transactional-email.ts:459), so unsubscribing
 -- via the old code stopped critical account email too (password resets, interview invites) — the
--- ADR-0015 violation. This RPC is the correct action: it only turns off the Tier-1 opt-out.
+-- ADR-0018 violation. This RPC is the correct action: it only turns off the Tier-1 opt-out.
 --
 -- Dual-write `notify_announcements = false` during the expand phase, because the Tier-1 senders
 -- still read that flag until PR 5 re-gates them onto notify_opportunities. Case-insensitive email

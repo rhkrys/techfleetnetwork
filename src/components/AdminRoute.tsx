@@ -7,7 +7,7 @@ import { reportError } from "@/services/error-reporter.service";
 import { toast } from "sonner";
 import { useEffect, useRef, useState } from "react";
 import { ShieldCheck, Clock } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/design-system";
 
 /**
  * Route guard requiring authentication, admin role, and admin authenticator 2FA after the setup grace period.
@@ -16,7 +16,11 @@ import { Button } from "@/components/ui/button";
 export function AdminRoute({ children }: { children: React.ReactNode }) {
   const { user, loading: authLoading, profileLoaded } = useAuth();
   const { isAdmin, loading: adminLoading } = useAdmin();
-  const [mfaState, setMfaState] = useState<{ hasTotp: boolean; graceActive: boolean | null; deadline: string | null } | null>(null);
+  const [mfaState, setMfaState] = useState<{
+    hasTotp: boolean;
+    graceActive: boolean | null;
+    deadline: string | null;
+  } | null>(null);
   const location = useLocation();
   const toastShown = useRef(false);
 
@@ -51,27 +55,28 @@ export function AdminRoute({ children }: { children: React.ReactNode }) {
       if (timedOut) {
         // Fail open: never block admin render on a wedged PostgREST stream.
         // The dialog/banner reconciles on the next successful poll.
-        reportError(
-          "admin 2FA grace RPC timed out — failing open",
-          "AdminRoute",
-          {
-            eventType: "infra_transient",
-            severity: "warn",
-            extraFields: ["fingerprint:admin_2fa_rpc_timeout"],
-          },
-        );
+        reportError("admin 2FA grace RPC timed out — failing open", "AdminRoute", {
+          eventType: "infra_transient",
+          severity: "warn",
+          extraFields: ["fingerprint:admin_2fa_rpc_timeout"],
+        });
       }
       const deadline = deadlineRes && !deadlineRes.error ? deadlineRes.data : null;
       const graceActive = graceRes && !graceRes.error ? graceRes.data === true : null;
       setMfaState({ hasTotp, graceActive, deadline });
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [user, isAdmin]);
 
   if (authLoading || adminLoading || !profileLoaded || (isAdmin && mfaState === null)) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" role="status">
+        <div
+          className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"
+          role="status"
+        >
           <span className="sr-only">Loading…</span>
         </div>
       </div>
@@ -85,7 +90,8 @@ export function AdminRoute({ children }: { children: React.ReactNode }) {
         to="/access-denied"
         state={{
           from: location,
-          reason: "Admin access is required for this page. You can continue using the rest of Tech Fleet Network normally.",
+          reason:
+            "Admin access is required for this page. You can continue using the rest of Tech Fleet Network normally.",
         }}
         replace
       />
@@ -101,8 +107,8 @@ export function AdminRoute({ children }: { children: React.ReactNode }) {
           </div>
           <h1 className="text-xl font-semibold">Admin 2FA setup required</h1>
           <p className="text-sm text-muted-foreground">
-            You're signed in, but admin access now requires a Google Authenticator-compatible
-            2FA code. Set it up from your account settings to continue.
+            You're signed in, but admin access now requires a Google Authenticator-compatible 2FA
+            code. Set it up from your account settings to continue.
           </p>
           <Button asChild>
             <Link to="/profile/edit?tab=account">Set up 2FA</Link>
@@ -125,7 +131,11 @@ export function AdminRoute({ children }: { children: React.ReactNode }) {
               <div>
                 <p className="font-semibold text-foreground">Admin 2FA setup grace period</p>
                 <p className="text-muted-foreground">
-                  Set up Google Authenticator-compatible 2FA before {mfaState.deadline ? new Date(mfaState.deadline).toLocaleDateString() : "the deadline"} to keep admin access uninterrupted.
+                  Set up Google Authenticator-compatible 2FA before{" "}
+                  {mfaState.deadline
+                    ? new Date(mfaState.deadline).toLocaleDateString()
+                    : "the deadline"}{" "}
+                  to keep admin access uninterrupted.
                 </p>
               </div>
             </div>

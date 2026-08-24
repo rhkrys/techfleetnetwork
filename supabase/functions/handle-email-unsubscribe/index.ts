@@ -97,7 +97,7 @@ Deno.serve(
         return jsonResponse({ success: false, reason: "already_unsubscribed" });
       }
 
-      // Scope-aware unsubscribe (ADR-0015): this is the platform's Tier-1 service email
+      // Scope-aware unsubscribe (ADR-0018): this is the platform's Tier-1 service email
       // ("Opportunities and platform updates") unsubscribe. Turn off ONLY the Tier-1 opt-out —
       // NEVER add a global suppressed_emails row, which would also stop critical account email
       // (password resets, interview invites). Global suppression is reserved for hard bounce /

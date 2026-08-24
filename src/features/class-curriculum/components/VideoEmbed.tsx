@@ -1,5 +1,6 @@
 import { ExternalLink, Video } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/design-system";
+
 import type { ClassModuleItem } from "../types";
 
 interface Props {
@@ -30,9 +31,17 @@ export function ClassModuleVideoEmbed({ item }: Props) {
     );
   }
 
-  if (item.video_embed_url && (item.video_provider === "youtube" || item.video_provider === "vimeo" || item.video_provider === "loom")) {
+  if (
+    item.video_embed_url &&
+    (item.video_provider === "youtube" ||
+      item.video_provider === "vimeo" ||
+      item.video_provider === "loom")
+  ) {
     return (
-      <div className="relative w-full overflow-hidden rounded-md border border-border bg-black" style={{ aspectRatio: "16 / 9" }}>
+      <div
+        className="relative w-full overflow-hidden rounded-md border border-border bg-black"
+        style={{ aspectRatio: "16 / 9" }}
+      >
         <iframe
           src={item.video_embed_url}
           title={`Video for ${item.title}`}

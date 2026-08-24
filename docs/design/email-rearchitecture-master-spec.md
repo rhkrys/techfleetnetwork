@@ -11,7 +11,7 @@
   - `platform-email-tiering-and-notify-flag-cleanup.md` (transactional tiering)
   - `email-cleanup-HANDOFF-and-tracker.md` (investigation + reach findings)
   - `email-audit-decision-table.md` (the owner-populated per-email decisions)
-- **Spawns ADRs:** 0013 consent ledger (SoR), 0014 Ghost/EO sync topology, 0015
+- **Spawns ADRs:** 0013 consent ledger (SoR), 0014 Ghost/EO sync topology, 0018
   transactional/marketing separation & suppression scopes, 0016 email tiering & retirement of
   `notify_announcements`. Written as PR-1's first commits, per repo convention.
 
@@ -144,7 +144,7 @@ recipient resolution (never per-user loops) — this is the 100k-scale hinge.
 - _Loop-prevention:_ external unsub → update platform → propagate to the **other** system only,
   never echo to origin; enforced by `source` tagging + push-only-if-state-differs.
 
-**4.4 Suppression scopes (ADR-0015).** Three independent scopes: global (`suppressed_emails`;
+**4.4 Suppression scopes (ADR-0018).** Three independent scopes: global (`suppressed_emails`;
 all tiers; always wins), Tier-1 opt-out (profile pref), Tier-2 per-purpose consent. A test
 asserts a marketing/opportunity opt-out never writes a global suppression row.
 

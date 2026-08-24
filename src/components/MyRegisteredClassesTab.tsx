@@ -2,7 +2,8 @@ import { useQuery } from "@/lib/react-query";
 import { Link } from "react-router-dom";
 import { format } from "date-fns";
 import { GraduationCap, Calendar, ExternalLink } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/design-system";
+
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { CACHE_USER_MUTABLE } from "@/lib/query-config";
@@ -35,13 +36,15 @@ export function MyRegisteredClassesTab() {
     queryFn: async (): Promise<Registration[]> => {
       const { data, error } = await supabase
         .from("cohort_registrations")
-        .select(`
+        .select(
+          `
           id, created_at,
           cohort:cohorts!inner (
             id, label, start_date, end_date, status,
             class:classes!inner ( id, slug, title, track )
           )
-        `)
+        `
+        )
         .eq("user_id", user!.id)
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -57,10 +60,16 @@ export function MyRegisteredClassesTab() {
   if (registrations.length === 0) {
     return (
       <div className="rounded-lg border bg-card p-8 text-center">
-        <GraduationCap className="h-12 w-12 mx-auto text-muted-foreground mb-4" aria-hidden="true" />
+        <GraduationCap
+          className="h-12 w-12 mx-auto text-muted-foreground mb-4"
+          aria-hidden="true"
+        />
         <p className="text-muted-foreground">
           You haven't registered for any classes yet.{" "}
-          <Link to="/courses" className="text-primary underline">Browse classes</Link>.
+          <Link to="/courses" className="text-primary underline">
+            Browse classes
+          </Link>
+          .
         </p>
       </div>
     );
@@ -94,7 +103,8 @@ export function MyRegisteredClassesTab() {
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-3">
               <Calendar className="h-3 w-3" aria-hidden="true" />
               <span>
-                {format(new Date(co.start_date), "MMM d, yyyy")} – {format(new Date(co.end_date), "MMM d, yyyy")}
+                {format(new Date(co.start_date), "MMM d, yyyy")} –{" "}
+                {format(new Date(co.end_date), "MMM d, yyyy")}
               </span>
             </div>
             <div className="flex items-center gap-1 text-xs text-primary mt-3 opacity-0 group-hover:opacity-100 transition-opacity">

@@ -1,6 +1,14 @@
 import { useState } from "react";
-import { ChevronDown, ChevronUp, HelpCircle, ExternalLink, Monitor, Smartphone } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import {
+  ChevronDown,
+  ChevronUp,
+  HelpCircle,
+  ExternalLink,
+  Monitor,
+  Smartphone,
+} from "lucide-react";
+import { Button } from "@/design-system";
+
 import desktopImg from "@/assets/discord-username-desktop.jpg";
 import mobileImg from "@/assets/discord-username-mobile.jpg";
 import settingsImg from "@/assets/discord-username-settings.jpg";
@@ -36,24 +44,24 @@ export default function DiscordUsernameTutorial() {
       </button>
 
       {open && (
-        <div
-          id="discord-username-tutorial"
-          className="border-t px-4 pb-5 pt-4 space-y-5"
-        >
+        <div id="discord-username-tutorial" className="border-t px-4 pb-5 pt-4 space-y-5">
           {/* Intro */}
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">
-              Discord has two identity fields:{" "}
-              <strong className="text-foreground">Username</strong> (your unique
-              handle, e.g. <code className="bg-muted px-1 py-0.5 rounded text-xs">johndoe</code>) and{" "}
-              <strong className="text-foreground">Display Name</strong> (what
-              others see in chat, e.g. "John Doe"). You can search with either
-              one here.
+              Discord has two identity fields: <strong className="text-foreground">Username</strong>{" "}
+              (your unique handle, e.g.{" "}
+              <code className="bg-muted px-1 py-0.5 rounded text-xs">johndoe</code>) and{" "}
+              <strong className="text-foreground">Display Name</strong> (what others see in chat,
+              e.g. "John Doe"). You can search with either one here.
             </p>
           </div>
 
           {/* Tab switcher */}
-          <div className="flex gap-1 rounded-lg bg-muted p-1" role="tablist" aria-label="Platform instructions">
+          <div
+            className="flex gap-1 rounded-lg bg-muted p-1"
+            role="tablist"
+            aria-label="Platform instructions"
+          >
             <button
               type="button"
               role="tab"
@@ -92,8 +100,9 @@ export default function DiscordUsernameTutorial() {
                   Option 1: Quick Look — Bottom Left Corner
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  Your username appears at the <strong className="text-foreground">bottom-left</strong> of
-                  the Discord window, right next to your avatar.
+                  Your username appears at the{" "}
+                  <strong className="text-foreground">bottom-left</strong> of the Discord window,
+                  right next to your avatar.
                 </p>
                 <div className="rounded-lg border overflow-hidden bg-muted/30">
                   <img
@@ -113,17 +122,16 @@ export default function DiscordUsernameTutorial() {
                 </h3>
                 <ol className="list-decimal list-inside space-y-1.5 text-sm text-muted-foreground">
                   <li>
-                    Click the <strong className="text-foreground">gear icon ⚙️</strong> at
-                    the bottom-left (next to your username).
+                    Click the <strong className="text-foreground">gear icon ⚙️</strong> at the
+                    bottom-left (next to your username).
                   </li>
                   <li>
-                    Select <strong className="text-foreground">"My Account"</strong> from the
-                    left sidebar.
+                    Select <strong className="text-foreground">"My Account"</strong> from the left
+                    sidebar.
                   </li>
                   <li>
-                    Your <strong className="text-foreground">username</strong> is shown
-                    under your profile card — it's the one <em>without</em> spaces
-                    or special characters.
+                    Your <strong className="text-foreground">username</strong> is shown under your
+                    profile card — it's the one <em>without</em> spaces or special characters.
                   </li>
                 </ol>
                 <div className="rounded-lg border overflow-hidden bg-muted/30">
@@ -143,25 +151,23 @@ export default function DiscordUsernameTutorial() {
           {/* Mobile instructions */}
           {activeTab === "mobile" && (
             <div className="space-y-3">
-              <h3 className="text-sm font-semibold text-foreground">
-                On the Discord Mobile App
-              </h3>
+              <h3 className="text-sm font-semibold text-foreground">On the Discord Mobile App</h3>
               <ol className="list-decimal list-inside space-y-1.5 text-sm text-muted-foreground">
                 <li>
                   Tap your <strong className="text-foreground">avatar</strong> or the{" "}
-                  <strong className="text-foreground">profile icon</strong> at the
-                  bottom-right of the screen.
+                  <strong className="text-foreground">profile icon</strong> at the bottom-right of
+                  the screen.
                 </li>
                 <li>
-                  Tap the <strong className="text-foreground">gear icon ⚙️</strong> to
-                  open Settings.
+                  Tap the <strong className="text-foreground">gear icon ⚙️</strong> to open
+                  Settings.
                 </li>
                 <li>
                   Go to <strong className="text-foreground">"My Account"</strong>.
                 </li>
                 <li>
-                  Your <strong className="text-foreground">username</strong> is listed
-                  right under your profile picture.
+                  Your <strong className="text-foreground">username</strong> is listed right under
+                  your profile picture.
                 </li>
               </ol>
               <div className="rounded-lg border overflow-hidden bg-muted/30 max-w-xs mx-auto">
@@ -184,23 +190,23 @@ export default function DiscordUsernameTutorial() {
             </p>
             <ul className="text-xs text-muted-foreground space-y-1">
               <li>
-                <strong className="text-foreground">Username</strong> — Your
-                unique identifier (lowercase, no spaces). Example:{" "}
+                <strong className="text-foreground">Username</strong> — Your unique identifier
+                (lowercase, no spaces). Example:{" "}
                 <code className="bg-muted px-1 py-0.5 rounded">johndoe</code>
               </li>
               <li>
-                <strong className="text-foreground">Display Name</strong> — What
-                others see in chat (can have spaces &amp; capitals). Example: "John
-                Doe"
+                <strong className="text-foreground">Display Name</strong> — What others see in chat
+                (can have spaces &amp; capitals). Example: "John Doe"
               </li>
               <li>
-                <strong className="text-foreground">Server Nickname</strong> — A
-                custom name set for a specific server.
+                <strong className="text-foreground">Server Nickname</strong> — A custom name set for
+                a specific server.
               </li>
             </ul>
             <p className="text-xs text-muted-foreground">
               You can search with <strong className="text-foreground">any of these</strong> and
-              we'll find you. If there's no exact match, we'll show you similar members to choose from.
+              we'll find you. If there's no exact match, we'll show you similar members to choose
+              from.
             </p>
           </div>
 

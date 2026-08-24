@@ -1,4 +1,5 @@
-import { Label } from "@/components/ui/label";
+import { Label } from "@/design-system";
+
 import { RichTextEditor } from "@/components/RichTextEditor";
 
 /**
@@ -18,7 +19,14 @@ export interface RichTextSectionProps {
   error?: string;
 }
 
-export function RichTextSection({ id, label, placeholder, value, onChange, error }: RichTextSectionProps) {
+export function RichTextSection({
+  id,
+  label,
+  placeholder,
+  value,
+  onChange,
+  error,
+}: RichTextSectionProps) {
   return (
     <div>
       <Label htmlFor={id}>{label}</Label>

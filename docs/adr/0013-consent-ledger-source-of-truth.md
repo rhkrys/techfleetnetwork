@@ -4,7 +4,7 @@
   Email Octopus became the single marketing system and the source of truth; the platform-owned
   consent ledger described here is no longer built. Retained for history.
 - **Related:** [ADR-0014](0014-ghost-email-octopus-sync-topology.md) (sync),
-  [ADR-0015](0015-transactional-marketing-scope-separation.md) (scopes),
+  [ADR-0018](0018-transactional-marketing-scope-separation.md) (scopes),
   [membership ledger re-architecture] (same event-sourced pattern). Requirements:
   `docs/design/email-rearchitecture-requirements.md` §7.
 

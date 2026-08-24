@@ -1,0 +1,25 @@
+/* Styling for the live-demo "stage" that wraps each embedded React island. */
+.tfds-demo {
+  position: relative;
+  margin: 20px 0;
+  padding: 28px 24px 24px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 10px;
+  background: var(--vp-c-bg-soft);
+}
+.tfds-demo__label {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vp-c-text-3);
+}
+.tfds-demo__stage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  min-height: 24px;
+}

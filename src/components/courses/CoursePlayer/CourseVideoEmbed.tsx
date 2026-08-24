@@ -5,7 +5,8 @@
  * iframe-API state machine.
  */
 import { useEffect, useRef } from "react";
-import { AspectRatio } from "@/components/ui/aspect-ratio";
+import { AspectRatio } from "@/design-system";
+
 import { recordLessonVideoEvent } from "@/lib/telemetry/lesson-video";
 
 type YouTubePlayerState = -1 | 0 | 1 | 2 | 3 | 5;
@@ -23,7 +24,12 @@ declare global {
     YT?: {
       Player: new (
         element: HTMLIFrameElement,
-        options: { events: { onReady: () => void; onStateChange: (event: { data: YouTubePlayerState }) => void } }
+        options: {
+          events: {
+            onReady: () => void;
+            onStateChange: (event: { data: YouTubePlayerState }) => void;
+          };
+        }
       ) => YouTubePlayer;
       PlayerState?: { PLAYING: 1; PAUSED: 2 };
     };
@@ -123,24 +129,56 @@ export function CourseVideoEmbed({ youtubeId, title, lessonId }: CourseVideoEmbe
           onStateChange: ({ data }) => {
             const player = playerRef.current;
             const pos = (() => {
-              try { return player?.getCurrentTime() ?? undefined; } catch { return undefined; }
+              try {
+                return player?.getCurrentTime() ?? undefined;
+              } catch {
+                return undefined;
+              }
             })();
             if (data === 1) {
               setPlaybackAttr("playing");
               rememberPosition();
               const now = Date.now();
-              if (pos !== undefined && Math.abs(pos - lastTimeRef.current) > 2 && now - lastSeekLogRef.current > 1000) {
+              if (
+                pos !== undefined &&
+                Math.abs(pos - lastTimeRef.current) > 2 &&
+                now - lastSeekLogRef.current > 1000
+              ) {
                 lastSeekLogRef.current = now;
-                void recordLessonVideoEvent({ lessonId, youtubeId, lessonTitle: title, event: "seek", positionSeconds: pos });
+                void recordLessonVideoEvent({
+                  lessonId,
+                  youtubeId,
+                  lessonTitle: title,
+                  event: "seek",
+                  positionSeconds: pos,
+                });
               }
-              void recordLessonVideoEvent({ lessonId, youtubeId, lessonTitle: title, event: "play", positionSeconds: pos });
+              void recordLessonVideoEvent({
+                lessonId,
+                youtubeId,
+                lessonTitle: title,
+                event: "play",
+                positionSeconds: pos,
+              });
             } else if (data === 2) {
               setPlaybackAttr("paused");
               rememberPosition();
-              void recordLessonVideoEvent({ lessonId, youtubeId, lessonTitle: title, event: "pause", positionSeconds: pos });
+              void recordLessonVideoEvent({
+                lessonId,
+                youtubeId,
+                lessonTitle: title,
+                event: "pause",
+                positionSeconds: pos,
+              });
             } else if (data === 0) {
               setPlaybackAttr("ended");
-              void recordLessonVideoEvent({ lessonId, youtubeId, lessonTitle: title, event: "ended", positionSeconds: pos });
+              void recordLessonVideoEvent({
+                lessonId,
+                youtubeId,
+                lessonTitle: title,
+                event: "ended",
+                positionSeconds: pos,
+              });
             } else if (data === 3) {
               setPlaybackAttr("buffering");
             }
@@ -157,7 +195,13 @@ export function CourseVideoEmbed({ youtubeId, title, lessonId }: CourseVideoEmbe
       cancelled = true;
       rememberPosition();
       const pos = lastTimeRef.current || undefined;
-      void recordLessonVideoEvent({ lessonId, youtubeId, lessonTitle: title, event: "closed", positionSeconds: pos });
+      void recordLessonVideoEvent({
+        lessonId,
+        youtubeId,
+        lessonTitle: title,
+        event: "closed",
+        positionSeconds: pos,
+      });
       window.clearInterval(interval);
       window.clearTimeout(restoreTimer);
       window.removeEventListener("resize", handleResize);

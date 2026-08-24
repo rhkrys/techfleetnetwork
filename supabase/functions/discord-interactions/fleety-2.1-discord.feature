@@ -44,6 +44,15 @@ Feature: Discord /fleety on the unified 2.0 brain (Fleety 2.1)
     When they exceed the per-user hourly limit
     Then further calls are refused with a friendly notice before any 2.0 call
 
+  @security @regression
+  Scenario: A normal user under the limit is NOT falsely throttled
+    Given a Discord user asking their first /fleety question of the hour
+    When the adapter checks the rate limit
+    Then it uses the generic edge limiter (check_edge_rate_limit), which accepts a "discord:<id>"
+    And the call is allowed through to the 2.0 brain
+    # Guards the 2026-08 outage: the auth-only check_rate_limit rejected the non-hashed identifier
+    # and the "fleety" action, returning allowed=false on EVERY call — /fleety answered nobody.
+
   # ── Untrusted content / prompt injection / output (ai-llm-agent-security) ──
   @security
   Scenario: Discord message content is subject to the 2.0 injection + scope gates

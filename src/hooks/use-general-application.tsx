@@ -23,11 +23,11 @@ import {
   getFieldErrors,
   canSubmit,
 } from "@/lib/validators/general-application";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/design-system";
+
 import { CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAutosave } from "@/hooks/use-autosave";
-
 
 export function useGeneralApplication() {
   const { user, profile, refreshProfile } = useAuth();
@@ -63,37 +63,46 @@ export function useGeneralApplication() {
     });
   }, []);
 
-  const populateFormFromApp = useCallback((app: GeneralApplication) => {
-    setForm({
-      hours_commitment: app.hours_commitment || "",
-      portfolio_url: app.portfolio_url || "",
-      linkedin_url: app.linkedin_url || "",
-      country: profile?.country || "",
-      timezone: profile?.timezone || "",
-      discord_username: profile?.discord_username || "",
-      has_discord_account: profile?.has_discord_account ?? true,
-      experience_areas: profile?.experience_areas || [],
-      professional_goals: profile?.professional_goals || "",
-      notify_training_opportunities: profile?.notify_training_opportunities || false,
-      notify_announcements: profile?.notify_announcements || false,
-      education_background: profile?.education_background || [],
-      interests: profile?.interests || [],
-      scheduling_url: profile?.scheduling_url || "",
-      previous_engagement: app.previous_engagement || "",
-      previous_engagement_ways: app.previous_engagement_ways || [],
-      teammate_learnings: app.teammate_learnings || "",
-      agile_vs_waterfall: app.agile_vs_waterfall || "",
-      psychological_safety: app.psychological_safety || "",
-      agile_philosophies: app.agile_philosophies || "",
-      collaboration_challenges: app.collaboration_challenges || "",
-      service_leadership_definition: app.service_leadership_definition || "",
-      service_leadership_actions: app.service_leadership_actions || "",
-      service_leadership_challenges: app.service_leadership_challenges || "",
-      service_leadership_situation: app.service_leadership_situation || "",
-    });
-    setTitle(app.title);
-    setSection(app.status === "completed" ? 1 : (app.current_section > 0 ? Math.min(app.current_section, TOTAL_SECTIONS) : 1));
-  }, [profile]);
+  const populateFormFromApp = useCallback(
+    (app: GeneralApplication) => {
+      setForm({
+        hours_commitment: app.hours_commitment || "",
+        portfolio_url: app.portfolio_url || "",
+        linkedin_url: app.linkedin_url || "",
+        country: profile?.country || "",
+        timezone: profile?.timezone || "",
+        discord_username: profile?.discord_username || "",
+        has_discord_account: profile?.has_discord_account ?? true,
+        experience_areas: profile?.experience_areas || [],
+        professional_goals: profile?.professional_goals || "",
+        notify_training_opportunities: profile?.notify_training_opportunities || false,
+        notify_announcements: profile?.notify_announcements || false,
+        education_background: profile?.education_background || [],
+        interests: profile?.interests || [],
+        scheduling_url: profile?.scheduling_url || "",
+        previous_engagement: app.previous_engagement || "",
+        previous_engagement_ways: app.previous_engagement_ways || [],
+        teammate_learnings: app.teammate_learnings || "",
+        agile_vs_waterfall: app.agile_vs_waterfall || "",
+        psychological_safety: app.psychological_safety || "",
+        agile_philosophies: app.agile_philosophies || "",
+        collaboration_challenges: app.collaboration_challenges || "",
+        service_leadership_definition: app.service_leadership_definition || "",
+        service_leadership_actions: app.service_leadership_actions || "",
+        service_leadership_challenges: app.service_leadership_challenges || "",
+        service_leadership_situation: app.service_leadership_situation || "",
+      });
+      setTitle(app.title);
+      setSection(
+        app.status === "completed"
+          ? 1
+          : app.current_section > 0
+            ? Math.min(app.current_section, TOTAL_SECTIONS)
+            : 1
+      );
+    },
+    [profile]
+  );
 
   /** Load or create the single general application */
   const loadOrCreateApp = useCallback(async () => {
@@ -148,24 +157,27 @@ export function useGeneralApplication() {
     return () => setHeader(null);
   }, [activeApp, setHeader]);
 
-  const gatherSaveFields = useCallback((): Partial<GeneralApplication> => ({
-    title,
-    hours_commitment: form.hours_commitment,
-    portfolio_url: form.portfolio_url,
-    linkedin_url: form.linkedin_url,
-    previous_engagement: form.previous_engagement,
-    previous_engagement_ways: form.previous_engagement_ways,
-    teammate_learnings: form.teammate_learnings,
-    agile_vs_waterfall: form.agile_vs_waterfall,
-    psychological_safety: form.psychological_safety,
-    agile_philosophies: form.agile_philosophies,
-    collaboration_challenges: form.collaboration_challenges,
-    service_leadership_definition: form.service_leadership_definition,
-    service_leadership_actions: form.service_leadership_actions,
-    service_leadership_challenges: form.service_leadership_challenges,
-    service_leadership_situation: form.service_leadership_situation,
-    current_section: section,
-  }), [title, form, section]);
+  const gatherSaveFields = useCallback(
+    (): Partial<GeneralApplication> => ({
+      title,
+      hours_commitment: form.hours_commitment,
+      portfolio_url: form.portfolio_url,
+      linkedin_url: form.linkedin_url,
+      previous_engagement: form.previous_engagement,
+      previous_engagement_ways: form.previous_engagement_ways,
+      teammate_learnings: form.teammate_learnings,
+      agile_vs_waterfall: form.agile_vs_waterfall,
+      psychological_safety: form.psychological_safety,
+      agile_philosophies: form.agile_philosophies,
+      collaboration_challenges: form.collaboration_challenges,
+      service_leadership_definition: form.service_leadership_definition,
+      service_leadership_actions: form.service_leadership_actions,
+      service_leadership_challenges: form.service_leadership_challenges,
+      service_leadership_situation: form.service_leadership_situation,
+      current_section: section,
+    }),
+    [title, form, section]
+  );
 
   /** Sync profile fields from Section 2 — note: discord_username/has_discord_account
    *  are intentionally excluded. The shared ProfileDiscordConnector is the only
@@ -192,47 +204,52 @@ export function useGeneralApplication() {
     }
   }, [user, form, refreshProfile]);
 
-  const handleSave = useCallback(async (markComplete = false) => {
-    if (!activeApp) return;
-    setSaving(true);
-    try {
-      const fields = gatherSaveFields();
-      if (markComplete) {
-        fields.status = "completed";
-        if (!isCompleted) {
-          (fields as Record<string, unknown>).completed_at = new Date().toISOString();
+  const handleSave = useCallback(
+    async (markComplete = false) => {
+      if (!activeApp) return;
+      setSaving(true);
+      try {
+        const fields = gatherSaveFields();
+        if (markComplete) {
+          fields.status = "completed";
+          if (!isCompleted) {
+            (fields as Record<string, unknown>).completed_at = new Date().toISOString();
+          }
+        } else if (!isCompleted) {
+          fields.status = "draft";
         }
-      } else if (!isCompleted) {
-        fields.status = "draft";
-      }
-      await GeneralApplicationService.save(activeApp.id, fields);
-      await syncProfileFields();
-      const updated = await GeneralApplicationService.fetch(activeApp.id);
-      if (updated) setActiveApp(updated);
+        await GeneralApplicationService.save(activeApp.id, fields);
+        await syncProfileFields();
+        const updated = await GeneralApplicationService.fetch(activeApp.id);
+        if (updated) setActiveApp(updated);
 
-      if (markComplete && !isCompleted) {
-        setShowCelebration(true);
-        // Fire-and-forget Discord notification
-        const displayName = profile?.display_name || profile?.first_name || "A member";
-        const discord = profile?.discord_username || undefined;
-        const discordId = profile?.discord_user_id || undefined;
-        DiscordNotifyService.applicationSubmitted(displayName, "General", discord, discordId);
-        // Fire-and-forget confirmation email (idempotent — outbox row + sweeper
-        // back this up if the call fails or the user closes the tab).
-        supabase.functions
-          .invoke("send-application-confirmation", {
-            body: { kind: "general", applicationId: activeApp.id },
-          })
-          .catch(() => { /* sweeper will retry */ });
-      } else {
-        toast.success(markComplete ? "Application updated!" : "Progress saved");
+        if (markComplete && !isCompleted) {
+          setShowCelebration(true);
+          // Fire-and-forget Discord notification
+          const displayName = profile?.display_name || profile?.first_name || "A member";
+          const discord = profile?.discord_username || undefined;
+          const discordId = profile?.discord_user_id || undefined;
+          DiscordNotifyService.applicationSubmitted(displayName, "General", discord, discordId);
+          // Fire-and-forget confirmation email (idempotent — outbox row + sweeper
+          // back this up if the call fails or the user closes the tab).
+          supabase.functions
+            .invoke("send-application-confirmation", {
+              body: { kind: "general", applicationId: activeApp.id },
+            })
+            .catch(() => {
+              /* sweeper will retry */
+            });
+        } else {
+          toast.success(markComplete ? "Application updated!" : "Progress saved");
+        }
+      } catch {
+        toast.error("We couldn't save your application. Refresh and try again.");
+      } finally {
+        setSaving(false);
       }
-    } catch {
-      toast.error("We couldn't save your application. Refresh and try again.");
-    } finally {
-      setSaving(false);
-    }
-  }, [activeApp, isCompleted, gatherSaveFields, syncProfileFields]);
+    },
+    [activeApp, isCompleted, gatherSaveFields, syncProfileFields]
+  );
 
   const validateSection = useCallback((): boolean => {
     const fieldErrors = getFieldErrors(form, section);
@@ -267,7 +284,9 @@ export function useGeneralApplication() {
         await syncProfileFields();
         const updated = await GeneralApplicationService.fetch(activeApp.id);
         if (updated) setActiveApp(updated);
-      } catch { /* non-blocking */ }
+      } catch {
+        /* non-blocking */
+      }
       setSaving(false);
     }
   }, [validateSection, section, activeApp, isCompleted, gatherSaveFields, syncProfileFields]);
@@ -278,10 +297,7 @@ export function useGeneralApplication() {
   }, []);
 
   // ── Autosave: 30s tick, draft only, no toast ───────────────────────────
-  const autosaveValue = useMemo(
-    () => ({ ...gatherSaveFields() }),
-    [gatherSaveFields],
-  );
+  const autosaveValue = useMemo(() => ({ ...gatherSaveFields() }), [gatherSaveFields]);
   const autosave = useAutosave({
     value: autosaveValue,
     enabled: !!activeApp && !isCompleted,
@@ -294,9 +310,12 @@ export function useGeneralApplication() {
       // pattern that caused the submission loop. Status is owned solely by
       // handleSave(markComplete).
       await GeneralApplicationService.save(activeApp.id, fields);
-      try { await syncProfileFields(); } catch { /* non-blocking */ }
+      try {
+        await syncProfileFields();
+      } catch {
+        /* non-blocking */
+      }
     },
-
   });
 
   return {
@@ -330,4 +349,3 @@ export function useGeneralApplication() {
     navigate,
   };
 }
-

@@ -14,6 +14,7 @@ import {
   buildSystemPrompt,
   expandQuery,
   extractSourceUrls,
+  MISCONCEPTION_REFRAME,
   NO_KNOWLEDGE_DIRECTIVE,
   PLAN_MODE_CONTRACT,
   PRACTICAL_CONTRACT,
@@ -37,7 +38,10 @@ import {
 // "Where to learn more" top-3-then-rest link hierarchy, C1 no-inline/no-invented-links, and a
 // non-negotiable adherence rule — all owner-required mentor behavior, not optional. v4-pro's
 // 131k context trivially affords a ~3k base; the ceiling still bounds unbounded creep.
-const TOKEN_CEILING = 3200;
+// Bumped 3200 -> 3350 (2026-08-18): the 2.2-E MISCONCEPTION_REFRAME directive (gently reframe a
+// wrong premise BEFORE answering, never silently adopt it) is a core mentor move, always injected
+// across chat/review/plan modes. ~60 tokens; the ceiling still bounds unbounded creep.
+const TOKEN_CEILING = 3350;
 
 function emptyCtx(overrides: Partial<PromptContext> = {}): PromptContext {
   return {
@@ -214,6 +218,7 @@ Deno.test("assembly order is byte-for-byte faithful to the original inline promp
     ctx.exampleContext +
     PRACTICAL_CONTRACT +
     ALIAS_MAP +
+    MISCONCEPTION_REFRAME +
     tonePresetFor(ctx.audience) +
     ctx.knowledgeContext +
     ctx.frameworkContext +
@@ -221,6 +226,19 @@ Deno.test("assembly order is byte-for-byte faithful to the original inline promp
     ctx.webContext +
     ctx.materialContext;
   assertEquals(buildSystemPrompt(ctx), expected);
+});
+
+Deno.test("misconception-reframe directive is present in every mode (2.2-E)", () => {
+  assert(MISCONCEPTION_REFRAME.includes("GENTLY REFRAME MISCONCEPTIONS"));
+  // Always injected — chat, review, and plan modes all carry it (a wrong premise
+  // must never be silently adopted regardless of mode).
+  for (const mode of [undefined, "review", "plan"] as const) {
+    const p = buildSystemPrompt(emptyCtx({ mode }));
+    assert(
+      p.includes("GENTLY REFRAME MISCONCEPTIONS"),
+      `reframe directive missing in mode=${mode ?? "chat"}`
+    );
+  }
 });
 
 // ── D-08 structural citations ────────────────────────────────────────────────

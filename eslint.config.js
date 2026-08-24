@@ -22,6 +22,7 @@ import noFocusListener from "./scripts/lint/eslint-plugin-no-focus-listener.mjs"
 import authBootstrapNoRefresh from "./scripts/lint/eslint-plugin-auth-bootstrap-no-refresh.mjs";
 import oauthCanonicalOrigin from "./scripts/lint/eslint-plugin-oauth-canonical-origin.mjs";
 import noRawSupabaseRpc from "./scripts/lint/eslint-plugin-no-raw-supabase-rpc.mjs";
+import noDirectMui from "./scripts/lint/eslint-plugin-no-direct-mui.mjs";
 
 export default tseslint.config(
   { ignores: ["dist"] },
@@ -425,6 +426,21 @@ export default tseslint.config(
         },
       ],
     },
+  },
+  {
+    // TFDS governance — the app imports UI from '@/design-system', never
+    // '@mui/material' directly. Zero current violations (MUI is brand-new), so
+    // this ships as "error" immediately. Only src/design-system/** and tests
+    // may import MUI. See docs/design/design-system/architecture-spec.md §7.
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: [
+      "src/design-system/**",
+      "src/**/*.test.{ts,tsx}",
+      "src/**/__tests__/**",
+      "src/test/**",
+    ],
+    plugins: { "design-system": { rules: { "no-direct-mui": noDirectMui } } },
+    rules: { "design-system/no-direct-mui": "error" },
   },
   {
     // jsx-a11y/label-has-associated-control crashes under eslint-plugin-jsx-a11y@6.x

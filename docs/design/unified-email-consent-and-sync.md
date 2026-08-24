@@ -7,7 +7,7 @@
   architectural-decision-records, owasp-secure-coding-bdd, bdd-comprehensive-testing,
   release-deployment-safety, sre-operational-readiness
 - **Spawns ADRs:** 0013 (consent system-of-record), 0014 (cross-system sync topology),
-  0015 (transactional vs. marketing scope separation). Written when the plan is approved,
+  0018 (transactional vs. marketing scope separation). Written when the plan is approved,
   per the repo convention (spec first → ADRs record each load-bearing decision).
 
 ---
@@ -84,7 +84,7 @@ transactional scope — and reserves `*/sms` for later with zero rework.
 The existing `suppressed_emails` table is a **global** address kill-switch — correct for hard
 bounces and spam complaints (which _should_ stop everything), wrong for a marketing opt-out.
 Marketing consent is withdrawn by clearing the per-purpose consent, **not** by adding a global
-suppression row. (→ ADR-0015.)
+suppression row. (→ ADR-0018.)
 
 ## 5. System of record — data model
 

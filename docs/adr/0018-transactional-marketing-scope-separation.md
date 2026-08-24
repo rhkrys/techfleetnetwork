@@ -1,4 +1,4 @@
-# ADR-0015: Transactional and marketing scope separation, and independent suppression scopes
+# ADR-0018: Transactional and marketing scope separation, and independent suppression scopes
 
 - **Status:** Accepted (2026-08-19)
 - **Related:** [ADR-0016](0016-email-tiering-and-notify-announcements-retirement.md) (tiers),

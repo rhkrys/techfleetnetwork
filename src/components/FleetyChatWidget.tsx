@@ -11,8 +11,6 @@ import {
   Plus,
   MessageSquare,
   Trash2,
-  ThumbsUp,
-  ThumbsDown,
   MessageCircleQuestion,
   Copy,
   Check,
@@ -33,6 +31,12 @@ import {
   storeMode,
 } from "@/lib/fleety/modes";
 import { groupConversationsByDate } from "@/lib/fleety/history";
+import { toChatAttachment } from "@/lib/fleety/attachment";
+import { useFleetyAttachment } from "@/hooks/useFleetyAttachment";
+import { FleetyAttachButton, FleetyAttachmentChip } from "@/components/fleety/FleetyAttach";
+import { FleetyMessageFeedback } from "@/components/fleety/FleetyFeedback";
+import { FleetySources } from "@/components/fleety/FleetySources";
+import { FleetyModeSwitch } from "@/components/fleety/FleetyModeSwitch";
 
 type ActionChip = { label: string; action_type: string; target_url?: string | null };
 type Msg = {
@@ -46,16 +50,6 @@ type Msg = {
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/techfleet-chat`;
 
-/** Readable label for a source link (host + path, no protocol/trailing slash). */
-function prettyUrl(url: string): string {
-  try {
-    const u = new URL(url);
-    return (u.hostname + u.pathname).replace(/\/$/, "");
-  } catch {
-    return url;
-  }
-}
-
 /**
  * OWASP LLM02/ASVS V13.2: Use session JWT for API auth, never static keys.
  * Max input length per OWASP LLM10 unbounded consumption prevention.
@@ -67,6 +61,7 @@ async function streamChat({
   conversationId,
   clientPath,
   mode,
+  attachment,
   onDelta,
   onTurnId,
   onChips,
@@ -78,6 +73,7 @@ async function streamChat({
   conversationId: string | null;
   clientPath: string | null;
   mode: FleetyMode;
+  attachment?: { filename: string; text: string };
   onDelta: (deltaText: string) => void;
   onTurnId: (id: string | null) => void;
   onChips: (chips: ActionChip[]) => void;
@@ -105,6 +101,7 @@ async function streamChat({
       conversation_id: conversationId,
       client_path: clientPath ? clientPath.slice(0, 200) : null,
       mode,
+      attachment,
     }),
   });
 
@@ -225,9 +222,14 @@ export function FleetyChatWidget() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvoId, setActiveConvoId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
-  const [negFeedbackTurn, setNegFeedbackTurn] = useState<string | null>(null);
-  const [submittedReasons, setSubmittedReasons] = useState<Record<string, string[]>>({});
   const [mode, setMode] = useState<FleetyMode>(() => loadStoredMode());
+  const {
+    attachment,
+    status: attachStatus,
+    error: attachError,
+    attach,
+    clear: clearAttachment,
+  } = useFleetyAttachment();
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // Skip the [activeConvoId] DB reload for the one flip caused by starting a brand-new chat, so it
@@ -363,7 +365,11 @@ export function FleetyChatWidget() {
 
   const sendText = async (text: string) => {
     text = text.trim();
-    if (!text || isLoading) return;
+    // An attachment alone can be sent; capture + clear it for this turn.
+    const chatAttachment = toChatAttachment(attachment);
+    if ((!text && !chatAttachment) || isLoading) return;
+    if (!text && attachment) text = `Please review my uploaded file: ${attachment.filename}`;
+    clearAttachment();
 
     const userMsg: Msg = { role: "user", content: text };
     // Clear follow-ups on previous assistant message so they can't be re-clicked.
@@ -404,6 +410,7 @@ export function FleetyChatWidget() {
         conversationId: convoId,
         clientPath: typeof window !== "undefined" ? window.location.pathname : null,
         mode,
+        attachment: chatAttachment,
         onDelta: (chunk) => upsertAssistant(chunk),
         onTurnId: (id) => {
           assistantTurnId = id;
@@ -464,7 +471,7 @@ export function FleetyChatWidget() {
   const send = async (e: React.FormEvent) => {
     e.preventDefault();
     const text = input.trim();
-    if (!text || isLoading) return;
+    if ((!text && !attachment?.text) || isLoading) return;
     setInput("");
     await sendText(text);
   };
@@ -484,42 +491,6 @@ export function FleetyChatWidget() {
       }
     }
     await sendText(query);
-  };
-
-  // Submit thumbs feedback for an assistant message
-  const submitFeedback = async (turnId: string, rating: 1 | -1) => {
-    if (!user || !turnId) return;
-    const { error } = await supabase
-      .from("fleety_message_feedback")
-      .upsert({ turn_id: turnId, user_id: user.id, rating }, { onConflict: "turn_id,user_id" });
-    if (error) toast.error("Couldn't save your feedback.");
-    else {
-      toast.success(rating === 1 ? "Thanks — glad it helped!" : "Thanks — we'll improve it.");
-      if (rating === -1) setNegFeedbackTurn(turnId);
-    }
-  };
-
-  // Toggle a reason chip on negative feedback
-  const FEEDBACK_REASONS = [
-    "Too vague",
-    "Wrong project",
-    "Missing steps",
-    "Needed a template",
-    "Outdated info",
-  ];
-  const toggleReason = async (turnId: string, reason: string) => {
-    if (!user) return;
-    const current = submittedReasons[turnId] ?? [];
-    const next = current.includes(reason)
-      ? current.filter((r) => r !== reason)
-      : [...current, reason];
-    setSubmittedReasons((m) => ({ ...m, [turnId]: next }));
-    const { error } = await supabase
-      .from("fleety_message_feedback")
-      .update({ reasons: next })
-      .eq("turn_id", turnId)
-      .eq("user_id", user.id);
-    if (error) toast.error("Couldn't save the reason.");
   };
 
   // Action chip click — record event + open URL or post to Discord
@@ -623,6 +594,10 @@ export function FleetyChatWidget() {
               </span>
             </SheetTitle>
           </SheetHeader>
+
+          <div className="flex justify-end border-b px-4 py-2 shrink-0">
+            <FleetyModeSwitch />
+          </div>
 
           {/* History panel */}
           {showHistory && (
@@ -758,27 +733,9 @@ export function FleetyChatWidget() {
                       <div className="fleety-prose prose-sm">
                         <SafeMarkdown>{msg.content}</SafeMarkdown>
                       </div>
-                      {msg.sources && msg.sources.length > 0 && (
-                        <div className="mt-2 pt-1.5 border-t border-border/50">
-                          <p className="text-[11px] font-semibold text-muted-foreground mb-1">
-                            📚 Sources
-                          </p>
-                          <ul className="space-y-0.5">
-                            {msg.sources.map((url) => (
-                              <li key={url}>
-                                <a
-                                  href={url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-[11px] text-primary hover:underline break-all"
-                                >
-                                  {prettyUrl(url)}
-                                </a>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
+                      {/* Sources collapsed + gated on answer content — the answer shows first,
+                          never a link block that hides it. */}
+                      {msg.content.length > 0 && <FleetySources urls={msg.sources} />}
                       {!isLoading && msg.content.length > 0 && (
                         <div className="mt-2 pt-1 border-t border-border/50 flex items-center gap-1 flex-wrap">
                           <Button
@@ -811,24 +768,8 @@ export function FleetyChatWidget() {
                           </Button>
                           {msg.turnId && (
                             <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => submitFeedback(msg.turnId!, 1)}
-                                className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground gap-1"
-                                aria-label="Mark answer as helpful"
-                              >
-                                <ThumbsUp className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => submitFeedback(msg.turnId!, -1)}
-                                className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground gap-1"
-                                aria-label="Mark answer as not helpful"
-                              >
-                                <ThumbsDown className="h-3 w-3" />
-                              </Button>
+                              {/* Shared 👍/👎 + reason chips (parity with ChatPage + GuidanceEmbed) */}
+                              <FleetyMessageFeedback turnId={msg.turnId} />
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -858,32 +799,6 @@ export function FleetyChatWidget() {
                               </Button>
                             </>
                           )}
-                        </div>
-                      )}
-                      {msg.turnId && negFeedbackTurn === msg.turnId && (
-                        <div
-                          className="mt-2 pt-2 border-t border-border/50 flex flex-wrap gap-1.5"
-                          role="group"
-                          aria-label="Why wasn't this helpful?"
-                        >
-                          <span className="text-[11px] text-muted-foreground self-center mr-1">
-                            What was off?
-                          </span>
-                          {FEEDBACK_REASONS.map((reason) => {
-                            const active = (submittedReasons[msg.turnId!] ?? []).includes(reason);
-                            return (
-                              <Button
-                                key={reason}
-                                variant={active ? "secondary" : "outline"}
-                                size="sm"
-                                onClick={() => toggleReason(msg.turnId!, reason)}
-                                className="h-6 px-2 text-[11px]"
-                                aria-pressed={active}
-                              >
-                                {reason}
-                              </Button>
-                            );
-                          })}
                         </div>
                       )}
                       {msg.chips && msg.chips.length > 0 && (
@@ -987,8 +902,25 @@ export function FleetyChatWidget() {
             ))}
           </div>
 
+          {/* Attached-file status chip (2.2-F) */}
+          {attachStatus !== "idle" && (
+            <div className="px-3">
+              <FleetyAttachmentChip
+                attachment={attachment}
+                status={attachStatus}
+                error={attachError}
+                onClear={clearAttachment}
+              />
+            </div>
+          )}
+
           {/* Input */}
           <form onSubmit={send} className="border-t-0 p-3 flex gap-2 items-end shrink-0">
+            <FleetyAttachButton
+              onPick={(f) => attach(f)}
+              disabled={isLoading}
+              busy={attachStatus === "extracting"}
+            />
             <div className="flex-1">
               <textarea
                 ref={inputRef as React.RefObject<HTMLTextAreaElement>}
@@ -999,7 +931,7 @@ export function FleetyChatWidget() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
-                    if (input.trim() && !isLoading) send(e);
+                    if ((input.trim() || attachment?.text) && !isLoading) send(e);
                   }
                 }}
                 placeholder={activeMode.placeholder}
@@ -1019,7 +951,7 @@ export function FleetyChatWidget() {
             </div>
             <Button
               type="submit"
-              disabled={isLoading || !input.trim()}
+              disabled={isLoading || (!input.trim() && !attachment?.text)}
               size="icon"
               className="h-9 w-9"
               aria-label="Send message"

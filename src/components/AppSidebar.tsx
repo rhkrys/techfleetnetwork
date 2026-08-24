@@ -1,6 +1,7 @@
 import { memo, useCallback } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
+  Bot,
   LayoutDashboard,
   GraduationCap,
   BookOpen,
@@ -56,10 +57,11 @@ function usePendingClassesCount(enabled: boolean) {
 const homeNav = [{ label: "Home", href: "/dashboard", icon: LayoutDashboard }];
 
 const communityNav = [
+  { label: "TAL 9000", href: "/tal-9000", icon: Bot },
   { label: "Announcements", href: "/updates", icon: Megaphone },
   { label: "Events", href: "/events", icon: CalendarDays },
   { label: "Feedback", href: "/feedback", icon: MessageSquarePlus },
-  { label: "Get Help", href: "/community/get-help", icon: LifeBuoy },
+  { label: "Support", href: "/community/get-help", icon: LifeBuoy },
   { label: "Resources", href: "/resources", icon: BookOpen },
 ];
 

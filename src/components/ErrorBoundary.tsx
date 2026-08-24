@@ -2,7 +2,7 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
 import { reportError } from "@/services/error-reporter.service";
 import { isChunkLoadMessage } from "@/lib/lazy-with-retry";
 import { AlertCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/design-system";
 
 interface Props {
   children: ReactNode;
@@ -64,12 +64,10 @@ export class ErrorBoundary extends Component<Props, State> {
           role="alert"
         >
           <AlertCircle className="h-12 w-12 text-destructive" aria-hidden />
-          <h2 className="text-lg font-semibold text-foreground">
-            Something went wrong
-          </h2>
+          <h2 className="text-lg font-semibold text-foreground">Something went wrong</h2>
           <p className="text-sm text-muted-foreground text-center max-w-md">
-            An unexpected error occurred. The error has been logged for the
-            admin team to investigate.
+            An unexpected error occurred. The error has been logged for the admin team to
+            investigate.
           </p>
           <Button variant="outline" onClick={this.handleRetry}>
             Try Again

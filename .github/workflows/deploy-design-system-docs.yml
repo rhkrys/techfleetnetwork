@@ -1,0 +1,61 @@
+# Builds the TechFleet Design System VitePress docs and deploys them to GitHub Pages.
+#
+# One-time repo setup (admin): Settings → Pages → Build and deployment → Source:
+# "GitHub Actions". After that this workflow publishes on every push to main that
+# touches the design-system docs (and can be run manually).
+#
+# Published at: https://techfleetworks.github.io/techfleetnetwork/
+#
+# Actions are pinned by commit SHA (supply-chain integrity), and permissions are
+# scoped per job (least privilege) — only the deploy job gets pages/id-token write.
+name: Deploy design-system docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/design/design-system/**"
+      - ".github/workflows/deploy-design-system-docs.yml"
+  workflow_dispatch:
+
+# No workflow-wide privileges; each job requests only what it needs.
+permissions: {}
+
+# Allow one concurrent deployment; don't cancel an in-progress production deploy.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build docs
+        run: npm run docs:build
+      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          path: docs/design/design-system/.vitepress/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write # owasp-allow: GitHub Pages OIDC deploy (actions/deploy-pages) requires id-token to mint the short-lived deployment token; scoped to this deploy job only.
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
