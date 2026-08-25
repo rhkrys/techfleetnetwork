@@ -162,6 +162,23 @@ Deno.test("422 validation -> permanent_fail with the RFC7807 detail", async () =
   assertEquals(r.error, "email_address invalid");
 });
 
+Deno.test(
+  "400 'Bad request.' captures title + errors so the DLQ names the real cause",
+  async () => {
+    const sink: Captured[] = [];
+    const r = await pushDesiredState(
+      cfg({}, sink, 400, {
+        title: "Bad request.",
+        errors: [{ pointer: "/fields/FirstName", message: "Unknown field" }],
+      }),
+      { email: "ada@example.com", desiredStatus: "subscribed" }
+    );
+    assertEquals(r.outcome, "permanent_fail");
+    assert(r.error?.includes("Bad request."));
+    assert(r.error?.includes("Unknown field"));
+  }
+);
+
 Deno.test("network throw -> retry with null status code", async () => {
   const throwing = (() => Promise.reject(new Error("ECONNRESET"))) as unknown as typeof fetch;
   const r = await pushDesiredState(

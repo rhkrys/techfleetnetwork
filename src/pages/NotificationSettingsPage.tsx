@@ -91,19 +91,23 @@ export default function NotificationSettingsPage() {
       // Marketing state is Email Octopus's (the source of truth). Read it LIVE per-user via the
       // eo-contact-status edge function so we reflect subscribes/unsubscribes made outside the
       // platform too. If EO is unavailable or disabled, fall back to the cached mirror.
-      let marketingOn = false;
-      try {
-        const { data: live, error: liveErr } = await supabase.functions.invoke("eo-contact-status");
-        const s = (live as { status?: string } | null)?.status;
-        if (!liveErr && (s === "subscribed" || s === "unsubscribed" || s === "not_found")) {
-          marketingOn = s === "subscribed";
-        } else {
-          const { data: cached } = await supabase.rpc("get_my_marketing_subscription");
-          marketingOn = cached === "subscribed";
+      // The toggle reflects the member's OWN recorded intent (desired_status) — the value they set
+      // here, which persists immediately. It must not be driven by EO's live state, which lags: the
+      // worker syncs on a ~2-min cron and double opt-in leaves EO 'pending', so reading EO made a
+      // just-set toggle flip back to EO's stale value on reload (both directions). We consult EO's
+      // live state ONLY when there is no local intent yet — e.g. a contact imported straight into EO
+      // (Mailchimp) with no platform record — so their real subscription still shows.
+      const { data: cached } = await supabase.rpc("get_my_marketing_subscription");
+      let marketingOn = cached === "subscribed";
+      if (cached === null || cached === undefined) {
+        try {
+          const { data: live, error: liveErr } =
+            await supabase.functions.invoke("eo-contact-status");
+          const s = (live as { status?: string } | null)?.status;
+          marketingOn = !liveErr && s === "subscribed";
+        } catch {
+          marketingOn = false; // no local intent and EO unknown → default off
         }
-      } catch {
-        const { data: cached } = await supabase.rpc("get_my_marketing_subscription");
-        marketingOn = cached === "subscribed";
       }
       if (cancelled) return;
       if (error) {

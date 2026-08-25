@@ -179,8 +179,17 @@ async function classify(res: Response, desired: EoDesiredStatus): Promise<EoResu
 async function safeDetail(res: Response): Promise<string> {
   try {
     const j = await res.json();
-    const d = j?.detail ?? j?.title ?? JSON.stringify(j);
-    return String(d).slice(0, 500);
+    // EO's RFC7807 body can carry the specifics in `detail`, a validation `errors` array, or ONLY a
+    // generic `title` ("Bad request."). Capture all present parts so a DLQ row names the real cause
+    // (e.g. an unknown field tag) instead of the useless title alone.
+    const obj = (j ?? {}) as { title?: unknown; detail?: unknown; errors?: unknown };
+    const parts: string[] = [];
+    if (obj.title) parts.push(String(obj.title));
+    if (obj.detail && obj.detail !== obj.title) parts.push(String(obj.detail));
+    if (obj.errors) {
+      parts.push(typeof obj.errors === "string" ? obj.errors : JSON.stringify(obj.errors));
+    }
+    return (parts.length ? parts.join(" | ") : JSON.stringify(j)).slice(0, 500);
   } catch {
     return `HTTP ${res.status}`;
   }
