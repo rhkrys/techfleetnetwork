@@ -197,6 +197,10 @@ export default function ChatPage() {
   } = useFleetyAttachment();
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // Whether the chat log should auto-follow new content. Flipped off the moment the member
+  // scrolls up (so a long streaming answer never yanks them back down) and on again when they
+  // return to the bottom or send/open a conversation. Consumed by the [messages] effect below.
+  const stickToBottomRef = useRef(true);
   const activeMode = fleetyModeMeta(mode);
   const conversationGroups = groupConversationsByDate(conversations, new Date());
 
@@ -245,12 +249,28 @@ export default function ChatPage() {
       .select("role, content")
       .eq("conversation_id", convoId)
       .order("created_at", { ascending: true });
-    if (data) setMessages(data as Msg[]);
+    if (data) {
+      // Opening a conversation should land on its newest message.
+      stickToBottomRef.current = true;
+      setMessages(data as Msg[]);
+    }
   };
 
+  // Keep the log pinned to the newest message ONLY while the member is already at/near the
+  // bottom. This effect previously ran unconditionally on every streamed token, forcing
+  // scrollTop = scrollHeight and making it impossible to scroll UP through a long answer while
+  // it was still generating (the reported "response won't scroll" behaviour on wide screens).
+  const handleMessagesScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    stickToBottomRef.current = distanceFromBottom < 80;
+  }, []);
+
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    const el = scrollRef.current;
+    if (el && stickToBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
     }
   }, [messages]);
 
@@ -350,6 +370,8 @@ export default function ChatPage() {
     const userMsg: Msg = { role: "user", content: text };
     setInput("");
     clearAttachment();
+    // The member just sent a turn — follow the streamed answer down even if they'd scrolled up.
+    stickToBottomRef.current = true;
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
 
@@ -521,6 +543,7 @@ export default function ChatPage() {
         {/* Chat messages */}
         <div
           ref={scrollRef}
+          onScroll={handleMessagesScroll}
           className="flex-1 min-h-0 overflow-y-auto rounded-lg border bg-muted/20 p-4 space-y-5 mb-4"
           role="log"
           aria-label="Chat conversation"
