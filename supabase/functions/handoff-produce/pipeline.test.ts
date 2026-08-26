@@ -1,5 +1,6 @@
 import { assertEquals } from "jsr:@std/assert@1";
 import {
+  extractChunksBounded,
   fetchFigmaBounded,
   figmaMaterialBySlug,
   type FigmaSub,
@@ -132,5 +133,56 @@ Deno.test(
     assertEquals(errors, ["BAD"]);
     assertEquals(nodeTextByFile.size, 1);
     assertEquals(nodeTextByFile.get("OK"), { "1:1": ["text-OK"] });
+  }
+);
+
+// extractChunksBounded is the fix for the EXTRACT-stage "exceeded max recovery attempts": a component
+// with many chunks (a ~200 KB board is ~17) must extract within the worker's invocation budget instead
+// of running unbounded sequential LLM calls that kill the worker mid-step every tick (cursor=extract,
+// facts pinned) until the recovery cap fails the run.
+Deno.test(
+  "extractChunksBounded extracts every chunk within budget, preserving chunk order",
+  async () => {
+    const { perChunk, skipped } = await extractChunksBounded(
+      ["c0", "c1", "c2"],
+      (chunk, i) => Promise.resolve([`fact-${i}-${chunk}`]),
+      { concurrency: 2, budgetMs: 10_000, now: () => 0 }
+    );
+    assertEquals(skipped, 0);
+    // Index-preserved regardless of the pool's completion order (keeps merge deterministic).
+    assertEquals(perChunk, [["fact-0-c0"], ["fact-1-c1"], ["fact-2-c2"]]);
+  }
+);
+
+Deno.test(
+  "extractChunksBounded skips remaining chunks once the budget is spent (never overruns the tick)",
+  async () => {
+    let ran = 0;
+    const { perChunk, skipped } = await extractChunksBounded(
+      ["c0", "c1", "c2"],
+      () => {
+        ran++;
+        return Promise.resolve(["x"]);
+      },
+      { concurrency: 4, budgetMs: 0, now: () => 1000 } // deadline already reached
+    );
+    assertEquals(ran, 0); // nothing started — no overrun
+    assertEquals(skipped, 3);
+    assertEquals(perChunk, [[], [], []]); // the component keeps whatever facts it already had (none here)
+  }
+);
+
+Deno.test(
+  "extractChunksBounded isolates a failing chunk via onError and keeps the rest",
+  async () => {
+    const errors: number[] = [];
+    const { perChunk, skipped } = await extractChunksBounded(
+      ["c0", "c1", "c2"],
+      (_chunk, i) => (i === 1 ? Promise.reject(new Error("boom")) : Promise.resolve([`ok-${i}`])),
+      { concurrency: 1, budgetMs: 10_000, now: () => 0, onError: (i) => errors.push(i) }
+    );
+    assertEquals(skipped, 0);
+    assertEquals(errors, [1]); // the failed chunk is isolated
+    assertEquals(perChunk, [["ok-0"], [], ["ok-2"]]); // its neighbors still contribute
   }
 );

@@ -103,6 +103,19 @@ const FIGMA_FETCH_CONCURRENCY = 6;
 // next, so the worker never holds every source at once (the cause of the extract-stage OOM).
 const MAX_EXTRACTED_CHARS = 2_000_000;
 
+// Per-component extraction is BOUNDED the same way as the Figma fetch above. A component with many
+// chunks (a ~200 KB board is ~17 chunks) previously ran its per-chunk LLM calls SEQUENTIALLY in one
+// step with no budget check or checkpoint between them, so it couldn't finish inside one worker
+// invocation and the run died mid-extract every tick until the recovery cap failed it (cursor=extract,
+// "exceeded max recovery attempts"). We now extract a component's chunks with a small concurrency pool
+// under an overall wall-clock budget (< the worker's 110s tick), and cap each call's own deadline so no
+// single chunk can overrun the tick. Chunks not reached within the budget are skipped + logged. Durable
+// per-chunk resume across ticks (reading 100% of an arbitrarily large component) is the tracked follow-up.
+const EXTRACT_CHUNK_CONCURRENCY = 4;
+const EXTRACT_BUDGET_MS = 80_000;
+const EXTRACT_CALL_TIMEOUT_MS = 25_000; // per chunk attempt
+const EXTRACT_CALL_DEADLINE_MS = 45_000; // per chunk across retries — < the component budget
+
 // Loose client type: edge functions have no generated Database types.
 type SvcClient = SupabaseClient<any, "public", any>;
 
@@ -261,6 +274,64 @@ export async function fetchFigmaBounded(
     Array.from({ length: Math.min(opts.concurrency, entries.length) }, () => worker())
   );
   return { nodeTextByFile, skipped };
+}
+
+/**
+ * Extract facts from ONE component's chunks with BOUNDED concurrency under an overall wall-clock budget.
+ * The mirror of fetchFigmaBounded for the EXTRACT stage: at most `concurrency` chunk extractions are in
+ * flight, each is raced against the remaining budget so a slow chunk can't blow the total, and every
+ * result is placed at its chunk INDEX so the merged fact order is identical to the old sequential path
+ * (preserving the temp-0 "same content -> same facts" determinism). Chunks not reached before the budget
+ * is spent are skipped + counted, so one heavy component (a ~17-chunk board) can never run enough
+ * sequential calls to overrun the worker invocation and die pre-checkpoint. PURE over injected
+ * `extractOne` + `now`, so the ordering/skip logic is unit-tested without an LLM or a real clock.
+ */
+export async function extractChunksBounded(
+  chunks: string[],
+  extractOne: (chunk: string, index: number) => Promise<string[]>,
+  opts: {
+    concurrency: number;
+    budgetMs: number;
+    now?: () => number;
+    onError?: (index: number, e: unknown) => void;
+  }
+): Promise<{ perChunk: string[][]; skipped: number }> {
+  const now = opts.now ?? (() => Date.now());
+  const deadline = now() + opts.budgetMs;
+  const perChunk: string[][] = chunks.map(() => []);
+  let next = 0;
+  let skipped = 0;
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const i = next++;
+      if (i >= chunks.length) return;
+      const remaining = deadline - now();
+      if (remaining <= 0) {
+        skipped++; // budget already spent; don't start another chunk (its facts are simply not added)
+        continue;
+      }
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const budgetGuard = new Promise<null>((r) => {
+          timer = setTimeout(() => r(null), Math.max(0, remaining));
+        });
+        const raced = await Promise.race([extractOne(chunks[i], i), budgetGuard]);
+        if (raced === null) {
+          skipped++; // raced out by the budget; the component keeps the facts already extracted
+          continue;
+        }
+        perChunk[i] = raced;
+      } catch (e) {
+        opts.onError?.(i, e); // a failed chunk contributes no facts; the others still do
+      } finally {
+        if (timer !== undefined) clearTimeout(timer); // never leak the budget timer
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(opts.concurrency, chunks.length) }, () => worker())
+  );
+  return { perChunk, skipped };
 }
 
 /** Load the per-run context that every worker tick needs (cheap + deterministic; safe to redo). */
@@ -449,45 +520,64 @@ function buildEffects(
       // Drop unfilled-template ITEMS (keeps real terse stickies next to "Enter here" scaffolding),
       // then chunk. No whole-chunk template filter, which used to discard real work with the noise.
       const chunks = chunkText(stripTemplateItems(fullText));
-      const perChunk: string[][] = [];
-      for (const chunk of chunks) {
+      // Extract each chunk under a BOUNDED concurrency pool + overall wall-clock budget (mirrors
+      // fetchFigmaBounded). A big component (a ~200 KB board is ~17 chunks) used to run its per-chunk
+      // LLM calls SEQUENTIALLY here with no budget check between them, so it couldn't finish inside one
+      // worker invocation and the run died mid-step every tick until the recovery cap failed it (the
+      // extract-stage "exceeded max recovery attempts" loop, cursor=extract). Each call also carries its
+      // own deadline so no single chunk overruns the tick.
+      const description = String((component as Record<string, unknown>).Description ?? "");
+      const extractOne = async (chunk: string): Promise<string[]> => {
         guardCall();
         const p = buildFactExtractionPrompt(
           name,
-          String((component as Record<string, unknown>).Description ?? ""),
+          description,
           [{ kind: "material", content: chunk }],
           scope
         );
-        try {
-          const out = await generateStructured(
-            // temperature 0 = deterministic extraction: same content -> same facts, every instance.
-            {
-              model: mechModel,
-              messages: p.messages,
-              toolName: p.toolName,
-              schema: p.schema,
-              reasoningEffort: "low",
-              temperature: 0,
-            },
-            { requestId, onUsage }
-          );
-          perChunk.push(
-            Array.isArray(out.facts) ? (out.facts as string[]).map((f) => dlpScrub(String(f))) : []
-          );
-        } catch (e) {
-          // A chunk that fails extraction (terminal LLM error, oversize chunk, refusal) must NOT fail
-          // the whole run. Degrade to no facts for THIS chunk — the component may still get facts from
-          // its other chunks; if none succeed, its sections render the honest placeholder. Mirrors
-          // writeArc's degrade posture. (Without this, one heavy component killed the run at the
-          // recovery cap — extract unit i=3 dying 6x.)
+        const out = await generateStructured(
+          // temperature 0 = deterministic extraction: same content -> same facts, every instance.
+          {
+            model: mechModel,
+            messages: p.messages,
+            toolName: p.toolName,
+            schema: p.schema,
+            reasoningEffort: "low",
+            temperature: 0,
+          },
+          {
+            requestId,
+            onUsage,
+            timeoutMs: EXTRACT_CALL_TIMEOUT_MS,
+            deadlineMs: EXTRACT_CALL_DEADLINE_MS,
+          }
+        );
+        return Array.isArray(out.facts)
+          ? (out.facts as string[]).map((f) => dlpScrub(String(f)))
+          : [];
+      };
+      const { perChunk, skipped } = await extractChunksBounded(chunks, extractOne, {
+        concurrency: EXTRACT_CHUNK_CONCURRENCY,
+        budgetMs: EXTRACT_BUDGET_MS,
+        // A chunk that fails extraction (terminal LLM error, oversize chunk, refusal) must NOT fail the
+        // run: it degrades to no facts for THIS chunk while the others still contribute (mirrors
+        // writeArc). guardCall's per-tick cap now throws HERE (inside the pool's try), so a cap hit
+        // degrades a chunk instead of crashing the tick pre-checkpoint.
+        onError: (i, e) =>
           log.warn(
             "extract",
-            `${slug}: chunk extraction degraded [${requestId}]: ${e instanceof Error ? e.message : String(e)}`,
+            `${slug}: chunk ${i} extraction degraded [${requestId}]: ${e instanceof Error ? e.message : String(e)}`,
             { requestId }
-          );
-          perChunk.push([]);
-        }
-      }
+          ),
+      });
+      if (skipped > 0)
+        // Never a silent cap: a heavy component that couldn't be fully read this tick shipped the facts
+        // it did extract; the rest of its chunks were skipped to keep the worker within its invocation.
+        log.warn(
+          "extract",
+          `${slug}: ${skipped}/${chunks.length} chunk(s) skipped — extraction budget (${EXTRACT_BUDGET_MS}ms) reached [${requestId}]`,
+          { requestId }
+        );
       const merged = mergeFacts(perChunk);
       // Stage 3.5: collapse near-duplicate quotes (reworded/reordered restatements of one point) that
       // survive mergeFacts' exact dedup, so the writer gets distinct points, not repeats. Non-lossy:

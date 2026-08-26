@@ -80,6 +80,12 @@ serve(async (req: Request) => {
     };
     const initial = (run.pipeline_state as PipelineState | null) ?? undefined;
 
+    // Each unit runHandoff advances (ingest / extract / write / finalize) is BOUNDED per invocation —
+    // the Figma fetch (fetchFigmaBounded) and per-component extraction (extractChunksBounded) each run
+    // under a wall-clock budget — so no single unit can overrun this tick and strand the run before it
+    // checkpoints (the extract-stage "exceeded max recovery attempts" loop). Between units,
+    // shouldContinue() releases the run cleanly for the next tick; a real crash resumes from the last
+    // checkpoint. (This worker bundles handoff-produce/pipeline.ts, so it redeploys when that changes.)
     try {
       const { state, stopped, gaps } = await runHandoff(
         svc,
