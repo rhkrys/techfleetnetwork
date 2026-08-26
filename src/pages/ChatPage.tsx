@@ -540,16 +540,12 @@ export default function ChatPage() {
           </div>
         </div>
 
-        {/* Chat messages.
-            data-no-card opts this scroll region OUT of the global auto-card retrofit in index.css
-            (any div carrying a card token — bg-muted, border, rounded — is force-styled into a
-            tf-card with overflow:hidden). Because Tailwind v3 flattens @layer, that rule's very-high
-            selector specificity beats the overflow-y-auto utility, which made this log unscrollable
-            (the top of long answers was clipped and unreachable). Opting out restores overflow-y:auto. */}
+        {/* Chat messages. Exempt from index.css's global auto-card retrofit via role="log": a live
+            log/scroll region must never be turned into an overflow:hidden card (that rule otherwise
+            beats overflow-y-auto and makes this log unscrollable). See the role exclusion list there. */}
         <div
           ref={scrollRef}
           onScroll={handleMessagesScroll}
-          data-no-card
           className="flex-1 min-h-0 overflow-y-auto rounded-lg border bg-muted/20 p-4 space-y-5 mb-4"
           role="log"
           aria-label="Chat conversation"

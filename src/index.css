@@ -346,35 +346,35 @@ body {
       [class*="rounded-xl"],
       [class*="rounded-2xl"],
       [class*="rounded-3xl"]
-    ):not(.tf-card):not([data-no-card]):not([class*="border-dashed"]):not([role="menu"]):not([role="menuitem"]):not([role="dialog"]):not([role="alertdialog"]):not([role="listbox"]):not([role="option"]):not([role="tooltip"]):not([role="combobox"]):not([role="tab"]):not([role="tabpanel"]):not([role="status"]):not([role="alert"]):not([data-radix-popper-content-wrapper] *):not([data-sonner-toaster] *):not([data-sonner-toast]):not([data-radix-popover-content]):not([data-radix-dropdown-menu-content]):not([data-radix-select-content]):not([data-radix-tooltip-content]):not([data-radix-hover-card-content]):not([data-radix-menubar-content]):not([data-radix-context-menu-content]),
+    ):not(.tf-card):not([data-no-card]):not([class*="border-dashed"]):not([role="menu"]):not([role="menuitem"]):not([role="dialog"]):not([role="alertdialog"]):not([role="listbox"]):not([role="option"]):not([role="tooltip"]):not([role="combobox"]):not([role="tab"]):not([role="tabpanel"]):not([role="status"]):not([role="alert"]):not([role="log"]):not([data-radix-popper-content-wrapper] *):not([data-sonner-toaster] *):not([data-sonner-toast]):not([data-radix-popover-content]):not([data-radix-dropdown-menu-content]):not([data-radix-select-content]):not([data-radix-tooltip-content]):not([data-radix-hover-card-content]):not([data-radix-menubar-content]):not([data-radix-context-menu-content]),
   :where(div, section, article, aside, main, header, footer, nav)[class*="bg-background"][class*="border"]:where(
       [class*="rounded-md"],
       [class*="rounded-lg"],
       [class*="rounded-xl"],
       [class*="rounded-2xl"],
       [class*="rounded-3xl"]
-    ):not(.tf-card):not([data-no-card]):not([class*="border-dashed"]):not([role="menu"]):not([role="menuitem"]):not([role="dialog"]):not([role="alertdialog"]):not([role="listbox"]):not([role="option"]):not([role="tooltip"]):not([role="combobox"]):not([role="tab"]):not([role="tabpanel"]):not([role="status"]):not([role="alert"]):not([data-radix-popper-content-wrapper] *):not([data-sonner-toaster] *):not([data-sonner-toast]):not([data-radix-popover-content]):not([data-radix-dropdown-menu-content]):not([data-radix-select-content]):not([data-radix-tooltip-content]):not([data-radix-hover-card-content]):not([data-radix-menubar-content]):not([data-radix-context-menu-content]),
+    ):not(.tf-card):not([data-no-card]):not([class*="border-dashed"]):not([role="menu"]):not([role="menuitem"]):not([role="dialog"]):not([role="alertdialog"]):not([role="listbox"]):not([role="option"]):not([role="tooltip"]):not([role="combobox"]):not([role="tab"]):not([role="tabpanel"]):not([role="status"]):not([role="alert"]):not([role="log"]):not([data-radix-popper-content-wrapper] *):not([data-sonner-toaster] *):not([data-sonner-toast]):not([data-radix-popover-content]):not([data-radix-dropdown-menu-content]):not([data-radix-select-content]):not([data-radix-tooltip-content]):not([data-radix-hover-card-content]):not([data-radix-menubar-content]):not([data-radix-context-menu-content]),
   :where(div, section, article, aside, main, header, footer, nav)[class*="bg-muted"][class*="border"]:where(
       [class*="rounded-md"],
       [class*="rounded-lg"],
       [class*="rounded-xl"],
       [class*="rounded-2xl"],
       [class*="rounded-3xl"]
-    ):not(.tf-card):not([data-no-card]):not([class*="border-dashed"]):not([role="menu"]):not([role="menuitem"]):not([role="dialog"]):not([role="alertdialog"]):not([role="listbox"]):not([role="option"]):not([role="tooltip"]):not([role="combobox"]):not([role="tab"]):not([role="tabpanel"]):not([role="status"]):not([role="alert"]):not([data-radix-popper-content-wrapper] *):not([data-sonner-toaster] *):not([data-sonner-toast]):not([data-radix-popover-content]):not([data-radix-dropdown-menu-content]):not([data-radix-select-content]):not([data-radix-tooltip-content]):not([data-radix-hover-card-content]):not([data-radix-menubar-content]):not([data-radix-context-menu-content]),
+    ):not(.tf-card):not([data-no-card]):not([class*="border-dashed"]):not([role="menu"]):not([role="menuitem"]):not([role="dialog"]):not([role="alertdialog"]):not([role="listbox"]):not([role="option"]):not([role="tooltip"]):not([role="combobox"]):not([role="tab"]):not([role="tabpanel"]):not([role="status"]):not([role="alert"]):not([role="log"]):not([data-radix-popper-content-wrapper] *):not([data-sonner-toaster] *):not([data-sonner-toast]):not([data-radix-popover-content]):not([data-radix-dropdown-menu-content]):not([data-radix-select-content]):not([data-radix-tooltip-content]):not([data-radix-hover-card-content]):not([data-radix-menubar-content]):not([data-radix-context-menu-content]),
   :where(div, section, article, aside, main, header, footer, nav)[class*="bg-primary/"][class*="border"]:where(
       [class*="rounded-md"],
       [class*="rounded-lg"],
       [class*="rounded-xl"],
       [class*="rounded-2xl"],
       [class*="rounded-3xl"]
-    ):not(.tf-card):not([data-no-card]):not([class*="border-dashed"]):not([role="menu"]):not([role="menuitem"]):not([role="dialog"]):not([role="alertdialog"]):not([role="listbox"]):not([role="option"]):not([role="tooltip"]):not([role="combobox"]):not([role="tab"]):not([role="tabpanel"]):not([role="status"]):not([role="alert"]):not([data-radix-popper-content-wrapper] *):not([data-sonner-toaster] *):not([data-sonner-toast]):not([data-radix-popover-content]):not([data-radix-dropdown-menu-content]):not([data-radix-select-content]):not([data-radix-tooltip-content]):not([data-radix-hover-card-content]):not([data-radix-menubar-content]):not([data-radix-context-menu-content]),
+    ):not(.tf-card):not([data-no-card]):not([class*="border-dashed"]):not([role="menu"]):not([role="menuitem"]):not([role="dialog"]):not([role="alertdialog"]):not([role="listbox"]):not([role="option"]):not([role="tooltip"]):not([role="combobox"]):not([role="tab"]):not([role="tabpanel"]):not([role="status"]):not([role="alert"]):not([role="log"]):not([data-radix-popper-content-wrapper] *):not([data-sonner-toaster] *):not([data-sonner-toast]):not([data-radix-popover-content]):not([data-radix-dropdown-menu-content]):not([data-radix-select-content]):not([data-radix-tooltip-content]):not([data-radix-hover-card-content]):not([data-radix-menubar-content]):not([data-radix-context-menu-content]),
   :where(div, section, article, aside, main, header, footer, nav)[class*="bg-popover"][class*="border"]:where(
       [class*="rounded-md"],
       [class*="rounded-lg"],
       [class*="rounded-xl"],
       [class*="rounded-2xl"],
       [class*="rounded-3xl"]
-    ):not(.tf-card):not([data-no-card]):not([class*="border-dashed"]):not([role="menu"]):not([role="menuitem"]):not([role="dialog"]):not([role="alertdialog"]):not([role="listbox"]):not([role="option"]):not([role="tooltip"]):not([role="combobox"]):not([role="tab"]):not([role="tabpanel"]):not([role="status"]):not([role="alert"]):not([data-radix-popper-content-wrapper] *):not([data-sonner-toaster] *):not([data-sonner-toast]):not([data-radix-popover-content]):not([data-radix-dropdown-menu-content]):not([data-radix-select-content]):not([data-radix-tooltip-content]):not([data-radix-hover-card-content]):not([data-radix-menubar-content]):not([data-radix-context-menu-content]) {
+    ):not(.tf-card):not([data-no-card]):not([class*="border-dashed"]):not([role="menu"]):not([role="menuitem"]):not([role="dialog"]):not([role="alertdialog"]):not([role="listbox"]):not([role="option"]):not([role="tooltip"]):not([role="combobox"]):not([role="tab"]):not([role="tabpanel"]):not([role="status"]):not([role="alert"]):not([role="log"]):not([data-radix-popper-content-wrapper] *):not([data-sonner-toaster] *):not([data-sonner-toast]):not([data-radix-popover-content]):not([data-radix-dropdown-menu-content]):not([data-radix-select-content]):not([data-radix-tooltip-content]):not([data-radix-hover-card-content]):not([data-radix-menubar-content]):not([data-radix-context-menu-content]) {
     background-color: var(--tf-stat-bg);
     border: 3px solid var(--tf-stat-border);
     border-top-left-radius: 40px;
