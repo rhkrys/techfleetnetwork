@@ -3,8 +3,11 @@ name: Config preflight
 # PRD v1.2 D-22/P-18: config drift must be detected BEFORE an outage.
 # Every cutover-era incident was silent config drift: the Send Email hook
 # toggled off, cron jobs missing, Vault secrets absent, private-schema grants
-# dropped. This workflow asserts the required project configuration daily (and
-# on demand) and fails loudly — the Main failure alert workflow pages Discord.
+# dropped, AND (2026-08-26) a DB migration present in main but never applied to
+# prod — the Discord-linking outage, where create_discord_oauth_state was
+# missing and every link attempt got PGRST202. This workflow asserts the
+# required project configuration daily, on every migration merge to main, and on
+# demand, and fails loudly — the Main failure alert workflow pages Discord.
 #
 # Secrets used (already configured): SUPABASE_ACCESS_TOKEN (Management API),
 # SUPABASE_SERVICE_ROLE_KEY (PostgREST call to environment_readiness()).
@@ -12,6 +15,13 @@ name: Config preflight
 on:
   schedule:
     - cron: "0 7 * * *" # daily 07:00 UTC
+  push:
+    branches: [main]
+    # Catch "migration merged but never applied to prod" the moment it lands,
+    # not only at the next daily run. The scheduled run still covers drift from
+    # any other source.
+    paths:
+      - "supabase/migrations/**"
   workflow_dispatch:
 
 permissions:
@@ -26,6 +36,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Checkout
+        # SHA-pinned actions/checkout@v4 (matches deploy-edge-functions.yml).
+        # Needed so the migration-drift check can read supabase/migrations/.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
       # Self-healing guard: when the Management-API / service-role secrets are
       # not yet migrated to this project, SKIP (green) instead of failing red.
       # The check reactivates automatically the moment the secrets are set —
@@ -42,6 +57,16 @@ jobs:
             echo "present=false" >> "$GITHUB_OUTPUT"
           else
             echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+          # Migration-drift detection needs ONLY the Management API token, so it
+          # gets its OWN gate. A missing/rotated SERVICE_ROLE_KEY (unrelated to
+          # migration history) must never be able to silently disable the one
+          # check that catches an un-applied migration — the 2026-08-26 incident.
+          if [ -n "$MGMT" ]; then
+            echo "mgmt_present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "mgmt_present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Migration-drift check skipped — SUPABASE_ACCESS_TOKEN not set."
           fi
 
       - name: Auth config — Send Email hook enabled + pointed at auth-email-hook
@@ -82,3 +107,44 @@ jobs:
             exit 1
           fi
           echo "All readiness checks green."
+
+      - name: Migration drift — prod schema history is not behind main
+        # THE guard for the 2026-08-26 Discord-linking outage: a migration in
+        # main that was never applied to prod. Reads prod's applied versions
+        # (supabase_migrations.schema_migrations) via the Management API query
+        # endpoint — same token as the auth-config check above, a read-only
+        # SELECT — and diffs them against the migration files main expects. Any
+        # version main has that prod lacks = drift = fail (and page). Resolve by
+        # reviewing the plan, then `supabase db push --include-all`.
+        if: steps.guard.outputs.mgmt_present == 'true'
+        env:
+          MGMT: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          # Read-only SELECT — this query MUST stay a read-only SELECT (the
+          # Management token can also mutate; nothing structural stops that).
+          resp=$(curl -sf -X POST \
+            "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            -H "Authorization: Bearer $MGMT" -H "Content-Type: application/json" \
+            -d '{"query":"select version from supabase_migrations.schema_migrations order by version"}') \
+            || { echo "::error::Could not read prod migration history (Management API query). Failing loud rather than hiding possible drift."; exit 1; }
+          # Accept an array of row objects ([{"version":...}]) or of scalars; any
+          # other shape yields empty -> the -z check below fails LOUD (never a
+          # silent pass). `|| true` only keeps the runner's default -e from
+          # aborting before that explicit, clearer check.
+          applied=$(printf '%s' "$resp" | jq -r '.[] | if type=="object" then .version else . end' 2>/dev/null | sort -u || true)
+          if [ -z "$applied" ]; then
+            echo "::error::Prod returned no applied migrations — unexpected shape. Raw response: $resp"
+            exit 1
+          fi
+          # Versions main expects: the numeric prefix of every migration file.
+          expected=$(for f in supabase/migrations/*.sql; do basename "$f"; done \
+                      | sed -E 's/^([0-9]+)_.*/\1/' | sort -u)
+          # No `|| true` here: comm has no backstop check after it, so a comm
+          # failure must fail LOUD (red), never degrade to a green "aligned".
+          missing=$(comm -23 <(printf '%s\n' "$expected") <(printf '%s\n' "$applied"))
+          if [ -n "$missing" ]; then
+            echo "::error::Prod is BEHIND main. These migration version(s) are in the repo but NOT applied to prod — review the plan, then apply with 'supabase db push --include-all':"
+            printf '  %s\n' $missing
+            exit 1
+          fi
+          echo "Migration history aligned — prod has all $(printf '%s\n' "$expected" | wc -l) migration version(s) in main."
