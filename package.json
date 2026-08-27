@@ -32,6 +32,8 @@
     "check:audit-triggers": "bash scripts/ci/check-audit-triggers.sh",
     "check:auth-direct-signin": "node scripts/ci/check-auth-direct-signin.mjs",
     "check:legacy-auth-importers": "node scripts/ci/check-legacy-auth-importers.mjs",
+    "check:architecture": "node scripts/ci/arch-gate.mjs --changed",
+    "check:architecture:all": "node scripts/ci/arch-gate.mjs",
     "prepare": "node scripts/ci/setup-git-hooks.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

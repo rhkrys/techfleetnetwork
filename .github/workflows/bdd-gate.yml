@@ -34,7 +34,7 @@ jobs:
           # function falsely trips the gate on the now-gone module.
           mapfile -t files < <(git diff --name-only --diff-filter=d "origin/${{ github.base_ref }}"...HEAD \
             | grep -E '^(src/services/|src/pages/|supabase/functions/)' \
-            | grep -v '_manifest\.json$' \
+            | grep -v -E '_manifest\.json$|\.md$' \
             || true)
           if [ "${#files[@]}" -eq 0 ]; then
             echo "No feature modules changed."

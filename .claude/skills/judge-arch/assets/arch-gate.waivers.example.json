@@ -1,0 +1,10 @@
+[
+  {
+    "_comment": "Waivers are the ONLY sanctioned bypass of the gate. Each one is explicit, attributed, and expires — so the ratchet only tightens. 'rule' must match a rule name (or built-in label) exactly; 'path' is a glob or substring; an expired waiver stops suppressing and the gate goes red again. Seed this file from the audit's list of known pre-existing hotspots so the gate can go live without a big-bang cleanup.",
+    "rule": "Components and pages must not access the database directly",
+    "path": "src/pages/LegacyDashboard.tsx",
+    "reason": "Pre-existing direct query; extraction tracked in TFN-1234",
+    "approvedBy": "mdenner",
+    "expires": "2026-12-31"
+  }
+]

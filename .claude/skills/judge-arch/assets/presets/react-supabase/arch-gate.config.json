@@ -1,0 +1,43 @@
+{
+  "_preset": "react-supabase",
+  "_comment": "Batteries-included architecture-gate rules for a React (Vite/CRA/Next) + Supabase app: UI → data hooks → services → lib/integrations, with exactly one Supabase client and edge functions composing a shared layer. Adjust the globs to your repo's folder names, then run `node scripts/arch-gate.mjs --baseline > arch-gate.waivers.json` to grandfather existing violations. Rule names are stable identifiers — a waiver's 'rule' field must match one exactly.",
+  "ignore": ["src/components/ui", "supabase/.branches"],
+  "builtins": { "emptyCatch": true, "swallowReturn": true, "keepInSync": true },
+  "rules": [
+    {
+      "name": "UI must not access the database directly",
+      "include": ["src/components/**", "src/pages/**", "src/app/**", "src/routes/**"],
+      "exclude": ["src/components/ui/**", "**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}"],
+      "forbid": ["supabase\\.(from|rpc|storage|functions)\\b", "from ['\"]@/integrations/supabase/client['\"]"],
+      "message": "Data access inside a component/page. Route it through the hook/service that OWNS this data, so there is one read path and schema/RLS changes touch one file, not dozens."
+    },
+    {
+      "name": "Domain/service/lib code must not import UI or touch web globals",
+      "include": ["src/services/**", "src/domain/**", "src/lib/**/*.{ts,tsx}"],
+      "exclude": ["**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}", "src/lib/observability/**", "src/lib/telemetry/**"],
+      "forbid": ["from ['\"]react['\"]", "from ['\"]react-router", "\\bwindow\\.", "\\bdocument\\.", "\\blocalStorage\\b", "\\bsessionStorage\\b"],
+      "message": "Business/domain code leaks a web/UI concern and can no longer be tested or reused without a browser. Keep React/DOM at the boundary; pass plain data into the service."
+    },
+    {
+      "name": "Exactly one Supabase client in the frontend",
+      "include": ["src/**/*.{ts,tsx}"],
+      "exclude": ["src/integrations/supabase/client.ts", "src/lib/supabase/**", "**/*.test.{ts,tsx}", "src/test/**"],
+      "forbid": ["createClient\\s*(<[^>]*>)?\\s*\\("],
+      "message": "A second Supabase client. There must be exactly one configured client (auth/session/storage config lives with it). Import the canonical client; never construct another."
+    },
+    {
+      "name": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+      "include": ["supabase/functions/**/index.ts"],
+      "exclude": ["supabase/functions/_shared/**"],
+      "forbid": ["SUPABASE_SERVICE_ROLE_KEY", "\\.from\\(['\"]user_roles['\"]\\)"],
+      "message": "Auth/admin logic hand-rolled per function drifts and can't be hardened in one place. Use the shared request-auth + admin-client helpers in supabase/functions/_shared."
+    },
+    {
+      "name": "Edge functions must not hand-roll CORS or responses in the handler",
+      "include": ["supabase/functions/**/index.ts"],
+      "exclude": ["supabase/functions/_shared/**"],
+      "forbid": ["Access-Control-Allow-Origin", "new Response\\(\\s*JSON\\.stringify"],
+      "message": "Inline CORS/response shaping duplicated per function drifts (missing preflight headers silently fail requests). Use the shared cors/json helpers in supabase/functions/_shared."
+    }
+  ]
+}

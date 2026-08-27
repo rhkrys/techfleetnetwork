@@ -1,0 +1,28 @@
+{
+  "_comment": "STARTER config. These rules are plausible defaults for a React/Vite + Supabase repo; replace them with the real layer boundaries discovered in the architecture audit. 'include'/'exclude' are globs (** * ? {a,b}); 'forbid' is a list of JS regex sources; 'name' is what shows up in the gate output AND in a waiver's 'rule' field, so keep names stable.",
+  "ignore": ["public", "supabase/.branches", "src/components/ui"],
+  "builtins": { "emptyCatch": true, "swallowReturn": true, "keepInSync": true },
+  "rules": [
+    {
+      "name": "Domain/service/lib code must not import UI or touch web globals",
+      "include": ["src/services/**", "src/domain/**", "src/lib/**/*.{ts,tsx}"],
+      "exclude": ["**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}"],
+      "forbid": ["from ['\"]react['\"]", "from ['\"]react-router", "\\bwindow\\.", "\\bdocument\\.", "\\blocalStorage\\b", "\\bsessionStorage\\b"],
+      "message": "Business/domain code is leaking a web/UI concern. Keep React/DOM at the boundary; pass plain data into the service so it stays testable and reusable."
+    },
+    {
+      "name": "Components and pages must not access the database directly",
+      "include": ["src/components/**", "src/pages/**"],
+      "exclude": ["**/*.test.{ts,tsx}", "src/components/ui/**"],
+      "forbid": ["supabase\\.from\\(", "supabase\\.rpc\\("],
+      "message": "Data access inside a component. Route it through the hook/service that OWNS this data so there is one writer and one read path."
+    },
+    {
+      "name": "Edge functions must not read secrets outside their config/boundary",
+      "include": ["supabase/functions/**/*.ts"],
+      "exclude": ["supabase/functions/**/_shared/**", "supabase/functions/**/config.ts"],
+      "forbid": ["Deno\\.env\\.get\\("],
+      "message": "Environment/secret access scattered through a function body. Read config once at the boundary and pass values in — this is a starter rule; tune paths to the real structure."
+    }
+  ]
+}

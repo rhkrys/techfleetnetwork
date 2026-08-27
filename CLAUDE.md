@@ -55,3 +55,18 @@ OAuth-restart machinery.
 - `04-performance-scale.skill.md` — caching, dedupe, pagination, cost at 10k users.
 - `05-devops-cicd.skill.md` — CI gates, migrations in CI, environments, observability.
 - `06-auth-flow-lockdown.skill.md` — the frozen auth layer; overrides others on conflict.
+
+## Architecture gate (blocking — every change)
+Every change that adds, moves, deletes, or restructures code or schema passes the architecture gate
+before it is "done." Both halves must pass:
+1. **Mechanical:** `npm run check:architecture` exits 0 (locally and in CI). It blocks NEW
+   violations; pre-existing ones are grandfathered in `arch-gate.waivers.json` — that file is the
+   architectural backlog, so shrink it, don't grow it.
+2. **Review:** run the `judge-arch` skill on the change (the four questions — boundary placement,
+   data ownership, dependency direction, error handling). PASS, or every finding explicitly waived.
+
+The only bypass is an explicit, dated waiver — never "it's trivial." Standing rules with ✅/❌
+examples live in `decisions.md`; scoped rules live in `src/components/`, `src/services/`, and
+`supabase/functions/`. Encode a newly-caught pattern with the `arch-encode` skill. The `judge-arch`
+and `arch-encode` skills are in `.claude/skills/`, sourced from
+[techfleetworks/enterprise-software-AI-skills](https://github.com/techfleetworks/enterprise-software-AI-skills).

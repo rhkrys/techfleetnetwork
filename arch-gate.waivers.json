@@ -1,0 +1,2193 @@
+[
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/admin/ApplicantStatusDropdown.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/admin/ContentGapsTab.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/admin/DiscordRoleAssignment.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/admin/FleetyCostPanel.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/admin/FleetyHealthTab.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/admin/FleetyPlaybooksManager.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/admin/MemberVideoActivityCard.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/admin/ProjectAnalysisContent.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/admin/ProjectRosterContent.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/admin/SilentFailuresTab.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/admin/StatsControlsCard.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/admin/system-health/TranslationsTab.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/admin/SystemHealthWidget.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/admin/UserDetailDialog.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/admin/WorkshopDocsUploader.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/agreements/AgreementResendButton.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/agreements/CommunityAgreementSheet.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/AppSidebar.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/auth/TurnstileChallenge.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/AvatarUpload.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/ClassCertificationsTab.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/ClassImageUpload.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/CLAUDE.md",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/clients/ClientsTab.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/clients/ProjectsTab.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/CookieConsentBanner.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/courses/ObserverRoleOptInCard.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/DiscordInviteBanner.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/DiscordRolePicker.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/events/CommunityEventList.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/events/EventsSyncHealthBanner.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/FleetyChatWidget.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/GeneralApplicationTab.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/GenericCoursePage.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/GoogleSignInButton.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/LanguageSwitcher.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/MfaEnforcementGuard.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/MyProjectsTab.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/MyRegisteredClassesTab.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/NetworkActivity.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/profile/CompletenessMeter.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/profile/ProfileDiscordConnector.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/ProfileEditPanel.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/ProjectCertificationsTab.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/quest/QuestIntakeWizard.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/recruiting/ProjectBlastComposer.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/recruiting/ProjectBlastHistory.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/resources/GuidanceEmbed.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/SubmittedApplicationsTab.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/system-health/AuditPressureTab.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/system-health/AuthFunnelTab.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/system-health/DiscordRepairTab.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/system-health/EmailBulkThrottleCard.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/system-health/EmailControlCenterTab.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/system-health/EmailDeliverabilityCard.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/system-health/EmailDlqPanel.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/system-health/HelpDeskTab.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/system-health/IncidentsTab.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/system-health/KnownIssuePanel.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/system-health/LoginHealthTab.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/system-health/PerformanceByBrowserTab.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/system-health/PerformanceTab.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/system-health/PrivacyRequestsTab.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/system-health/ProjectBlastsHealthCard.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/system-health/RefactorKpisTab.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/system-health/ResetHealthTab.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/system-health/TriageTab.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/TotpMfaManagement.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/UniversalSearch.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/components/VideoRecorder.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "a \"keep in sync\" marker — two copies of one fact; give it one owner",
+    "path": "src/design-system/theme/tokens.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "a \"keep in sync\" marker — two copies of one fact; give it one owner",
+    "path": "src/lib/auth/production-hosts.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/ActivityLogPage.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/admin/AdminPoliciesPage.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/admin/HandoffAdminPage.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/AdminEmailDeliverabilityTestPage.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/AdminIngestPage.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/AdminRosterPage.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/ApplicationsPage.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/ApplicationSubmissionDetailPage.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/ChatPage.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/ClassDetailPage.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/community/AdminAllTicketsGrid.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/community/CategoryReportPanel.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/community/GetHelpPage.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/community/MonthlyReportPanel.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/DashboardPage.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/DsarSubmitPage.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/EditProfilePage.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/MyProjectApplicationsPage.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/NotificationSettingsPage.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/ProfileSetupPage.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/ProjectApplicationPage.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/ProjectApplicationStatusPage.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/ProjectFormPage.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/ProjectOpeningDetailPage.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/ProjectOpeningsPage.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/RosterApplicantDetailPage.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/RosterProjectDetailPage.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/ThirdStepsPage.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/UnsubscribePage.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/UserAdminPage.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "UI must not access the database directly",
+    "path": "src/pages/WelcomeWizard.tsx",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Services must not import UI or touch web globals",
+    "path": "src/services/announcement.service.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Services must not import UI or touch web globals",
+    "path": "src/services/CLAUDE.md",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Services must not import UI or touch web globals",
+    "path": "src/services/discord-notify.service.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Services must not import UI or touch web globals",
+    "path": "src/services/error-reporter.service.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Services must not import UI or touch web globals",
+    "path": "src/services/push-subscription.service.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Services must not import UI or touch web globals",
+    "path": "src/services/stats.service.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/admin-purge-auth-user/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/admin-purge-auth-user/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/admin-sign-out-all-users/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/admin-sign-out-all-users/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/airtable-diag/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/airtable-diag/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/auth-broker/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/auth-email-hook/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/auth-email-hook/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/auth-prober/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/auth-prober/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/auth-reset-smoke/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/auth-reset-smoke/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/backfill-discord-usernames/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/backfill-discord-usernames/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/bump-email-warmup/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/bump-email-warmup/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/check-account-identity/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/check-account-identity/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/client-rate-limit-log/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/confirm-admin-role/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/confirm-admin-role/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/confirm-teacher-role/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/confirm-teacher-role/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/delete-account/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/delete-account/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/discord-interactions/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/discord-interactions/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/discord-project-update/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/discord-project-update/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/dsar-submit/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/edge-deploy-smoke/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/edge-deploy-smoke/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/email-dispatcher/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/email-octopus-sync/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/email-octopus-sync/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/email-pipeline-health/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/email-pipeline-health/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/environment-readiness/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/environment-readiness/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/eo-contact-status/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/eo-contact-status/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/fetch-class-certifications/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/fetch-class-certifications/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/fetch-project-certifications/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/fetch-project-certifications/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/fill-content-gaps/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/fill-content-gaps/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/firecrawl-search/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/fleety-embed/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/fleety-embed/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/fleety-extract/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/fleety-learning-digest/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/fleety-learning-digest/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/fleety-review/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/fleety-review/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/fleety-weekly-digest/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/fleety-weekly-digest/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/framework-csv-fetch/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/framework-csv-fetch/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/freescout-proxy/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/generate-discord-invite/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/generate-discord-invite/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/geo-hint/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/get-community-events/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/get-community-events/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/get-discord-member-count/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/get-discord-member-count/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/get-i18n-bundle/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/get-i18n-bundle/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/grant-observer-role/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/grant-observer-role/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/guide-ingest/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/guide-ingest/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/gumroad-backfill/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/gumroad-backfill/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/gumroad-backfill-all/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/gumroad-backfill-all/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/gumroad-reconcile/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/gumroad-reconcile/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/gumroad-webhook/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/gumroad-webhook/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/handle-email-suppression/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/handle-email-suppression/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/handoff-download/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/handoff-download/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/handoff-produce/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/handoff-produce/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/handoff-submit/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/handoff-submit/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/handoff-worker/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/handoff-worker/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/ingest-csv-knowledge/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/ingest-csv-knowledge/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/ingest-reference-csv/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/ingest-reference-csv/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/ingest-workshop-docs/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/ingest-workshop-docs/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/login-with-captcha/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/login-with-captcha/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/manage-discord-roles/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/manage-discord-roles/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/mark-interview-scheduled/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/mark-interview-scheduled/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/notify-applicant-status/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/notify-applicant-status/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/notify-class-published/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/notify-class-published/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/notify-critical-fix/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/notify-critical-fix/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/preview-transactional-email/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/prewarm-ugc-worker/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/prewarm-ugc-worker/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/process-email-queue/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/process-email-queue/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/process-notification-fanout/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/process-notification-fanout/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/promote-to-admin/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/promote-to-admin/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/promote-to-teacher/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/promote-to-teacher/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/public-classes/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/public-project-detail/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/public-project-openings/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/push-config/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/quest-nudge/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/quest-nudge/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/rate-limit/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/rate-limit/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/reap-class-module-orphans/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/reap-class-module-orphans/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/reconcile-stuck-emails/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/reconcile-stuck-emails/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/record-auth-event/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/record-auth-recovery/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/record-auth-recovery/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/record-auth-wedge/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/record-auth-wedge/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/record-consent/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/record-consent/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/record-web-vital/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/record-web-vital/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/refresh-community-events/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/refresh-community-events/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/refresh-email-health/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/refresh-email-health/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/register-fleety-command/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/register-fleety-command/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/register-support-command/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/register-support-command/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/repair-discord-username/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/repair-discord-username/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/replay-dlq-emails/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/replay-dlq-emails/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/replay-email-dlq/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/replay-email-dlq/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/resend-signup-confirmations/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/resend-signup-confirmations/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/resend-webhook/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/resend-webhook/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/resolve-discord-id/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/resolve-discord-id/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/resume-application-reminder/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/resume-application-reminder/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/revoke-teacher-role/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/revoke-teacher-role/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/revoke-user-sessions/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/revoke-user-sessions/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/save-form-draft/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/scrape-figma-workshops/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/scrape-figma-workshops/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/seed-content/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/seed-content/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/send-announcement-email/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/send-announcement-email/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/send-application-confirmation/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/send-application-confirmation/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/send-community-agreement-trigger/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/send-community-agreement-trigger/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/send-magic-link/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/send-magic-link/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/send-project-blast/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/send-project-blast/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/send-push-notification/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/send-push-notification/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/send-transactional-email/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/send-transactional-email/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/spf-sync/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/spf-sync/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/sync-airtable/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/sync-airtable-network-stats/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/sync-airtable-network-stats/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/sync-airtable-roster/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/sync-airtable-roster/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/techfleet-chat/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/techfleet-chat/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/translate-bundle/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/translate-bundle/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/translate-strings/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/translate-strings/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/triage-error/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll CORS or responses in the handler",
+    "path": "supabase/functions/triage-error/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "Edge functions must not hand-roll auth or read service-role secrets in the handler",
+    "path": "supabase/functions/write-exploration-cache/index.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  },
+  {
+    "rule": "a \"keep in sync\" marker — two copies of one fact; give it one owner",
+    "path": "supabase/functions/_shared/auth-hosts.ts",
+    "reason": "baseline — pre-existing at gate adoption; scheduled for cleanup",
+    "approvedBy": "baseline",
+    "expires": ""
+  }
+]

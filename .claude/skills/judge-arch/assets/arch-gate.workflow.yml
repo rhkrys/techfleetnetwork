@@ -1,0 +1,30 @@
+# Architecture gate — the mechanical half of the blocking gate.
+# Copy to .github/workflows/arch-gate.yml. Fails the PR when new/changed code violates the
+# repo's structural rules. Pairs with the judge-arch review (the human/agent half).
+name: architecture-gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  arch-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # full history so --changed can find the merge-base
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # No install needed — arch-gate.mjs is dependency-free.
+      # --changed = ratchet: block drift the PR introduces, not the whole legacy tree.
+      - name: Architecture gate
+        run: node scripts/arch-gate.mjs --changed
+
+      # Optional: also run a full scan as a non-blocking drift report (uncomment to enable).
+      # - name: Architecture drift (full, informational)
+      #   run: node scripts/arch-gate.mjs || true
