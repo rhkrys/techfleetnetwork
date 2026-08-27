@@ -262,6 +262,29 @@ jobs:
       - name: OWASP 120-sheet coverage completeness
         run: node scripts/ci/check-owasp-coverage.mjs
 
+  # ---------------------------------------------------------------------------
+  # arch-gate — architecture gate (the four questions / structural drift).
+  # BLOCKING (in the gate aggregator). Dependency-free scanner: the --changed
+  # ratchet blocks NEW violations while pre-existing ones stay grandfathered in
+  # arch-gate.waivers.json. Node built-ins only — no npm install, no secrets.
+  # ---------------------------------------------------------------------------
+  arch-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0 # full history so --changed can find the merge-base
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .nvmrc
+      - name: Architecture gate (ratchet — blocks new violations)
+        run: npm run check:architecture
+
   # Required status check — stays named "gate" so branch protection is unchanged.
   # Aggregates the three parallel gate jobs and fails if any did not succeed.
   # `if: always()` so it still runs (and reports failure) when a dependency fails,
@@ -276,6 +299,7 @@ jobs:
         gate-build,
         lint-arch-critical,
         security-owasp,
+        arch-gate,
         migration-smoke,
         deno-check,
       ]
@@ -290,9 +314,10 @@ jobs:
           build='${{ needs.gate-build.result }}'
           arch='${{ needs.lint-arch-critical.result }}'
           owasp='${{ needs.security-owasp.result }}'
+          agate='${{ needs.arch-gate.result }}'
           migr='${{ needs.migration-smoke.result }}'
           dchk='${{ needs.deno-check.result }}'
-          echo "gate-verify=$verify  gate-test=$test  gate-build=$build  lint-arch-critical=$arch  security-owasp=$owasp  migration-smoke=$migr  deno-check=$dchk"
+          echo "gate-verify=$verify  gate-test=$test  gate-build=$build  lint-arch-critical=$arch  security-owasp=$owasp  arch-gate=$agate  migration-smoke=$migr  deno-check=$dchk"
           fail=0
           [ "$verify" = "success" ] || fail=1
           [ "$test" = "success" ] || fail=1
@@ -300,13 +325,15 @@ jobs:
           [ "$arch" = "success" ] || fail=1
           # security-owasp is unconditional (secret-free, no deps): must succeed.
           [ "$owasp" = "success" ] || fail=1
+          # arch-gate is unconditional (dependency-free): must succeed.
+          [ "$agate" = "success" ] || fail=1
           # migration-smoke is conditional: skipped (no migration changes) passes.
           if [ "$migr" != "success" ] && [ "$migr" != "skipped" ]; then fail=1; fi
           # deno-check is conditional on function changes: skipped (no function changes) passes,
           # otherwise it must succeed — this is what makes the edge-function unit tests block merge.
           if [ "$dchk" != "success" ] && [ "$dchk" != "skipped" ]; then fail=1; fi
           if [ "$fail" -ne 0 ]; then
-            echo "::error::Gate failed (verify=$verify test=$test build=$build arch=$arch security-owasp=$owasp migration-smoke=$migr deno-check=$dchk)."
+            echo "::error::Gate failed (verify=$verify test=$test build=$build arch=$arch security-owasp=$owasp arch-gate=$agate migration-smoke=$migr deno-check=$dchk)."
             exit 1
           fi
           echo "All gate jobs passed."
