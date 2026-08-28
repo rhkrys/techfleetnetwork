@@ -5,7 +5,7 @@ const BASE = {
   label: "Spring 2026",
   start_date: "2026-03-01",
   end_date: "2026-04-30",
-  registration_url: "https://example.com/register",
+  registration_url: "https://techfleet.gumroad.com/l/course",
   meeting_url: "",
   timezone: "America/New_York",
   capacity: null,
@@ -37,6 +37,47 @@ describe("cohortFormSchema — schedule field", () => {
 
   it("still rejects end_date before start_date (existing behavior preserved)", () => {
     const out = cohortFormSchema.safeParse({ ...BASE, start_date: "2026-04-30", end_date: "2026-03-01" });
+    expect(out.success).toBe(false);
+  });
+});
+
+describe("cohortFormSchema — registration link allowlist", () => {
+  it("accepts a Tech Fleet Gumroad registration link", () => {
+    const out = cohortFormSchema.safeParse(BASE);
+    expect(out.success).toBe(true);
+  });
+
+  it("rejects an off-allowlist registration link", () => {
+    const out = cohortFormSchema.safeParse({ ...BASE, registration_url: "https://example.com/register" });
+    expect(out.success).toBe(false);
+  });
+
+  it("rejects a lookalike host that a prefix regex would have admitted", () => {
+    const out = cohortFormSchema.safeParse({
+      ...BASE,
+      registration_url: "https://techfleet.gumroad.com.evil.com/l/course",
+    });
+    expect(out.success).toBe(false);
+  });
+
+  it("accepts the optional member discount link", () => {
+    const out = cohortFormSchema.safeParse({
+      ...BASE,
+      discount_registration_url: "https://techfleet.gumroad.com/l/course/tfmember",
+    });
+    expect(out.success).toBe(true);
+  });
+
+  it("defaults the member discount link to empty when omitted", () => {
+    const parsed = cohortFormSchema.parse(BASE);
+    expect(parsed.discount_registration_url).toBe("");
+  });
+
+  it("rejects an off-allowlist member discount link", () => {
+    const out = cohortFormSchema.safeParse({
+      ...BASE,
+      discount_registration_url: "https://evil.gumroad.com/l/course/tfmember",
+    });
     expect(out.success).toBe(false);
   });
 });
