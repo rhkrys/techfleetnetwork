@@ -10,6 +10,7 @@
  * Fire-and-forget: never throws, never blocks the UI.
  */
 import { supabase } from "@/integrations/supabase/client";
+import { redactText } from "@/lib/redact";
 
 export type AccountActivity =
   | "signup_attempt_started"
@@ -99,7 +100,7 @@ export async function logAccountActivity(
       p_record_id: null,
       p_user_id: payload.userId ?? null,
       p_changed_fields: fields.length ? fields : null,
-      p_error_message: payload.errorMessage ?? null,
+      p_error_message: payload.errorMessage ? redactText(payload.errorMessage) : null,
     });
   } catch {
     // Telemetry must never break the user flow.

@@ -11,7 +11,8 @@
  * - Rate limiting: 10 reports/min/tab; overflow emits a single
  *   `client_error_overflow` per minute carrying the suppressed count.
  * - Payload capping: stack <= 2000 chars, fields <= 100 chars/each.
- * - PII safety: emails are stripped, only error name/message/stack land.
+ * - PII safety: emails, JWTs, and bearer tokens are redacted from the message
+ *   (via src/lib/redact) before it lands; only error name/message/stack are kept.
  * - **CRITICAL FIX (May 2026):** previously sent a nil-UUID for `p_user_id`
  *   when no user was known, but `write_audit_log` rejects any non-null
  *   p_user_id != auth.uid(). That made every authenticated client_error
@@ -24,6 +25,7 @@ import { checkNow as checkDeployNow } from "@/lib/deploy-watcher";
 import { isChunkLoadMessage } from "@/lib/lazy-with-retry";
 import { formatThrowable } from "@/lib/error-normalization";
 import { isTransientError } from "@/lib/transient-error";
+import { redactText, EMAIL_SOURCE, JWT_SOURCE } from "@/lib/redact";
 
 /**
  * Event types that are infrastructure / observability / aggregate notices.
@@ -61,7 +63,6 @@ const NON_ACTIONABLE_EVENT_TYPES: ReadonlySet<string> = new Set([
   "infra_transient",
 ]);
 
-
 const MAX_MSG_LENGTH = 2000;
 const DEFAULT_CAP_PER_MINUTE = 10;
 const DEFAULT_DEDUP_WINDOW_MS = 60_000;
@@ -98,10 +99,14 @@ const occurrenceTimeline = new Map<string, number[]>();
 
 function pressureMultiplier(): number {
   switch (policySnapshot.pressure) {
-    case "hard": return 0.1;   // 10% of normal cap
-    case "medium": return 0.33;
-    case "soft": return 0.66;
-    default: return 1;
+    case "hard":
+      return 0.1; // 10% of normal cap
+    case "medium":
+      return 0.33;
+    case "soft":
+      return 0.66;
+    default:
+      return 1;
   }
 }
 
@@ -112,7 +117,9 @@ function matchPolicyEntry(eventTypeKey: string): PolicyEntry | undefined {
   if (exact) return exact;
   for (const [pattern, entry] of Object.entries(policySnapshot.entries)) {
     if (!pattern.includes("%")) continue;
-    const re = new RegExp("^" + pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*") + "$");
+    const re = new RegExp(
+      "^" + pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*") + "$"
+    );
     if (re.test(eventTypeKey)) return entry;
   }
   return undefined;
@@ -123,13 +130,20 @@ function getPolicy(eventType: string, fingerprint?: string): PolicyEntry {
   const e =
     (fingerprint ? matchPolicyEntry(`${eventType}::${fingerprint}`) : undefined) ??
     matchPolicyEntry(eventType);
-  const cap = Math.max(1, Math.floor((e?.capPerMinute ?? DEFAULT_CAP_PER_MINUTE) * pressureMultiplier()));
+  const cap = Math.max(
+    1,
+    Math.floor((e?.capPerMinute ?? DEFAULT_CAP_PER_MINUTE) * pressureMultiplier())
+  );
   const dedup = e?.dedupWindowMs ?? DEFAULT_DEDUP_WINDOW_MS;
   const minOcc = Math.max(1, e?.minOccurrencesBeforeEscalate ?? 1);
   return { capPerMinute: cap, dedupWindowMs: dedup, minOccurrencesBeforeEscalate: minOcc };
 }
 
-function recordOccurrenceAndShouldEscalate(fp: string, windowMs: number, minOccurrences: number): boolean {
+function recordOccurrenceAndShouldEscalate(
+  fp: string,
+  windowMs: number,
+  minOccurrences: number
+): boolean {
   if (minOccurrences <= 1) return true;
   const now = Date.now();
   const cutoff = now - windowMs;
@@ -156,7 +170,12 @@ async function refreshPolicy(): Promise<void> {
       ]);
       const entries: Record<string, PolicyEntry> = {};
       if (Array.isArray(policyRows)) {
-        for (const row of policyRows as Array<{ event_type_pattern: string; cap_per_minute: number; dedup_window_seconds: number; min_occurrences_before_escalate?: number }>) {
+        for (const row of policyRows as Array<{
+          event_type_pattern: string;
+          cap_per_minute: number;
+          dedup_window_seconds: number;
+          min_occurrences_before_escalate?: number;
+        }>) {
           entries[row.event_type_pattern] = {
             capPerMinute: row.cap_per_minute,
             dedupWindowMs: row.dedup_window_seconds * 1000,
@@ -203,7 +222,6 @@ export type ReportEventType =
   // reaches agent_fix_queue (TS NON_ACTIONABLE + DB is_actionable_event_type).
   | "infra_transient";
 
-
 interface ReportOptions {
   severity?: ReportSeverity;
   eventType?: ReportEventType;
@@ -233,6 +251,10 @@ function truncate(s: string, max: number): string {
 export function normalizeFingerprintKey(input: string): string {
   if (!input) return input;
   let s = input;
+  // PII → placeholder FIRST, so per-user emailed/tokenized messages dedupe to one
+  // fingerprint (and no PII lands in agent_fix_queue fingerprints).
+  s = s.replace(new RegExp(JWT_SOURCE, "g"), ":jwt");
+  s = s.replace(new RegExp(EMAIL_SOURCE, "gi"), ":email");
   // UUID v1-v5
   s = s.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, ":id");
   // Long hex blobs (sha-ish)
@@ -323,12 +345,8 @@ function buildChangedFields(opts: {
   traceId?: string;
   extraFields?: string[];
 }): string[] {
-  const safe = (raw: string) =>
-    raw.replace(/[^A-Za-z0-9_.:-]/g, "_").slice(0, 100);
-  const fields = [
-    `source:${safe(opts.source)}`,
-    `severity:${opts.severity}`,
-  ];
+  const safe = (raw: string) => raw.replace(/[^A-Za-z0-9_.:-]/g, "_").slice(0, 100);
+  const fields = [`source:${safe(opts.source)}`, `severity:${opts.severity}`];
   if (opts.traceId) fields.push(`trace:${safe(opts.traceId)}`);
   for (const f of opts.extraFields ?? []) {
     if (f.length <= 100 && /^[A-Za-z0-9_.:-]+$/.test(f)) fields.push(f);
@@ -347,6 +365,10 @@ interface WriteAuditArgs {
 }
 
 async function writeAudit(args: WriteAuditArgs): Promise<void> {
+  // Redact PII (emails, JWTs, bearer tokens) from the message before it is
+  // persisted to audit_log / the fix queue. Fingerprint dedup is handled
+  // separately by normalizeFingerprintKey (which also strips these).
+  const safeMessage = redactText(args.message);
   try {
     await supabase.rpc("write_audit_log", {
       p_event_type: args.eventType,
@@ -354,7 +376,7 @@ async function writeAudit(args: WriteAuditArgs): Promise<void> {
       p_record_id: args.source.slice(0, 200),
       // CRITICAL: pass null when unknown — never a sentinel UUID.
       p_user_id: args.userId ?? null,
-      p_error_message: truncate(args.message, MAX_MSG_LENGTH),
+      p_error_message: truncate(safeMessage, MAX_MSG_LENGTH),
       p_changed_fields: buildChangedFields({
         source: args.source,
         severity: args.severity,
@@ -371,16 +393,14 @@ async function writeAudit(args: WriteAuditArgs): Promise<void> {
     // Skip aggregate observability notices, infra events, and any non-error
     // severity. The DB trigger `block_non_actionable_fix_queue_inserts`
     // enforces the same rule belt-and-suspenders.
-    const skipQueue =
-      args.severity !== "error" ||
-      NON_ACTIONABLE_EVENT_TYPES.has(args.eventType);
+    const skipQueue = args.severity !== "error" || NON_ACTIONABLE_EVENT_TYPES.has(args.eventType);
     if (!skipQueue) {
       const fp = `${args.eventType}::${fingerprint(args.message, args.source)}`;
       await supabase.rpc("upsert_fix_queue_entry", {
         p_fingerprint: fp,
         p_event_type: args.eventType,
         p_source: args.source.slice(0, 200),
-        p_error_message: truncate(args.message, MAX_MSG_LENGTH),
+        p_error_message: truncate(safeMessage, MAX_MSG_LENGTH),
         p_severity: args.severity,
         p_sample_trace_id: args.traceId ?? null,
       });
@@ -390,11 +410,7 @@ async function writeAudit(args: WriteAuditArgs): Promise<void> {
   }
 }
 
-async function reportToAuditLog(
-  errorMessage: string,
-  source: string,
-  options: ReportOptions = {},
-) {
+async function reportToAuditLog(errorMessage: string, source: string, options: ReportOptions = {}) {
   // Opaque cross-origin "Script error." carries no actionable detail. Drop
   // FIRST so it never reaches audit_log (where discover_audit_fingerprints
   // would re-promote it into the Triage queue).
@@ -419,7 +435,13 @@ async function reportToAuditLog(
   // window before triage, count this hit but skip writing until the threshold
   // is reached. The aggregate suppression flush still records the drops so
   // admins have visibility in /admin/system-health.
-  if (!recordOccurrenceAndShouldEscalate(fp, policy.dedupWindowMs, policy.minOccurrencesBeforeEscalate)) {
+  if (
+    !recordOccurrenceAndShouldEscalate(
+      fp,
+      policy.dedupWindowMs,
+      policy.minOccurrencesBeforeEscalate
+    )
+  ) {
     recordDedup(fp);
     return;
   }
@@ -445,7 +467,7 @@ async function reportToAuditLog(
 export function reportError(
   err: unknown,
   source = "unknown",
-  optionsOrUserId: ReportOptions | string = {},
+  optionsOrUserId: ReportOptions | string = {}
 ) {
   // Structural ZodError drop — covers thrown ZodError instances whose
   // toString() doesn't include the literal "ZodError: [..." payload that
@@ -455,8 +477,7 @@ export function reportError(
   // digest. Aggregate count is still flushed via the suppression counter.
   if (err && typeof err === "object") {
     const e = err as { name?: unknown; issues?: unknown };
-    const looksLikeZod =
-      e.name === "ZodError" || (Array.isArray(e.issues) && e.issues.length > 0);
+    const looksLikeZod = e.name === "ZodError" || (Array.isArray(e.issues) && e.issues.length > 0);
     if (looksLikeZod) {
       recordSuppression("__zod_structural__");
       return;
@@ -466,9 +487,8 @@ export function reportError(
   if (isOpaqueScriptErrorMessage(msg)) return;
   if (isSuppressed(msg)) return;
   if (handleZodErrorMessage(msg, source)) return;
-  const options: ReportOptions = typeof optionsOrUserId === "string"
-    ? { userId: optionsOrUserId }
-    : { ...optionsOrUserId };
+  const options: ReportOptions =
+    typeof optionsOrUserId === "string" ? { userId: optionsOrUserId } : { ...optionsOrUserId };
 
   // Transient PG/PostgREST/HTTP infra errors — classified at source and
   // routed to event_type=infra_transient severity=info. This is the single
@@ -487,7 +507,10 @@ export function reportError(
   const ambiguous = /column reference "([^"]+)" is ambiguous/i.exec(msg);
   if (ambiguous) {
     const col = ambiguous[1];
-    const fnMatch = /\b(get_[a-z0-9_]+|[a-z0-9_]+_(?:summary|dashboard|status|distribution|fingerprints))\b/i.exec(`${source} ${msg}`);
+    const fnMatch =
+      /\b(get_[a-z0-9_]+|[a-z0-9_]+_(?:summary|dashboard|status|distribution|fingerprints))\b/i.exec(
+        `${source} ${msg}`
+      );
     const fn = fnMatch ? fnMatch[1] : "unknown_fn";
     options.extraFields = [
       ...(options.extraFields ?? []),
@@ -499,7 +522,6 @@ export function reportError(
     options.eventType = "client_error";
   }
   void reportToAuditLog(msg, source, options);
-
 }
 
 /**
@@ -543,7 +565,7 @@ function handleZodErrorMessage(msg: string, source: string): boolean {
       message: String(i.message ?? "validation failed"),
       code: i.code,
     })),
-    source,
+    source
   );
   return true;
 }
@@ -556,7 +578,7 @@ export function reportActivity(
   eventType: ReportEventType,
   source: string,
   message: string,
-  options: Omit<ReportOptions, "eventType"> = {},
+  options: Omit<ReportOptions, "eventType"> = {}
 ) {
   void reportToAuditLog(message, source, {
     ...options,
@@ -577,16 +599,17 @@ export function reportActivity(
  */
 export function reportRecovery(
   source: string,
-  detail: { attempts?: number; durationMs?: number } = {},
+  detail: { attempts?: number; durationMs?: number } = {}
 ) {
   const extras: string[] = [];
   if (typeof detail.attempts === "number") extras.push(`attempts:${detail.attempts}`);
-  if (typeof detail.durationMs === "number") extras.push(`durationMs:${Math.min(detail.durationMs, 999_999)}`);
-  void reportToAuditLog(
-    `${source} recovered after transient failure`,
-    source,
-    { eventType: "external_api_recovered", severity: "info", extraFields: extras },
-  );
+  if (typeof detail.durationMs === "number")
+    extras.push(`durationMs:${Math.min(detail.durationMs, 999_999)}`);
+  void reportToAuditLog(`${source} recovered after transient failure`, source, {
+    eventType: "external_api_recovered",
+    severity: "info",
+    extraFields: extras,
+  });
 }
 
 const SUPPRESSED_PATTERNS = [
@@ -646,7 +669,6 @@ const SUPPRESSED_PATTERNS = [
   // See mem://features/triage-noise-suppression and TRIAGE-FIX-00{1..7}.)
 ] as const;
 
-
 // Suppress empty unhandledrejection payloads ("{}") — almost always extension noise
 // or aborted fetches with no actionable content.
 function isEmptyRejection(msg: string): boolean {
@@ -667,13 +689,19 @@ export function isOpaqueScriptErrorMessage(msg: string): boolean {
   // actionable stack/file/message (TRIAGE-NOISE-014).
   //
   // Drop unconditionally at every reporter entrypoint.
-  const firstLine = (msg ?? "")
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .find((l) => l.length > 0) ?? "";
+  const firstLine =
+    (msg ?? "")
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .find((l) => l.length > 0) ?? "";
   if (/^(error:\s*)?script error\.?$/i.test(firstLine)) return true;
   // SerializationError with empty payload / empty message — opaque by design.
-  if (/^SerializationError:\s*Non-Error thrown:\s*\{?\s*"?message"?\s*:\s*""\s*\}?\s*$/i.test(firstLine)) return true;
+  if (
+    /^SerializationError:\s*Non-Error thrown:\s*\{?\s*"?message"?\s*:\s*""\s*\}?\s*$/i.test(
+      firstLine
+    )
+  )
+    return true;
   if (/^SerializationError:\s*Non-Error thrown:\s*\{\s*\}?\s*$/i.test(firstLine)) return true;
   return false;
 }
@@ -682,7 +710,6 @@ export function isOpaqueScriptErrorMessage(msg: string): boolean {
 function isOpaqueScriptError(_event: ErrorEvent, msg: string): boolean {
   return isOpaqueScriptErrorMessage(msg);
 }
-
 
 // --- Aggregate observability for silent drops ------------------------
 // We never want suppression / dedup to be a black hole. Once a minute we
@@ -709,7 +736,10 @@ function scheduleSuppressionFlush() {
         source: "error-reporter.suppression",
         severity: "warn",
         traceId: undefined,
-        extraFields: [`pattern:${pattern.replace(/[^A-Za-z0-9_.:-]/g, "_").slice(0, 60)}`, `count:${count}`],
+        extraFields: [
+          `pattern:${pattern.replace(/[^A-Za-z0-9_.:-]/g, "_").slice(0, 60)}`,
+          `count:${count}`,
+        ],
         userId: undefined,
       });
     }
@@ -721,7 +751,10 @@ function scheduleSuppressionFlush() {
         source: fp.split("::")[1] ?? "unknown",
         severity: "warn",
         traceId: undefined,
-        extraFields: [`fingerprint:${fp.replace(/[^A-Za-z0-9_.:-]/g, "_").slice(0, 80)}`, `count:${count}`],
+        extraFields: [
+          `fingerprint:${fp.replace(/[^A-Za-z0-9_.:-]/g, "_").slice(0, 80)}`,
+          `count:${count}`,
+        ],
         userId: undefined,
       });
     }
@@ -751,7 +784,11 @@ export function isSuppressed(msg: string): boolean {
       // check so a stuck tab reloads on the next idle window instead of
       // firing dozens of retries. Throttled inside checkDeployNow.
       if (p === "FunctionsFetchError") {
-        try { checkDeployNow(); } catch { /* never throw from telemetry */ }
+        try {
+          checkDeployNow();
+        } catch {
+          /* never throw from telemetry */
+        }
       }
       return true;
     }
@@ -776,7 +813,7 @@ export function reportValidationRejection(
   schemaName: string,
   issues: ReadonlyArray<{ path: PropertyKey[]; message: string; code?: string }>,
   source: string,
-  options: Omit<ReportOptions, "eventType" | "severity"> = {},
+  options: Omit<ReportOptions, "eventType" | "severity"> = {}
 ) {
   if (!issues || issues.length === 0) return;
   // Filter out "user just forgot to fill a required field" rejections — those are
@@ -794,10 +831,13 @@ export function reportValidationRejection(
   const fieldPath = first.path.map(String).join(".") || "(root)";
   const code = first.code ?? "validation";
   // Compact message lists every offending field so admins can see scope.
-  const fields = meaningful.slice(0, 8).map((i) => {
-    const f = i.path.map(String).join(".") || "(root)";
-    return `${f}: ${i.message}`;
-  }).join(" | ");
+  const fields = meaningful
+    .slice(0, 8)
+    .map((i) => {
+      const f = i.path.map(String).join(".") || "(root)";
+      return `${f}: ${i.message}`;
+    })
+    .join(" | ");
   const message = `[${schemaName}] ${fields}`;
   void reportToAuditLog(message, source, {
     ...options,
@@ -806,7 +846,9 @@ export function reportValidationRejection(
     extraFields: [
       `schema:${schemaName.replace(/[^A-Za-z0-9_.:-]/g, "_").slice(0, 60)}`,
       `field:${fieldPath.replace(/[^A-Za-z0-9_.:-]/g, "_").slice(0, 60)}`,
-      `code:${String(code).replace(/[^A-Za-z0-9_.:-]/g, "_").slice(0, 40)}`,
+      `code:${String(code)
+        .replace(/[^A-Za-z0-9_.:-]/g, "_")
+        .slice(0, 40)}`,
       `count:${meaningful.length}`,
       ...(options.extraFields ?? []),
     ],

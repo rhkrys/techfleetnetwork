@@ -13,6 +13,7 @@
  *   malicious_*       confirmed attack patterns (prompt injection, SSRF probe)
  */
 import { supabase } from "@/integrations/supabase/client";
+import { redactText } from "@/lib/redact";
 
 export type SecurityEvent =
   | "authn_login_success"
@@ -59,7 +60,7 @@ export async function logSecurityEvent(payload: SecurityEventPayload): Promise<v
       p_record_id: payload.recordId ?? null,
       p_user_id: payload.userId ?? null,
       p_changed_fields: payload.details ?? null,
-      p_error_message: payload.errorMessage ?? null,
+      p_error_message: payload.errorMessage ? redactText(payload.errorMessage) : null,
     });
   } catch {
     // Telemetry must never block UX.

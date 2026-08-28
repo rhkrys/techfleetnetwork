@@ -11,6 +11,7 @@
  */
 
 import { normalizeThrownError } from "@/lib/error-normalization";
+import { redactText } from "@/lib/redact";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -39,15 +40,14 @@ const LOG_LEVELS: Record<LogLevel, number> = {
 };
 
 // Default minimum level — could be driven by env var or remote config
-const MIN_LEVEL: LogLevel =
-  (import.meta.env.VITE_LOG_LEVEL as LogLevel) || "debug";
+const MIN_LEVEL: LogLevel = (import.meta.env.VITE_LOG_LEVEL as LogLevel) || "debug";
 
 // Log throttling: max N logs per key per window to prevent console flooding at scale
 const THROTTLE_WINDOW_MS = 10_000; // 10 seconds
 const THROTTLE_MAX_PER_KEY = 5;
 const throttleCounts = new Map<string, { count: number; windowStart: number }>();
-const SENSITIVE_KEY_PATTERN = /email|password|token|secret|key|authorization|cookie|discord|useragent|user_agent|ip|consent|dsar|dob|birth_year|birthyear|gpc|ssn|tax_id|phone/i;
-const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+const SENSITIVE_KEY_PATTERN =
+  /email|password|token|secret|key|authorization|cookie|discord|useragent|user_agent|ip|consent|dsar|dob|birth_year|birthyear|gpc|ssn|tax_id|phone/i;
 
 function isThrottled(key: string): boolean {
   const now = Date.now();
@@ -65,7 +65,9 @@ function isThrottled(key: string): boolean {
   entry.count++;
   if (entry.count > THROTTLE_MAX_PER_KEY) {
     if (entry.count === THROTTLE_MAX_PER_KEY + 1) {
-      console.warn(`[LOG THROTTLED] "${key}" — suppressing repeated logs for ${THROTTLE_WINDOW_MS / 1000}s`);
+      console.warn(
+        `[LOG THROTTLED] "${key}" — suppressing repeated logs for ${THROTTLE_WINDOW_MS / 1000}s`
+      );
     }
     return true;
   }
@@ -87,17 +89,16 @@ function formatError(err: unknown): LogEntry["error"] | undefined {
   };
 }
 
-function redactText(value: string): string {
-  return value.replace(EMAIL_PATTERN, "[redacted-email]");
-}
-
 function redactValue(value: unknown, key = ""): unknown {
   if (SENSITIVE_KEY_PATTERN.test(key)) return "[redacted]";
   if (typeof value === "string") return redactText(value);
   if (Array.isArray(value)) return value.map((item) => redactValue(item));
   if (value && typeof value === "object") {
     return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([childKey, childValue]) => [childKey, redactValue(childValue, childKey)]),
+      Object.entries(value as Record<string, unknown>).map(([childKey, childValue]) => [
+        childKey,
+        redactValue(childValue, childKey),
+      ])
     );
   }
   return value;
@@ -149,9 +150,9 @@ export function createLogger(service: string) {
     level,
     service,
     action,
-    message,
+    message: redactText(message),
     timestamp: new Date().toISOString(),
-    metadata: metadata ? redactValue(metadata) as Record<string, unknown> : undefined,
+    metadata: metadata ? (redactValue(metadata) as Record<string, unknown>) : undefined,
     error: formatError(err),
   });
 
@@ -190,10 +191,16 @@ export function createLogger(service: string) {
         return result;
       } catch (err) {
         const durationMs = Math.round(performance.now() - start);
-        const entry = makeEntry("error", action, `Failed: ${description}`, {
-          ...metadata,
-          durationMs,
-        }, err);
+        const entry = makeEntry(
+          "error",
+          action,
+          `Failed: ${description}`,
+          {
+            ...metadata,
+            durationMs,
+          },
+          err
+        );
         entry.durationMs = durationMs;
         emit(entry);
         throw err;
