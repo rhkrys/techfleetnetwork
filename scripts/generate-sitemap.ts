@@ -13,13 +13,18 @@ interface SitemapEntry {
   priority?: string;
 }
 
+// Only routes that render for an ANONYMOUS visitor belong here. Every path
+// below was checked against the route table in src/App.tsx: anything wrapped
+// in <ProtectedRoute>/<TeacherRoute>/<AdminRoute> is omitted, because
+// submitting a login-walled URL to search engines indexes a redirect to
+// /login, not content. `/reset-password` is also omitted — public/_headers
+// sets `X-Robots-Tag: noindex` on it, so listing it here contradicted the
+// header. Public detail pages are added dynamically below.
 const staticEntries: SitemapEntry[] = [
   { path: "/", changefreq: "weekly", priority: "1.0" },
   { path: "/login", changefreq: "monthly", priority: "0.6" },
   { path: "/register", changefreq: "monthly", priority: "0.7" },
   { path: "/forgot-password", changefreq: "yearly", priority: "0.3" },
-  { path: "/reset-password", changefreq: "yearly", priority: "0.3" },
-  { path: "/project-openings", changefreq: "daily", priority: "0.9" },
   { path: "/accessibility", changefreq: "monthly", priority: "0.5" },
   { path: "/privacy", changefreq: "monthly", priority: "0.5" },
   { path: "/cookies", changefreq: "monthly", priority: "0.5" },
@@ -30,24 +35,16 @@ const staticEntries: SitemapEntry[] = [
   { path: "/confirm-admin", changefreq: "monthly", priority: "0.3" },
   { path: "/confirm-teacher", changefreq: "monthly", priority: "0.3" },
   { path: "/unsubscribe", changefreq: "yearly", priority: "0.1" },
-  { path: "/profile-setup", changefreq: "monthly", priority: "0.5" },
-  { path: "/dashboard", changefreq: "weekly", priority: "0.8" },
-  { path: "/courses", changefreq: "weekly", priority: "0.8" },
-  { path: "/courses/connect-discord", changefreq: "monthly", priority: "0.5" },
-  { path: "/courses/onboarding", changefreq: "monthly", priority: "0.5" },
-  { path: "/courses/agile-mindset", changefreq: "monthly", priority: "0.5" },
-  { path: "/events", changefreq: "weekly", priority: "0.8" },
-  { path: "/resources", changefreq: "weekly", priority: "0.8" },
-  { path: "/chat", changefreq: "weekly", priority: "0.6" },
-  { path: "/applications", changefreq: "weekly", priority: "0.7" },
-  { path: "/applications/general", changefreq: "weekly", priority: "0.7" },
-  { path: "/applications/projects", changefreq: "weekly", priority: "0.7" },
-  { path: "/my-journey", changefreq: "weekly", priority: "0.8" },
-  { path: "/updates", changefreq: "daily", priority: "0.8" },
-  { path: "/profile/edit", changefreq: "monthly", priority: "0.4" },
-  { path: "/profile/notifications", changefreq: "monthly", priority: "0.4" },
 ];
 
+// KNOWN BROKEN — do not assume this returns anything. There is no
+// `project_openings` table: no migration creates it and it is absent from
+// src/integrations/supabase/types.ts (the only occurrences in migrations are
+// inside BDD scenario seed text). This fetch therefore always fails, hits the
+// catch below, and returns []. The sitemap has never contained a dynamic
+// entry. Epic 03 Phase 4 replaces this with a read of the versioned public
+// feed; until then this is dead code kept only so the failure stays visible
+// in build logs rather than being silently deleted.
 async function fetchDynamicEntries(): Promise<SitemapEntry[]> {
   try {
     const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
