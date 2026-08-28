@@ -45,6 +45,7 @@ export default function CohortFormPage() {
       start_date: "",
       end_date: "",
       registration_url: "",
+      discount_registration_url: "",
       meeting_url: "",
       timezone: "America/New_York",
       capacity: null,
@@ -67,6 +68,8 @@ export default function CohortFormPage() {
       start_date: existing.start_date,
       end_date: existing.end_date,
       registration_url: existing.registration_url,
+      discount_registration_url:
+        (existing as { discount_registration_url?: string | null }).discount_registration_url ?? "",
       meeting_url: existing.meeting_url ?? "",
       timezone: existing.timezone || "America/New_York",
       capacity: existing.capacity ?? null,
@@ -200,8 +203,24 @@ export default function CohortFormPage() {
         </div>
         <div>
           <Label htmlFor="reg">Registration URL</Label>
-          <Input id="reg" placeholder="https://…" {...form.register("registration_url")} />
+          <Input id="reg" placeholder="https://techfleet.gumroad.com/l/…" {...form.register("registration_url")} />
+          <p className="text-xs text-muted-foreground mt-1">
+            The public, list-price link. Shown to everyone on the course catalog.
+          </p>
           {form.formState.errors.registration_url && <p className="text-xs text-destructive mt-1">{form.formState.errors.registration_url.message}</p>}
+        </div>
+        <div>
+          <Label htmlFor="discount-reg">Member registration URL (optional)</Label>
+          <Input
+            id="discount-reg"
+            placeholder="https://techfleet.gumroad.com/l/…/tfmember"
+            {...form.register("discount_registration_url")}
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            Same product, with the member discount code applied. Shown only to signed-in
+            members — never on the public catalog. Leave blank to show everyone the public link.
+          </p>
+          {form.formState.errors.discount_registration_url && <p className="text-xs text-destructive mt-1">{form.formState.errors.discount_registration_url.message}</p>}
         </div>
         <div>
           <Label htmlFor="meeting">Meeting URL (optional)</Label>

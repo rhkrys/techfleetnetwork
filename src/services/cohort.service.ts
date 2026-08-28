@@ -13,6 +13,7 @@ export type CohortRow = {
   end_date: string;
   timezone: string;
   registration_url: string;
+  discount_registration_url: string | null;
   meeting_url: string | null;
   capacity: number | null;
   status: "draft" | "pending_review" | "published" | "archived" | "cancelled";
@@ -69,6 +70,7 @@ export const CohortService = {
           start_date: values.start_date,
           end_date: values.end_date,
           registration_url: values.registration_url,
+          discount_registration_url: values.discount_registration_url || null,
           meeting_url: values.meeting_url || null,
           timezone: values.timezone || "America/New_York",
           capacity: values.capacity ?? null,
@@ -89,6 +91,9 @@ export const CohortService = {
   async update(id: string, values: Partial<CohortFormValues>): Promise<void> {
     const payload: Record<string, unknown> = { ...values };
     if (values.meeting_url === "") payload.meeting_url = null;
+    // Same reason as meeting_url: the Gumroad CHECK constraint accepts NULL
+    // or an allowlisted URL, never an empty string.
+    if (values.discount_registration_url === "") payload.discount_registration_url = null;
     await retryTransientWrite(async () => {
       const result = await supabase.from("cohorts").update(payload).eq("id", id).select("id");
       if (result.error) throw result.error;

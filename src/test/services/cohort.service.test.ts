@@ -53,7 +53,7 @@ const validValues = {
   label: "Spring 2026",
   start_date: "2026-03-01",
   end_date: "2026-04-30",
-  registration_url: "https://example.com/register",
+  registration_url: "https://techfleet.gumroad.com/l/course",
   meeting_url: "",
   timezone: "America/New_York",
   capacity: null,
@@ -124,5 +124,44 @@ describe("CohortService.update", () => {
     await CohortService.update("c1", { meeting_url: "" });
     const payload = updateChain.updateMock.mock.calls[0][0] as { meeting_url: string | null };
     expect(payload.meeting_url).toBeNull();
+  });
+});
+
+describe("CohortService — member discount registration link", () => {
+  it("includes discount_registration_url in the insert payload", async () => {
+    // The insert lists columns explicitly, so a new column is silently dropped
+    // unless it is added there. This is the regression guard for that.
+    insertChain.insertMock.mockReturnValue(buildInsertChain({ data: { id: "c4" }, error: null }));
+    await CohortService.create("class-1", {
+      ...validValues,
+      discount_registration_url: "https://techfleet.gumroad.com/l/course/tfmember",
+    } as typeof validValues);
+    const payload = insertChain.insertMock.mock.calls[0][0] as {
+      discount_registration_url: string | null;
+    };
+    expect(payload.discount_registration_url).toBe("https://techfleet.gumroad.com/l/course/tfmember");
+  });
+
+  it("converts an empty discount link to null on create", async () => {
+    // '' would violate the Gumroad CHECK constraint, which permits NULL or an
+    // allowlisted URL and nothing else.
+    insertChain.insertMock.mockReturnValue(buildInsertChain({ data: { id: "c5" }, error: null }));
+    await CohortService.create("class-1", {
+      ...validValues,
+      discount_registration_url: "",
+    } as typeof validValues);
+    const payload = insertChain.insertMock.mock.calls[0][0] as {
+      discount_registration_url: string | null;
+    };
+    expect(payload.discount_registration_url).toBeNull();
+  });
+
+  it("converts an empty discount link to null on update", async () => {
+    updateChain.selectMock.mockResolvedValue({ data: [{ id: "c1" }], error: null });
+    await CohortService.update("c1", { discount_registration_url: "" });
+    const payload = updateChain.updateMock.mock.calls[0][0] as {
+      discount_registration_url: string | null;
+    };
+    expect(payload.discount_registration_url).toBeNull();
   });
 });
