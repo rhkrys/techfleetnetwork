@@ -342,6 +342,14 @@ export function AppLayout({ children }: AppLayoutProps) {
               />
             </a>
             <div className="flex items-center gap-2">
+              {/* Public course catalog (Epic 03). Shown to everyone, signed in
+                  or not — it is the entry point to the anonymous catalog. */}
+              <Link
+                to="/classes"
+                className="rounded-md px-3 py-2 text-sm font-medium text-foreground/80 transition-colors hover:text-foreground"
+              >
+                Courses
+              </Link>
               <ThemeToggle />
               <LanguageSwitcher />
               {!loading && !user && (

@@ -6,6 +6,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 import { applyWaf } from "../_shared/waf.ts";
+import { serializePublicClass, PUBLIC_CATALOG_VERSION } from "../_shared/public-class.ts";
 import { withAuditWrapper } from "../_shared/audit.ts";
 const ALLOWED_ORIGINS = new Set([
   'https://www.techfleet.network',
@@ -65,6 +66,17 @@ Deno.serve(withAuditWrapper("public-classes", async (req) => {
     const validTracks = new Set(['basic_training', 'advanced_training'])
     const track = trackParam && validTracks.has(trackParam) ? trackParam : null
 
+    // Detail mode. Bounded + character-restricted before it reaches PostgREST.
+    const slugParam = url.searchParams.get('slug')
+    const slug = slugParam && /^[a-z0-9-]{1,200}$/i.test(slugParam) ? slugParam : null
+    // A malformed slug must not silently fall back to the full list — that
+    // would turn a typo into a catalog dump. Treat it as not-found.
+    if (slugParam !== null && slug === null) {
+      return new Response(JSON.stringify({ error: 'Not found' }), {
+        status: 404, headers: { ...cors, 'Content-Type': 'application/json' },
+      })
+    }
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!
     const supabase = createClient(supabaseUrl, anonKey)
@@ -75,7 +87,7 @@ Deno.serve(withAuditWrapper("public-classes", async (req) => {
         id, slug, title, summary, description, track, hero_image_url,
         outcomes, skills, prerequisites, published_at,
         cohorts:cohorts!inner(
-          id, label, start_date, end_date, timezone, capacity,
+          id, label, start_date, end_date, timezone,
           registration_url, status, published_at
         )
       `)
@@ -85,6 +97,7 @@ Deno.serve(withAuditWrapper("public-classes", async (req) => {
       .order('published_at', { ascending: false })
 
     if (track) q = q.eq('track', track)
+    if (slug) q = q.eq('slug', slug)
 
     const { data, error } = await q
     if (error) {
@@ -94,15 +107,30 @@ Deno.serve(withAuditWrapper("public-classes", async (req) => {
       })
     }
 
-    const classes = (data ?? []).map((c: any) => ({
-      ...c,
-      cohorts: (c.cohorts ?? []).sort(
-        (a: any, b: any) => (a.start_date || '').localeCompare(b.start_date || ''),
-      ),
-    }))
+    // Explicit allowlist serialization — never spread the DB row. The
+    // `Public can view published classes` policy is column-blind, so any column
+    // the table gains is anon-readable by default; building the response field
+    // by field is what keeps a new column private until it is added on purpose.
+    // See supabase/functions/_shared/public-class.ts (covered by
+    // src/test/edge/public-class-serializer.test.ts).
+    const classes = (data ?? []).map(serializePublicClass)
+
+    // Detail request for a slug that is unpublished or does not exist: return
+    // the SAME 404 either way, so response shape never discloses whether an
+    // unpublished class exists.
+    if (slug && classes.length === 0) {
+      return new Response(JSON.stringify({ error: 'Not found' }), {
+        status: 404, headers: { ...cors, 'Content-Type': 'application/json' },
+      })
+    }
 
     return new Response(
-      JSON.stringify({ generated_at: new Date().toISOString(), count: classes.length, classes }),
+      JSON.stringify({
+        version: PUBLIC_CATALOG_VERSION,
+        generated_at: new Date().toISOString(),
+        count: classes.length,
+        classes,
+      }),
       {
         status: 200,
         headers: {
