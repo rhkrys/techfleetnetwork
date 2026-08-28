@@ -10,6 +10,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 import { eoConfigFromEnv, fetchContactStatus } from "../_shared/email-octopus/client.ts";
+import { withAuditWrapper } from "../_shared/audit.ts";
 import { resolveMarketingStatus } from "./status-core.ts";
 
 const corsHeaders = {
@@ -24,41 +25,43 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+Deno.serve(
+  withAuditWrapper("eo-contact-status", async (req) => {
+    if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  const authHeader = req.headers.get("Authorization");
-  const url = Deno.env.get("SUPABASE_URL")!;
-  const anon = Deno.env.get("SUPABASE_ANON_KEY")!;
-  const cfg = eoConfigFromEnv(Deno.env);
-  const svc = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const authHeader = req.headers.get("Authorization");
+    const url = Deno.env.get("SUPABASE_URL")!;
+    const anon = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const cfg = eoConfigFromEnv(Deno.env);
+    const svc = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-  const result = await resolveMarketingStatus({
-    // Resolve the caller from THEIR token — this is what makes the read self-only.
-    getUserId: async () => {
-      if (!authHeader) return null;
-      const authClient = createClient(url, anon, {
-        global: { headers: { Authorization: authHeader } },
-      });
-      const {
-        data: { user },
-      } = await authClient.auth.getUser();
-      return user?.id ?? null;
-    },
-    eoEnabled: cfg !== null,
-    getEmail: async (userId) => {
-      const { data: prof } = await svc
-        .from("profiles")
-        .select("email")
-        .eq("user_id", userId)
-        .maybeSingle();
-      const email = String(prof?.email ?? "")
-        .trim()
-        .toLowerCase();
-      return email || null;
-    },
-    fetchStatus: async (email) => (await fetchContactStatus(cfg!, email)).status,
-  });
+    const result = await resolveMarketingStatus({
+      // Resolve the caller from THEIR token — this is what makes the read self-only.
+      getUserId: async () => {
+        if (!authHeader) return null;
+        const authClient = createClient(url, anon, {
+          global: { headers: { Authorization: authHeader } },
+        });
+        const {
+          data: { user },
+        } = await authClient.auth.getUser();
+        return user?.id ?? null;
+      },
+      eoEnabled: cfg !== null,
+      getEmail: async (userId) => {
+        const { data: prof } = await svc
+          .from("profiles")
+          .select("email")
+          .eq("user_id", userId)
+          .maybeSingle();
+        const email = String(prof?.email ?? "")
+          .trim()
+          .toLowerCase();
+        return email || null;
+      },
+      fetchStatus: async (email) => (await fetchContactStatus(cfg!, email)).status,
+    });
 
-  return json({ status: result.status, reason: result.reason }, result.http);
-});
+    return json({ status: result.status, reason: result.reason }, result.http);
+  })
+);

@@ -24,6 +24,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { Webhook } from "npm:svix@1.42.0";
 // Pure decision logic (unit-tested in logic.test.ts).
 import { classifyResendEvent, normalizeRecipient, redactEmail } from "./logic.ts";
+import { withAuditWrapper } from "../_shared/audit.ts";
 
 const MAX_BODY_BYTES = 64 * 1024; // Resend events are small; cap to blunt DoS.
 
@@ -34,99 +35,101 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-Deno.serve(async (req) => {
-  if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
+Deno.serve(
+  withAuditWrapper("resend-webhook", async (req) => {
+    if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
 
-  const secret = Deno.env.get("RESEND_WEBHOOK_SECRET");
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!secret || !supabaseUrl || !serviceKey) {
-    // Misconfiguration, not a bad request. Fail closed (no processing) and make
-    // it visible rather than silently accepting unverifiable events.
-    console.error("[resend-webhook] missing RESEND_WEBHOOK_SECRET / Supabase env");
-    return json({ error: "server not configured" }, 500);
-  }
+    const secret = Deno.env.get("RESEND_WEBHOOK_SECRET");
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!secret || !supabaseUrl || !serviceKey) {
+      // Misconfiguration, not a bad request. Fail closed (no processing) and make
+      // it visible rather than silently accepting unverifiable events.
+      console.error("[resend-webhook] missing RESEND_WEBHOOK_SECRET / Supabase env");
+      return json({ error: "server not configured" }, 500);
+    }
 
-  // Read raw body (Svix signs the exact bytes). Enforce a size cap first.
-  const raw = await req.text();
-  if (raw.length > MAX_BODY_BYTES) return json({ error: "payload too large" }, 413);
+    // Read raw body (Svix signs the exact bytes). Enforce a size cap first.
+    const raw = await req.text();
+    if (raw.length > MAX_BODY_BYTES) return json({ error: "payload too large" }, 413);
 
-  // ── Signature verification — the security gate. Nothing is written unless
-  //    this passes. Rejects forged / replayed (stale-timestamp) events. ──
-  let evt: { type?: string; data?: Record<string, unknown> };
-  try {
-    const wh = new Webhook(secret);
-    evt = wh.verify(raw, {
-      "svix-id": req.headers.get("svix-id") ?? "",
-      "svix-timestamp": req.headers.get("svix-timestamp") ?? "",
-      "svix-signature": req.headers.get("svix-signature") ?? "",
-    }) as typeof evt;
-  } catch (_err) {
-    console.warn("[resend-webhook] signature verification failed — rejecting");
-    return json({ error: "invalid signature" }, 401);
-  }
+    // ── Signature verification — the security gate. Nothing is written unless
+    //    this passes. Rejects forged / replayed (stale-timestamp) events. ──
+    let evt: { type?: string; data?: Record<string, unknown> };
+    try {
+      const wh = new Webhook(secret);
+      evt = wh.verify(raw, {
+        "svix-id": req.headers.get("svix-id") ?? "",
+        "svix-timestamp": req.headers.get("svix-timestamp") ?? "",
+        "svix-signature": req.headers.get("svix-signature") ?? "",
+      }) as typeof evt;
+    } catch (_err) {
+      console.warn("[resend-webhook] signature verification failed — rejecting");
+      return json({ error: "invalid signature" }, 401);
+    }
 
-  const type = String(evt?.type ?? "");
-  const data = (evt?.data ?? {}) as Record<string, unknown>;
-  const recipient = normalizeRecipient(data.to as string | string[] | undefined);
-  const providerMessageId = (data.email_id ?? data.id ?? null) as string | null;
+    const type = String(evt?.type ?? "");
+    const data = (evt?.data ?? {}) as Record<string, unknown>;
+    const recipient = normalizeRecipient(data.to as string | string[] | undefined);
+    const providerMessageId = (data.email_id ?? data.id ?? null) as string | null;
 
-  const action = classifyResendEvent(type);
+    const action = classifyResendEvent(type);
 
-  if (action.kind === "log") {
-    // Positive/transient signal — never restricts sending.
-    console.log("[resend-webhook] ack", { type, to: recipient ? redactEmail(recipient) : "?" });
-    return json({ ok: true, action: "logged" });
-  }
-  if (action.kind === "ignore") {
-    console.log("[resend-webhook] ack unhandled type", { type });
-    return json({ ok: true, action: "ignored", type });
-  }
-  if (!recipient || !recipient.includes("@")) {
-    return json({ error: "missing recipient" }, 400);
-  }
+    if (action.kind === "log") {
+      // Positive/transient signal — never restricts sending.
+      console.log("[resend-webhook] ack", { type, to: recipient ? redactEmail(recipient) : "?" });
+      return json({ ok: true, action: "logged" });
+    }
+    if (action.kind === "ignore") {
+      console.log("[resend-webhook] ack unhandled type", { type });
+      return json({ ok: true, action: "ignored", type });
+    }
+    if (!recipient || !recipient.includes("@")) {
+      return json({ error: "missing recipient" }, 400);
+    }
 
-  const supabase = createClient(supabaseUrl, serviceKey);
-  const reason = action.reason;
-  const status = action.status;
-  const metadata = {
-    source: "resend-webhook",
-    event_type: type,
-    provider_message_id: providerMessageId,
-    bounce: (data.bounce ?? null) as unknown,
-  };
+    const supabase = createClient(supabaseUrl, serviceKey);
+    const reason = action.reason;
+    const status = action.status;
+    const metadata = {
+      source: "resend-webhook",
+      event_type: type,
+      provider_message_id: providerMessageId,
+      bounce: (data.bounce ?? null) as unknown,
+    };
 
-  // 1) Suppress (idempotent). Restricts future sends to a proven-bad address.
-  const { error: supErr } = await supabase
-    .from("suppressed_emails")
-    .upsert({ email: recipient, reason, metadata }, { onConflict: "email" });
-  if (supErr) {
-    console.error("[resend-webhook] suppression upsert failed", {
-      to: redactEmail(recipient),
-      err: supErr.message,
+    // 1) Suppress (idempotent). Restricts future sends to a proven-bad address.
+    const { error: supErr } = await supabase
+      .from("suppressed_emails")
+      .upsert({ email: recipient, reason, metadata }, { onConflict: "email" });
+    if (supErr) {
+      console.error("[resend-webhook] suppression upsert failed", {
+        to: redactEmail(recipient),
+        err: supErr.message,
+      });
+      return json({ error: "suppression write failed" }, 500);
+    }
+
+    // 2) Append a terminal row to the unified log (never update existing rows).
+    const { error: logErr } = await supabase.from("email_send_log").insert({
+      message_id: providerMessageId,
+      template_name: "system",
+      recipient_email: recipient,
+      status,
+      error_message:
+        reason === "bounce"
+          ? "Permanent bounce — reported by Resend"
+          : "Spam complaint — reported by Resend",
+      metadata,
     });
-    return json({ error: "suppression write failed" }, 500);
-  }
+    if (logErr) {
+      // Non-fatal: suppression already recorded. Log and 200 so Resend doesn't retry-storm.
+      console.warn("[resend-webhook] email_send_log insert failed (non-fatal)", {
+        err: logErr.message,
+      });
+    }
 
-  // 2) Append a terminal row to the unified log (never update existing rows).
-  const { error: logErr } = await supabase.from("email_send_log").insert({
-    message_id: providerMessageId,
-    template_name: "system",
-    recipient_email: recipient,
-    status,
-    error_message:
-      reason === "bounce"
-        ? "Permanent bounce — reported by Resend"
-        : "Spam complaint — reported by Resend",
-    metadata,
-  });
-  if (logErr) {
-    // Non-fatal: suppression already recorded. Log and 200 so Resend doesn't retry-storm.
-    console.warn("[resend-webhook] email_send_log insert failed (non-fatal)", {
-      err: logErr.message,
-    });
-  }
-
-  console.log("[resend-webhook] suppressed", { type, reason, to: redactEmail(recipient) });
-  return json({ ok: true, action: "suppressed", reason });
-});
+    console.log("[resend-webhook] suppressed", { type, reason, to: redactEmail(recipient) });
+    return json({ ok: true, action: "suppressed", reason });
+  })
+);

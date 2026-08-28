@@ -44,6 +44,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { z } from "npm:zod@3.23.8";
 import { enqueueLegacyPayloadV2 } from "../_shared/email/enqueue-legacy-compat.ts";
+import { withAuditWrapper } from "../_shared/audit.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -238,255 +239,257 @@ function parseMessageId(template: string, messageId: string): { sourceId: string
   return null;
 }
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
-  if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+Deno.serve(
+  withAuditWrapper("replay-dlq-emails", async (req) => {
+    if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
+    if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
-  try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    try {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    const authHeader = req.headers.get("Authorization") || "";
-    if (!authHeader.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
+      const authHeader = req.headers.get("Authorization") || "";
+      if (!authHeader.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
 
-    const userClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const admin = createClient(supabaseUrl, serviceKey);
+      const userClient = createClient(supabaseUrl, anonKey, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const admin = createClient(supabaseUrl, serviceKey);
 
-    const {
-      data: { user },
-      error: userErr,
-    } = await userClient.auth.getUser();
-    if (userErr || !user) return json({ error: "Unauthorized" }, 401);
+      const {
+        data: { user },
+        error: userErr,
+      } = await userClient.auth.getUser();
+      if (userErr || !user) return json({ error: "Unauthorized" }, 401);
 
-    const { count: adminCount } = await admin
-      .from("user_roles")
-      .select("id", { head: true, count: "exact" })
-      .eq("user_id", user.id)
-      .eq("role", "admin");
-    if (!adminCount || adminCount < 1) return json({ error: "Forbidden" }, 403);
+      const { count: adminCount } = await admin
+        .from("user_roles")
+        .select("id", { head: true, count: "exact" })
+        .eq("user_id", user.id)
+        .eq("role", "admin");
+      if (!adminCount || adminCount < 1) return json({ error: "Forbidden" }, 403);
 
-    const raw = await req.json().catch(() => ({}));
-    const parsed = BodySchema.safeParse(raw);
-    if (!parsed.success)
-      return json({ error: "Invalid request body", detail: parsed.error.flatten() }, 400);
-    const { template_name, since_iso, message_ids, dry_run } = parsed.data;
+      const raw = await req.json().catch(() => ({}));
+      const parsed = BodySchema.safeParse(raw);
+      if (!parsed.success)
+        return json({ error: "Invalid request body", detail: parsed.error.flatten() }, 400);
+      const { template_name, since_iso, message_ids, dry_run } = parsed.data;
 
-    const sinceIso = since_iso ?? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const batchId = crypto.randomUUID();
+      const sinceIso = since_iso ?? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const batchId = crypto.randomUUID();
 
-    // --- Fetch DLQ candidates ---
-    let dlqQuery = admin
-      .from("email_send_log")
-      .select("message_id, recipient_email, metadata, created_at")
-      .eq("template_name", template_name)
-      .eq("status", "dlq")
-      .gte("created_at", sinceIso)
-      .order("created_at", { ascending: false })
-      .limit(2000);
-
-    if (message_ids && message_ids.length > 0) {
-      dlqQuery = admin
+      // --- Fetch DLQ candidates ---
+      let dlqQuery = admin
         .from("email_send_log")
         .select("message_id, recipient_email, metadata, created_at")
         .eq("template_name", template_name)
         .eq("status", "dlq")
-        .in("message_id", message_ids);
-    }
+        .gte("created_at", sinceIso)
+        .order("created_at", { ascending: false })
+        .limit(2000);
 
-    const { data: dlqRows, error: dlqErr } = await dlqQuery;
-    if (dlqErr) {
-      console.error("[replay-dlq-emails] DLQ query failed:", dlqErr);
-      return json({ error: "DLQ query failed" }, 500);
-    }
+      if (message_ids && message_ids.length > 0) {
+        dlqQuery = admin
+          .from("email_send_log")
+          .select("message_id, recipient_email, metadata, created_at")
+          .eq("template_name", template_name)
+          .eq("status", "dlq")
+          .in("message_id", message_ids);
+      }
 
-    // Dedupe by recipient_email (keep most recent DLQ row per recipient)
-    const byRecipient = new Map<
-      string,
-      { message_id: string; recipient_email: string; metadata: any; created_at: string }
-    >();
-    for (const r of dlqRows ?? []) {
-      const email = String(r.recipient_email ?? "")
-        .trim()
-        .toLowerCase();
-      if (!email) continue;
-      if (!byRecipient.has(email)) byRecipient.set(email, r as any);
-    }
-    const candidates = Array.from(byRecipient.values());
+      const { data: dlqRows, error: dlqErr } = await dlqQuery;
+      if (dlqErr) {
+        console.error("[replay-dlq-emails] DLQ query failed:", dlqErr);
+        return json({ error: "DLQ query failed" }, 500);
+      }
 
-    // --- Filter out suppressed + already-delivered recipients ---
-    const recipientEmails = candidates.map((c) => c.recipient_email.toLowerCase());
-    const reasons = {
-      suppressed: 0,
-      already_delivered: 0,
-      not_replayable: 0,
-      source_missing: 0,
-      error: 0,
-    };
+      // Dedupe by recipient_email (keep most recent DLQ row per recipient)
+      const byRecipient = new Map<
+        string,
+        { message_id: string; recipient_email: string; metadata: any; created_at: string }
+      >();
+      for (const r of dlqRows ?? []) {
+        const email = String(r.recipient_email ?? "")
+          .trim()
+          .toLowerCase();
+        if (!email) continue;
+        if (!byRecipient.has(email)) byRecipient.set(email, r as any);
+      }
+      const candidates = Array.from(byRecipient.values());
 
-    const { data: suppRows } = await admin
-      .from("suppressed_emails")
-      .select("email")
-      .in("email", recipientEmails);
-    const suppressed = new Set((suppRows ?? []).map((r: any) => String(r.email).toLowerCase()));
+      // --- Filter out suppressed + already-delivered recipients ---
+      const recipientEmails = candidates.map((c) => c.recipient_email.toLowerCase());
+      const reasons = {
+        suppressed: 0,
+        already_delivered: 0,
+        not_replayable: 0,
+        source_missing: 0,
+        error: 0,
+      };
 
-    // Already-delivered = at least one 'sent' row for the same template
-    // at or after the DLQ row's created_at for the same recipient.
-    const { data: sentRows } = await admin
-      .from("email_send_log")
-      .select("recipient_email, created_at")
-      .eq("template_name", template_name)
-      .eq("status", "sent")
-      .in("recipient_email", recipientEmails);
-    const sentByEmail = new Map<string, string>();
-    for (const r of sentRows ?? []) {
-      const email = String(r.recipient_email).toLowerCase();
-      const existing = sentByEmail.get(email);
-      if (!existing || r.created_at > existing) sentByEmail.set(email, r.created_at as string);
-    }
+      const { data: suppRows } = await admin
+        .from("suppressed_emails")
+        .select("email")
+        .in("email", recipientEmails);
+      const suppressed = new Set((suppRows ?? []).map((r: any) => String(r.email).toLowerCase()));
 
-    if (dry_run) {
+      // Already-delivered = at least one 'sent' row for the same template
+      // at or after the DLQ row's created_at for the same recipient.
+      const { data: sentRows } = await admin
+        .from("email_send_log")
+        .select("recipient_email, created_at")
+        .eq("template_name", template_name)
+        .eq("status", "sent")
+        .in("recipient_email", recipientEmails);
+      const sentByEmail = new Map<string, string>();
+      for (const r of sentRows ?? []) {
+        const email = String(r.recipient_email).toLowerCase();
+        const existing = sentByEmail.get(email);
+        if (!existing || r.created_at > existing) sentByEmail.set(email, r.created_at as string);
+      }
+
+      if (dry_run) {
+        return json({
+          requested: candidates.length,
+          candidates: candidates.map((c) => ({
+            message_id: c.message_id,
+            recipient_email: c.recipient_email,
+          })),
+          batch_id: batchId,
+        });
+      }
+
+      // --- Replay loop ---
+      let replayed = 0;
+      const now = new Date().toISOString();
+      const replayedMessageIds: string[] = [];
+
+      for (const cand of candidates) {
+        const email = cand.recipient_email.toLowerCase();
+
+        if (suppressed.has(email)) {
+          reasons.suppressed++;
+          continue;
+        }
+        const sentAt = sentByEmail.get(email);
+        if (sentAt && sentAt >= cand.created_at) {
+          reasons.already_delivered++;
+          continue;
+        }
+
+        if (template_name !== "announcement") {
+          reasons.not_replayable++;
+          continue;
+        }
+
+        const parsedId = parseMessageId(template_name, cand.message_id);
+        if (!parsedId) {
+          reasons.source_missing++;
+          continue;
+        }
+
+        // Load source announcement
+        const { data: announcement, error: annErr } = await admin
+          .from("announcements")
+          .select("title, body_html")
+          .eq("id", parsedId.sourceId)
+          .maybeSingle();
+        if (annErr || !announcement) {
+          reasons.source_missing++;
+          continue;
+        }
+
+        const { html, text, subject } = renderAnnouncementEmail(
+          announcement.title as string,
+          (announcement.body_html as string) ?? "",
+          parsedId.sourceId
+        );
+
+        const newMessageId = `replay-${cand.message_id}`;
+        const unsubscribeToken = crypto.randomUUID();
+
+        try {
+          // Unsubscribe token (one per email; ignore unique-violation if it already exists)
+          await admin
+            .from("email_unsubscribe_tokens")
+            .insert({
+              email,
+              token: unsubscribeToken,
+            })
+            .then(
+              () => {},
+              () => {}
+            );
+
+          await admin.from("email_send_log").insert({
+            message_id: newMessageId,
+            recipient_email: email,
+            template_name: "announcement",
+            status: "pending",
+            metadata: {
+              announcement_id: parsedId.sourceId,
+              title: announcement.title,
+              replay_of: cand.message_id,
+              replay_batch_id: batchId,
+              replayed_by: user.id,
+            },
+          });
+
+          await enqueueLegacyPayloadV2(admin, "transactional_emails", {
+            to: email,
+            subject,
+            html,
+            text,
+            from: `Tech Fleet <onboarding@techfleet.org>`,
+            sender_domain: "notify.techfleet.org",
+            label: "announcement",
+            message_id: newMessageId,
+            idempotency_key: newMessageId,
+            unsubscribe_token: unsubscribeToken,
+            queued_at: now,
+            purpose: "transactional",
+            bypass_frequency_cap: true,
+          });
+
+          replayed++;
+          replayedMessageIds.push(cand.message_id);
+        } catch (e) {
+          console.error(`replay enqueue failed for ${email}:`, e);
+          reasons.error++;
+        }
+      }
+
+      // Audit log (best-effort; never block replay on audit failure)
+      await admin
+        .rpc("write_audit_log", {
+          p_event_type: "email.dlq.replay",
+          p_table_name: "email_send_log",
+          p_record_id: batchId,
+          p_user_id: user.id,
+          p_changed_fields: [
+            `template:${template_name}`,
+            `replayed:${replayed}`,
+            `skipped:${reasons.suppressed + reasons.already_delivered + reasons.not_replayable + reasons.source_missing + reasons.error}`,
+            `batch:${batchId}`,
+          ],
+        })
+        .then(
+          () => {},
+          (e: unknown) => console.warn("audit_log write failed:", e)
+        );
+
       return json({
         requested: candidates.length,
-        candidates: candidates.map((c) => ({
-          message_id: c.message_id,
-          recipient_email: c.recipient_email,
-        })),
+        replayed,
+        skipped: candidates.length - replayed,
+        reasons,
         batch_id: batchId,
+        replayed_message_ids: replayedMessageIds.slice(0, 50), // truncate large lists
       });
+    } catch (e) {
+      console.error("replay-dlq-emails unhandled error:", e);
+      return json({ error: "Internal error" }, 500);
     }
-
-    // --- Replay loop ---
-    let replayed = 0;
-    const now = new Date().toISOString();
-    const replayedMessageIds: string[] = [];
-
-    for (const cand of candidates) {
-      const email = cand.recipient_email.toLowerCase();
-
-      if (suppressed.has(email)) {
-        reasons.suppressed++;
-        continue;
-      }
-      const sentAt = sentByEmail.get(email);
-      if (sentAt && sentAt >= cand.created_at) {
-        reasons.already_delivered++;
-        continue;
-      }
-
-      if (template_name !== "announcement") {
-        reasons.not_replayable++;
-        continue;
-      }
-
-      const parsedId = parseMessageId(template_name, cand.message_id);
-      if (!parsedId) {
-        reasons.source_missing++;
-        continue;
-      }
-
-      // Load source announcement
-      const { data: announcement, error: annErr } = await admin
-        .from("announcements")
-        .select("title, body_html")
-        .eq("id", parsedId.sourceId)
-        .maybeSingle();
-      if (annErr || !announcement) {
-        reasons.source_missing++;
-        continue;
-      }
-
-      const { html, text, subject } = renderAnnouncementEmail(
-        announcement.title as string,
-        (announcement.body_html as string) ?? "",
-        parsedId.sourceId
-      );
-
-      const newMessageId = `replay-${cand.message_id}`;
-      const unsubscribeToken = crypto.randomUUID();
-
-      try {
-        // Unsubscribe token (one per email; ignore unique-violation if it already exists)
-        await admin
-          .from("email_unsubscribe_tokens")
-          .insert({
-            email,
-            token: unsubscribeToken,
-          })
-          .then(
-            () => {},
-            () => {}
-          );
-
-        await admin.from("email_send_log").insert({
-          message_id: newMessageId,
-          recipient_email: email,
-          template_name: "announcement",
-          status: "pending",
-          metadata: {
-            announcement_id: parsedId.sourceId,
-            title: announcement.title,
-            replay_of: cand.message_id,
-            replay_batch_id: batchId,
-            replayed_by: user.id,
-          },
-        });
-
-        await enqueueLegacyPayloadV2(admin, "transactional_emails", {
-          to: email,
-          subject,
-          html,
-          text,
-          from: `Tech Fleet <onboarding@techfleet.org>`,
-          sender_domain: "notify.techfleet.org",
-          label: "announcement",
-          message_id: newMessageId,
-          idempotency_key: newMessageId,
-          unsubscribe_token: unsubscribeToken,
-          queued_at: now,
-          purpose: "transactional",
-          bypass_frequency_cap: true,
-        });
-
-        replayed++;
-        replayedMessageIds.push(cand.message_id);
-      } catch (e) {
-        console.error(`replay enqueue failed for ${email}:`, e);
-        reasons.error++;
-      }
-    }
-
-    // Audit log (best-effort; never block replay on audit failure)
-    await admin
-      .rpc("write_audit_log", {
-        p_event_type: "email.dlq.replay",
-        p_table_name: "email_send_log",
-        p_record_id: batchId,
-        p_user_id: user.id,
-        p_changed_fields: [
-          `template:${template_name}`,
-          `replayed:${replayed}`,
-          `skipped:${reasons.suppressed + reasons.already_delivered + reasons.not_replayable + reasons.source_missing + reasons.error}`,
-          `batch:${batchId}`,
-        ],
-      })
-      .then(
-        () => {},
-        (e: unknown) => console.warn("audit_log write failed:", e)
-      );
-
-    return json({
-      requested: candidates.length,
-      replayed,
-      skipped: candidates.length - replayed,
-      reasons,
-      batch_id: batchId,
-      replayed_message_ids: replayedMessageIds.slice(0, 50), // truncate large lists
-    });
-  } catch (e) {
-    console.error("replay-dlq-emails unhandled error:", e);
-    return json({ error: "Internal error" }, 500);
-  }
-});
+  })
+);

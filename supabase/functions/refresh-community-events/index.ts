@@ -21,6 +21,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.45.0";
 import { fromZonedTime } from "npm:date-fns-tz@3.2.0";
 import { authorizeRefreshRequest } from "./auth.ts";
+import { withAuditWrapper } from "../_shared/audit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -457,176 +458,181 @@ function expandOccurrences(
 
 // ─── Handler ─────────────────────────────────────────────────────────
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+Deno.serve(
+  withAuditWrapper("refresh-community-events", async (req) => {
+    if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  // Trigger auth: dedicated EVENTS_REFRESH_SECRET (preferred) OR the service-role
-  // key (backward-compatible). Both are constant-time exact matches; no JWT decode.
-  const auth = authorizeRefreshRequest(req);
-  if (!auth.ok) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: auth.status,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-  );
-
-  const t0 = Date.now();
-  try {
-    const { data: cacheRow } = await supabase
-      .from("community_events_cache")
-      .select("etag, last_modified")
-      .eq("id", 1)
-      .maybeSingle();
-
-    const conditionalHeaders: Record<string, string> = {
-      // brand-allow: User-Agent token must be a single word per RFC 7231 §5.5.3.
-      "User-Agent": "TechFleetNetwork/1.0 (+events-refresh)",
-      "Accept-Encoding": "gzip",
-    };
-    if (cacheRow?.etag) conditionalHeaders["If-None-Match"] = cacheRow.etag;
-    if (cacheRow?.last_modified) conditionalHeaders["If-Modified-Since"] = cacheRow.last_modified;
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 90_000);
-    let res: Response;
-    try {
-      res = await fetch(ICAL_URL, { headers: conditionalHeaders, signal: controller.signal });
-    } finally {
-      clearTimeout(timeout);
-    }
-
-    // Fast path: nothing changed.
-    if (res.status === 304) {
-      await supabase
-        .from("community_events_cache")
-        .update({
-          fetched_at: new Date().toISOString(),
-          last_refresh_status: "not_modified",
-          last_refresh_error: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", 1);
-      return new Response(JSON.stringify({ status: "not_modified", durationMs: Date.now() - t0 }), {
-        status: 200,
+    // Trigger auth: dedicated EVENTS_REFRESH_SECRET (preferred) OR the service-role
+    // key (backward-compatible). Both are constant-time exact matches; no JWT decode.
+    const auth = authorizeRefreshRequest(req);
+    if (!auth.ok) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: auth.status,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Soft-fail on upstream rate-limit / transient errors: keep serving cached
-    // events instead of throwing (which floods agent_fix_queue every cron tick).
-    // Honors Retry-After so we don't hammer the source.
-    if (res.status === 429 || res.status === 503) {
-      const retryAfterHeader = res.headers.get("retry-after");
-      const retryAfterSec = retryAfterHeader
-        ? Math.max(60, parseInt(retryAfterHeader, 10) || 300)
-        : 300;
-      const nextRetryAt = new Date(Date.now() + retryAfterSec * 1000).toISOString();
-      await supabase
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    );
+
+    const t0 = Date.now();
+    try {
+      const { data: cacheRow } = await supabase
+        .from("community_events_cache")
+        .select("etag, last_modified")
+        .eq("id", 1)
+        .maybeSingle();
+
+      const conditionalHeaders: Record<string, string> = {
+        // brand-allow: User-Agent token must be a single word per RFC 7231 §5.5.3.
+        "User-Agent": "TechFleetNetwork/1.0 (+events-refresh)",
+        "Accept-Encoding": "gzip",
+      };
+      if (cacheRow?.etag) conditionalHeaders["If-None-Match"] = cacheRow.etag;
+      if (cacheRow?.last_modified) conditionalHeaders["If-Modified-Since"] = cacheRow.last_modified;
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 90_000);
+      let res: Response;
+      try {
+        res = await fetch(ICAL_URL, { headers: conditionalHeaders, signal: controller.signal });
+      } finally {
+        clearTimeout(timeout);
+      }
+
+      // Fast path: nothing changed.
+      if (res.status === 304) {
+        await supabase
+          .from("community_events_cache")
+          .update({
+            fetched_at: new Date().toISOString(),
+            last_refresh_status: "not_modified",
+            last_refresh_error: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", 1);
+        return new Response(
+          JSON.stringify({ status: "not_modified", durationMs: Date.now() - t0 }),
+          {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      // Soft-fail on upstream rate-limit / transient errors: keep serving cached
+      // events instead of throwing (which floods agent_fix_queue every cron tick).
+      // Honors Retry-After so we don't hammer the source.
+      if (res.status === 429 || res.status === 503) {
+        const retryAfterHeader = res.headers.get("retry-after");
+        const retryAfterSec = retryAfterHeader
+          ? Math.max(60, parseInt(retryAfterHeader, 10) || 300)
+          : 300;
+        const nextRetryAt = new Date(Date.now() + retryAfterSec * 1000).toISOString();
+        await supabase
+          .from("community_events_cache")
+          .update({
+            fetched_at: new Date().toISOString(),
+            last_refresh_status: "rate_limited",
+            last_refresh_error: `ICS upstream ${res.status}; backing off until ${nextRetryAt}`,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", 1);
+        console.warn(
+          `refresh-community-events soft-fail: ${res.status}, retry after ${retryAfterSec}s`
+        );
+        return new Response(
+          JSON.stringify({ status: "rate_limited", retryAfterSec, durationMs: Date.now() - t0 }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      if (!res.ok) {
+        throw new Error(`ICS fetch failed ${res.status}`);
+      }
+
+      const newEtag = res.headers.get("etag");
+      const newLastModified = res.headers.get("last-modified");
+      const text = await res.text();
+
+      const now = new Date();
+      const pastCutoff = new Date(now.getTime() - PAST_CUTOFF_DAYS * 24 * 60 * 60 * 1000);
+      const windowEnd = new Date(now.getTime() + WINDOW_DAYS * 24 * 60 * 60 * 1000);
+
+      const raw = applyRecurrenceOverrides(parseVEvents(text, pastCutoff));
+      const out: ParsedEvent[] = [];
+      for (const ev of raw) {
+        if (!ev.start || !ev.uid) continue;
+        const occurrences = expandOccurrences(ev, pastCutoff, windowEnd);
+        for (const occ of occurrences) {
+          // Hard guard: drop anything that started before pastCutoff OR ends after
+          // windowEnd. This catches malformed RRULEs, unknown FREQs, and any other
+          // path that could otherwise leak ancient or far-future events to the UI.
+          if (occ.start < pastCutoff) continue;
+          if (occ.end < pastCutoff) continue;
+          if (occ.start > windowEnd) continue;
+          out.push({
+            uid: `${ev.uid}@${occ.start.toISOString()}`,
+            title: ev.summary?.trim() || "Untitled event",
+            startUtc: occ.start.toISOString(),
+            endUtc: occ.end.toISOString(),
+            allDay: ev.start.allDay,
+            description: ev.description ?? "",
+            location: ev.location ?? "",
+            url: ev.url ?? "",
+            organizerEmail: ev.organizerEmail ?? "",
+          });
+        }
+      }
+
+      out.sort((a, b) => a.startUtc.localeCompare(b.startUtc));
+      const seen = new Set<string>();
+      const deduped = out.filter((e) => {
+        if (seen.has(e.uid)) return false;
+        seen.add(e.uid);
+        return true;
+      });
+
+      const { error: upsertError } = await supabase
         .from("community_events_cache")
         .update({
+          events: deduped,
+          event_count: deduped.length,
+          etag: newEtag,
+          last_modified: newLastModified,
           fetched_at: new Date().toISOString(),
-          last_refresh_status: "rate_limited",
-          last_refresh_error: `ICS upstream ${res.status}; backing off until ${nextRetryAt}`,
+          last_refresh_status: "ok",
+          last_refresh_error: null,
           updated_at: new Date().toISOString(),
         })
         .eq("id", 1);
-      console.warn(
-        `refresh-community-events soft-fail: ${res.status}, retry after ${retryAfterSec}s`
-      );
+      if (upsertError) throw upsertError;
+
       return new Response(
-        JSON.stringify({ status: "rate_limited", retryAfterSec, durationMs: Date.now() - t0 }),
+        JSON.stringify({
+          status: "ok",
+          eventCount: deduped.length,
+          durationMs: Date.now() - t0,
+          ics_bytes: text.length,
+        }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("refresh-community-events error:", message);
+      await supabase
+        .from("community_events_cache")
+        .update({
+          last_refresh_status: "error",
+          last_refresh_error: message.slice(0, 500),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", 1);
+      return new Response(
+        JSON.stringify({ status: "error", error: "Refresh failed", durationMs: Date.now() - t0 }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
-    if (!res.ok) {
-      throw new Error(`ICS fetch failed ${res.status}`);
-    }
-
-    const newEtag = res.headers.get("etag");
-    const newLastModified = res.headers.get("last-modified");
-    const text = await res.text();
-
-    const now = new Date();
-    const pastCutoff = new Date(now.getTime() - PAST_CUTOFF_DAYS * 24 * 60 * 60 * 1000);
-    const windowEnd = new Date(now.getTime() + WINDOW_DAYS * 24 * 60 * 60 * 1000);
-
-    const raw = applyRecurrenceOverrides(parseVEvents(text, pastCutoff));
-    const out: ParsedEvent[] = [];
-    for (const ev of raw) {
-      if (!ev.start || !ev.uid) continue;
-      const occurrences = expandOccurrences(ev, pastCutoff, windowEnd);
-      for (const occ of occurrences) {
-        // Hard guard: drop anything that started before pastCutoff OR ends after
-        // windowEnd. This catches malformed RRULEs, unknown FREQs, and any other
-        // path that could otherwise leak ancient or far-future events to the UI.
-        if (occ.start < pastCutoff) continue;
-        if (occ.end < pastCutoff) continue;
-        if (occ.start > windowEnd) continue;
-        out.push({
-          uid: `${ev.uid}@${occ.start.toISOString()}`,
-          title: ev.summary?.trim() || "Untitled event",
-          startUtc: occ.start.toISOString(),
-          endUtc: occ.end.toISOString(),
-          allDay: ev.start.allDay,
-          description: ev.description ?? "",
-          location: ev.location ?? "",
-          url: ev.url ?? "",
-          organizerEmail: ev.organizerEmail ?? "",
-        });
-      }
-    }
-
-    out.sort((a, b) => a.startUtc.localeCompare(b.startUtc));
-    const seen = new Set<string>();
-    const deduped = out.filter((e) => {
-      if (seen.has(e.uid)) return false;
-      seen.add(e.uid);
-      return true;
-    });
-
-    const { error: upsertError } = await supabase
-      .from("community_events_cache")
-      .update({
-        events: deduped,
-        event_count: deduped.length,
-        etag: newEtag,
-        last_modified: newLastModified,
-        fetched_at: new Date().toISOString(),
-        last_refresh_status: "ok",
-        last_refresh_error: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", 1);
-    if (upsertError) throw upsertError;
-
-    return new Response(
-      JSON.stringify({
-        status: "ok",
-        eventCount: deduped.length,
-        durationMs: Date.now() - t0,
-        ics_bytes: text.length,
-      }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("refresh-community-events error:", message);
-    await supabase
-      .from("community_events_cache")
-      .update({
-        last_refresh_status: "error",
-        last_refresh_error: message.slice(0, 500),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", 1);
-    return new Response(
-      JSON.stringify({ status: "error", error: "Refresh failed", durationMs: Date.now() - t0 }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  }
-});
+  })
+);

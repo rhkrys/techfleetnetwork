@@ -6,6 +6,7 @@
 import { getAdminClient } from "../_shared/admin-client.ts";
 import { handleCors, jsonResponse } from "../_shared/http.ts";
 import { authorizeServiceRoleRequest } from "../_shared/service-role-auth.ts";
+import { withAuditWrapper } from "../_shared/audit.ts";
 
 const BATCH = 25;
 const VT_SECONDS = 60;
@@ -203,64 +204,66 @@ async function processOne(admin: ReturnType<typeof getAdminClient>, ev: Freescou
   }
 }
 
-Deno.serve(async (req) => {
-  const cors = handleCors(req);
-  if (cors) return cors;
-  const auth = authorizeServiceRoleRequest(req);
-  if (!auth.ok) return jsonResponse({ error: auth.error }, auth.status);
+Deno.serve(
+  withAuditWrapper("process-freescout-events", async (req) => {
+    const cors = handleCors(req);
+    if (cors) return cors;
+    const auth = authorizeServiceRoleRequest(req);
+    if (!auth.ok) return jsonResponse({ error: auth.error }, auth.status);
 
-  const admin = getAdminClient();
-  let processed = 0;
-  let failed = 0;
-  let dlq = 0;
+    const admin = getAdminClient();
+    let processed = 0;
+    let failed = 0;
+    let dlq = 0;
 
-  for (let i = 0; i < BATCH; i++) {
-    const { data, error } = await admin.rpc("freescout_dequeue_events", {
-      p_batch: 1,
-      p_vt: VT_SECONDS,
-    });
-    if (error) {
-      console.error(
-        JSON.stringify({
-          level: "error",
-          fn: "process-freescout-events",
-          code: "dequeue_failed",
-          msg: error.message,
-        })
-      );
-      break;
-    }
-    const rows = (data ?? []) as FreescoutEvent[];
-    if (rows.length === 0) break;
-    const ev = rows[0];
-
-    try {
-      await processOne(admin, ev);
-      await admin.rpc("freescout_delete_event", { p_msg_id: ev.msg_id });
-      processed++;
-    } catch (e) {
-      failed++;
-      console.error(
-        JSON.stringify({
-          level: "error",
-          fn: "process-freescout-events",
-          code: "processing_failed",
-          msgId: ev.msg_id,
-          readCt: ev.read_ct,
-          msg: e instanceof Error ? e.message : String(e),
-        })
-      );
-      if (ev.read_ct >= MAX_ATTEMPTS) {
-        await admin.rpc("freescout_send_to_dlq", {
-          p_msg_id: ev.msg_id,
-          p_message: ev.message,
-          p_error: e instanceof Error ? e.message : String(e),
-        });
-        dlq++;
+    for (let i = 0; i < BATCH; i++) {
+      const { data, error } = await admin.rpc("freescout_dequeue_events", {
+        p_batch: 1,
+        p_vt: VT_SECONDS,
+      });
+      if (error) {
+        console.error(
+          JSON.stringify({
+            level: "error",
+            fn: "process-freescout-events",
+            code: "dequeue_failed",
+            msg: error.message,
+          })
+        );
+        break;
       }
-      // else: leave it; pgmq visibility timeout will re-deliver
-    }
-  }
+      const rows = (data ?? []) as FreescoutEvent[];
+      if (rows.length === 0) break;
+      const ev = rows[0];
 
-  return jsonResponse({ ok: true, processed, failed, dlq });
-});
+      try {
+        await processOne(admin, ev);
+        await admin.rpc("freescout_delete_event", { p_msg_id: ev.msg_id });
+        processed++;
+      } catch (e) {
+        failed++;
+        console.error(
+          JSON.stringify({
+            level: "error",
+            fn: "process-freescout-events",
+            code: "processing_failed",
+            msgId: ev.msg_id,
+            readCt: ev.read_ct,
+            msg: e instanceof Error ? e.message : String(e),
+          })
+        );
+        if (ev.read_ct >= MAX_ATTEMPTS) {
+          await admin.rpc("freescout_send_to_dlq", {
+            p_msg_id: ev.msg_id,
+            p_message: ev.message,
+            p_error: e instanceof Error ? e.message : String(e),
+          });
+          dlq++;
+        }
+        // else: leave it; pgmq visibility timeout will re-deliver
+      }
+    }
+
+    return jsonResponse({ ok: true, processed, failed, dlq });
+  })
+);

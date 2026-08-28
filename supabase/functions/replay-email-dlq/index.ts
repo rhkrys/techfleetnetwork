@@ -12,6 +12,7 @@ import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.4
 import { corsHeaders } from "../_shared/http.ts";
 import { authorizeServiceRoleRequest } from "../_shared/service-role-auth.ts";
 import { enqueueLegacyPayloadV2 } from "../_shared/email/enqueue-legacy-compat.ts";
+import { withAuditWrapper } from "../_shared/audit.ts";
 
 const MAX_REPLAY_GENERATION = 3;
 const BATCH = 25;
@@ -63,61 +64,67 @@ async function escalate(
   });
 }
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+Deno.serve(
+  withAuditWrapper("replay-email-dlq", async (req) => {
+    if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
-  const auth = await authorizeServiceRoleRequest(req);
-  if (!auth.ok) {
-    return new Response(JSON.stringify({ error: "unauthorized" }), {
-      status: 401,
+    const auth = await authorizeServiceRoleRequest(req);
+    if (!auth.ok) {
+      return new Response(JSON.stringify({ error: "unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+
+    const summary: Record<string, { replayed: number; escalated: number; failed: number }> = {};
+
+    for (const lane of LANES) {
+      const stats = { replayed: 0, escalated: 0, failed: 0 };
+      let msgs: PgmqMessage[] = [];
+      try {
+        msgs = await readArchive(supabase, lane, BATCH);
+      } catch {
+        summary[lane] = stats;
+        continue;
+      }
+      for (const m of msgs) {
+        try {
+          const payload = (m.message ?? {}) as Record<string, unknown>;
+          const meta = (payload.metadata as Record<string, unknown> | undefined) ?? {};
+          const gen = Number(meta.replay_generation ?? 0);
+
+          if (gen >= MAX_REPLAY_GENERATION) {
+            await escalate(supabase, lane, payload);
+            await archiveDelete(supabase, lane, m.msg_id);
+            stats.escalated += 1;
+            continue;
+          }
+
+          const nextPayload = {
+            ...payload,
+            metadata: {
+              ...meta,
+              replay_generation: gen + 1,
+              replayed_at: new Date().toISOString(),
+            },
+          };
+          await reEnqueue(supabase, lane, nextPayload);
+          await archiveDelete(supabase, lane, m.msg_id);
+          stats.replayed += 1;
+        } catch {
+          stats.failed += 1;
+        }
+      }
+      summary[lane] = stats;
+    }
+
+    return new Response(JSON.stringify({ ok: true, summary }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  }
-
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-  );
-
-  const summary: Record<string, { replayed: number; escalated: number; failed: number }> = {};
-
-  for (const lane of LANES) {
-    const stats = { replayed: 0, escalated: 0, failed: 0 };
-    let msgs: PgmqMessage[] = [];
-    try {
-      msgs = await readArchive(supabase, lane, BATCH);
-    } catch {
-      summary[lane] = stats;
-      continue;
-    }
-    for (const m of msgs) {
-      try {
-        const payload = (m.message ?? {}) as Record<string, unknown>;
-        const meta = (payload.metadata as Record<string, unknown> | undefined) ?? {};
-        const gen = Number(meta.replay_generation ?? 0);
-
-        if (gen >= MAX_REPLAY_GENERATION) {
-          await escalate(supabase, lane, payload);
-          await archiveDelete(supabase, lane, m.msg_id);
-          stats.escalated += 1;
-          continue;
-        }
-
-        const nextPayload = {
-          ...payload,
-          metadata: { ...meta, replay_generation: gen + 1, replayed_at: new Date().toISOString() },
-        };
-        await reEnqueue(supabase, lane, nextPayload);
-        await archiveDelete(supabase, lane, m.msg_id);
-        stats.replayed += 1;
-      } catch {
-        stats.failed += 1;
-      }
-    }
-    summary[lane] = stats;
-  }
-
-  return new Response(JSON.stringify({ ok: true, summary }), {
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-});
+  })
+);

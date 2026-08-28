@@ -18,6 +18,7 @@
 
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { authorizeServiceRoleRequest } from "../_shared/service-role-auth.ts";
+import { withAuditWrapper } from "../_shared/audit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -105,49 +106,51 @@ async function probeRecoveryEmailHealth(admin: SupabaseClient): Promise<CheckRes
   }
 }
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+Deno.serve(
+  withAuditWrapper("auth-reset-smoke", async (req) => {
+    if (req.method === "OPTIONS") {
+      return new Response(null, { headers: corsHeaders });
+    }
 
-  const authz = await authorizeServiceRoleRequest(req);
-  if (!authz.ok) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
+    const authz = await authorizeServiceRoleRequest(req);
+    if (!authz.ok) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+
+    const checks = await Promise.all([
+      probeBeacon(),
+      probeIdentity(),
+      probeRecoveryEmailHealth(admin),
+    ]);
+
+    const allOk = checks.every((c) => c.ok);
+    const failed = checks.filter((c) => !c.ok).map((c) => c.name);
+
+    try {
+      await admin.rpc("record_event", {
+        p_sink: "ops_events",
+        p_kind: allOk ? "auth.reset_smoke.ok" : "auth.reset_smoke.failed",
+        p_actor: null,
+        p_payload: {
+          checks,
+          failed,
+          ran_at: new Date().toISOString(),
+        },
+        p_severity: allOk ? "info" : "error",
+        p_source_table: "auth-reset-smoke",
+      });
+    } catch (e) {
+      console.error("record_event failed in auth-reset-smoke", e);
+    }
+
+    return new Response(JSON.stringify({ ok: allOk, failed, checks }), {
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  }
-
-  const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
-
-  const checks = await Promise.all([
-    probeBeacon(),
-    probeIdentity(),
-    probeRecoveryEmailHealth(admin),
-  ]);
-
-  const allOk = checks.every((c) => c.ok);
-  const failed = checks.filter((c) => !c.ok).map((c) => c.name);
-
-  try {
-    await admin.rpc("record_event", {
-      p_sink: "ops_events",
-      p_kind: allOk ? "auth.reset_smoke.ok" : "auth.reset_smoke.failed",
-      p_actor: null,
-      p_payload: {
-        checks,
-        failed,
-        ran_at: new Date().toISOString(),
-      },
-      p_severity: allOk ? "info" : "error",
-      p_source_table: "auth-reset-smoke",
-    });
-  } catch (e) {
-    console.error("record_event failed in auth-reset-smoke", e);
-  }
-
-  return new Response(JSON.stringify({ ok: allOk, failed, checks }), {
-    status: 200,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-});
+  })
+);

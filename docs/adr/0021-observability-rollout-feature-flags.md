@@ -33,7 +33,15 @@ Staged, reversible PRs (Phase 0b):
 - **(A) Mechanism — this PR.** Table + RPC + client service/hook + edge helper + tests. Seeded flag `logger_error_reporting` is OFF, so merging changes nothing at runtime. ADR-0020's migration-applied gate will confirm the table actually reaches prod.
 - **(B) Redaction fix.** Redact messages/`extraFields` in `error-reporter` and the free-text `message` in `logger` before any write; failing test first.
 - **(C) Gated ramp.** `logger.error → report` behind `logger_error_reporting`; boot loads the flag snapshot; ramp via the dial.
-- **(D) Cleanup + convention.** Finish `withAuditWrapper` on the ~41 unwrapped edge functions; add the flag-required gate rule; record guard verification.
+- **(D) Cleanup + convention.** _withAuditWrapper coverage — done._ Wrapped the remaining 40
+  unwrapped edge functions (90 → **130/130** serving functions), so every edge entrypoint now
+  routes uncaught throws into an `edge_function_error` audit row and guarantees an `x-trace-id`.
+  Enforced by a new **ratchet gate** `scripts/ci/check-edge-audit-wrapper-coverage.mjs` (blocking,
+  in `lint-arch-critical`): every `supabase/functions/*/index.ts` that serves HTTP must wrap, the
+  wrapper label must equal the directory name (audit rows are keyed by it), and its burn-down
+  `ALLOWLIST` may only shrink. Encoded as a rule in `decisions.md §5`. The _flag-required gate rule_
+  (Decision #4 — "risky rollout ⇒ behind a flag") ships with the (C) ramp, which owns the one risky
+  new-volume behavior it guards.
 
 ## Consequences
 

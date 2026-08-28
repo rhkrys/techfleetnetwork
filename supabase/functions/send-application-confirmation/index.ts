@@ -19,6 +19,7 @@
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { queueTransactionalEmail } from "../_shared/transactional-email.ts";
 import { authorizeServiceRoleRequest } from "../_shared/service-role-auth.ts";
+import { withAuditWrapper } from "../_shared/audit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -136,142 +137,144 @@ async function processRow(
   return { ok: true };
 }
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
-  if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
-      status: 405,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const admin = createClient(supabaseUrl, serviceKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-
-  const authHeader = req.headers.get("Authorization") ?? "";
-  const serviceAuth = authorizeServiceRoleRequest(req);
-
-  // ── Mode A: cron / service-role sweep ───────────────────────────────
-  if (serviceAuth.ok) {
-    const { data: rows, error } = await admin
-      .from("application_confirmation_outbox")
-      .select("id, kind, application_id, user_id, recipient_email, project_id, attempts")
-      .is("sent_at", null)
-      .lt("attempts", 5)
-      .lt("enqueued_at", new Date(Date.now() - 30_000).toISOString())
-      .gt("enqueued_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
-      .order("enqueued_at", { ascending: true })
-      .limit(50);
-
-    if (error) {
-      return new Response(JSON.stringify({ error: error.message }), {
-        status: 500,
+Deno.serve(
+  withAuditWrapper("send-application-confirmation", async (req) => {
+    if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+    if (req.method !== "POST") {
+      return new Response(JSON.stringify({ error: "Method not allowed" }), {
+        status: 405,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    let sent = 0;
-    let failed = 0;
-    for (const row of (rows ?? []) as OutboxRow[]) {
-      const r = await processRow(admin, row);
-      if (r.ok) sent++;
-      else failed++;
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const admin = createClient(supabaseUrl, serviceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const serviceAuth = authorizeServiceRoleRequest(req);
+
+    // ── Mode A: cron / service-role sweep ───────────────────────────────
+    if (serviceAuth.ok) {
+      const { data: rows, error } = await admin
+        .from("application_confirmation_outbox")
+        .select("id, kind, application_id, user_id, recipient_email, project_id, attempts")
+        .is("sent_at", null)
+        .lt("attempts", 5)
+        .lt("enqueued_at", new Date(Date.now() - 30_000).toISOString())
+        .gt("enqueued_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+        .order("enqueued_at", { ascending: true })
+        .limit(50);
+
+      if (error) {
+        return new Response(JSON.stringify({ error: error.message }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      let sent = 0;
+      let failed = 0;
+      for (const row of (rows ?? []) as OutboxRow[]) {
+        const r = await processRow(admin, row);
+        if (r.ok) sent++;
+        else failed++;
+      }
+      return new Response(
+        JSON.stringify({ mode: "sweep", sent, failed, scanned: rows?.length ?? 0 }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
     }
-    return new Response(
-      JSON.stringify({ mode: "sweep", sent, failed, scanned: rows?.length ?? 0 }),
-      {
+
+    // ── Mode B: authenticated member call ───────────────────────────────
+    if (!authHeader.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: authHeader } },
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const { data: userRes, error: userErr } = await userClient.auth.getUser();
+    if (userErr || !userRes?.user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const userId = userRes.user.id;
+
+    let body: { kind?: string; applicationId?: string } = {};
+    try {
+      body = await req.json();
+    } catch {
+      return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const kind = body.kind;
+    const applicationId = body.applicationId;
+    if (kind !== "general" && kind !== "project") {
+      return new Response(JSON.stringify({ error: 'kind must be "general" or "project"' }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!applicationId || typeof applicationId !== "string") {
+      return new Response(JSON.stringify({ error: "applicationId is required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { data: row, error: rowErr } = await admin
+      .from("application_confirmation_outbox")
+      .select("id, kind, application_id, user_id, recipient_email, project_id, attempts, sent_at")
+      .eq("kind", kind)
+      .eq("application_id", applicationId)
+      .maybeSingle();
+
+    if (rowErr) {
+      return new Response(JSON.stringify({ error: rowErr.message }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!row) {
+      // The outbox row is created by a DB trigger; if it's missing the app
+      // isn't actually completed yet. Caller can retry.
+      return new Response(JSON.stringify({ error: "application_not_completed" }), {
+        status: 409,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if ((row as any).user_id !== userId) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if ((row as any).sent_at) {
+      return new Response(JSON.stringify({ ok: true, deduped: true }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
-  }
+      });
+    }
 
-  // ── Mode B: authenticated member call ───────────────────────────────
-  if (!authHeader.startsWith("Bearer ")) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
+    const result = await processRow(admin, row as unknown as OutboxRow);
+    return new Response(JSON.stringify(result), {
+      status: result.ok ? 200 : 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  }
-
-  const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
-    global: { headers: { Authorization: authHeader } },
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-  const { data: userRes, error: userErr } = await userClient.auth.getUser();
-  if (userErr || !userRes?.user) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-  const userId = userRes.user.id;
-
-  let body: { kind?: string; applicationId?: string } = {};
-  try {
-    body = await req.json();
-  } catch {
-    return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  const kind = body.kind;
-  const applicationId = body.applicationId;
-  if (kind !== "general" && kind !== "project") {
-    return new Response(JSON.stringify({ error: 'kind must be "general" or "project"' }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-  if (!applicationId || typeof applicationId !== "string") {
-    return new Response(JSON.stringify({ error: "applicationId is required" }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  const { data: row, error: rowErr } = await admin
-    .from("application_confirmation_outbox")
-    .select("id, kind, application_id, user_id, recipient_email, project_id, attempts, sent_at")
-    .eq("kind", kind)
-    .eq("application_id", applicationId)
-    .maybeSingle();
-
-  if (rowErr) {
-    return new Response(JSON.stringify({ error: rowErr.message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-  if (!row) {
-    // The outbox row is created by a DB trigger; if it's missing the app
-    // isn't actually completed yet. Caller can retry.
-    return new Response(JSON.stringify({ error: "application_not_completed" }), {
-      status: 409,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-  if ((row as any).user_id !== userId) {
-    return new Response(JSON.stringify({ error: "Forbidden" }), {
-      status: 403,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-  if ((row as any).sent_at) {
-    return new Response(JSON.stringify({ ok: true, deduped: true }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  const result = await processRow(admin, row as unknown as OutboxRow);
-  return new Response(JSON.stringify(result), {
-    status: result.ok ? 200 : 500,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-});
+  })
+);

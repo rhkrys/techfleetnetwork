@@ -84,6 +84,23 @@ import { requireAdminRequest }   from '../_shared/request-auth.ts'   // has_role
 import { handleCors, jsonResponse } from '../_shared/http.ts'        // includes the x-trace-id preflight headers
 ```
 
+The entrypoint composes the audit wrapper too — the ONE place an uncaught throw becomes an
+`edge_function_error` audit row (§4) and an `x-trace-id` is guaranteed on the request/response:
+
+```
+❌ never — a bare handler: crashes vanish from audit_log, logs can't be traced
+Deno.serve(async (req) => { ... })
+✅ always — wrap the top-level handler (the label MUST equal the function's directory name)
+import { withAuditWrapper } from '../_shared/audit.ts'
+Deno.serve(withAuditWrapper('promote-to-teacher', async (req) => { ... }))
+```
+
+Enforced by `scripts/ci/check-edge-audit-wrapper-coverage.mjs` — a ratchet: every serving
+`supabase/functions/*/index.ts` must wrap the entrypoint **directly** (the wrapper is the handler
+passed to `Deno.serve`/`serve` — wrapping an inner sub-handler while serving a raw one is rejected,
+not silently passed), the label must match the directory name, and the burn-down `ALLOWLIST` may
+only shrink.
+
 ## 6 · Gate integrity — a check must fail closed, never pass falsely
 
 The checks that guard this architecture must themselves never report a false green.

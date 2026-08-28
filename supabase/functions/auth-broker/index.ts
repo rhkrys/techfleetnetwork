@@ -27,6 +27,7 @@ import {
   type AuthErrorCode,
 } from "./schemas.ts";
 import { handleCors, jsonResponse, methodNotAllowed, parseJsonBody } from "../_shared/http.ts";
+import { withAuditWrapper } from "../_shared/audit.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -630,37 +631,39 @@ async function handleIdentityCheck(req: Request): Promise<Response> {
 }
 
 // ─────────────────────────────── dispatcher ────────────────────────────────
-Deno.serve(async (req: Request) => {
-  const cors = handleCors(req);
-  if (cors) return cors;
+Deno.serve(
+  withAuditWrapper("auth-broker", async (req: Request) => {
+    const cors = handleCors(req);
+    if (cors) return cors;
 
-  if (req.method !== "POST") return methodNotAllowed();
+    if (req.method !== "POST") return methodNotAllowed();
 
-  const url = new URL(req.url);
-  const segments = url.pathname.replace(/^\/+/, "").split("/").filter(Boolean);
-  const idx = segments.indexOf("auth-broker");
-  const route = idx >= 0 ? segments.slice(idx + 1).join("/") : segments.slice(1).join("/");
+    const url = new URL(req.url);
+    const segments = url.pathname.replace(/^\/+/, "").split("/").filter(Boolean);
+    const idx = segments.indexOf("auth-broker");
+    const route = idx >= 0 ? segments.slice(idx + 1).join("/") : segments.slice(1).join("/");
 
-  switch (route) {
-    case "sign-in/password":
-      return handleSignInPassword(req);
-    case "sign-up/password":
-      return handleSignUp(req);
-    case "password-reset/request":
-      return handleResetRequest(req);
-    case "password-reset/complete":
-      return handleResetComplete(req);
-    case "sign-out":
-      return handleSignOut(req);
-    case "identity/check":
-      return handleIdentityCheck(req);
+    switch (route) {
+      case "sign-in/password":
+        return handleSignInPassword(req);
+      case "sign-up/password":
+        return handleSignUp(req);
+      case "password-reset/request":
+        return handleResetRequest(req);
+      case "password-reset/complete":
+        return handleResetComplete(req);
+      case "sign-out":
+        return handleSignOut(req);
+      case "identity/check":
+        return handleIdentityCheck(req);
 
-    // Still legacy-served — client falls back gracefully on 501.
-    case "session/refresh":
-    case "sign-in/google-callback":
-      return jsonResponse({ ok: false, code: "service_unavailable", correlationId: "" }, 501);
+      // Still legacy-served — client falls back gracefully on 501.
+      case "session/refresh":
+      case "sign-in/google-callback":
+        return jsonResponse({ ok: false, code: "service_unavailable", correlationId: "" }, 501);
 
-    default:
-      return jsonResponse({ ok: false, code: "unexpected", correlationId: "" }, 404);
-  }
-});
+      default:
+        return jsonResponse({ ok: false, code: "unexpected", correlationId: "" }, 404);
+    }
+  })
+);

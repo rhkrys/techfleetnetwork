@@ -11,6 +11,7 @@
 // All rows land in ops_events at severity=info (never reaches Triage).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { handleCors, jsonResponse, methodNotAllowed } from "../_shared/http.ts";
+import { withAuditWrapper } from "../_shared/audit.ts";
 
 const ALLOWED_KINDS = new Set<string>([
   "auth_engine.sign_in_started",
@@ -50,48 +51,49 @@ interface Body {
   actor?: string | null;
 }
 
-Deno.serve(async (req) => {
-  const cors = handleCors(req);
-  if (cors) return cors;
-  if (req.method !== "POST") return methodNotAllowed();
+Deno.serve(
+  withAuditWrapper("record-auth-event", async (req) => {
+    const cors = handleCors(req);
+    if (cors) return cors;
+    if (req.method !== "POST") return methodNotAllowed();
 
-  let body: Body;
-  try {
-    body = await req.json();
-  } catch {
-    return jsonResponse({ error: "invalid_json" }, 400);
-  }
+    let body: Body;
+    try {
+      body = await req.json();
+    } catch {
+      return jsonResponse({ error: "invalid_json" }, 400);
+    }
 
-  const kind = typeof body.kind === "string" ? body.kind : "";
-  if (!ALLOWED_KINDS.has(kind)) return jsonResponse({ error: "kind_not_allowed" }, 400);
+    const kind = typeof body.kind === "string" ? body.kind : "";
+    if (!ALLOWED_KINDS.has(kind)) return jsonResponse({ error: "kind_not_allowed" }, 400);
 
-  const payload = (body.payload && typeof body.payload === "object" ? body.payload : {}) as Record<
-    string,
-    unknown
-  >;
-  const serialized = JSON.stringify(payload);
-  if (serialized.length > MAX_PAYLOAD_BYTES)
-    return jsonResponse({ error: "payload_too_large" }, 413);
+    const payload = (
+      body.payload && typeof body.payload === "object" ? body.payload : {}
+    ) as Record<string, unknown>;
+    const serialized = JSON.stringify(payload);
+    if (serialized.length > MAX_PAYLOAD_BYTES)
+      return jsonResponse({ error: "payload_too_large" }, 413);
 
-  const actor =
-    typeof body.actor === "string" && /^[0-9a-f-]{36}$/i.test(body.actor) ? body.actor : null;
+    const actor =
+      typeof body.actor === "string" && /^[0-9a-f-]{36}$/i.test(body.actor) ? body.actor : null;
 
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
 
-  const { error } = await admin.rpc("record_event", {
-    p_sink: "ops_events",
-    p_kind: kind,
-    p_actor: actor,
-    p_payload: payload,
-    p_severity: "info",
-    p_ref_table: null,
-    p_ref_id: null,
-  });
-  if (error) {
-    console.error("[record-auth-event] write_audit_log failed:", error);
-    return jsonResponse({ error: "record_failed" }, 500);
-  }
-  return jsonResponse({ ok: true });
-});
+    const { error } = await admin.rpc("record_event", {
+      p_sink: "ops_events",
+      p_kind: kind,
+      p_actor: actor,
+      p_payload: payload,
+      p_severity: "info",
+      p_ref_table: null,
+      p_ref_id: null,
+    });
+    if (error) {
+      console.error("[record-auth-event] write_audit_log failed:", error);
+      return jsonResponse({ error: "record_failed" }, 500);
+    }
+    return jsonResponse({ ok: true });
+  })
+);

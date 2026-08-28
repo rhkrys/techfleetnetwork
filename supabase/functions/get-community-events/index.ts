@@ -12,6 +12,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.45.0";
 import { z } from "npm:zod@3.23.8";
 import { applyWaf } from "../_shared/waf.ts";
+import { withAuditWrapper } from "../_shared/audit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -97,77 +98,79 @@ async function readCache(): Promise<CachedEvent[]> {
   return events;
 }
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
-  if (req.method !== "GET") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
-      status: 405,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  const blocked = await applyWaf(req, "get-community-events");
-  if (blocked) return blocked;
-
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-  if (rateLimited(ip)) {
-    return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
-      status: 429,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  const url = new URL(req.url);
-  const parsed = QuerySchema.safeParse({
-    windowDays: url.searchParams.get("windowDays") ?? undefined,
-    from: url.searchParams.get("from") ?? undefined,
-    to: url.searchParams.get("to") ?? undefined,
-  });
-  if (!parsed.success) {
-    return new Response(JSON.stringify({ error: parsed.error.flatten() }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  try {
-    const all = await readCache();
-    // Server-side floor: never serve anything that started more than 1 day ago,
-    // regardless of what the caller asks for. Defense-in-depth so a stale cache
-    // or buggy expansion can never leak ancient events to the UI.
-    const HARD_FLOOR_MS = Date.now() - 24 * 60 * 60 * 1000;
-    let rangeStart: number;
-    let rangeEnd: number;
-    if (parsed.data.from && parsed.data.to) {
-      rangeStart = Math.max(Date.parse(parsed.data.from), HARD_FLOOR_MS);
-      rangeEnd = Date.parse(parsed.data.to);
-    } else {
-      rangeStart = Date.now();
-      rangeEnd = rangeStart + (parsed.data.windowDays ?? 60) * 24 * 60 * 60 * 1000;
+Deno.serve(
+  withAuditWrapper("get-community-events", async (req) => {
+    if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+    if (req.method !== "GET") {
+      return new Response(JSON.stringify({ error: "Method not allowed" }), {
+        status: 405,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
-    if (rangeEnd < rangeStart) rangeEnd = rangeStart;
-    const events = all
-      .filter((e) => {
-        const start = Date.parse(e.startUtc);
-        const end = Date.parse(e.endUtc);
-        if (start < HARD_FLOOR_MS) return false; // hard guard
-        return end >= rangeStart && start <= rangeEnd;
-      })
-      .map((e) => ({ ...e, description: cleanDescription(e.description) }));
 
-    return new Response(JSON.stringify({ events }), {
-      status: 200,
-      headers: {
-        ...corsHeaders,
-        "Content-Type": "application/json",
-        "Cache-Control": "public, max-age=300, stale-while-revalidate=600",
-      },
+    const blocked = await applyWaf(req, "get-community-events");
+    if (blocked) return blocked;
+
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+    if (rateLimited(ip)) {
+      return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
+        status: 429,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const url = new URL(req.url);
+    const parsed = QuerySchema.safeParse({
+      windowDays: url.searchParams.get("windowDays") ?? undefined,
+      from: url.searchParams.get("from") ?? undefined,
+      to: url.searchParams.get("to") ?? undefined,
     });
-  } catch (err) {
-    console.error("get-community-events error:", err);
-    return new Response(JSON.stringify({ error: "Failed to load events" }), {
-      status: 502,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-});
+    if (!parsed.success) {
+      return new Response(JSON.stringify({ error: parsed.error.flatten() }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    try {
+      const all = await readCache();
+      // Server-side floor: never serve anything that started more than 1 day ago,
+      // regardless of what the caller asks for. Defense-in-depth so a stale cache
+      // or buggy expansion can never leak ancient events to the UI.
+      const HARD_FLOOR_MS = Date.now() - 24 * 60 * 60 * 1000;
+      let rangeStart: number;
+      let rangeEnd: number;
+      if (parsed.data.from && parsed.data.to) {
+        rangeStart = Math.max(Date.parse(parsed.data.from), HARD_FLOOR_MS);
+        rangeEnd = Date.parse(parsed.data.to);
+      } else {
+        rangeStart = Date.now();
+        rangeEnd = rangeStart + (parsed.data.windowDays ?? 60) * 24 * 60 * 60 * 1000;
+      }
+      if (rangeEnd < rangeStart) rangeEnd = rangeStart;
+      const events = all
+        .filter((e) => {
+          const start = Date.parse(e.startUtc);
+          const end = Date.parse(e.endUtc);
+          if (start < HARD_FLOOR_MS) return false; // hard guard
+          return end >= rangeStart && start <= rangeEnd;
+        })
+        .map((e) => ({ ...e, description: cleanDescription(e.description) }));
+
+      return new Response(JSON.stringify({ events }), {
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+          "Cache-Control": "public, max-age=300, stale-while-revalidate=600",
+        },
+      });
+    } catch (err) {
+      console.error("get-community-events error:", err);
+      return new Response(JSON.stringify({ error: "Failed to load events" }), {
+        status: 502,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+  })
+);

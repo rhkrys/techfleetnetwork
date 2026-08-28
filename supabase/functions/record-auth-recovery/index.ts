@@ -18,6 +18,7 @@
 // Reference: docs/runbooks/password-reset-permanent-fix.md
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { withAuditWrapper } from "../_shared/audit.ts";
 
 const ALLOWED_BRANCHES = new Set([
   "token_hash",
@@ -85,98 +86,100 @@ function corsFor(req: Request): HeadersInit {
     "Access-Control-Allow-Headers":
       "authorization, x-client-info, apikey, content-type, x-trace-id, x-request-id",
     "Access-Control-Max-Age": "600",
-    "Vary": "Origin",
+    Vary: "Origin",
   };
 }
 
-Deno.serve(async (req: Request) => {
-  const cors = corsFor(req);
-  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
-  if (req.method !== "POST") {
+Deno.serve(
+  withAuditWrapper("record-auth-recovery", async (req: Request) => {
+    const cors = corsFor(req);
+    if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+    if (req.method !== "POST") {
+      return new Response(null, { status: 204, headers: cors });
+    }
+
+    const ip =
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      req.headers.get("cf-connecting-ip") ||
+      "unknown";
+    if (rateLimited(ip)) {
+      // 204 so beacon failures never bubble to the user.
+      return new Response(null, { status: 204, headers: cors });
+    }
+
+    let raw = "";
+    try {
+      raw = await req.text();
+    } catch {
+      return new Response(null, { status: 204, headers: cors });
+    }
+    if (raw.length > 4 * 1024) {
+      return new Response(null, { status: 204, headers: cors });
+    }
+
+    let body: Record<string, unknown> = {};
+    try {
+      body = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    } catch {
+      return new Response(null, { status: 204, headers: cors });
+    }
+
+    const branch = String(body.branch ?? "");
+    const outcome = String(body.outcome ?? "");
+    if (!ALLOWED_BRANCHES.has(branch) || !ALLOWED_OUTCOMES.has(outcome)) {
+      return new Response(null, { status: 204, headers: cors });
+    }
+
+    const has_token_hash = body.has_token_hash === true;
+    const has_code = body.has_code === true;
+    const has_hash = body.has_hash === true;
+    const token_hash_prefix =
+      typeof body.token_hash_prefix === "string"
+        ? body.token_hash_prefix.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 24)
+        : null;
+    const release_tag = typeof body.release_tag === "string" ? body.release_tag.slice(0, 64) : null;
+    const user_agent = (req.headers.get("user-agent") ?? "").slice(0, 256);
+    const ip_hash = await hashIp(ip);
+
+    const severity =
+      outcome === "update_success" || outcome === "ok"
+        ? "info"
+        : outcome === "recovery_link_prefetch_suspected"
+          ? "warn"
+          : outcome === "update_service_unavailable" || outcome === "update_rate_limited"
+            ? "warn"
+            : "info";
+
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+      { auth: { persistSession: false } }
+    );
+
+    try {
+      await supabase.rpc("record_event", {
+        p_sink: "ops_events",
+        p_kind: `auth.recovery.${branch}.${outcome}`,
+        p_actor: null,
+        p_payload: {
+          branch,
+          outcome,
+          has_token_hash,
+          has_code,
+          has_hash,
+          token_hash_prefix,
+          release_tag,
+          user_agent,
+          ip_hash,
+        },
+        p_severity: severity,
+        p_ref_table: "auth.users",
+        p_ref_id: null,
+      });
+    } catch (err) {
+      console.warn("record-auth-recovery insert failed", String(err));
+    }
+
     return new Response(null, { status: 204, headers: cors });
-  }
-
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    req.headers.get("cf-connecting-ip") ||
-    "unknown";
-  if (rateLimited(ip)) {
-    // 204 so beacon failures never bubble to the user.
-    return new Response(null, { status: 204, headers: cors });
-  }
-
-  let raw = "";
-  try {
-    raw = await req.text();
-  } catch {
-    return new Response(null, { status: 204, headers: cors });
-  }
-  if (raw.length > 4 * 1024) {
-    return new Response(null, { status: 204, headers: cors });
-  }
-
-  let body: Record<string, unknown> = {};
-  try {
-    body = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
-  } catch {
-    return new Response(null, { status: 204, headers: cors });
-  }
-
-  const branch = String(body.branch ?? "");
-  const outcome = String(body.outcome ?? "");
-  if (!ALLOWED_BRANCHES.has(branch) || !ALLOWED_OUTCOMES.has(outcome)) {
-    return new Response(null, { status: 204, headers: cors });
-  }
-
-  const has_token_hash = body.has_token_hash === true;
-  const has_code = body.has_code === true;
-  const has_hash = body.has_hash === true;
-  const token_hash_prefix =
-    typeof body.token_hash_prefix === "string"
-      ? body.token_hash_prefix.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 24)
-      : null;
-  const release_tag =
-    typeof body.release_tag === "string" ? body.release_tag.slice(0, 64) : null;
-  const user_agent = (req.headers.get("user-agent") ?? "").slice(0, 256);
-  const ip_hash = await hashIp(ip);
-
-  const severity = outcome === "update_success" || outcome === "ok"
-    ? "info"
-    : outcome === "recovery_link_prefetch_suspected"
-      ? "warn"
-    : outcome === "update_service_unavailable" || outcome === "update_rate_limited"
-      ? "warn"
-      : "info";
-
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL") ?? "",
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-    { auth: { persistSession: false } },
-  );
-
-  try {
-    await supabase.rpc("record_event", {
-      p_sink: "ops_events",
-      p_kind: `auth.recovery.${branch}.${outcome}`,
-      p_actor: null,
-      p_payload: {
-        branch,
-        outcome,
-        has_token_hash,
-        has_code,
-        has_hash,
-        token_hash_prefix,
-        release_tag,
-        user_agent,
-        ip_hash,
-      },
-      p_severity: severity,
-      p_ref_table: "auth.users",
-      p_ref_id: null,
-    });
-  } catch (err) {
-    console.warn("record-auth-recovery insert failed", String(err));
-  }
-
-  return new Response(null, { status: 204, headers: cors });
-});
+  })
+);
