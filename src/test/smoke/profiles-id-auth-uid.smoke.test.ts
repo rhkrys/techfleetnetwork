@@ -47,6 +47,12 @@ function runGuard(root: string): number {
 function fixture(files: Record<string, string>): string {
   const root = mkdtempSync(join(tmpdir(), "ta-guard-"));
   tmps.push(root);
+  // The guard scans BOTH supabase/functions and supabase/migrations and (post
+  // gate-integrity hardening) fails closed if either root is missing — a real repo
+  // always has both. Present both here so a fixture exercising only one still
+  // models a realistic repo; the empty sibling contributes 0 files and 0 violations.
+  mkdirSync(join(root, "supabase/functions"), { recursive: true });
+  mkdirSync(join(root, "supabase/migrations"), { recursive: true });
   for (const [rel, content] of Object.entries(files)) {
     const abs = join(root, rel);
     mkdirSync(resolve(abs, ".."), { recursive: true });

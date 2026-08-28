@@ -5,38 +5,31 @@
  *
  * Reverse edges (e.g. services importing flows, or domain importing UI)
  * collapse the architecture back into the sediment we just rebuilt out of.
+ *
+ * Scan/fail-closed/zero-scan/evidence owned by the shared harness (_guard.mjs).
  */
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
-
-const ROOT = process.cwd();
-const BASE = "src/features/auth";
+import { runScanGuard } from "./_guard.mjs";
 
 const RANK = { domain: 0, services: 1, flows: 2, state: 3, ui: 4, testing: 99 };
 
+// src/features/auth/<layer>/...
 function layerOf(rel) {
-  const parts = rel.split("/");
-  // src/features/auth/<layer>/...
-  return parts[3] ?? null;
+  return rel.split("/")[3] ?? null;
 }
 
-const offenders = [];
-
-function walk(dir) {
-  for (const name of readdirSync(dir)) {
-    const full = join(dir, name);
-    const st = statSync(full);
-    if (st.isDirectory()) { walk(full); continue; }
-    if (!/\.(ts|tsx)$/.test(name)) continue;
-    if (name.endsWith(".test.ts") || name.endsWith(".test.tsx")) continue;
-    const rel = relative(ROOT, full).replace(/\\/g, "/");
+runScanGuard({
+  name: "check-auth-layer-graph",
+  roots: ["src/features/auth"],
+  include: /\.(ts|tsx)$/,
+  exclude: /\.test\.(ts|tsx)$/,
+  rule(src, rel) {
     const fromLayer = layerOf(rel);
-    if (!fromLayer || !(fromLayer in RANK)) continue;
-    if (fromLayer === "testing") continue;
-    const body = readFileSync(full, "utf8");
+    if (!fromLayer || !(fromLayer in RANK)) return [];
+    if (fromLayer === "testing") return [];
+    const out = [];
     const importRe = /from\s+["']([^"']+)["']/g;
     let m;
-    while ((m = importRe.exec(body))) {
+    while ((m = importRe.exec(src))) {
       const spec = m[1];
       // Only check internal feature imports.
       if (!spec.startsWith("..") && !spec.startsWith("@/features/auth")) continue;
@@ -45,17 +38,9 @@ function walk(dir) {
       const hit = layers.find((l) => spec.includes(`/${l}/`) || spec.endsWith(`/${l}`));
       if (!hit) continue;
       if (RANK[hit] > RANK[fromLayer]) {
-        offenders.push({ rel, fromLayer, importedLayer: hit, spec });
+        out.push({ text: `(${fromLayer} → ${hit})  ${spec} — imports must flow downward` });
       }
     }
-  }
-}
-
-walk(join(ROOT, BASE));
-
-if (offenders.length > 0) {
-  console.error("✗ auth layer graph violation — imports must flow downward (ui → state → flows → services → domain)");
-  for (const o of offenders) console.error(`  ${o.rel}  (${o.fromLayer} → ${o.importedLayer})  ${o.spec}`);
-  process.exit(1);
-}
-console.log("✓ auth layer graph: all imports flow downward");
+    return out;
+  },
+});

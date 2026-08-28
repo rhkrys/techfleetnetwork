@@ -2,30 +2,34 @@
 /**
  * CI guard: counter-call sites must live in AuthFailurePolicy only.
  *
- * Walks src/ and supabase/functions/ looking for direct invocations of the
- * forbidden counter names. Fails CI if any caller exists outside the single
- * allowed file. This is the structural backstop behind the same-named ESLint
- * rule (`no-direct-failure-counters`) — even if a future developer disables
- * the lint rule with `eslint-disable`, CI will still reject the patch.
+ * Fails CI if any of the forbidden counter names is invoked outside the auth
+ * failure-policy funnel (the two policy files + the ports/ adapter layer) or the
+ * one-release LEGACY_ALLOWED window. Structural backstop behind the ESLint rule
+ * `no-direct-failure-counters` (survives an `eslint-disable`).
+ *
+ * Scan/fail-closed/zero-scan/evidence owned by the shared harness (_guard.mjs).
  */
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { runScanGuard } from "./_guard.mjs";
 
-const ROOT = process.cwd();
 // Counter calls are sanctioned ONLY inside the auth feature's failure-policy
-// funnel and its adapter (ports) layer:
-//   - services/auth-failure-policy.ts  — the decision table
-//   - engine/failure-policy.ts         — the canonical counter-firing funnel
-//   - ports/*.port.ts                  — adapters that wrap the legacy counter
-//                                        modules/services (see each port header)
-// This mirrors the ESLint rule `no-direct-failure-counters`, which already
-// exempts BOTH failure-policy files. Everything else — UI, hooks, services,
-// lib, pages — must route through the policy and still hard-fails this guard.
+// funnel + its adapter (ports) layer. Mirrors the ESLint rule's exemptions.
 const ALLOWED = new Set([
   "src/features/auth/services/auth-failure-policy.ts",
   "src/features/auth/engine/failure-policy.ts",
 ]);
 const ALLOWED_DIR_PREFIX = "src/features/auth/ports/";
+// Legacy paths are migrating; allowed under a one-release window.
+const LEGACY_ALLOWED = new Set([
+  "src/services/rate-limit.service.ts",
+  "src/lib/auth-lockout.ts",
+  "src/lib/auth-captcha.ts",
+  "src/lib/auth-progressive-lockout.ts",
+  "src/pages/LoginPage.tsx",
+  "src/pages/ResetPasswordPage.tsx",
+  "src/pages/ForgotPasswordPage.tsx",
+  "src/pages/RegisterPage.tsx",
+  "src/integrations/supabase/types.ts",
+]);
 const FORBIDDEN = [
   "record_failed_login",
   "recordInvalidAuthAttempt",
@@ -33,63 +37,21 @@ const FORBIDDEN = [
   "RateLimitService.recordFailure",
 ];
 
-const SCAN_DIRS = ["src", "supabase/functions"];
-const SKIP_DIRS = new Set(["node_modules", "dist", ".next", ".turbo", "__tests__"]);
-const SKIP_FILE_SUFFIXES = [".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx"];
-
-/** @type {{file: string; needle: string; line: number}[]} */
-const offenders = [];
-
-function walk(dir) {
-  for (const name of readdirSync(dir)) {
-    if (SKIP_DIRS.has(name)) continue;
-    const full = join(dir, name);
-    const st = statSync(full);
-    if (st.isDirectory()) {
-      walk(full);
-      continue;
+runScanGuard({
+  name: "check-auth-counter-coverage",
+  roots: ["src", "supabase/functions"],
+  include: /\.(ts|tsx|js|mjs)$/,
+  exclude: /\.(test|spec)\.(ts|tsx)$/,
+  rule(src, rel) {
+    if (ALLOWED.has(rel) || rel.startsWith(ALLOWED_DIR_PREFIX) || LEGACY_ALLOWED.has(rel)) {
+      return [];
     }
-    if (!/\.(ts|tsx|js|mjs)$/.test(name)) continue;
-    if (SKIP_FILE_SUFFIXES.some((s) => name.endsWith(s))) continue;
-    const rel = relative(ROOT, full).replace(/\\/g, "/");
-    if (ALLOWED.has(rel)) continue;
-    if (rel.startsWith(ALLOWED_DIR_PREFIX)) continue;
-    // Legacy paths are migrating; allow them under a one-release window.
-    // The ESLint rule + this CI script will tighten when the shim ships.
-    const LEGACY_ALLOWED = new Set([
-      "src/services/rate-limit.service.ts",
-      "src/lib/auth-lockout.ts",
-      "src/lib/auth-captcha.ts",
-      "src/lib/auth-progressive-lockout.ts",
-      "src/pages/LoginPage.tsx",
-      "src/pages/ResetPasswordPage.tsx",
-      "src/pages/ForgotPasswordPage.tsx",
-      "src/pages/RegisterPage.tsx",
-      "src/integrations/supabase/types.ts",
-    ]);
-    if (LEGACY_ALLOWED.has(rel)) continue;
-    const body = readFileSync(full, "utf8");
-    body.split("\n").forEach((line, idx) => {
+    const out = [];
+    src.split("\n").forEach((line, idx) => {
       for (const needle of FORBIDDEN) {
-        if (line.includes(needle)) offenders.push({ file: rel, needle, line: idx + 1 });
+        if (line.includes(needle)) out.push({ line: idx + 1, text: needle });
       }
     });
-  }
-}
-
-for (const d of SCAN_DIRS) {
-  try {
-    walk(join(ROOT, d));
-  } catch {
-    /* dir missing */
-  }
-}
-
-if (offenders.length > 0) {
-  console.error("✗ auth counter coverage check failed — counters may only fire from", ALLOWED);
-  for (const o of offenders) console.error(`  ${o.file}:${o.line}  ${o.needle}`);
-  console.error("\nFix: route the call through src/features/auth/services/auth-failure-policy.ts");
-  process.exit(1);
-}
-
-console.log("✓ auth counter coverage: every counter call lives in AuthFailurePolicy");
+    return out;
+  },
+});

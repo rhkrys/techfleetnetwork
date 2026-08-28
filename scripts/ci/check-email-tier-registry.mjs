@@ -10,7 +10,7 @@
 //
 // Requirements: docs/design/email-rearchitecture-requirements.md §6, §9.
 import { readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 
 const ROOT = process.cwd();
 const F_TIERS = join(ROOT, "supabase/functions/_shared/email/domain/email-tiers.ts");
@@ -19,11 +19,6 @@ const F_REGISTRY = join(
   "supabase/functions/_shared/transactional-email-templates/registry.ts"
 );
 const F_TYPES = join(ROOT, "supabase/functions/_shared/email/domain/types.ts");
-
-if (!existsSync(F_TIERS)) {
-  console.log("email tier registry not present yet — skipping");
-  process.exit(0);
-}
 
 const read = (p) => readFileSync(p, "utf8");
 
@@ -65,8 +60,6 @@ function setMembers(src, name) {
   return keys;
 }
 
-const registered = registeredTemplates(read(F_TIERS));
-
 const required = new Set();
 if (existsSync(F_REGISTRY)) for (const k of registryTemplates(read(F_REGISTRY))) required.add(k);
 if (existsSync(F_TYPES)) {
@@ -74,6 +67,28 @@ if (existsSync(F_TYPES)) {
   for (const k of setMembers(typesSrc, "AUTH_TEMPLATES")) required.add(k);
   for (const k of setMembers(typesSrc, "BULK_TEMPLATES")) required.add(k);
 }
+
+// Fail closed: an empty required set means the registry/types source files
+// moved or were renamed — a broken scan, NOT "no templates to check".
+if (required.size === 0) {
+  console.error(
+    `check-email-tier-registry: scanned 0 templates under ` +
+      `${relative(ROOT, F_REGISTRY)} + ${relative(ROOT, F_TYPES)} — path moved?`
+  );
+  process.exit(1);
+}
+
+// The tier registry itself must exist. If templates require a tier but the
+// registry file is gone, fail closed instead of silently passing.
+if (!existsSync(F_TIERS)) {
+  console.error(
+    `check-email-tier-registry: tier registry missing at ${relative(ROOT, F_TIERS)} ` +
+      `but ${required.size} templates require a tier — path moved?`
+  );
+  process.exit(1);
+}
+
+const registered = registeredTemplates(read(F_TIERS));
 
 const missing = [...required].filter((t) => !registered.has(t)).sort();
 
@@ -87,6 +102,6 @@ if (missing.length) {
 }
 
 console.log(
-  `✓ check-email-tier-registry: all ${required.size} known templates have a tier ` +
-    `(${registered.size} registered).`
+  `✓ check-email-tier-registry: OK — ${required.size} templates scanned, 0 missing a tier ` +
+    `(${registered.size} registered in EMAIL_TIERS).`
 );

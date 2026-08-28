@@ -172,6 +172,13 @@ jobs:
       - name: Guard — no duplicate ADR numbers
         run: node scripts/ci/check-adr-number-collision.mjs
 
+      # Meta-guard (GATE-INTEGRITY-001) — the checks must not pass falsely. Fails if
+      # any guard swallows an error into exit(0) (a false green). See the gate-
+      # integrity standard in decisions.md. A deliberate fail-open opts out with a
+      # `// ci-guard-integrity-ok: <reason>` marker.
+      - name: Guard — CI guards fail closed (no swallowed exit 0)
+        run: node scripts/ci/check-ci-guard-integrity.mjs
+
       - name: Type-check
         run: npx tsc --noEmit
       - name: Lint (ESLint)

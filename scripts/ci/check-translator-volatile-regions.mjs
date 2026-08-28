@@ -1,26 +1,21 @@
 #!/usr/bin/env node
-// TRANSLATOR-VOLATILE-003: Fail CI if any JSX file adds an aria-live region or
-// a volatile role (status/alert/log/timer) without also carrying data-no-translate,
-// translate="no", or sitting inside a component on the allow-list.
+// TRANSLATOR-VOLATILE-003: Fail CI if any JSX file adds an aria-live region or a
+// volatile role (status/alert/log/timer) without data-no-translate / translate="no",
+// unless the file is on the snapshot allow-list (regions the runtime translator
+// already skips via shouldSkipElement).
 //
-// Also warns on new occurrences of the legacy boolean `n` opt-out attribute —
-// the runtime translator honors it for back-compat but new code must use
-// data-no-translate (see mem://constraints/translator-volatile-regions).
-//
-// Source-scan only — no DB, no env vars required.
+// Source-scan only. Scans .tsx/.jsx under src, skipping node_modules/dist/__tests__
+// via the harness `excludeDir`. Scan/fail-closed/zero-scan/evidence owned by the
+// shared harness (_guard.mjs), which also normalizes relPath to forward slashes so
+// the allow-list matches on every OS. (The old guard compared native backslash paths
+// on Windows, so the forward-slash allow-list never matched and it reported a phantom
+// "127" locally — CI, on forward-slash Linux paths, was always 0.)
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { runScanGuard } from "./_guard.mjs";
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
-
-const ROOT = process.cwd();
-const SRC = join(ROOT, "src");
-
-// Snapshot of files that already render aria-live / volatile roles. The runtime
-// translator natively skips those regions via shouldSkipElement, so the lack of
-// data-no-translate on these is safe today — but we still want NEW additions to
-// add the belt+suspenders attr. Regenerate intentionally by editing the JSON.
 const SNAPSHOT = JSON.parse(
-  readFileSync(join(ROOT, "scripts/ci/translator-volatile-regions.snapshot.json"), "utf8"),
+  readFileSync(join(process.cwd(), "scripts/ci/translator-volatile-regions.snapshot.json"), "utf8")
 );
 const ALLOW_FILES = new Set([
   ...SNAPSHOT.allow_files,
@@ -28,55 +23,27 @@ const ALLOW_FILES = new Set([
   "src/components/ui/AutosaveStatus.tsx",
 ]);
 
-const VOLATILE_RE = /\b(aria-live\s*=\s*["'](polite|assertive)["']|role\s*=\s*["'](status|alert|log|timer)["'])/;
+const VOLATILE_RE =
+  /\b(aria-live\s*=\s*["'](polite|assertive)["']|role\s*=\s*["'](status|alert|log|timer)["'])/;
 const SAFE_RE = /(data-no-translate|translate\s*=\s*["']no["'])/;
-const LEGACY_N_RE = /<[A-Za-z][^>]*\s+n(\s|=|>|\/)/g;
 
-function* walk(dir) {
-  for (const entry of readdirSync(dir)) {
-    if (entry === "node_modules" || entry === "dist" || entry === "__tests__") continue;
-    const p = join(dir, entry);
-    const s = statSync(p);
-    if (s.isDirectory()) yield* walk(p);
-    else if (/\.(tsx|jsx)$/.test(entry)) yield p;
-  }
-}
-
-const offenders = [];
-const legacyN = [];
-
-for (const file of walk(SRC)) {
-  const rel = relative(ROOT, file);
-  if (ALLOW_FILES.has(rel)) continue;
-  const src = readFileSync(file, "utf8");
-  const lines = src.split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (VOLATILE_RE.test(line)) {
-      // Look in a small window for the safety attr (props often span lines)
-      const window = lines.slice(Math.max(0, i - 6), Math.min(lines.length, i + 6)).join("\n");
-      if (!SAFE_RE.test(window)) {
-        offenders.push(`${rel}:${i + 1}  ${line.trim()}`);
+runScanGuard({
+  name: "check-translator-volatile-regions",
+  roots: ["src"],
+  include: /\.(tsx|jsx)$/,
+  exclude: null, // scan .test.tsx outside __tests__ too, as the original walk did
+  excludeDir: /^(node_modules|dist|__tests__)$/,
+  rule(src, relPath) {
+    if (ALLOW_FILES.has(relPath)) return [];
+    const out = [];
+    const lines = src.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      if (VOLATILE_RE.test(lines[i])) {
+        // Props often span lines — check a small window for the safety attr.
+        const window = lines.slice(Math.max(0, i - 6), Math.min(lines.length, i + 6)).join("\n");
+        if (!SAFE_RE.test(window)) out.push({ line: i + 1, text: lines[i].trim() });
       }
     }
-    let m;
-    LEGACY_N_RE.lastIndex = 0;
-    while ((m = LEGACY_N_RE.exec(line))) {
-      legacyN.push(`${rel}:${i + 1}  ${line.trim().slice(0, 160)}`);
-    }
-  }
-}
-
-if (legacyN.length) {
-  console.warn(`[check-translator-volatile-regions] ${legacyN.length} legacy \`n\` attribute(s); prefer data-no-translate:`);
-  for (const m of legacyN) console.warn("  " + m);
-}
-
-if (offenders.length) {
-  console.error(`\n[check-translator-volatile-regions] FAIL — ${offenders.length} volatile region(s) missing data-no-translate / translate="no":`);
-  for (const o of offenders) console.error("  " + o);
-  console.error(`\nFix: add data-no-translate (and translate="no") on the element carrying aria-live/role=status — the runtime DOM translator mutates text nodes inside these regions and races React's reconciler (NotFoundError: removeChild). See mem://constraints/translator-volatile-regions.`);
-  process.exit(1);
-}
-
-console.log("[check-translator-volatile-regions] OK");
+    return out;
+  },
+});

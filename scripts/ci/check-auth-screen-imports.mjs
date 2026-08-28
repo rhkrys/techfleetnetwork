@@ -3,23 +3,20 @@
  * AUTH-ARCH-CUTOVER-022 — auth screens must talk only to their engine.
  *
  * Screens in `src/features/auth/ui/*.tsx` are presentation-only. They MUST NOT
- * import:
- *   - the backend client (`@/integrations/supabase/client`)
- *   - the session port (`@/features/auth/ports/*`)
- *   - the per-use-case services (`@/features/auth/services/*`)
- *   - the flows (`@/features/auth/flows/*`)
- *   - the rate-limit/captcha/lockout libraries directly
+ * import: the backend client (`@/integrations/supabase/client`), the session
+ * port (`@/features/auth/ports/*`), the per-use-case services
+ * (`@/features/auth/services/*`), the flows (`@/features/auth/flows/*`), or the
+ * rate-limit/captcha/lockout libraries directly. The single allowed dependency
+ * direction is screen → engine → flow → service → adapter.
  *
- * The single allowed dependency direction is screen → engine → flow → service
- * → adapter. Anything else re-opens the spaghetti the cutover removed.
+ * Scope: .ts/.tsx under src/features/auth/ui, excluding .d.ts and the __tests__ dir.
+ * The harness walk filters only by basename; the sole file under __tests__ is a
+ * `.test.tsx`, so excluding `.test.(ts|tsx)` (plus `.d.ts`) reproduces the
+ * original directory-level exclusion exactly.
+ *
+ * Scan/fail-closed/zero-scan/evidence owned by the shared harness (_guard.mjs).
  */
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { resolve, dirname, join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, "..", "..");
-const SCREEN_DIR = resolve(REPO_ROOT, "src", "features", "auth", "ui");
+import { runScanGuard } from "./_guard.mjs";
 
 const FORBIDDEN = [
   { needle: "@/integrations/supabase/client", reason: "backend client" },
@@ -31,35 +28,21 @@ const FORBIDDEN = [
   { needle: "@/services/rate-limit.service", reason: "rate-limit service" },
 ];
 
-function walk(dir, out = []) {
-  for (const entry of readdirSync(dir)) {
-    const full = join(dir, entry);
-    const s = statSync(full);
-    if (s.isDirectory()) {
-      if (entry === "__tests__") continue;
-      walk(full, out);
-    } else if (/\.tsx?$/.test(full) && !full.endsWith(".d.ts")) {
-      out.push(full);
+runScanGuard({
+  name: "check-auth-screen-imports",
+  roots: ["src/features/auth/ui"],
+  include: /\.tsx?$/,
+  exclude: /\.test\.(ts|tsx)$|\.d\.ts$/,
+  rule(src) {
+    const out = [];
+    for (const { needle, reason } of FORBIDDEN) {
+      if (src.includes(needle)) {
+        out.push({
+          text: `forbidden import (${reason}) → ${needle} — move the call into the screen's engine (src/features/auth/engine/*)`,
+        });
+      }
     }
-  }
-  return out;
-}
-
-const failures = [];
-for (const file of walk(SCREEN_DIR)) {
-  const text = readFileSync(file, "utf8");
-  for (const { needle, reason } of FORBIDDEN) {
-    if (text.includes(needle)) {
-      failures.push(`${relative(REPO_ROOT, file)}: forbidden import (${reason}) → ${needle}`);
-    }
-  }
-}
-
-if (failures.length) {
-  console.error("\n[check-auth-screen-imports] FAILED — auth screens must only depend on their engine.\n");
-  for (const f of failures) console.error("  - " + f);
-  console.error("\nFix: move the call into the screen's engine (src/features/auth/engine/*).\n");
-  process.exit(1);
-}
-
-console.log("[check-auth-screen-imports] OK — auth screens depend only on their engine.");
+    return out;
+  },
+  summary: (n) => `${n} screen file(s)`,
+});

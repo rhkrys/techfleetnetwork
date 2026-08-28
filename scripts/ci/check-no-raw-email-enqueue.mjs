@@ -8,45 +8,29 @@
 // `enqueueLegacyPayloadV2` compat helper. See PR 2 and
 // docs/design/email-rearchitecture-requirements.md.
 //
-// Scope: edge functions only (supabase/functions/**/*.ts). Historical migrations legitimately
-// contain the old raw definition/calls and are not scanned.
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
-
-const ROOT = process.cwd();
-const DIR = join(ROOT, "supabase", "functions");
-
-function walk(dir) {
-  const out = [];
-  for (const name of readdirSync(dir)) {
-    const p = join(dir, name);
-    const s = statSync(p);
-    if (s.isDirectory()) out.push(...walk(p));
-    else if (name.endsWith(".ts")) out.push(p);
-  }
-  return out;
-}
+// Scope: edge functions only (supabase/functions/**/*.ts, ALL .ts incl. tests). Historical
+// migrations legitimately contain the old raw definition/calls and are not scanned.
+//
+// Scan/fail-closed/zero-scan/evidence owned by the shared harness (_guard.mjs).
+import { runScanGuard } from "./_guard.mjs";
 
 // Matches an actual RPC call to the raw function, not enqueue_email_v2 and not comments.
 const RAW_RPC = /\brpc\(\s*["']enqueue_email["']/;
 
-let violations = 0;
-for (const f of walk(DIR)) {
-  const src = readFileSync(f, "utf8");
-  if (RAW_RPC.test(src)) {
-    console.error(
-      `✖ ${relative(ROOT, f).replace(/\\/g, "/")}\n` +
-        `   Calls the RETIRED raw enqueue_email RPC (dead pgmq path). Use enqueue_email_v2 / the v2\n` +
-        `   outbox (queueTransactionalEmail, composition.enqueueEmail, or enqueueLegacyPayloadV2).`
-    );
-    violations++;
-  }
-}
-
-if (violations > 0) {
-  console.error(`\n${violations} raw enqueue_email caller(s) found.`);
-  process.exit(1);
-}
-console.log(
-  "✓ check-no-raw-email-enqueue: no edge function calls the retired raw enqueue_email RPC."
-);
+runScanGuard({
+  name: "check-no-raw-email-enqueue",
+  roots: ["supabase/functions"],
+  include: /\.ts$/,
+  exclude: /(?!)/, // never match — all .ts (incl. tests) are in scope, matching the original
+  rule(src) {
+    if (!RAW_RPC.test(src)) return [];
+    return [
+      {
+        text:
+          "Calls the RETIRED raw enqueue_email RPC (dead pgmq path). Use enqueue_email_v2 / the v2 " +
+          "outbox (queueTransactionalEmail, composition.enqueueEmail, or enqueueLegacyPayloadV2).",
+      },
+    ];
+  },
+  summary: (n) => `${n} edge-function files`,
+});

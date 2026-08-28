@@ -8,13 +8,22 @@
 // Requires PG* env vars (set in CI). Skips with exit 0 when not configured so
 // local dev runs aren't broken.
 
-import { Client } from "pg";
-
 const REQUIRED = ["PGHOST", "PGUSER", "PGDATABASE"];
 if (REQUIRED.some((k) => !process.env[k])) {
-  console.log("[check-no-opaque-script-error] PG env not configured — skipping");
+  // Env-gated skip — transparent, NOT a false green. Needs a Postgres connection.
+  // NOTE: this guard is not currently wired into any CI workflow, so it does not
+  // verify anywhere today — tracked in review-followups.md. If it is ever wired in,
+  // run it in a DB-backed job; the ::notice:: keeps the non-execution visible and it
+  // never claims a pass.
+  console.log(
+    `::notice::[check-no-opaque-script-error] SKIPPED — PG env (${REQUIRED.join(", ")}) not configured; not verified.`
+  );
   process.exit(0);
 }
+
+// Import the driver only after the skip check so local runs without the `pg`
+// package (and without PG env) skip cleanly instead of crashing on load.
+const { Client } = await import("pg");
 
 const REGEX = String.raw`^(error:\s*)?script error\.?(\n|$)`;
 const client = new Client();
@@ -28,32 +37,40 @@ try {
      FROM public.agent_fix_queue
      WHERE error_message ~* $1 AND last_seen_at > ${since}
      ORDER BY last_seen_at DESC LIMIT 20`,
-    [REGEX],
+    [REGEX]
   );
   const audit = await client.query(
     `SELECT id, created_at, left(error_message, 200) AS preview
      FROM public.audit_log
      WHERE error_message ~* $1 AND created_at > ${since}
      ORDER BY created_at DESC LIMIT 20`,
-    [REGEX],
+    [REGEX]
   );
 
   if (fix.rows.length === 0 && audit.rows.length === 0) {
-    console.log("[check-no-opaque-script-error] OK — no opaque Script error rows in last 24h");
+    console.log(
+      "[check-no-opaque-script-error] OK — 2 tables scanned (agent_fix_queue, audit_log) " +
+        "over the last 24h, 0 opaque Script-error rows found."
+    );
     process.exit(0);
   }
 
   console.error("[check-no-opaque-script-error] FAIL — opaque Script error rows detected:");
   if (fix.rows.length) {
     console.error(`\nagent_fix_queue (${fix.rows.length}):`);
-    for (const r of fix.rows) console.error(` - ${r.id} [${r.status}] ${r.last_seen_at}\n   ${r.preview}`);
+    for (const r of fix.rows)
+      console.error(` - ${r.id} [${r.status}] ${r.last_seen_at}\n   ${r.preview}`);
   }
   if (audit.rows.length) {
     console.error(`\naudit_log (${audit.rows.length}):`);
     for (const r of audit.rows) console.error(` - ${r.id} ${r.created_at}\n   ${r.preview}`);
   }
-  console.error("\nThe reject_opaque_script_error BEFORE INSERT trigger should have blocked these.");
-  console.error("Investigate which reporter path bypassed it. See mem://features/triage-noise-suppression.");
+  console.error(
+    "\nThe reject_opaque_script_error BEFORE INSERT trigger should have blocked these."
+  );
+  console.error(
+    "Investigate which reporter path bypassed it. See mem://features/triage-noise-suppression."
+  );
   process.exit(1);
 } catch (err) {
   console.error("[check-no-opaque-script-error] query error:", err.message);
