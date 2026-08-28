@@ -61,6 +61,10 @@ import NotFound from "./pages/NotFound";
 
 // Lazily loaded — Index/Register only needed on their own routes
 const Index = lazy(() => import("./pages/Index"));
+// PUBLIC course catalog (Epic 03). Rendered for anonymous visitors — these
+// two routes must never be wrapped in ProtectedRoute.
+const PublicCoursesPage = lazy(() => import("./pages/public/PublicCoursesPage"));
+const PublicCourseDetailPage = lazy(() => import("./pages/public/PublicCourseDetailPage"));
 // AUTH REBUILD Ship 4 (2026-06-11): /register now owned by RegisterScreen
 // over useRegisterEngine. Legacy RegisterPage stays on disk until Ship 5.
 const RegisterPage = lazy(() => import("@/features/auth/ui/RegisterScreen"));
@@ -216,6 +220,12 @@ const App = () => (
                   <Suspense fallback={<RouteFallback />}>
                     <Routes>
                       <Route path="/" element={<Index />} />
+                      {/* PUBLIC course catalog — intentionally unguarded.
+                          `/courses` is the members-only area; the public
+                          catalog lives at `/classes` to avoid colliding
+                          with it. */}
+                      <Route path="/classes" element={<PublicCoursesPage />} />
+                      <Route path="/classes/:slug" element={<PublicCourseDetailPage />} />
                       <Route path="/login" element={<SignInScreen />} />
                       <Route path="/register" element={<RegisterPage />} />
                       <Route path="/forgot-password" element={<ForgotPasswordPage />} />

@@ -22,6 +22,8 @@ interface SitemapEntry {
 // header. Public detail pages are added dynamically below.
 const staticEntries: SitemapEntry[] = [
   { path: "/", changefreq: "weekly", priority: "1.0" },
+  // Public course catalog (Epic 03) — anonymous, indexable content.
+  { path: "/classes", changefreq: "weekly", priority: "0.9" },
   { path: "/login", changefreq: "monthly", priority: "0.6" },
   { path: "/register", changefreq: "monthly", priority: "0.7" },
   { path: "/forgot-password", changefreq: "yearly", priority: "0.3" },
