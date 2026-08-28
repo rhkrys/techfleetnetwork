@@ -395,6 +395,33 @@ export type Database = {
         }
         Relationships: []
       }
+      feature_flags: {
+        Row: {
+          description: string | null
+          enabled: boolean
+          key: string
+          rollout_percent: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          description?: string | null
+          enabled?: boolean
+          key: string
+          rollout_percent?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          description?: string | null
+          enabled?: boolean
+          key?: string
+          rollout_percent?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       audit_log: {
         Row: {
           actor_email: string | null
@@ -8422,6 +8449,14 @@ export type Database = {
           dedup_window_seconds: number
           event_type_pattern: string
           min_occurrences_before_escalate: number
+        }[]
+      }
+      get_feature_flags: {
+        Args: never
+        Returns: {
+          enabled: boolean
+          key: string
+          rollout_percent: number
         }[]
       }
       get_auth_funnel_counts: {
