@@ -5,6 +5,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
+import { applyWaf } from "../_shared/waf.ts";
 import { withAuditWrapper } from "../_shared/audit.ts";
 const ALLOWED_ORIGINS = new Set([
   'https://www.techfleet.network',
@@ -16,12 +17,24 @@ const ALLOWED_ORIGINS = new Set([
   'https://framercanvas.com',
 ])
 
+// DELIBERATE DEVIATION from supabase/functions/CLAUDE.md ("never write
+// Access-Control-Allow-Origin inline; use _shared/http.ts"). The shared
+// helper cannot express this handler's two hard requirements:
+//   1. an ORIGIN ALLOWLIST — _shared/http.ts reflects the SDK's `*`, which
+//      would drop the reflected-origin behavior the marketing site relies on;
+//   2. CACHEABILITY — _shared/http.ts's `jsonHeaders` forces
+//      `Cache-Control: no-store, max-age=0`, which would silently destroy the
+//      60s edge cache + stale-while-revalidate this endpoint serves under.
+// Centralizing CORS here is Epic 03 Phase 2 (a public-response helper that
+// takes an allowlist and cache policy). Until then the rule's ACTUAL purpose —
+// that preflight must not reject the trace/request headers frontend wrappers
+// attach — is satisfied explicitly below.
 function corsFor(origin: string | null): Record<string, string> {
   const allow = origin && ALLOWED_ORIGINS.has(origin) ? origin : '*'
   return {
     'Access-Control-Allow-Origin': allow,
     'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Access-Control-Allow-Headers': 'content-type',
+    'Access-Control-Allow-Headers': 'content-type, x-trace-id, x-request-id',
     'Vary': 'Origin',
   }
 }
@@ -31,6 +44,15 @@ Deno.serve(withAuditWrapper("public-classes", async (req) => {
   const cors = corsFor(origin)
 
   if (req.method === 'OPTIONS') return new Response(null, { headers: cors })
+
+  // WAF: rate-limit / size / scanner / SQLi / path-traversal protection.
+  // This is an unauthenticated public endpoint — the same threat profile as
+  // public-project-detail, which has had the WAF since it shipped. applyWaf
+  // skips OPTIONS itself, and its security_events logging is lazy and
+  // failure-swallowing, so it cannot break the response path.
+  const blocked = await applyWaf(req, 'public-classes')
+  if (blocked) return blocked
+
   if (req.method !== 'GET') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405, headers: { ...cors, 'Content-Type': 'application/json' },
