@@ -33,9 +33,8 @@ const BESPOKE_DIR_READERS = new Set([
   "check-adr-number-collision.mjs", // filename collision detector
   "check-migration-version-collision.mjs", // filename collision detector
   "check-edge-function-coverage.mjs", // manifest generator
-  "check-legacy-auth-importers.mjs", // dir + committed allowlist snapshot
+  "check-legacy-auth-importers.mjs", // snapshot-diff guard with an --update mode + shrink notice (not a per-file rule)
   "check-owasp-coverage.mjs", // reads the OWASP map + SAST config
-  "check-plpgsql-variable-conflict.mjs", // scans .sql migrations (harness-migration candidate)
   "check-triage-actionable-parity.mjs", // reads one TS file + newest matching migration
   "check-migrations-applied.mjs", // Management-API guard; reads migration filenames
   "arch-gate.mjs", // the flagship architecture engine — its own dependency-free scanner, already fail-closed + evidence-bearing
