@@ -31,6 +31,17 @@ export function isWithinQuietWindow(now: number = Date.now()): boolean {
   return now - recentlyVerifiedAt < QUIET_WINDOW_MS;
 }
 
+/**
+ * Reset the post-verify quiet window on sign-out so it can never carry into the
+ * next user's session on a shared tab (P35 review follow-up). The window is
+ * currently read only by the contract test, not a live gate — resetting here
+ * keeps it correct-by-construction if `isWithinQuietWindow` is ever wired into
+ * one. AuthContext calls this from every sign-out path.
+ */
+export function resetMfaQuietWindowForSignOut(): void {
+  recentlyVerifiedAt = 0;
+}
+
 /** Lists current AAL state without leaking provider internals. */
 export async function getAal(): Promise<"aal1" | "aal2" | "unknown"> {
   try {
@@ -62,7 +73,11 @@ export async function verifyTotp(input: MfaVerifyInput): Promise<AuthResult> {
       code: input.code,
     });
     if (error) {
-      void emitAuthBeacon("auth.mfa.invalid_code", { correlationId, errorCode: "mfa_invalid_code" }, "warn");
+      void emitAuthBeacon(
+        "auth.mfa.invalid_code",
+        { correlationId, errorCode: "mfa_invalid_code" },
+        "warn"
+      );
       return err({ code: "mfa_invalid_code", correlationId });
     }
     markRecentlyVerified();

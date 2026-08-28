@@ -43,13 +43,25 @@ export interface EnrollTotpResult {
 const FACTOR_CACHE_TTL_MS = 60_000;
 let factorCache: { at: number; value: TotpFactor[] } | null = null;
 let factorCacheInflight: Promise<TotpFactor[]> | null = null;
-function invalidateFactorCache() { factorCache = null; factorCacheInflight = null; }
+// Bumped on every invalidation. An in-flight listFactors() captures the gen at
+// request time and only seeds the cache if it still matches on resolution — so a
+// fetch already awaiting when SIGNED_OUT (or enroll/unenroll/verify) fired can't
+// re-seed the previous user's factors after the reset (audit P35 race).
+let factorCacheGen = 0;
+function invalidateFactorCache() {
+  factorCache = null;
+  factorCacheInflight = null;
+  factorCacheGen++;
+}
 function decodeAalFromToken(token: string | undefined | null): string | null {
   if (!token) return null;
   try {
     const payload = token.split(".")[1];
     if (!payload) return null;
-    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(payload.length / 4) * 4, "=");
+    const normalized = payload
+      .replace(/-/g, "+")
+      .replace(/_/g, "/")
+      .padEnd(Math.ceil(payload.length / 4) * 4, "=");
     const decoded = JSON.parse(atob(normalized));
     return typeof decoded?.aal === "string" ? decoded.aal : null;
   } catch {
@@ -57,7 +69,19 @@ function decodeAalFromToken(token: string | undefined | null): string | null {
   }
 }
 /** Test-only: reset module caches between cases. Not for production callers. */
-export function __resetMfaServiceCachesForTests() { invalidateFactorCache(); }
+export function __resetMfaServiceCachesForTests() {
+  invalidateFactorCache();
+}
+
+/**
+ * Clear per-tab MFA caches on sign-out. The factor list is a module-global cached
+ * for 60s; without this, the NEXT user to sign in on the same tab within the TTL
+ * would read the previous user's enrolled factors (audit P35). AuthContext calls
+ * this from its SIGNED_OUT handler.
+ */
+export function resetMfaCachesForSignOut() {
+  invalidateFactorCache();
+}
 
 export const MfaService = {
   /** List all enrolled MFA factors for the current user. Cached 60s per tab. */
@@ -66,6 +90,7 @@ export const MfaService = {
       return factorCache.value;
     }
     if (!opts?.force && factorCacheInflight) return factorCacheInflight;
+    const gen = factorCacheGen;
     const fetchOnce = (async () => {
       const { data, error } = await supabase.auth.mfa.listFactors();
       if (error) {
@@ -73,13 +98,20 @@ export const MfaService = {
         throw new Error("Could not load MFA factors");
       }
       const value = (data?.all ?? []) as TotpFactor[];
-      factorCache = { at: Date.now(), value };
+      // Only seed if no invalidation (e.g. SIGNED_OUT) happened while in flight,
+      // so we never re-cache a signed-out user's factors (audit P35 race).
+      if (gen === factorCacheGen) {
+        factorCache = { at: Date.now(), value };
+      }
       return value;
     })();
     factorCacheInflight = fetchOnce;
-    try { return await fetchOnce; } finally { factorCacheInflight = null; }
+    try {
+      return await fetchOnce;
+    } finally {
+      factorCacheInflight = null;
+    }
   },
-
 
   /** Begin TOTP enrollment. Returns QR code + secret to display to the user. */
   async enrollTotp(friendlyName: string): Promise<EnrollTotpResult> {
@@ -111,10 +143,18 @@ export const MfaService = {
   /** Verify the 6-digit code from the authenticator app to activate the factor. */
   async verifyEnrollment(factorId: string, code: string): Promise<void> {
     const normalizedCode = code.replace(/\s/g, "");
-    if (!isValidTotpCode(normalizedCode)) throw new Error("Enter the 6-digit code from your authenticator app.");
-    const { data: challengeData, error: challengeErr } = await supabase.auth.mfa.challenge({ factorId });
+    if (!isValidTotpCode(normalizedCode))
+      throw new Error("Enter the 6-digit code from your authenticator app.");
+    const { data: challengeData, error: challengeErr } = await supabase.auth.mfa.challenge({
+      factorId,
+    });
     if (challengeErr || !challengeData) {
-      log.error("verifyEnrollment", `Challenge failed: ${challengeErr?.message}`, undefined, challengeErr);
+      log.error(
+        "verifyEnrollment",
+        `Challenge failed: ${challengeErr?.message}`,
+        undefined,
+        challengeErr
+      );
       throw new Error("Failed to create challenge");
     }
     const { error: verifyErr } = await supabase.auth.mfa.verify({
@@ -157,13 +197,20 @@ export const MfaService = {
    * session is below AAL2 will be challenged. Users without a verified factor
    * are never prompted. No reliance on `nextLevel`.
    */
-  async getMfaGateDecision(): Promise<{ hasVerifiedTotp: boolean; currentAal: string | null; needsChallenge: boolean }> {
+  async getMfaGateDecision(): Promise<{
+    hasVerifiedTotp: boolean;
+    currentAal: string | null;
+    needsChallenge: boolean;
+  }> {
     let hasVerifiedTotp = false;
     try {
       const factors = await this.listFactors();
       hasVerifiedTotp = factors.some((f) => f.factor_type === "totp" && f.status === "verified");
     } catch (e) {
-      log.warn("getMfaGateDecision", `listFactors failed (failing closed): ${e instanceof Error ? e.message : String(e)}`);
+      log.warn(
+        "getMfaGateDecision",
+        `listFactors failed (failing closed): ${e instanceof Error ? e.message : String(e)}`
+      );
       return { hasVerifiedTotp: false, currentAal: null, needsChallenge: false };
     }
 
@@ -186,7 +233,11 @@ export const MfaService = {
    * Backward-compatible wrapper. Delegates to `getMfaGateDecision` so all
    * callers benefit from the resilient logic.
    */
-  async getAssuranceLevel(): Promise<{ currentLevel: string | null; nextLevel: string | null; needsChallenge: boolean }> {
+  async getAssuranceLevel(): Promise<{
+    currentLevel: string | null;
+    nextLevel: string | null;
+    needsChallenge: boolean;
+  }> {
     const decision = await this.getMfaGateDecision();
     return {
       currentLevel: decision.currentAal,
@@ -199,7 +250,6 @@ export const MfaService = {
     const factors = await this.listFactors();
     return factors.some((f) => f.factor_type === "totp" && f.status === "verified");
   },
-
 
   /**
    * Pre-create a challenge. DEPRECATED for the login/step-up flow — dialogs
@@ -214,7 +264,7 @@ export const MfaService = {
         if (out.error) throw out.error;
         return out;
       },
-      { retries: 2, baseDelayMs: 400, maxDelayMs: 1500 },
+      { retries: 2, baseDelayMs: 400, maxDelayMs: 1500 }
     );
     if (error || !data) throw new Error("Failed to create MFA challenge");
     return data.id;
@@ -228,7 +278,8 @@ export const MfaService = {
    */
   async verifyChallenge(factorId: string, challengeId: string, code: string): Promise<void> {
     const normalizedCode = code.replace(/\s/g, "");
-    if (!isValidTotpCode(normalizedCode)) throw new MfaInvalidCodeError("Enter the 6-digit code from your authenticator app.");
+    if (!isValidTotpCode(normalizedCode))
+      throw new MfaInvalidCodeError("Enter the 6-digit code from your authenticator app.");
     const { data, error } = await supabase.auth.mfa.verify({
       factorId,
       challengeId,
@@ -264,13 +315,23 @@ export const MfaService = {
         // gives us 9s of network/edge headroom and prevents a hung socket
         // from blocking the dialog indefinitely if the server never replies.
         const ac = new AbortController();
-        const timer = setTimeout(() => ac.abort(new DOMException("MFA verify timed out", "AbortError")), 20_000);
+        const timer = setTimeout(
+          () => ac.abort(new DOMException("MFA verify timed out", "AbortError")),
+          20_000
+        );
         try {
-          const callPromise = supabase.auth.mfa.challengeAndVerify({ factorId, code: normalizedCode });
+          const callPromise = supabase.auth.mfa.challengeAndVerify({
+            factorId,
+            code: normalizedCode,
+          });
           const out = await Promise.race([
             callPromise,
             new Promise<never>((_, reject) => {
-              ac.signal.addEventListener("abort", () => reject(ac.signal.reason ?? new Error("aborted")), { once: true });
+              ac.signal.addEventListener(
+                "abort",
+                () => reject(ac.signal.reason ?? new Error("aborted")),
+                { once: true }
+              );
             }),
           ]);
           if (out.error) throw out.error;
@@ -293,10 +354,10 @@ export const MfaService = {
         onRetry: (err) => {
           log.warn(
             "challengeAndVerifyResilient",
-            `Transient MFA failure, retrying: ${(err as Error)?.message ?? String(err)}`,
+            `Transient MFA failure, retrying: ${(err as Error)?.message ?? String(err)}`
           );
         },
-      },
+      }
     ).catch((err) => {
       // Re-throw as typed error. `lastClassified` captures the final
       // classification so callers always get the right MfaError subclass.
@@ -306,14 +367,15 @@ export const MfaService = {
     await this.persistAal2Session(result.data);
   },
 
-
   /** Back-compat alias. Routes through the resilient implementation. */
   async challengeAndVerify(factorId: string, code: string): Promise<void> {
     return this.challengeAndVerifyResilient(factorId, code);
   },
 
   /** Persist the AAL2 tokens returned by mfa.verify into the local session. */
-  async persistAal2Session(data: { access_token?: string; refresh_token?: string } | null | undefined): Promise<void> {
+  async persistAal2Session(
+    data: { access_token?: string; refresh_token?: string } | null | undefined
+  ): Promise<void> {
     const aalFromVerify = decodeAalFromToken(data?.access_token);
     if (!data?.access_token || !data?.refresh_token || aalFromVerify !== "aal2") {
       log.error("persistAal2Session", "verify did not return AAL2 session");
@@ -324,7 +386,12 @@ export const MfaService = {
       refresh_token: data.refresh_token,
     });
     if (setSessionError) {
-      log.error("persistAal2Session", `Failed to persist AAL2 session: ${setSessionError.message}`, undefined, setSessionError);
+      log.error(
+        "persistAal2Session",
+        `Failed to persist AAL2 session: ${setSessionError.message}`,
+        undefined,
+        setSessionError
+      );
       throw new MfaSessionEscalationError();
     }
     log.info("persistAal2Session", "Session elevated to AAL2");
@@ -337,13 +404,17 @@ export const MfaService = {
       const token = data.session?.access_token;
       if (!token) return;
       const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
-      const sessionHash = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
-      const { error } = await (supabase as any).rpc("mark_two_factor_login_verified", { _session_hash: sessionHash });
+      const sessionHash = Array.from(new Uint8Array(digest))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+      const { error } = await (supabase as any).rpc("mark_two_factor_login_verified", {
+        _session_hash: sessionHash,
+      });
       if (error) throw error;
     } catch (e) {
       log.warn(
         "markCurrentSessionVerified",
-        `2FA session proof failed (non-blocking): ${e instanceof Error ? e.message : String(e)}`,
+        `2FA session proof failed (non-blocking): ${e instanceof Error ? e.message : String(e)}`
       );
     }
   },
