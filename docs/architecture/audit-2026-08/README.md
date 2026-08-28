@@ -9,7 +9,7 @@ Committed so it survives across sessions and is visible to the whole team.
 | [`hardening-plan.md`](hardening-plan.md) | **The remediation plan (v2)** — phased, critical → tidy‑up, with triage, codemods, the auth track, and exit criteria. |
 | [`findings.md`](findings.md) | **All 837 verified findings**, by section — each with *where / what breaks / smallest fix*. |
 | [`findings-high.md`](findings-high.md) | The **179 High‑severity** findings, grouped by section. |
-| [`../../adr/0009-architecture-gate.md`](../../adr/0009-architecture-gate.md) | The foundational decision: the blocking architecture gate. |
+| [`../../adr/0019-architecture-gate.md`](../../adr/0019-architecture-gate.md) | The foundational decision: the blocking architecture gate. |
 
 ## The numbers
 - **837 findings** across **46 sections** (current `main`, `9d772cd`): **179 High · 430 Medium · 228 Low**.

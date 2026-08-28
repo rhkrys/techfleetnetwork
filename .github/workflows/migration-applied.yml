@@ -11,7 +11,7 @@ name: Migration applied gate
 # Read-only: queries supabase_migrations.schema_migrations via the Management API SQL
 # endpoint (same SUPABASE_ACCESS_TOKEN + project ref as config-preflight). Never writes.
 #
-# Rollout (ADR-0020, mirrors ADR-0009 "ratchet + observe, then block"):
+# Rollout (ADR-0020, mirrors ADR-0019 "ratchet + observe, then block"):
 #   - No token set  → skips green (self-heals when the secret is added).
 #   - Drift, observe (default) → ::warning:: (this workflow stays green).
 #   - Drift, enforcing → set env ENFORCE=1 below → ::error:: + red → the existing

@@ -165,6 +165,13 @@ jobs:
       - name: Guard — no duplicate migration version prefixes
         run: node scripts/ci/check-migration-version-collision.mjs
 
+      # ADR-number guard — two ADRs sharing a number is the same collision class
+      # (parallel PRs each grab "next number"). 0009/0013/0014/0016 already doubled
+      # because nothing guarded it; this blocks NEW collisions (0013/0014/0016 are
+      # grandfathered in the script). See docs/adr/0019-architecture-gate.md.
+      - name: Guard — no duplicate ADR numbers
+        run: node scripts/ci/check-adr-number-collision.mjs
+
       - name: Type-check
         run: npx tsc --noEmit
       - name: Lint (ESLint)

@@ -5,7 +5,7 @@ sequenced from critical to tidy‑up, with every fix proven before it ships. Thi
 adversarial re‑review of v1 (see "What changed from v1").
 
 - **Companion docs:** `findings.md` (all 837), `findings-high.md` (179 High), `README.md` (index);
-  interactive report + plain‑English guide linked in the README. Foundational decision: `docs/adr/0009-architecture-gate.md`.
+  interactive report + plain‑English guide linked in the README. Foundational decision: `docs/adr/0019-architecture-gate.md`.
 - **Skills:** every PR runs its finding‑type skills (matrix below) + `judge-arch` review; decisions recorded as ADRs (0010+).
 
 ## The two "done" signals (both land this release)

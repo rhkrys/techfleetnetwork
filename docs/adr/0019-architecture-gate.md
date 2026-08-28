@@ -1,7 +1,8 @@
-# ADR-0009: Blocking architecture gate (the four questions) with baselined debt
+# ADR-0019: Blocking architecture gate (the four questions) with baselined debt
 
 - **Status:** Accepted (2026-08-27)
-- **Related:** `.github/workflows/ci.yml` (the required `gate`), `scripts/ci/arch-gate.mjs`, `arch-gate.config.json`, `arch-gate.waivers.json`, `decisions.md`, `.claude/skills/{judge-arch,arch-encode}`, `docs/architecture/audit-2026-08/`, ADR-0008 (sibling OWASP gate). Standard sourced from `techfleetworks/enterprise-software-AI-skills`. PRs techfleetnetwork#297 (adoption), #298 (made blocking).
+- **Renumbered:** originally landed as ADR-0009, which collided with the existing `0009-fleety-unified-brain-internal-call-seam.md`; renumbered to 0019 and now guarded by `scripts/ci/check-adr-number-collision.mjs`.
+- **Related:** `.github/workflows/ci.yml` (the required `gate`), `scripts/ci/arch-gate.mjs`, `arch-gate.config.json`, `arch-gate.waivers.json`, `decisions.md`, `.claude/skills/{judge-arch,arch-encode}`, `docs/architecture/audit-2026-08/`, ADR-0008 (sibling OWASP gate), ADR-0020 (migration-applied gate — first follow-on fix). Standard sourced from `techfleetworks/enterprise-software-AI-skills`. PRs techfleetnetwork#297 (adoption), #298 (made blocking).
 
 ## Context
 
@@ -26,4 +27,4 @@ The standard is sourced from the org repo `techfleetworks/enterprise-software-AI
 
 - **Positive:** new structural drift cannot merge; the existing debt is enumerated and burning down (waivers → 0); the standard is shared org-wide and vendor-neutral; pairs with ADR-0008 under one required `gate`.
 - **Negative / trade-offs:** `arch-gate` is now a merge blocker. The mechanical gate covers only greppable rules — error-handling and one-off logic issues are proven by tests, not the gate, so "waivers → 0" clears the structural debt but not the whole audit. The waiver file needs upkeep as debt is cleared, which is the point.
-- **Follow-on:** a full architectural audit (2026-08, see `docs/architecture/audit-2026-08/`) found **837** verified findings now being remediated per the hardening plan there; each significant fix will land its own ADR (0010+).
+- **Follow-on:** a full architectural audit (2026-08, see `docs/architecture/audit-2026-08/`) found **837** verified findings now being remediated per the hardening plan there; each significant fix lands its own ADR (starting with ADR-0020, the migration-applied gate).

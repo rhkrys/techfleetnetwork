@@ -28,7 +28,7 @@
  *      - UNAPPLIED = committed but not on prod  → the outage risk. Primary signal.
  *      - EXTRA     = on prod but not in the repo → history drift / ad-hoc SQL.
  *
- * ROLLOUT (ADR-0020, mirrors ADR-0009 "ratchet + observe, then block")
+ * ROLLOUT (ADR-0020, mirrors ADR-0019 "ratchet + observe, then block")
  * --------------------------------------------------------------------
  * - No SUPABASE_ACCESS_TOKEN configured  → SKIP green with a ::notice:: (self-heals
  *   the moment the secret is set), exactly like config-preflight's guard.

@@ -26,7 +26,7 @@ This is **Stage 1** (verification) of a staged plan. **Stage 2** (a future ADR) 
 
 ## Rollout
 
-Mirrors ADR-0009's "ratchet + observe, then block":
+Mirrors ADR-0019's "ratchet + observe, then block":
 
 - **No token set → skips green** with a `::notice::` (self-heals the moment the secret is added), exactly like `config-preflight`'s guard. Merging this is safe with or without the secret.
 - **Drift, observe window (default) → `::warning::`**, workflow stays green. This lets us watch real drift for a cycle without wedging `main` red.
