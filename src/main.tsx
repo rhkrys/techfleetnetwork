@@ -13,6 +13,7 @@ import "./index.css";
 // ever boots on www.techfleet.network in production.
 
 import { installGlobalErrorReporter } from "@/services/error-reporter.service";
+import { installLoggerReporting } from "@/lib/observability/logger-report-bridge";
 import { startDeployWatcher } from "@/lib/deploy-watcher";
 import { installClientRequestThrottle } from "@/lib/client-request-throttle";
 import { clearAppCachesForVersion } from "@/lib/app-cache-reset";
@@ -42,6 +43,9 @@ if (navigator.serviceWorker && typeof navigator.serviceWorker.getRegistrations =
 }
 
 installGlobalErrorReporter();
+// ADR-0021: route error-level logs to the reporter (no-op until the
+// logger_error_reporting flag is ramped). Must follow installGlobalErrorReporter.
+installLoggerReporting();
 installLoginCaptchaCrossTabSync();
 installClientRequestThrottle();
 void clearAppCachesForVersion({ reloadAfterClear: false });

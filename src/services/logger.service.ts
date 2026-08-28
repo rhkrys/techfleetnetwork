@@ -30,6 +30,10 @@ interface LogEntry {
     stack?: string;
     code?: string;
   };
+  // The ORIGINAL throwable, kept only so an installed error forwarder can hand
+  // the real error to the reporter's classifier (transient PG codes, TypeError,
+  // AbortError). Never logged to the console.
+  rawError?: unknown;
 }
 
 const LOG_LEVELS: Record<LogLevel, number> = {
@@ -104,6 +108,29 @@ function redactValue(value: unknown, key = ""): unknown {
   return value;
 }
 
+/** Shape handed to an installed error forwarder (ADR-0021). */
+export interface ForwardedLogError {
+  service: string;
+  action: string;
+  /** Redacted human/log message (safe to persist as-is). */
+  message: string;
+  /** The ORIGINAL throwable (if the caller passed one) — for the classifier. */
+  error: unknown;
+}
+type ErrorForwarder = (e: ForwardedLogError) => void;
+let errorForwarder: ErrorForwarder | null = null;
+let forwarding = false;
+
+/**
+ * Install a sink for error-level logs. The app wires this to the error reporter
+ * in main.tsx (see src/lib/observability/logger-report-bridge). Kept as injection
+ * so logger.service takes on NO new imports and can never form an import cycle
+ * with the reporter. Passing null uninstalls it.
+ */
+export function setLoggerErrorForwarder(fn: ErrorForwarder | null): void {
+  errorForwarder = fn;
+}
+
 function emit(entry: LogEntry) {
   if (!shouldLog(entry.level)) return;
 
@@ -126,6 +153,26 @@ function emit(entry: LogEntry) {
     case "error":
       console.error(prefix, entry.message, entry.metadata ?? "", entry.error ?? "");
       break;
+  }
+
+  // ADR-0021: forward error-level logs to the reporter when a forwarder is
+  // installed (gated by the logger_error_reporting flag inside the forwarder).
+  // Guarded against re-entrancy and never allowed to throw — logging must not
+  // break the caller, and the forwarder must not be able to recurse into emit().
+  if (entry.level === "error" && errorForwarder && !forwarding) {
+    forwarding = true;
+    try {
+      errorForwarder({
+        service: entry.service,
+        action: entry.action,
+        message: entry.message,
+        error: entry.rawError,
+      });
+    } catch {
+      // Telemetry must never throw.
+    } finally {
+      forwarding = false;
+    }
   }
 }
 
@@ -154,6 +201,7 @@ export function createLogger(service: string) {
     timestamp: new Date().toISOString(),
     metadata: metadata ? (redactValue(metadata) as Record<string, unknown>) : undefined,
     error: formatError(err),
+    rawError: err,
   });
 
   return {
