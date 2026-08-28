@@ -1,0 +1,58 @@
+name: Migration applied gate
+
+# ADR-0020: every committed migration must actually be live on prod.
+#
+# DB migrations are hand-applied (`supabase db push`) while edge functions and the
+# frontend auto-deploy on merge — so a migration can pass the BLOCKING migration-smoke
+# gate (which only proves it applies to a fresh LOCAL Postgres), merge, and silently
+# never reach prod. That gap caused the Discord-linking PGRST202 outage. migration-smoke
+# asks "do these apply from scratch?"; this asks "are they actually applied to prod?".
+#
+# Read-only: queries supabase_migrations.schema_migrations via the Management API SQL
+# endpoint (same SUPABASE_ACCESS_TOKEN + project ref as config-preflight). Never writes.
+#
+# Rollout (ADR-0020, mirrors ADR-0009 "ratchet + observe, then block"):
+#   - No token set  → skips green (self-heals when the secret is added).
+#   - Drift, observe (default) → ::warning:: (this workflow stays green).
+#   - Drift, enforcing → set env ENFORCE=1 below → ::error:: + red → the existing
+#     "Main failure alert" workflow pages Discord.
+
+on:
+  schedule:
+    - cron: "30 7 * * *" # daily 07:30 UTC (just after config-preflight's 07:00)
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+      # A brand-new migration on main is not yet applied to prod (a human runs
+      # `db push` after merge) — this run nudges "remember to apply it".
+
+permissions:
+  contents: read
+
+env:
+  SUPABASE_PROJECT_REF: pzvqxdgoztbfikfuifix
+
+jobs:
+  migration-applied:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Assert committed migrations are applied to prod
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          # Rollout control (ADR-0020, like ADR-0012's PROD_URL variable): the
+          # observe-window default is off. Set the repo Actions *variable*
+          # MIGRATION_APPLIED_ENFORCE to "1" to make real drift block + page —
+          # no code edit needed. Two guardrails keep enforce mode humane:
+          #  - push-to-main is ALWAYS observe-only: a just-merged migration is not
+          #    yet applied by design, so it must never hard-fail (only the daily
+          #    schedule / manual run honor the variable).
+          #  - reachability failures never hard-fail (handled in the script).
+          ENFORCE: ${{ github.event_name == 'push' && '0' || vars.MIGRATION_APPLIED_ENFORCE }}
+        run: node scripts/ci/check-migrations-applied.mjs
