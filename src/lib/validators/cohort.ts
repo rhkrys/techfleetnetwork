@@ -5,6 +5,7 @@ import {
   safeShortTextSchema,
   safeUrlSchema,
 } from "@/lib/validators/shared-input";
+import { gumroadUrlSchema, optionalGumroadUrlSchema } from "@/lib/validators/gumroad";
 
 export const COHORT_STATUSES = ["draft", "pending_review", "published", "archived", "cancelled"] as const;
 export type CohortStatus = (typeof COHORT_STATUSES)[number];
@@ -19,12 +20,15 @@ export const cohortFormSchema = z
     label: safeRequiredTextSchema("Cohort label", 80),
     start_date: dateSchema,
     end_date: dateSchema,
-    registration_url: z
-      .string()
-      .trim()
-      .min(1, "Registration URL is required")
-      .max(500, "Registration URL must be under 500 characters")
-      .refine((v) => /^https:\/\/.+/i.test(v), "Registration URL must start with https://"),
+    // Allowlisted to the Tech Fleet Gumroad store. This link is rendered to
+    // ANONYMOUS visitors on the public course catalog, so an arbitrary
+    // teacher-supplied URL here would be an open-redirect / phishing surface
+    // pointed at from our own domain. See src/lib/validators/gumroad.ts.
+    registration_url: gumroadUrlSchema("Registration URL", 500),
+    // Member-only link (base URL + discount code). Never served publicly —
+    // `discount_registration_url` is revoked from the anon role at the column
+    // level (migration 20260828180000).
+    discount_registration_url: optionalGumroadUrlSchema("Member discount URL", 500).optional().default(""),
     meeting_url: safeUrlSchema("Meeting URL", 500).optional().default(""),
     timezone: safeShortTextSchema("Timezone", 80).default("America/New_York"),
     capacity: z
