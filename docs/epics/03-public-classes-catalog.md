@@ -14,8 +14,9 @@ checkout.
 > `comprehensive-test-strategy`, `release-deployment-safety`, `sre-operational-readiness`,
 > `compliance-data-lifecycle`, `universal-accessibility-wcag`,
 > `universal-browser-device-support`, `usability-ux-universal-design`, `skeptical-audit`).
-> The impeccable interview round could not run in an unattended session; §9 lists every
-> inference that needs an owner's answer before build.
+> The impeccable interview round could not run in an unattended session, so the seven open
+> decisions were put to the owner afterwards and answered on 2026-11-06; §9 records the
+> answers and this plan reflects them.
 
 ---
 
@@ -73,38 +74,42 @@ worth their money and five to twenty hours a week. Mode: **Persuade** for `/clas
 they already registered for; the same pages serve them inside the authenticated layout.
 
 **Outcome and proof.** The visitor can answer, without an account: what will I do, with whom,
-when, how long, what does it cost, what do I need first, and how do I register. Proof is
-real: cohort dates, time commitment, instructor-written curriculum, audiences, prerequisites,
-and the Gumroad price. Success is a click on "Register on Gumroad" (already logged by
-`register_for_cohort_click` for members; anonymous clicks are counted via a new
-anon-safe RPC or not at all — open decision §9).
+when, how long, what do I need first, and how do I register. Proof is real: cohort dates, time commitment,
+the live Gumroad product description as the overview, teacher-entered audiences and
+prerequisites, and the curriculum outline. Price is deliberately not shown on the platform;
+the register link goes to the live Gumroad product (decision §9.2). Success is a click on
+"Register on Gumroad", recorded for members by `register_for_cohort_click` and for
+anonymous visitors by a new rate-limited, identifier-free counter (decision §9.3).
 
 **Selected direction.** Extend the existing world: `@/design-system` components (MUI-owned
 layer; Poppins body, Futura headings, `tf-card`, asymmetric-radius button; 4px grid). No new
 tokens, no new fonts. Structural thesis: *the catalog is a schedule, not a shop*. The page
 leads with "what is starting next" (upcoming cohorts across classes, soonest first), then the
 two tracks as sections, each class a card with title, format badge (residency / masterclass),
-next start date, weekly commitment, and price. The category default this refuses is the grid
+next start date, and weekly commitment. The category default this refuses is the grid
 of identical thumbnails with "Learn more" buttons; here the card's primary text is a date and
 a commitment, because that is what a working adult decides on. The detail page's first
-viewport puts the next cohort's dates, the weekly hours, the price, and the register action
-in a sticky aside beside the overview, so the decision facts never scroll away from the
-reading.
+viewport puts the next cohort's dates, the weekly hours, and the register action in a
+sticky aside beside the overview, so the decision facts never scroll away from the reading.
+The overview itself is the synced Gumroad description (decision §9.1), so a prospective
+learner reads the same words on both sites and they never drift.
 
 **Scope and boundaries.** Two public routes, one shared card, one sticky "registration" aside,
 a landing-page section and header link behind a flag, sitemap/SEO entries. Untouched: the
 teacher and admin class pages, the curriculum tab (stays entitlement-gated), auth, the
-Gumroad membership pipeline. Anti-goals: no price typed by hand, no fake ratings or learner
-counts, no "coming soon" cards, no iframe of Gumroad.
+Gumroad membership pipeline. Anti-goals: no price shown on the platform at all (decision §9.2), no fake ratings or
+learner counts, no "coming soon" cards, no iframe of Gumroad.
 
 **States and ranges.** Classes: 0 (empty state that links to the Gumroad storefront and
 explains how classes are announced), 1 (today), 6 (near term), 20+ (pagination or
 track-tabs; design for 20 without pagination). Cohorts per class: 0 ("No upcoming cohort —
 follow this class" for members, Gumroad link for anonymous), 1, 3+. Summary HTML: 0 to
 10,000 chars (today 5,611); description up to 50,000; render sanitized HTML with the existing
-`prose` treatment. Hero image: often missing (fall back to a track-colored surface with the
-format badge, never a broken image). Price: missing when no product is linked (show "See
-price on Gumroad", never $0). Dates: past cohorts hidden from the public page; a class with
+`prose` treatment. Hero image: often missing (fall back to the synced Gumroad thumbnail, then a
+track-colored surface with the format badge, never a broken image). Overview: the synced
+Gumroad description of the soonest upcoming linked cohort's product; when no cohort is
+linked, the platform `summary` (today's single published class has one). Price: never
+shown. Dates: past cohorts hidden from the public page; a class with
 only past cohorts shows "Next cohort not yet scheduled".
 
 **Interaction and layout.** Catalog: page title, one-line lede, "Starting soon" strip
@@ -112,10 +117,11 @@ only past cohorts shows "Next cohort not yet scheduled".
 "Advanced training" sections (a section hides when empty). Cards are single links with one
 accessible name; the whole card is the target, with a visible focus ring. Detail: breadcrumb
 (Classes › title), title, format and track badges, the registration aside (dates, timezone,
-weekly commitment, price, "Register on Gumroad" external link with opens-in-new-tab
-indication, capacity when present), then overview, why take it, audiences, outcomes, skills,
+weekly commitment, "Register on Gumroad" external link with opens-in-new-tab indication,
+capacity when present), then overview (synced from Gumroad when linked), why take it,
+audiences, outcomes, skills,
 prerequisites, curriculum outline (public, not the gated module content), cohorts list,
-expectations, reading. Mobile: aside becomes a bottom sheet bar with dates + price + register.
+expectations, reading. Mobile: aside becomes a bottom bar with dates + register.
 Motion: none beyond focus and hover; respect `prefers-reduced-motion`.
 
 **Constraints.** WCAG 2.2 AA; works from 320px; no new dependency; UI → hooks → services only
@@ -150,8 +156,10 @@ codebase by `gumroad_sales` → `compute_membership()`.
 | -------------------------------------- | ------------------------------------------------ | ------- |
 | Class copy, track, status, slug        | teachers/admins via `ClassService` (unchanged)    | public pages, teacher/admin pages |
 | Cohort dates, capacity, schedule       | teachers via `CohortService` (unchanged)          | public pages |
-| Which product sells a cohort           | teacher picks in `CohortForm` → `cohorts.gumroad_product_id` | public pages, entitlement |
-| Product name, price, currency, URL, thumbnail, published | `gumroad-products-sync` edge fn → `gumroad_products` | public pages, cohort form, admin |
+| Which product sells a cohort           | teacher picks in `CohortForm` → `cohorts.gumroad_product_id`; admin may override at approval (§9.7) | public pages, entitlement |
+| Product name, description (overview copy), price, currency, URL, thumbnail, published | `gumroad-products-sync` edge fn → `gumroad_products` | public pages (description, thumbnail, URL), cohort form, admin (price) |
+| Structured class facts: audiences, prerequisites, outcomes, skills, hours per week | teachers via `ClassService`/`CohortService` (unchanged) | public pages |
+| Register clicks (anonymous)            | `record_public_registration_click()` RPC → `cohort_click_counts` (no identifier) | admin |
 | Purchase facts                         | `gumroad-webhook` → `gumroad_sales` (unchanged)   | `is_class_learner()` (phase 4) |
 
 **Schema (expand/contract, all additive).**
@@ -163,7 +171,8 @@ CREATE TABLE public.gumroad_products (
   permalink       text NOT NULL,               -- short code, e.g. rotlxh
   custom_permalink text,
   url             text NOT NULL,               -- canonical product URL
-  price_cents     integer NOT NULL,
+  description_html text NOT NULL DEFAULT '',  -- sanitized on write; the public overview copy
+  price_cents     integer NOT NULL,            -- synced for admins and entitlement; never rendered publicly
   currency        text NOT NULL DEFAULT 'usd',
   thumbnail_url   text,
   native_type     text NOT NULL DEFAULT '',    -- course | membership | ...
@@ -188,11 +197,21 @@ CREATE INDEX idx_cohorts_upcoming ON public.cohorts(start_date) WHERE status = '
 `registration_url` stays `NOT NULL` for backward compatibility; the cohort form fills it from
 the linked product and lets a teacher override only when no product is linked.
 
+**Anonymous click counter (decision §9.3).** A SECURITY DEFINER RPC
+`record_public_registration_click(_cohort_id uuid)` granted to `anon` and `authenticated`
+increments a per-cohort daily counter in `cohort_click_counts (cohort_id, day, clicks)`. It
+stores no IP, user id, or user agent, and it is rate limited through the existing
+`rate_limits` table (one increment per cohort per 10 seconds per caller key derived from the
+request, dropped on overflow, never an error to the visitor). Signed-in members keep using
+`register_for_cohort_click`, which records the registration row; the public counter is
+interest, not registration.
+
 **Edge function `gumroad-products-sync`.** Composes `_shared` (admin client, `withAuditWrapper`
 with label equal to the directory name, `jsonResponse`); `verify_jwt = false` with a cron
 secret header exactly like `gumroad-backfill-all`; `GET https://api.gumroad.com/v2/products`
 paginated; filters `seller_id = GUMROAD_SELLER_ID`; strips anything that is not a public
-product field before storing `raw`; upserts; marks products missing from the response
+product field before storing `raw`; sanitizes `description` server-side (same allow-list as
+`sanitize_classes_html`) into `description_html`; upserts; marks products missing from the response
 `published = false` (never deletes); writes one `ops_events` row with counts. Scheduled hourly
 by pg_cron (migration mirrors `20260803160500_gumroad_backfill_all_cron.sql`).
 
@@ -222,9 +241,9 @@ shows which current learners would lose access (§7).
 
 | Phase | PR scope | Flag | Gate evidence |
 | ----- | -------- | ---- | ------------- |
-| 1 | `/classes` + `/classes/:slug` pages, shared `ClassCard`, `RegistrationAside`, `ClassService.listPublished`, `CohortService.listUpcomingPublished`, hooks, `RouteTitle`, sitemap, SEO. Fixes the 404s. Price shows "See price on Gumroad" until phase 3. | none for routes; `public_classes_catalog` gates the landing section + header link | Vitest UI tests, Playwright anon e2e, axe, visual snapshots |
+| 1 | `/classes` + `/classes/:slug` pages, shared `ClassCard`, `RegistrationAside`, `ClassService.listPublished`, `CohortService.listUpcomingPublished`, hooks, `RouteTitle`, sitemap, SEO; anonymous click counter RPC + table. Fixes the 404s. Overview falls back to the platform `summary` until phase 3. | none for routes; `public_classes_catalog` gates the landing section + header link | Vitest UI tests, Playwright anon e2e, pgTAP for the click RPC, axe, visual snapshots |
 | 2 | `gumroad_products` table + RLS + pgTAP; `gumroad-products-sync` edge fn + cron; `GumroadProductsService`; admin "Gumroad products" tab on `/admin/classes` showing unlinked products | — | pgTAP RLS tests, edge fn unit test with recorded API fixture, `ops_events` row |
-| 3 | `cohorts.gumroad_product_id`; product picker in `CohortForm`; public pages show price, thumbnail fallback, canonical register URL | — | migration-applied gate, form tests, e2e |
+| 3 | `cohorts.gumroad_product_id`; product picker in `CohortForm` (teacher) with admin override on `/admin/classes`; public pages show the synced Gumroad description as overview, thumbnail fallback, canonical register URL | — | migration-applied gate, form tests, e2e |
 | 4 | `is_class_learner()` redefinition; backfill report; curriculum e2e update | `verified_purchase_entitlement` | comparison report, `curriculum.e2e.ts` green |
 | 5 | Landing "Classes" section, header nav link, Lighthouse/a11y route additions; flag flipped on | `public_classes_catalog` | Lighthouse budget, a11y report |
 
@@ -267,13 +286,15 @@ Feature: Public classes catalog
   Scenario: PCC-005 Upcoming cohort shows registration facts
     Given a published cohort starting in the future with a linked Gumroad product
     When I open the class page
-    Then I see start and end dates with timezone, weekly commitment, and the product price
+    Then I see start and end dates with timezone and weekly commitment
+    And the overview is the synced Gumroad description
+    And no price is rendered anywhere on the page
     And "Register on Gumroad" opens the product URL in a new tab with rel noopener
 
   Scenario: PCC-006 Cohort without a linked product
     Given a published cohort with registration_url but no gumroad_product_id
     When I open the class page
-    Then I see "See price on Gumroad" and the register link uses registration_url
+    Then the overview is the platform summary and the register link uses registration_url
 
   Scenario: PCC-007 Past cohorts are hidden from the public page
     Given a published cohort whose end_date is in the past and no future cohort
@@ -313,14 +334,26 @@ Feature: Public classes catalog
   Scenario: PCC-014 Crawler
     When a crawler fetches /sitemap.xml
     Then /classes and every published /classes/:slug are listed
+
+  Scenario: PCC-015 Anonymous click is counted without an identifier
+    Given no session
+    When I click "Register on Gumroad" on a cohort
+    Then cohort_click_counts for that cohort and today increases by one
+    And no row stores an IP address, user id, or user agent
+
+  Scenario: PCC-016 Anonymous click counter is rate limited (@security)
+    Given no session
+    When I call record_public_registration_click twice within 10 seconds for one cohort
+    Then the counter increases by one
+    And the second call returns success without error
 ```
 
 ## 7. Test strategy (comprehensive-test-strategy)
 
-- **Unit (Vitest):** service mappers (product → display price, cohort → "starting soon"
-  ordering, past-cohort filtering), date/timezone formatting, slug lookup fallbacks.
+- **Unit (Vitest):** service mappers (product → overview/thumbnail/URL, cohort → "starting
+  soon" ordering, past-cohort filtering), date/timezone formatting, slug lookup fallbacks.
 - **UI (Vitest + Testing Library):** pages render with mocked hooks for empty / one / many /
-  no-hero / no-price / long-HTML cases, following `src/test/ui/AdminClassesPage.test.tsx`.
+  no-hero / no-linked-product / long-HTML cases, following `src/test/ui/AdminClassesPage.test.tsx`.
 - **Over-the-wire e2e (Playwright):** anonymous RLS reads via PostgREST against local
   Supabase, same fixture approach as `e2e/classes/curriculum.e2e.ts`; the 404-fix path from
   `/courses`; the `/teach/*` redirect.
@@ -342,10 +375,13 @@ are bounded by existing RLS and the explicit column lists in services. All class
 External links use `rel="noopener noreferrer"`. The Gumroad token stays in edge-function
 secrets; the sync endpoint requires the cron secret and `withAuditWrapper`. `raw` stores
 public product fields only. Public slug enumeration is acceptable (slugs are meant to be
-public). Scenarios PCC-010/011 are the `@security` BDD checks.
+public). The anonymous click RPC is the one new anon-callable write: it is rate limited,
+stores no identifier, and cannot be used to create registrations. Synced Gumroad
+`description_html` is sanitized on write and again at render. Scenarios PCC-010/011/016 are
+the `@security` BDD checks.
 
 **Accessibility (universal-accessibility-wcag, usability-ux-universal-design).** Single h1
-per page, landmark `main`, cards as one link each, price and dates as text (not only color or
+per page, landmark `main`, cards as one link each, dates and hours as text (not only color or
 icon), external-link indication in text, 4.5:1 contrast in both themes, 320px layout, visible
 focus, reduced motion respected, plain-language commitments ("5 hours a week for 16 weeks").
 
@@ -359,27 +395,23 @@ Runbook: `docs/runbooks/gumroad-products-sync.md` (token rotation, manual run, h
 a product).
 
 **Compliance (compliance-data-lifecycle).** `gumroad_products` holds no personal data.
-Anonymous click-through, if recorded, stores no identifier beyond a session-less count
-(open decision §9). Existing GDPR erasure for `gumroad_sales` email is unaffected.
+The anonymous click counter stores only a per-cohort daily integer. Existing GDPR erasure
+for `gumroad_sales` email is unaffected.
 
-## 9. Open decisions (owner answers needed before phase 1 build)
+## 9. Decisions (answered by the owner, 2026-11-06)
 
-1. **Source of truth for class copy.** Plan assumes the platform `classes` row is editorial
-   truth and Gumroad descriptions are not imported. Confirm, or ask for a one-time import of
-   the five unlinked products into draft classes for teachers to finish.
-2. **Show price on the platform?** Plan assumes yes, from the mirror only. Confirm.
-3. **Anonymous click tracking.** Count anonymous "Register on Gumroad" clicks (new anon-safe
-   RPC with rate limiting) or track only members (today's behavior)? Plan defaults to
-   members only.
-4. **Basic-training classes.** Are any sold on Gumroad, or are they free/member-only? Affects
-   whether the "Basic training" section shows a price column.
-5. **Founding-member pricing.** The Agile UX Masterclass is "FREE for Founding Members". Show
-   a member-aware price (needs session + membership tier) or a plain note? Plan defaults to the
-   note from the class copy.
-6. **Header placement.** Add "Classes" to the public header next to "Connect", or landing
-   section only? Plan proposes both, flag-gated.
-7. **Product picker ownership.** Teachers pick the Gumroad product on the cohort form, or
-   admins link products at approval time? Plan defaults to teachers with admin override.
+| # | Question | Answer | What it changes in this plan |
+| - | -------- | ------ | ---------------------------- |
+| 1 | Should the synced Gumroad description be the live overview copy, with teachers adding only structured fields? | **Yes** | `gumroad_products.description_html` is synced and sanitized; the public class page renders it as the overview; teachers keep audiences, prerequisites, outcomes, skills, and cohort facts in the platform. |
+| 2 | Show the price on the platform? | **No** | No price on cards or pages; `price_cents` is still synced for admins and entitlement but never rendered publicly. |
+| 3 | Count anonymous "Register on Gumroad" clicks? | **Yes** | New rate-limited, identifier-free RPC and `cohort_click_counts` table in phase 1. |
+| 4 | Are basic-training classes sold on Gumroad? | **Yes** | Both tracks behave identically: cohort → Gumroad product → register link. |
+| 5 | Member-aware "free for Founding Members" message? | **No** | The plain note stays in the class copy; no tier lookup on public pages. |
+| 6 | "Classes" in the public header as well as the landing section? | **Yes** | Both, behind `public_classes_catalog`. |
+| 7 | Teachers pick the Gumroad product on the cohort form, admins can override? | **Yes** | Picker in `CohortForm`; override on `/admin/classes` at approval. |
+
+Remaining assumption to verify in phase 1: that every cohort's `registration_url` will point
+at a Gumroad product (no published cohort exists yet to confirm).
 
 ## 10. Evidence (re-runnable)
 
@@ -420,4 +452,4 @@ Evidence states (skeptical-audit): the 404 and routing facts are **proven** by g
 commit `c32d81f9`; production counts are **observed** on 2026-11-06 via the anon REST API;
 Gumroad product facts are **observed** from the public storefront on the same day; the
 assumption that `registration_url` points to Gumroad is **inferred** (no published cohort
-exists to check); everything in §9 is **not assessed** until the owner answers.
+exists to check); the seven product decisions in §9 are **reported** by the owner.

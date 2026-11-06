@@ -5,8 +5,9 @@
 > Captured 2026-11-06 by Claude Code during discovery for the public classes catalog.
 > The impeccable interview round could not run in this unattended session, so every fact
 > below is sourced from the repository (README, migrations, code) or the public Gumroad
-> storefront. Facts marked **[inferred]** need owner confirmation; the rest are quoted
-> from committed project material.
+> storefront. Facts marked **[inferred]** were not confirmed in an interview; the seven
+> product decisions in `docs/epics/03-public-classes-catalog.md` §9 were confirmed by the
+> owner on 2026-11-06. The rest is quoted from committed project material.
 
 ## Platform
 
@@ -64,8 +65,10 @@ cannot truthfully claim the team-based apprenticeship that follows a class.
 - Terminology: "Tech Fleet" is always two words. "Class" is the product; "cohort" is a dated
   run of a class; "track" is basic or advanced training; "residency" and "masterclass" are
   class formats used in Gumroad product names.
-- Undecided [inferred]: whether the platform or Gumroad is the editorial source of truth for
-  class copy, and whether price is shown on the platform.
+- Decided 2026-11-06 (owner): Gumroad is the source of truth for class overview copy, price,
+  and checkout; the platform owns structured class facts and curriculum; no price is shown on
+  the platform; anonymous register clicks are counted without identifiers; both tracks sell
+  on Gumroad; teachers link cohorts to products with admin override.
 
 ## Brand Commitments
 
