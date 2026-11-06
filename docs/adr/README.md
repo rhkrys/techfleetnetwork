@@ -20,6 +20,7 @@ marked `Superseded by ADR-XXXX`, never deleted or rewritten.
 | [0016](0016-email-tiering-and-notify-announcements-retirement.md) | Email tiering and retirement of `notify_announcements`                             | Accepted           |
 | [0017](0017-email-octopus-marketing-source-of-truth.md)           | Email Octopus is the marketing source of truth (Ghost blog-only)                   | Accepted           |
 | [0018](0018-transactional-marketing-scope-separation.md)          | Transactional/marketing scope separation and independent suppression scopes        | Accepted           |
+| [0022](0022-public-classes-catalog-gumroad-source-of-truth.md) | Public classes catalog: platform `classes` is the catalog, Gumroad owns price/checkout, mirrored by one writer | Proposed |
 
 The first block of ADRs covers the **Hand-Off Production System + SPF data-layer migration** work
 (0008 to 0012 exist in this directory as well). **0015** is the design-system ADR (MUI-owned layer).
